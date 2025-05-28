@@ -44,20 +44,29 @@ class CWebServer : public CHTTPDaemon {
     // Static method and variable for global shutdown state
     static void SetGlobalShutdownMode(TShutdownMode mode);
 
-   private:
-    // from CHTTPDaemon
-    THTTPStatus GetContent(const char *pPath,
-                           const char *pParams,
-                           const char *pFormData,
-                           u8 *pBuffer,
-                           unsigned *pLength,
-                           const char **ppContentType);
-    THTTPStatus list_files_as_table(char *output_buffer, size_t max_len, const char *params = nullptr);
-    THTTPStatus list_files_as_json(char *json_output, size_t max_len);
-    THTTPStatus generate_mount_success_page(char *output_buffer, size_t max_len, const char *filename);
-    THTTPStatus handle_system_operation(char *output_buffer, size_t max_len, const char *action, TShutdownMode *pShutdownMode);
+    // Callback function type for display updates
+    typedef void (*TDisplayUpdateHandler)(const char*);
+    
+    // Sets the display update handler callback
+    void SetDisplayUpdateHandler(TDisplayUpdateHandler pHandler);
+    
+    // Other methods to trigger the callback when needed
+    void NotifyDisplayUpdate(const char* imageName);
 
    private:
+    // from CHTTPDaemon
+    THTTPStatus GetContent (const char  *pPath,
+                          const char  *pParams,
+                          const char  *pFormData,
+                          u8          *pBuffer,
+                          unsigned    *pLength,
+                          const char **ppContentType);
+    THTTPStatus list_files_as_table(char *output_buffer, size_t max_len, const char *params, const char *pUSBSpeed);
+    THTTPStatus list_files_as_json(char *json_output, size_t max_len);
+    THTTPStatus generate_mount_success_page(char *output_buffer, size_t max_len, const char *filename, const char *pUSBSpeed);
+    THTTPStatus handle_system_operation(char *content, size_t max_len, const char *action, TShutdownMode *pShutdownMode, const char *pUSBSpeed);
+    
+private:
     CActLED *m_pActLED;
     CUSBCDGadget *m_pCDGadget;
     u8 *m_pContentBuffer;  // Added content buffer as class member
@@ -66,6 +75,9 @@ class CWebServer : public CHTTPDaemon {
 
     // Static shutdown mode that is shared across all instances
     static TShutdownMode s_GlobalShutdownMode;
+
+    // Add this member variable
+    TDisplayUpdateHandler m_pDisplayUpdateHandler;
 };
 
 #endif

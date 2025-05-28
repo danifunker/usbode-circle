@@ -41,6 +41,9 @@
 #include <filelogdaemon/filelogdaemon.h>
 #include <wlan/bcm4343.h>
 #include <wlan/hostap/wpa_supplicant/wpasupplicant.h>
+#include <circle/spimaster.h>
+#include <circle/gpiopin.h>
+#include "displaymanager.h"
 
 enum TShutdownMode {
     ShutdownNone,
@@ -48,7 +51,8 @@ enum TShutdownMode {
     ShutdownReboot
 };
 
-class CKernel {
+class CKernel 
+{
    public:
     CKernel(void);
     ~CKernel(void);
@@ -58,25 +62,49 @@ class CKernel {
 
     TShutdownMode Run(void);
 
-   private:
-    // do not change this order
-    CActLED m_ActLED;
-    CKernelOptions m_Options;
-    CDeviceNameService m_DeviceNameService;
-    CScreenDevice m_Screen;
-    CSerialDevice m_Serial;
-    CExceptionHandler m_ExceptionHandler;
-    CInterruptSystem m_Interrupt;
-    CTimer m_Timer;
-    CLogger m_Logger;
-    CScheduler m_Scheduler;
+public:
+    // Static callback for display updates (must be public to be used as a callback)
+    static void DisplayUpdateCallback(const char* imageName);
 
-    CEMMCDevice m_EMMC;
-    FATFS m_FileSystem;
-    CBcm4343Device m_WLAN;
-    CNetSubSystem m_Net;
-    CWPASupplicant m_WPASupplicant;
-    CUSBCDGadget m_CDGadget;
+private:
+	// do not change this order
+	CActLED			m_ActLED;
+	CKernelOptions		m_Options;
+	CDeviceNameService	m_DeviceNameService;
+	CScreenDevice		m_Screen;
+	CSerialDevice		m_Serial;
+	CExceptionHandler	m_ExceptionHandler;
+	CInterruptSystem	m_Interrupt;
+	CTimer			m_Timer;
+	CLogger			m_Logger;
+	CScheduler              m_Scheduler;
+
+	CEMMCDevice		m_EMMC;
+	FATFS                   m_FileSystem;
+	CBcm4343Device          m_WLAN;
+        CNetSubSystem           m_Net;
+        CWPASupplicant          m_WPASupplicant;
+	CUSBCDGadget		m_CDGadget;
+
+	// SPI and display components
+	CSPIMaster* m_pSPIMaster;
+	CDisplayManager* m_pDisplayManager;
+
+	// Helper method to parse display type from config.txt
+	TDisplayType ParseDisplayType(void);
+
+	// Helper method for display initialization
+	TDisplayType GetDisplayTypeFromString(const char* displayType);
+	void InitializeDisplay(TDisplayType displayType);  // Change parameter type from const char* to TDisplayType
+
+	// Flag to track USB initialization state
+	boolean m_bUSBInitialized;
+
+	// Config option name
+	static const char ConfigOptionDisplayType[];
+
+	// Updates the display with current status information
+	void UpdateDisplayStatus(const char* imageName);
 };
 
 #endif

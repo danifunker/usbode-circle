@@ -57,6 +57,7 @@ static const char HTML_LAYOUT[] =
     "        .file-link-even {background-color: #E3F2FD;}\n"
     "        .file-link-odd {background-color: #BBDEFB;}\n"
     "        .header-bar {background-color: #2C5F7C; color: #FFFFFF; padding: 5px;}\n"
+    "        .usb-info {background-color: #E3F2FD; border-top: 1px solid #BBDEFB; padding: 5px; text-align: center; margin-top: 20px;}\n"
     "    </style>\n"
     "</head>\n"
     "<body>\n"
@@ -67,6 +68,9 @@ static const char HTML_LAYOUT[] =
     "        </div>\n"
     "        <div class=\"content\">\n"
     "            %s\n"
+    "        </div>\n"
+    "        <div class=\"usb-info\">\n"
+    "            <p>USB Mode: %s</p>\n"
     "        </div>\n"
     "        <div class=\"footer\">\n"
     "            <p>Version %s</p>\n"
@@ -83,27 +87,32 @@ LOGMODULE("webserver");
 
 TShutdownMode CWebServer::s_GlobalShutdownMode = ShutdownNone;
 
-CWebServer::CWebServer(CNetSubSystem *pNetSubSystem, CUSBCDGadget *pCDGadget, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket)
-    : CHTTPDaemon(pNetSubSystem, pSocket, MAX_CONTENT_SIZE),
-      m_pActLED(pActLED),
-      m_pCDGadget(pCDGadget),
-      m_pContentBuffer(new u8[MAX_CONTENT_SIZE]),
-      m_pProperties(pProperties),
-      m_ShutdownMode(ShutdownNone) {
+CWebServer::CWebServer (CNetSubSystem *pNetSubSystem, CUSBCDGadget *pCDGadget, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket)
+:       CHTTPDaemon (pNetSubSystem, pSocket, MAX_CONTENT_SIZE),
+        m_pActLED (pActLED),
+        m_pCDGadget (pCDGadget),
+        m_pContentBuffer(new u8[MAX_CONTENT_SIZE]),
+        m_pProperties(pProperties),
+        m_ShutdownMode(ShutdownNone),
+        m_pDisplayUpdateHandler(nullptr) // Initialize the display update handler
+{
     // Select the correct section for all property operations
     m_pProperties->SelectSection("usbode");
 }
 
-CWebServer::~CWebServer(void) {
-    m_pActLED = 0;
-    delete[] m_pContentBuffer;
+CWebServer::~CWebServer (void)
+{
+        m_pActLED = 0;
+        delete[] m_pContentBuffer;
 }
 
-CHTTPDaemon *CWebServer::CreateWorker(CNetSubSystem *pNetSubSystem, CSocket *pSocket) {
-    return new CWebServer(pNetSubSystem, m_pCDGadget, m_pActLED, m_pProperties, pSocket);
+CHTTPDaemon *CWebServer::CreateWorker (CNetSubSystem *pNetSubSystem, CSocket *pSocket)
+{
+        return new CWebServer (pNetSubSystem, m_pCDGadget, m_pActLED, m_pProperties, pSocket);
 }
 
-THTTPStatus CWebServer::list_files_as_table(char *output_buffer, size_t max_len, const char *params) {
+THTTPStatus CWebServer::list_files_as_table(char *output_buffer, size_t max_len, const char *params, const char *pUSBSpeed) 
+{
     DIR dir;
     FILINFO fno;
     FRESULT fr;
@@ -128,7 +137,11 @@ THTTPStatus CWebServer::list_files_as_table(char *output_buffer, size_t max_len,
             if (current_page < 1) current_page = 1;
         }
     }
-
+    
+    // Make sure we're using the latest data from properties file
+    m_pProperties->Load();
+    m_pProperties->SelectSection("usbode");
+    
     // Get current mounted image name (defaulting if necessary);
     const char *currentImage = m_pProperties->GetString("current_image", "image.iso");
 
@@ -385,12 +398,13 @@ THTTPStatus CWebServer::list_files_as_table(char *output_buffer, size_t max_len,
     }
 
     // Format the complete HTML page using the layout template
-    snprintf(output_buffer, max_len, HTML_LAYOUT, content, VERSION);
+    snprintf(output_buffer, max_len, HTML_LAYOUT, content, pUSBSpeed, VERSION);
     delete[] content;
     return HTTPOK;
 }
 
-THTTPStatus CWebServer::list_files_as_json(char *json_output, size_t max_len) {
+THTTPStatus CWebServer::list_files_as_json(char *json_output, size_t max_len) 
+{
     DIR dir;
     FILINFO fno;
     FRESULT fr;
@@ -469,8 +483,9 @@ THTTPStatus CWebServer::list_files_as_json(char *json_output, size_t max_len) {
     return HTTPOK;
 }
 
-THTTPStatus CWebServer::generate_mount_success_page(char *output_buffer, size_t max_len, const char *filename) {
-    const char *html =
+THTTPStatus CWebServer::generate_mount_success_page(char *output_buffer, size_t max_len, const char *filename, const char *pUSBSpeed) 
+{
+    const char* html = 
         "<h3>Mounting File</h3>\n"
         "<div class=\"info-box\">\n"
         "    <p>Successfully mounted: <strong>%s</strong></p>\n"
@@ -487,57 +502,66 @@ THTTPStatus CWebServer::generate_mount_success_page(char *output_buffer, size_t 
              filename);
 
     // Format the complete HTML page using the layout template
-    snprintf(output_buffer, max_len, HTML_LAYOUT, content, VERSION);
+    snprintf(output_buffer, max_len, HTML_LAYOUT, content, pUSBSpeed, VERSION);
     delete[] content;  // Fixed: Use delete[] for array allocation
     return HTTPOK;
 }
 
-THTTPStatus CWebServer::handle_system_operation(char *content, size_t max_len, const char *action, TShutdownMode *pShutdownMode) {
+THTTPStatus CWebServer::handle_system_operation(char *content, size_t max_len, const char *action, TShutdownMode *pShutdownMode, const char *pUSBSpeed) {
+    
     if (strcmp(action, "shutdown") == 0) {
         snprintf(content, MAX_CONTENT_SIZE - 1, HTML_LAYOUT,
-                 "<h3>System Shutdown</h3>\n"
-                 "<div class=\"info-box\">\n"
-                 "    <p>The system is shutting down...</p>\n"
-                 "</div>",
-                 VERSION);
-
+            "<h3>System Shutdown</h3>\n"
+            "<div class=\"info-box\">\n"
+            "    <p>The system is shutting down...</p>\n"
+            "</div>", 
+            pUSBSpeed, VERSION);
+        
         // Set the global shutdown mode instead of the instance variable
         CWebServer::SetGlobalShutdownMode(ShutdownHalt);
         *pShutdownMode = ShutdownHalt;  // Also set the passed pointer for compatibility
-    } else if (strcmp(action, "reboot") == 0) {
+    } 
+    else if (strcmp(action, "reboot") == 0) {
         snprintf(content, MAX_CONTENT_SIZE - 1, HTML_LAYOUT,
-                 "<h3>System Reboot</h3>\n"
-                 "<div class=\"info-box\">\n"
-                 "    <p>The system is rebooting...</p>\n"
-                 "</div>",
-                 VERSION);
-
+            "<h3>System Reboot</h3>\n"
+            "<div class=\"info-box\">\n"
+            "    <p>The system is rebooting...</p>\n"
+            "</div>", 
+            pUSBSpeed, VERSION);
+        
         // Set the global shutdown mode instead of the instance variable
         CWebServer::SetGlobalShutdownMode(ShutdownReboot);
         *pShutdownMode = ShutdownReboot;  // Also set the passed pointer for compatibility
-    } else {
+    }
+    else {
         return HTTPBadRequest;
     }
 
     return HTTPOK;
 }
 
-THTTPStatus CWebServer::GetContent(const char *pPath,
-                                   const char *pParams,
-                                   const char *pFormData,
-                                   u8 *pBuffer,
-                                   unsigned *pLength,
-                                   const char **ppContentType) {
-    assert(pPath != 0);
-    assert(ppContentType != 0);
-    assert(m_pActLED != 0);
+THTTPStatus CWebServer::GetContent (const char  *pPath,
+                                   const char  *pParams,
+                                   const char  *pFormData,
+                                   u8          *pBuffer,
+                                   unsigned    *pLength,
+                                   const char **ppContentType)
+{
+    assert (pPath != 0);
+    assert (ppContentType != 0);
+    assert (m_pActLED != 0);
 
     THTTPStatus resultCode = HTTPOK;
     unsigned nLength = 0;
 
+    // Get USB speed information
+    boolean bUSBFullSpeed = CKernelOptions::Get()->GetUSBFullSpeed();
+    const char* pUSBSpeed = bUSBFullSpeed ? "USB 1.1 (Full Speed)" : "USB 2.0 (High Speed)";
+
     LOGNOTE("Path: %s, Params: %s", pPath, pParams ? pParams : "");
 
-    if ((strcmp(pPath, "/") == 0 || strcmp(pPath, "/index.html") == 0)) {
+    if ((strcmp (pPath, "/") == 0 || strcmp (pPath, "/index.html") == 0))
+    {
         // Redirect to the list page instead of generating a homepage
         LOGNOTE("Redirecting to /list from %s", pPath);
 
@@ -549,18 +573,22 @@ THTTPStatus CWebServer::GetContent(const char *pPath,
 
         nLength = strlen((char *)m_pContentBuffer);
         *ppContentType = "text/html; charset=utf-8";
-    } else if (strcmp(pPath, "/list") == 0) {
+    } 
+    else if (strcmp (pPath, "/list") == 0) 
+    { 
         // List images with HTML table formatting, passing parameters for pagination
         LOGNOTE("Calling list_files_as_table");
-        resultCode = list_files_as_table((char *)m_pContentBuffer, MAX_CONTENT_SIZE, pParams);
-        nLength = strlen((char *)m_pContentBuffer);
+        resultCode = list_files_as_table((char*)m_pContentBuffer, MAX_CONTENT_SIZE, pParams, pUSBSpeed);
+        nLength = strlen((char*)m_pContentBuffer);
         *ppContentType = "text/html; charset=utf-8";
     } else if (strcmp(pPath, "/api/list") == 0) {
         // List our images in JSON format (keep API endpoint for compatibility)
         resultCode = list_files_as_json((char *)m_pContentBuffer, MAX_CONTENT_SIZE);
         nLength = strlen((char *)m_pContentBuffer);
         *ppContentType = "application/json; charset=utf-8";
-    } else if (strcmp(pPath, "/system") == 0 && pParams && strncmp(pParams, "action=", 7) == 0) {
+    } 
+    else if (strcmp (pPath, "/system") == 0 && pParams && strncmp (pParams, "action=", 7) == 0) 
+    { 
         // Handle system operation (shutdown/reboot)
         char actionValue[32];  // Buffer to hold either "shutdown" or "reboot"
         const char *equalSign = strchr(pParams, '=');
@@ -574,10 +602,10 @@ THTTPStatus CWebServer::GetContent(const char *pPath,
             actionValue[i] = '\0';
 
             LOGNOTE("System action requested: %s", actionValue);
-
-            resultCode = handle_system_operation((char *)m_pContentBuffer, MAX_CONTENT_SIZE,
-                                                 actionValue, &m_ShutdownMode);
-            nLength = strlen((char *)m_pContentBuffer);
+            
+            resultCode = handle_system_operation((char*)m_pContentBuffer, MAX_CONTENT_SIZE, 
+                                              actionValue, &m_ShutdownMode, pUSBSpeed);
+            nLength = strlen((char*)m_pContentBuffer);
             *ppContentType = "text/html; charset=utf-8";
         } else {
             LOGERR("system action value is missing");
@@ -585,7 +613,9 @@ THTTPStatus CWebServer::GetContent(const char *pPath,
             nLength = strlen((char *)m_pContentBuffer);
             return HTTPBadRequest;
         }
-    } else if (strcmp(pPath, "/mount") == 0 && pParams && strncmp(pParams, "file=", 5) == 0) {
+    }
+    else if (strcmp (pPath, "/mount") == 0 && pParams && strncmp (pParams, "file=", 5) == 0) 
+    { 
         // Extract value (after '=')
         char pParamValue[MAX_FILENAME * 3];  // URL-encoded could be longer
         char decodedValue[MAX_FILENAME + 1];
@@ -611,8 +641,10 @@ THTTPStatus CWebServer::GetContent(const char *pPath,
             m_pCDGadget->SetDevice(cueBinFileDevice);
 
             // Generate a success page
-            resultCode = generate_mount_success_page((char *)m_pContentBuffer, MAX_CONTENT_SIZE, decodedValue);
-            nLength = strlen((char *)m_pContentBuffer);
+            resultCode = generate_mount_success_page((char*)m_pContentBuffer, MAX_CONTENT_SIZE, decodedValue, pUSBSpeed);
+            // Notify display about the image change
+            NotifyDisplayUpdate(decodedValue);
+            nLength = strlen((char*)m_pContentBuffer);
             *ppContentType = "text/html; charset=utf-8";
         } else {
             LOGERR("mount file value is missing");
@@ -622,7 +654,8 @@ THTTPStatus CWebServer::GetContent(const char *pPath,
         }
     }
     // Update in the controller endpoint handler
-    else if (strcmp(pPath, "/controller") == 0 && (strncmp(pParams, "mount=", 6) == 0)) {
+    else if (strcmp (pPath, "/controller") == 0 && (strncmp (pParams, "mount=", 6) == 0)) 
+    { 
         // Extract value (after '=')
         char pParamValue[MAX_FILENAME * 3];  // URL-encoded could be longer
         char decodedValue[MAX_FILENAME + 1];
@@ -646,7 +679,11 @@ THTTPStatus CWebServer::GetContent(const char *pPath,
             }
 
             m_pCDGadget->SetDevice(cueBinFileDevice);
-            strcpy((char *)m_pContentBuffer, "{\"status\": \"OK\"}");
+            
+            // Add explicit call to notify display update
+            NotifyDisplayUpdate(decodedValue);
+            
+            strcpy((char*)m_pContentBuffer, "{\"status\": \"OK\"}");
             nLength = 16;
             *ppContentType = "application/json; charset=iso-8859-1";
         } else {
@@ -655,12 +692,15 @@ THTTPStatus CWebServer::GetContent(const char *pPath,
             nLength = 22;
             return HTTPBadRequest;
         }
-    } else {
+    }
+    else
+    {
         return HTTPNotFound;
     }
 
-    assert(pLength != 0);
-    if (*pLength < nLength) {
+    assert (pLength != 0);
+    if (*pLength < nLength)
+    {
         LOGERR("Increase MAX_CONTENT_SIZE to at least %u", nLength);
         return HTTPInternalServerError;
     }
@@ -676,10 +716,26 @@ THTTPStatus CWebServer::GetContent(const char *pPath,
     return resultCode;
 }
 
-TShutdownMode CWebServer::GetShutdownMode(void) const {
+TShutdownMode CWebServer::GetShutdownMode(void) const 
+{
     return s_GlobalShutdownMode;
 }
 
-void CWebServer::SetGlobalShutdownMode(TShutdownMode mode) {
+void CWebServer::SetGlobalShutdownMode(TShutdownMode mode) 
+{
     s_GlobalShutdownMode = mode;
+}
+
+// Add a setter for the callback
+void CWebServer::SetDisplayUpdateHandler(TDisplayUpdateHandler pHandler)
+{
+    m_pDisplayUpdateHandler = pHandler;
+}
+// Notifier method to call the callback
+void CWebServer::NotifyDisplayUpdate(const char* imageName)
+{
+    if (m_pDisplayUpdateHandler != nullptr)
+    {
+        m_pDisplayUpdateHandler(imageName);
+    }
 }
