@@ -44,10 +44,10 @@ const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
         0,      // bDeviceSubClass
         0,      // bDeviceProtocol
         64,     // bMaxPacketSize0
-        // 0x04da, // Panasonic
-        // 0x0d01,	// CDROM
-        USB_GADGET_VENDOR_ID,
-        USB_GADGET_DEVICE_ID_CD,
+        0x04da, // Panasonic
+        0x0d01,	// CDROM
+        //USB_GADGET_VENDOR_ID,
+        //USB_GADGET_DEVICE_ID_CD,
         0x000,    // bcdDevice
         1, 2, 0,  // strings
         1         // num configurations
