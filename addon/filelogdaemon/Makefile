@@ -2,7 +2,7 @@
 # Makefile
 #
 
-CIRCLEHOME = ../..
+CIRCLEHOME = ../../circle
 
 OBJS    = filelogdaemon.o
 
