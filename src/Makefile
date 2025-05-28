@@ -26,7 +26,7 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(USBODEHOME)/addon/discimage/libdiscimage.a \
 	  $(USBODEHOME)/addon/filelogdaemon/libfilelogdaemon.a \
 	  $(USBODEHOME)/addon/cueparser/libcueparser.a \
-	  $(CIRCLEHOME)/addon/usbode-display/lib-usbodedisp.a
+	  $(USBODEHOME)/addon/usbode-display/lib-usbodedisp.a
 
 include $(CIRCLEHOME)/Rules.mk
 
