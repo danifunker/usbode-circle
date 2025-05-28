@@ -33,4 +33,8 @@ make clean
 cd ${projectRoot}/src
 make clean
 
+#clean everything else
+cd ${projectRoot}
+find . -name Makefile -exec bash -c 'make -C "${1%/*}" clean' -- {} \;
+
 rm -rf ${destDir}

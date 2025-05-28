@@ -12,7 +12,7 @@ cd ${projectRoot}/circle
 ./makeall
 cd ${projectRoot}/circle/addon/wlan
 ./makeall clean
-./makeall
+./makeall --nosample
 cd ${projectRoot}/circle/addon/wlan/firmware
 make -j2
 cd ${projectRoot}/circle/boot
@@ -39,6 +39,9 @@ cd ${projectRoot}/circle/addon/Properties
 make clean
 make
 cd ${projectRoot}/lib/usb/gadget
+make clean
+make
+cd ${projectRoot}/addon/usbode-display
 make clean
 make
 cd ${projectRoot}/src
