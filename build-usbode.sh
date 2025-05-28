@@ -9,9 +9,6 @@ git submodule update --init --recursive
 cd ${projectRoot}/circle
 ./makeall clean
 ./makeall
-exit
-
-
 cd ${projectRoot}/addon/discimage
 make clean
 make
@@ -21,19 +18,19 @@ make
 cd ${projectRoot}/addon/cueparser
 make clean
 make
-cd ${projectRoot}/addon/fatfs
-make clean
-make
-cd ${projectRoot}/addon/SDCard
-make clean
-make
 cd ${projectRoot}/addon/filelogdaemon
 make clean
 make
-cd ${projectRoot}/addon/Properties
+cd ${projectRoot}/circle/addon/fatfs
 make clean
 make
-cd ${projectRoot}/test/usb-cd-gadget
+cd ${projectRoot}/circle/addon/SDCard
+make clean
+make
+cd ${projectRoot}/circle/addon/Properties
+make clean
+make
+cd ${projectRoot}/src
 make clean
 make
 

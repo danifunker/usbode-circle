@@ -2,7 +2,7 @@
 # Makefile
 #
 
-CIRCLEHOME = ../..
+CIRCLEHOME = ../..circle
 
 OBJS	= main.o kernel.o webserver.o ftpdaemon.o ftpworker.o util.o
 
