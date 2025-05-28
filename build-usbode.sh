@@ -7,13 +7,11 @@ echo "This script also requires a success build in ${projectRoot}/boot and ${pro
 destDir=${projectRoot}/dist
 git submodule update --init --recursive
 cd ${projectRoot}/circle
-
-
-
-exit
-cd ${projectRoot}
 ./makeall clean
 ./makeall
+exit
+
+
 cd ${projectRoot}/addon/discimage
 make clean
 make
