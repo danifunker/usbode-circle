@@ -192,6 +192,10 @@ void CGPIOButtons::Run(void)
 
 void CGPIOButtons::ProcessButtonState(unsigned nButtonIndex, boolean bCurrentState)
 {
+    // Reduce debug logging which might be affecting performance
+    static const unsigned DEBUG_LOG_INTERVAL = 1000; // ms
+    static unsigned lastLogTime = 0;
+    
     unsigned nTicks = CTimer::Get()->GetTicks();
     
     // Check if the state has changed
@@ -217,12 +221,13 @@ void CGPIOButtons::ProcessButtonState(unsigned nButtonIndex, boolean bCurrentSta
                 (*m_pEventHandler)(nButtonIndex, bCurrentState, m_pCallbackParam);
             }
             
-            // Log button state change if logger is available
-            if (m_pLogger)
+            // Limit logging to reduce potential USB interference
+            if (m_pLogger && (nTicks - lastLogTime > DEBUG_LOG_INTERVAL))
             {
                 m_pLogger->Write(LOGNAME, LogDebug, "Button %s (%u) %s", 
-                                 GetButtonLabel(nButtonIndex), nButtonIndex,
-                                 bCurrentState ? "pressed" : "released");
+                               GetButtonLabel(nButtonIndex), nButtonIndex,
+                               bCurrentState ? "pressed" : "released");
+                lastLogTime = nTicks;
             }
         }
     }

@@ -112,6 +112,12 @@ private:
 
 	// Button event callback
 	static void ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* pParam);
+
+	// Initialize GPIO buttons
+	void InitializeGPIOButtons(TDisplayType displayType);
+
+	// Track if buttons are initialized
+	boolean m_bButtonsInitialized;
 };
 
 #endif

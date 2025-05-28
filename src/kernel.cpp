@@ -39,7 +39,7 @@ static CKernel* g_pKernel = nullptr;
 LOGMODULE("kernel");
 
 CKernel::CKernel (void)
-:	m_Screen (m_Options.GetWidth (), m_Options.GetHeight ()),
+:   m_Screen (m_Options.GetWidth (), m_Options.GetHeight ()),
     m_Timer (&m_Interrupt),
     m_Logger (m_Options.GetLogLevel (), &m_Timer),
     m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
@@ -49,9 +49,10 @@ CKernel::CKernel (void)
     m_CDGadget (&m_Interrupt),
     m_pSPIMaster(nullptr),
     m_pDisplayManager(nullptr),
-    m_pGPIOButtons(nullptr)
+    m_pGPIOButtons(nullptr),
+    m_bButtonsInitialized(FALSE)
 {
-	//m_ActLED.Blink (5);	// show we are alive
+    //m_ActLED.Blink (5);    // show we are alive
 }
 
 CKernel::~CKernel (void)
@@ -156,19 +157,18 @@ boolean CKernel::Initialize (void)
 
 TShutdownMode CKernel::Run (void)
 {
-
-	// Initialize the global kernel pointer
+    // Initialize the global kernel pointer
     g_pKernel = this;
     
-	// Load our config file loader
-	CPropertiesFatFsFile Properties (CONFIG_FILE, &m_FileSystem);
-	if (!Properties.Load ())
-	{
-		LOGERR("Error loading properties from %s (line %u)",
-				CONFIG_FILE, Properties.GetErrorLine ());
-		return ShutdownHalt;
-	}
-	Properties.SelectSection ("usbode");
+    // Load our config file loader
+    CPropertiesFatFsFile Properties (CONFIG_FILE, &m_FileSystem);
+    if (!Properties.Load ())
+    {
+        LOGERR("Error loading properties from %s (line %u)",
+                CONFIG_FILE, Properties.GetErrorLine ());
+        return ShutdownHalt;
+    }
+    Properties.SelectSection ("usbode");
 
     // Start the file logging daemon
     const char *logfile = Properties.GetString("logfile", nullptr);
@@ -192,12 +192,9 @@ TShutdownMode CKernel::Run (void)
         return ShutdownHalt;
     }
 
-    m_CDGadget.SetDevice(cueBinFileDevice);
-    m_CDGadget.Initialize();
-
-	// Display configuration
-	const char* displayType = Properties.GetString("displayhat", "none");
-	LOGNOTE("Display hat configured: %s", displayType);
+    // Display configuration
+    const char* displayType = Properties.GetString("displayhat", "none");
+    LOGNOTE("Display hat configured: %s", displayType);
     
     // Initialize the appropriate display type
     TDisplayType displayTypeEnum = GetDisplayTypeFromString(displayType);
@@ -228,28 +225,57 @@ TShutdownMode CKernel::Run (void)
         }
     }
 
-	bool showIP = true;
-	static const char ServiceName[] = HOSTNAME;
-	static const char *ppText[] = {"path=/index.html", nullptr};
-	CmDNSPublisher *pmDNSPublisher = nullptr;
-	CWebServer *pCWebServer = nullptr;
-	CFTPDaemon *m_pFTPDaemon = nullptr;
+    // Initialize USB CD Gadget
+    LOGNOTE("Starting USB CD gadget initialization");
+    unsigned initStartTime = m_Timer.GetTicks();
+    
+    m_CDGadget.SetDevice(cueBinFileDevice);
+    if (!m_CDGadget.Initialize())
+    {
+        LOGERR("Failed to initialize USB CD gadget");
+        return ShutdownHalt;
+    }
+    
+    LOGNOTE("USB CD gadget initialized in %u ms", 
+            m_Timer.GetTicks() - initStartTime);
+    
+    // Give USB some time to settle before initializing buttons
+    m_Scheduler.MsSleep(2000);
+    
+    // Now that USB is initialized, we can safely initialize the buttons
+    if (displayTypeEnum != DisplayTypeUnknown && !m_bButtonsInitialized)
+    {
+        LOGNOTE("Starting delayed button initialization");
+        InitializeGPIOButtons(displayTypeEnum);
+    }
 
-	// Previous IP tracking
-	static CString PreviousIPString = "";
+    bool showIP = true;
+    static const char ServiceName[] = HOSTNAME;
+    static const char *ppText[] = {"path=/index.html", nullptr};
+    CmDNSPublisher *pmDNSPublisher = nullptr;
+    CWebServer *pCWebServer = nullptr;
+    CFTPDaemon *m_pFTPDaemon = nullptr;
 
-	// Status update timing
-	static unsigned lastStatusUpdate = 0;
-	const unsigned STATUS_UPDATE_INTERVAL = 30000; // Update every 30 seconds
+    // Previous IP tracking
+    static CString PreviousIPString = "";
 
-	for (unsigned nCount = 0; 1; nCount++)
-	{
-		// must be called from TASK_LEVEL to allow I/O operations
-		m_CDGadget.UpdatePlugAndPlay ();
-		m_CDGadget.Update ();
+    // Status update timing
+    static unsigned lastStatusUpdate = 0;
+    const unsigned STATUS_UPDATE_INTERVAL = 30000; // Update every 30 seconds
+    
+    // Variables to track USB state
+    unsigned usbStateCheckTime = 0;
+    const unsigned USB_STATE_CHECK_INTERVAL = 5000; // Check USB state every 5 seconds
+    boolean usbInitialized = TRUE;
 
-		// Show details of the network connection
-		if (m_Net.IsRunning()) {
+    for (unsigned nCount = 0; 1; nCount++)
+    {
+        // must be called from TASK_LEVEL to allow I/O operations
+        m_CDGadget.UpdatePlugAndPlay ();
+        m_CDGadget.Update ();
+
+        // Show details of the network connection
+        if (m_Net.IsRunning()) {
             CString CurrentIPString;
             m_Net.GetConfig()->GetIPAddress()->Format(&CurrentIPString);
             
@@ -435,32 +461,11 @@ void CKernel::InitializeDisplay(TDisplayType displayType)
         m_pSPIMaster = nullptr;
         return;
     }
-    
-    // Initialize the GPIO button handler
-    m_pGPIOButtons = new CGPIOButtons(displayType, &m_Logger);
-    if (m_pGPIOButtons == nullptr)
-    {
-        LOGERR("Failed to create GPIO button handler");
-        // Continue without button support
-    }
-    else if (!m_pGPIOButtons->Initialize())
-    {
-        LOGERR("Failed to initialize GPIO button handler");
-        delete m_pGPIOButtons;
-        m_pGPIOButtons = nullptr;
-        // Continue without button support
-    }
-    else
-    {
-        // Register the button event handler
-        m_pGPIOButtons->RegisterEventHandler(ButtonEventHandler, this);
-        LOGNOTE("GPIO button handler started with %u buttons", m_pGPIOButtons->GetButtonCount());
-    }
-    
     LOGNOTE("Display initialized successfully");
 }
 
-// Add the ButtonEventHandler implementation
+// Fix the ButtonEventHandler implementation
+
 void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* pParam)
 {
     CKernel* pKernel = static_cast<CKernel*>(pParam);
@@ -474,10 +479,36 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
             // Log button press
             LOGNOTE("Button pressed: %s (index %u)", buttonLabel, nButtonIndex);
             
-            // Flash the activity LED to show button press was detected
+            // Flash the activity LED without blocking
             pKernel->m_ActLED.On();
-            CTimer::Get()->MsDelay(100);
-            pKernel->m_ActLED.Off();
+            
+            // Create a simple timed action to turn off LED later
+            // This avoids blocking the thread with a delay
+            class CLEDOffTask : public CTask
+            {
+            public:
+                CLEDOffTask(CActLED* pLED, CScheduler* pScheduler) 
+                    : CTask(256), 
+                      m_pLED(pLED),
+                      m_pScheduler(pScheduler) {}
+                
+                void Run() override
+                {
+                    // Now use the scheduler pointer instead of the global reference
+                    m_pScheduler->MsSleep(100);
+                    m_pLED->Off();
+                    delete this;  // Self-destruct when done
+                }
+                
+            private:
+                CActLED* m_pLED;
+                CScheduler* m_pScheduler;
+            };
+            
+            // Start a task to turn off the LED after 100ms
+            // Pass the scheduler as a parameter to the task
+            CLEDOffTask* pTask = new CLEDOffTask(&pKernel->m_ActLED, &pKernel->m_Scheduler);
+            pTask->Start();
             
             // Add your button handling logic here
             // For example:
@@ -567,4 +598,46 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
         LOGNOTE("Display status updated: IP=%s, Image=%s", 
                 (const char*)IPString, imageName);
     }
+}
+
+void CKernel::InitializeGPIOButtons(TDisplayType displayType)
+{
+    // Early exit if no display configured
+    if (displayType == DisplayTypeUnknown)
+    {
+        LOGNOTE("No display configured");
+        return;
+    }
+    
+    // Make sure we have a valid display first
+    if (m_pDisplayManager == nullptr)
+    {
+        LOGERR("Cannot initialize buttons without a display");
+        return;
+    }
+    
+    // Initialize the GPIO button handler
+    m_pGPIOButtons = new CGPIOButtons(displayType, &m_Logger);
+    if (m_pGPIOButtons == nullptr)
+    {
+        LOGERR("Failed to create GPIO button handler");
+        return;
+    }
+    
+    // Allow some time for the USB to settle before continuing with button initialization
+    m_Scheduler.MsSleep(500);
+    
+    if (!m_pGPIOButtons->Initialize())
+    {
+        LOGERR("Failed to initialize GPIO button handler");
+        delete m_pGPIOButtons;
+        m_pGPIOButtons = nullptr;
+        return;
+    }
+    
+    // Register the button event handler
+    m_pGPIOButtons->RegisterEventHandler(ButtonEventHandler, this);
+    
+    LOGNOTE("GPIO button handler started with %u buttons", m_pGPIOButtons->GetButtonCount());
+    m_bButtonsInitialized = TRUE;
 }
