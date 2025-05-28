@@ -542,3 +542,29 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
         }
     }
 }
+
+void CKernel::UpdateDisplayStatus(const char* imageName)
+{
+    if (m_pDisplayManager != nullptr)
+    {
+        // Get the current IP address
+        CString IPString;
+        if (m_Net.IsRunning())
+        {
+            m_Net.GetConfig()->GetIPAddress()->Format(&IPString);
+        }
+        else
+        {
+            IPString = "Not connected";
+        }
+        
+        // Update the display with current information
+        m_pDisplayManager->ShowStatusScreen(
+            "USBODE v2.00-pre1",
+            (const char*)IPString,
+            imageName);
+            
+        LOGNOTE("Display status updated: IP=%s, Image=%s", 
+                (const char*)IPString, imageName);
+    }
+}
