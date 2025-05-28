@@ -2,7 +2,7 @@
 # Makefile
 #
 
-CIRCLEHOME = ../..
+CIRCLEHOME = ../../circle
 
 OBJS	= st7789display.o chardevice.o st7789device.o sh1106device.o sh1106display.o
 

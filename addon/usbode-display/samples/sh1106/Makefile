@@ -2,11 +2,14 @@
 # Makefile
 #
 
-CIRCLEHOME = ../../../..
+CIRCLEHOME = ../../../../circle
+USBODEHOME = ../../../..
+
+CFLAGS += -I ../../../../circle/include -I ../../../
 
 OBJS	= main.o kernel.o
 
-LIBS	= $(CIRCLEHOME)/addon/usbode-display/libdisplay.a \
+LIBS	= $(USBODEHOME)/addon/usbode-display/lib-usbodedisp.a \
 	  $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/input/libinput.a \
 	  $(CIRCLEHOME)/lib/fs/libfs.a \
