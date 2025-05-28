@@ -1,0 +1,2 @@
+[usbode]
+current_image=image.iso

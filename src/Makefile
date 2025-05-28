@@ -2,7 +2,10 @@
 # Makefile
 #
 
-CIRCLEHOME = ../..circle
+CIRCLEHOME = ../circle
+USBODEHOME = ..
+
+CFLAGS += -I ../include -I ../addon
 
 OBJS	= main.o kernel.o webserver.o ftpdaemon.o ftpworker.o util.o
 
@@ -18,10 +21,11 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/fs/libfs.a \
 	  $(CIRCLEHOME)/lib/libcircle.a \
 	  $(CIRCLEHOME)/addon/SDCard/libsdcard.a \
-	  $(CIRCLEHOME)/addon/discimage/libdiscimage.a \
-	  $(CIRCLEHOME)/addon/filelogdaemon/libfilelogdaemon.a \
 	  $(CIRCLEHOME)/addon/Properties/libproperties.a \
-	  $(CIRCLEHOME)/addon/cueparser/libcueparser.a
+	  $(USBODEHOME)/lib/usb/gadget/libusbgadget.a \
+	  $(USBODEHOME)/addon/discimage/libdiscimage.a \
+	  $(USBODEHOME)/addon/filelogdaemon/libfilelogdaemon.a \
+	  $(USBODEHOME)/addon/cueparser/libcueparser.a
 
 include $(CIRCLEHOME)/Rules.mk
 

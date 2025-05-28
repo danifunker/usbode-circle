@@ -35,6 +35,10 @@
 #include <cueparser/cueparser.h>
 #include <discimage/cuebinfile.h>
 
+#ifndef USB_GADGET_DEVICE_ID_CD
+#define USB_GADGET_DEVICE_ID_CD        (USB_GADGET_DEVICE_ID_BASE+3)
+#endif
+
 // If system htonl is not available, define our own
 #ifndef HAVE_ARPA_INET_H
 static inline u32 htonl(u32 x) {

@@ -60,6 +60,7 @@ void CUSBCDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 	m_pGadget->OnTransferComplete(bIn, nLength);
 }
 
+/*
 int snprintf (char *buf, size_t size, const char *fmt, ...)
 {
         va_list var;
@@ -82,7 +83,6 @@ int snprintf (char *buf, size_t size, const char *fmt, ...)
         return len;
 }
 
-/*
 static void HexDumpBuffer(const char* prefix, const void* buffer, size_t length)
 {
     const u8* bytes = static_cast<const u8*>(buffer);
