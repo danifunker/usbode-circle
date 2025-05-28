@@ -34,6 +34,7 @@ cd ${projectRoot}/src
 make clean
 make
 
+exit
 rm -rf ${destDir}
 mkdir -p ${destDir}
 cp kernel*.img ${destDir}
