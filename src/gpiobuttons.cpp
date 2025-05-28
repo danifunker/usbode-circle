@@ -27,8 +27,9 @@
 // Task stack size - adjust based on your needs
 #define TASK_STACK_SIZE_BUTTONS 4096
 
+// Update the constructor to create the task in suspended state
 CGPIOButtons::CGPIOButtons(TDisplayType displayType, CLogger* pLogger)
-    : CTask(TASK_STACK_SIZE_BUTTONS),
+    : CTask(TASK_STACK_SIZE_BUTTONS, TRUE),  // TRUE = create suspended
       m_DisplayType(displayType),
       m_pLogger(pLogger),
       m_nButtonCount(0),
