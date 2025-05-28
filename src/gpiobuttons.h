@@ -40,10 +40,7 @@ public:
 
     // Initialize the button handler
     boolean Initialize(void);
-    
-    // Start monitoring buttons in a separate thread
-    boolean Start(void);
-    
+        
     // Register a callback for button events
     void RegisterEventHandler(TButtonEventHandler pHandler, void* pParam = nullptr);
     
