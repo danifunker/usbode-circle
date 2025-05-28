@@ -48,7 +48,8 @@ CKernel::CKernel (void)
     m_WPASupplicant (SUPPLICANT_CONFIG_FILE),
     m_CDGadget (&m_Interrupt),
     m_pSPIMaster(nullptr),
-    m_pDisplayManager(nullptr)
+    m_pDisplayManager(nullptr),
+    m_pGPIOButtons(nullptr)
 {
 	//m_ActLED.Blink (5);	// show we are alive
 }
@@ -65,6 +66,12 @@ CKernel::~CKernel (void)
     {
         delete m_pSPIMaster;
         m_pSPIMaster = nullptr;
+    }
+    
+    if (m_pGPIOButtons != nullptr)
+    {
+        delete m_pGPIOButtons;
+        m_pGPIOButtons = nullptr;
     }
 }
 
@@ -429,65 +436,109 @@ void CKernel::InitializeDisplay(TDisplayType displayType)
         return;
     }
     
-    LOGNOTE("Display initialized successfully");
-}
-
-void CKernel::UpdateDisplayStatus(const char* imageName)
-{
-    // Only update if display manager is initialized
-    if (m_pDisplayManager == nullptr)
+    // Initialize the GPIO button handler
+    m_pGPIOButtons = new CGPIOButtons(displayType, &m_Logger);
+    if (m_pGPIOButtons == nullptr)
     {
-        return;
+        LOGERR("Failed to create GPIO button handler");
+        // Continue without button support
     }
-    
-    // Track the last displayed image and IP to prevent redundant updates
-    static CString LastDisplayedIP = "";
-    static CString LastDisplayedImage = "";
-    static unsigned LastUpdateTime = 0;
-    
-    // Debounce display updates - prevent multiple updates within a short time window
-    unsigned currentTime = m_Timer.GetTicks();
-    if (currentTime - LastUpdateTime < 500) // 500ms debounce time
+    else if (!m_pGPIOButtons->Initialize())
     {
-        return;
-    }
-    
-    // Always load the current image from properties to ensure consistency
-    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
-    Properties.Load();
-    Properties.SelectSection("usbode");
-    const char* currentImage = Properties.GetString("current_image", "image.iso");
-    
-    // Log for debugging
-    LOGNOTE("UpdateDisplayStatus - Current image in properties: %s, passed image: %s", 
-            currentImage, imageName ? imageName : "NULL");
-    
-    // Get current IP address
-    CString IPString;
-    if (m_Net.IsRunning())
-    {
-        m_Net.GetConfig()->GetIPAddress()->Format(&IPString);
+        LOGERR("Failed to initialize GPIO button handler");
+        delete m_pGPIOButtons;
+        m_pGPIOButtons = nullptr;
+        // Continue without button support
     }
     else
     {
-        IPString = "Not connected";
+        // Register the button event handler
+        m_pGPIOButtons->RegisterEventHandler(ButtonEventHandler, this);
+        LOGNOTE("GPIO button handler started with %u buttons", m_pGPIOButtons->GetButtonCount());
     }
     
-    // Only update if something has changed
-    if (IPString != LastDisplayedIP || CString(currentImage) != LastDisplayedImage)
+    LOGNOTE("Display initialized successfully");
+}
+
+// Add the ButtonEventHandler implementation
+void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* pParam)
+{
+    CKernel* pKernel = static_cast<CKernel*>(pParam);
+    if (pKernel != nullptr && pKernel->m_pGPIOButtons != nullptr)
     {
-        // Update the status screen
-        m_pDisplayManager->ShowStatusScreen(
-            "USBODE v2.00-pre1",
-            (const char*)IPString,
-            currentImage);  // Use the image from properties file
+        // Only handle button press events (not releases)
+        if (bPressed)
+        {
+            const char* buttonLabel = pKernel->m_pGPIOButtons->GetButtonLabel(nButtonIndex);
             
-        LOGNOTE("Display status updated: IP=%s, Image=%s", 
-                (const char*)IPString, currentImage);
+            // Log button press
+            LOGNOTE("Button pressed: %s (index %u)", buttonLabel, nButtonIndex);
+            
+            // Flash the activity LED to show button press was detected
+            pKernel->m_ActLED.On();
+            CTimer::Get()->MsDelay(100);
+            pKernel->m_ActLED.Off();
+            
+            // Add your button handling logic here
+            // For example:
+            // - Show different screens based on button presses
+            // - Navigate through menu items
+            // - Trigger actions like disc image changes
+            
+            // Example handling:
+            if (pKernel->m_pDisplayManager != nullptr)
+            {
+                // Different actions based on button type and display type
+                TDisplayType displayType = pKernel->m_pDisplayManager->GetDisplayType();
                 
-        // Store current values
-        LastDisplayedIP = IPString;
-        LastDisplayedImage = currentImage;
-        LastUpdateTime = currentTime;
+                // Handle based on display type
+                if (displayType == DisplayTypeSH1106)
+                {
+                    // SH1106 display-specific button handling
+                    switch (nButtonIndex)
+                    {
+                        case 0: // Up button
+                            LOGNOTE("Up button action");
+                            break;
+                            
+                        case 1: // Down button
+                            LOGNOTE("Down button action");
+                            break;
+                            
+                        case 2: // Left button
+                            LOGNOTE("Left button action");
+                            break;
+                            
+                        case 3: // Right button
+                            LOGNOTE("Right button action");
+                            break;
+                            
+                        // Add more cases as needed
+                    }
+                }
+                else if (displayType == DisplayTypeST7789)
+                {
+                    // ST7789 display-specific button handling
+                    switch (nButtonIndex)
+                    {
+                        case 0: // A button (Up)
+                            LOGNOTE("A button (Up) action");
+                            break;
+                            
+                        case 1: // B button (Down)
+                            LOGNOTE("B button (Down) action");
+                            break;
+                            
+                        case 2: // X button (Cancel)
+                            LOGNOTE("X button (Cancel) action");
+                            break;
+                            
+                        case 3: // Y button (Select)
+                            LOGNOTE("Y button (Select) action");
+                            break;
+                    }
+                }
+            }
+        }
     }
 }
