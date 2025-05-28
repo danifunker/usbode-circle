@@ -10,7 +10,6 @@ CFLAGS += -I ../include -I ../addon
 OBJS	= main.o kernel.o webserver.o ftpdaemon.o ftpworker.o util.o displaymanager.o
 
 LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
-	  $(CIRCLEHOME)/lib/usb/gadget/libusbgadget.a \
 	  $(CIRCLEHOME)/lib/input/libinput.a \
 	  $(CIRCLEHOME)/addon/fatfs/libfatfs.a \
 	  $(CIRCLEHOME)/lib/net/libnet.a \

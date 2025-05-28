@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -ex
 
 export MAKEFLAGS="-j4"
 
@@ -12,6 +12,7 @@ cd ${projectRoot}/circle
 ./makeall
 cd ${projectRoot}/circle/addon/wlan
 ./makeall clean
+#make
 ./makeall
 cd ${projectRoot}/circle/addon/wlan/firmware
 make -j2
@@ -36,6 +37,9 @@ cd ${projectRoot}/circle/addon/SDCard
 make clean
 make
 cd ${projectRoot}/circle/addon/Properties
+make clean
+make
+cd ${projectRoot}/circle/lib/usb
 make clean
 make
 cd ${projectRoot}/lib/usb/gadget
