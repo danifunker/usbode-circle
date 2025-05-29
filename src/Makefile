@@ -7,7 +7,7 @@ USBODEHOME = ..
 
 CFLAGS += -I ../include -I ../addon
 
-OBJS	= main.o kernel.o webserver.o ftpdaemon.o ftpworker.o util.o displaymanager.o
+OBJS	= main.o kernel.o webserver.o util.o displaymanager.o
 
 LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/usb/gadget/libusbgadget.a \
@@ -26,6 +26,7 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(USBODEHOME)/addon/discimage/libdiscimage.a \
 	  $(USBODEHOME)/addon/filelogdaemon/libfilelogdaemon.a \
 	  $(USBODEHOME)/addon/cueparser/libcueparser.a \
+	  $(USBODEHOME)/addon/ftpserver/libftpserver.a \
 	  $(USBODEHOME)/addon/usbode-display/lib-usbodedisp.a
 
 include $(CIRCLEHOME)/Rules.mk

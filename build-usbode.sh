@@ -10,13 +10,23 @@ git submodule update --init --recursive
 cd ${projectRoot}/circle
 ./makeall clean
 ./makeall
+cd ${projectRoot}/circle/addon/fatfs
+make clean
+make
+cd ${projectRoot}/circle/addon/SDCard
+make clean
+make
 cd ${projectRoot}/circle/addon/wlan
 ./makeall clean
 ./makeall
-cd ${projectRoot}/circle/addon/wlan/firmware
-make -j2
+if [ ! -f "${projectRoot}/circle/addon/wlan/firmware/LICENCE.broadcom_bcm43xx" ]; then
+    cd ${projectRoot}/circle/addon/wlan/firmware
+    make -j2
+fi
+if [ ! -f "${projectRoot}/circle/boot/LICENCE.broadcom" ]; then
 cd ${projectRoot}/circle/boot
 make -j2
+fi
 cd ${projectRoot}/addon/discimage
 make clean
 make 
@@ -29,16 +39,13 @@ make
 cd ${projectRoot}/circle/addon/linux
 make clean
 make
-cd ${projectRoot}/circle/addon/fatfs
-make clean
-make
-cd ${projectRoot}/circle/addon/SDCard
-make clean
-make
 cd ${projectRoot}/circle/addon/Properties
 make clean
 make
 cd ${projectRoot}/lib/usb/gadget
+make clean
+make
+cd ${projectRoot}/addon/usbode-display
 make clean
 make
 cd ${projectRoot}/src

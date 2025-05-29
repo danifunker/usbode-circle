@@ -21,7 +21,7 @@
 //
 #include "kernel.h"
 
-#include "ftpdaemon.h"
+#include <ftpserver/ftpdaemon.h>
 #include "util.h"
 #include "webserver.h"
 
