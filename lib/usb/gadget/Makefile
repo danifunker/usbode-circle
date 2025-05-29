@@ -22,7 +22,8 @@ CIRCLEHOME = ../../../circle
 
 all: libusbgadget.a
 
-CPPFLAGS += -DUSB_GADGET_VENDOR_ID=0x1d6b
+CPPFLAGS += -DUSB_GADGET_VENDOR_ID=0x04da
+CPPFLAGS += -DUSB_GADGET_DEVICE_ID_CD=0x0d01
 CFLAGS += -I ../../../include -I ../../../addon
 
 include $(CIRCLEHOME)/Rules.mk
