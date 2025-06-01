@@ -34,6 +34,9 @@
 #define HOSTNAME "CDROM"
 #define SPI_MASTER_DEVICE  0
 
+// Define the images directory
+#define IMAGES_DIR "SD:/images"
+
 // Static global pointer to the kernel instance (needed for the callback)
 static CKernel* g_pKernel = nullptr;
 
@@ -371,9 +374,10 @@ TShutdownMode CKernel::Run(void)
 
         m_Scheduler.Yield();
 
-		// Periodic status update
+		// Periodic status update - but not when in ISO selection mode
 		unsigned currentTime = m_Timer.GetTicks();
-		if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL) {
+		if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL && 
+		    m_ScreenState != ScreenStateLoadISO) {  // Skip updates while in ISO selection screen
 			// Get the current image name from properties
 			Properties.SelectSection("usbode");
 			const char* currentImage = Properties.GetString("current_image", "image.iso");
@@ -559,6 +563,19 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
     // Only handle button press events (not releases)
     if (bPressed)
     {
+        // Add static variable to track last button press time
+        static unsigned nLastPressTime = 0;
+        unsigned nCurrentTime = pKernel->m_Timer.GetTicks();
+        
+        // Add extra global debounce protection (250ms between any button actions)
+        if (nCurrentTime - nLastPressTime < 250)
+        {
+            return;
+        }
+        
+        // Update the last press time
+        nLastPressTime = nCurrentTime;
+        
         const char* buttonLabel = pKernel->m_pButtonManager->GetButtonLabel(nButtonIndex);
         
         // Log button press with more detail
@@ -767,15 +784,26 @@ void CKernel::ScanForISOFiles(void)
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
     
-    // Open the root directory
+    // Open the images directory
     DIR Directory;
     FILINFO FileInfo;
     
-    if (f_opendir(&Directory, DRIVE) != FR_OK)
+    // Try to open the images directory, fall back to root if it doesn't exist
+    FRESULT result = f_opendir(&Directory, IMAGES_DIR);
+    if (result != FR_OK)
     {
-        LOGERR("Cannot open root directory");
-        return;
+        LOGWARN("Cannot open images directory, trying root directory");
+        result = f_opendir(&Directory, DRIVE);
+        
+        if (result != FR_OK)
+        {
+            LOGERR("Cannot open root directory");
+            return;
+        }
     }
+    
+    LOGNOTE("Scanning for ISO files in %s", 
+            result == FR_OK ? IMAGES_DIR : DRIVE);
     
     // Read all files
     while (f_readdir(&Directory, &FileInfo) == FR_OK && FileInfo.fname[0] != 0)
@@ -891,15 +919,6 @@ void CKernel::LoadSelectedISO(void)
     // Get the selected ISO filename
     const char* SelectedISO = (const char*)m_pISOList[m_nCurrentISOIndex];
     
-    // Update the config file
-    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
-    Properties.Load();
-    Properties.SelectSection("usbode");
-    Properties.SetString("current_image", SelectedISO);
-    Properties.Save();
-    
-    LOGNOTE("Selected new ISO: %s", SelectedISO);
-    
     // Show loading message
     if (m_pDisplayManager != nullptr)
     {
@@ -915,17 +934,32 @@ void CKernel::LoadSelectedISO(void)
     {
         LOGERR("Failed to load ISO: %s", SelectedISO);
         
-        // Show error message
+        // Get the current image that's still loaded
+        CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+        Properties.Load();
+        Properties.SelectSection("usbode");
+        const char* currentImage = Properties.GetString("current_image", "image.iso");
+        
+        // Show error message with current loaded image
         if (m_pDisplayManager != nullptr)
         {
             m_pDisplayManager->ShowStatusScreen(
                 "Error loading ISO",
-                SelectedISO,
-                "Check file format");
+                "Failed to load file",
+                currentImage);  // Show currently loaded ISO
         }
         
         return;
     }
+    
+    // Update the config file only after successful load
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    Properties.Load();
+    Properties.SelectSection("usbode");
+    Properties.SetString("current_image", SelectedISO);
+    Properties.Save();
+    
+    LOGNOTE("Selected new ISO: %s", SelectedISO);
     
     // Set the new device in the CD gadget
     m_CDGadget.SetDevice(CueBinFileDevice);

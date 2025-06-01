@@ -405,7 +405,7 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
 }
 
 void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const char *pSelectedFileName, 
-                                            unsigned int CurrentFileIndex, unsigned int TotalFiles)
+                                           unsigned int CurrentFileIndex, unsigned int TotalFiles)
 {
     switch (m_DisplayType)
     {
@@ -415,42 +415,125 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
             // Clear display first
             m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
             
-            // Format navigation text
-            char NavText[32];
-            snprintf(NavText, sizeof(NavText), "File %u of %u", CurrentFileIndex, TotalFiles);
-            
             // Draw title at the top
-            m_pSH1106Display->DrawText(0, 0, "Select ISO Image", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+            m_pSH1106Display->DrawText(0, -2, "Select an Image:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
                                      FALSE, FALSE, Font6x7);
             
-            // Draw navigation info
-            m_pSH1106Display->DrawText(0, 12, NavText, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                     FALSE, FALSE, Font6x7);
+            // Current ISO with two-line support
+            const char* current_iso = pCurrentISOName;
             
-            // Draw file name (may need to truncate if too long)
-            if (strlen(pSelectedFileName) > 21)  // Max characters that fit on screen
+            // First line has "I: " prefix, so fewer characters per line
+            size_t first_line_chars = 18;
+            // Second line and selection lines have no prefix, so can use more characters
+            size_t chars_per_line = 21;
+            
+            // Calculate line y position based on current ISO length
+            unsigned int line_y;
+            
+            if (strlen(current_iso) <= first_line_chars)
             {
-                // Truncate filename to fit screen width
-                char ShortName[22];  // 21 chars + null terminator
-                strncpy(ShortName, pSelectedFileName, 18);
-                strcpy(ShortName + 18, "...");
-                
-                m_pSH1106Display->DrawText(0, 24, ShortName, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         TRUE, FALSE, Font6x7);
+                // Short name fits on one line
+                m_pSH1106Display->DrawText(0, 10, "I: ", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                         FALSE, FALSE, Font6x7);
+                m_pSH1106Display->DrawText(12, 10, current_iso, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                         FALSE, FALSE, Font6x7);
+                line_y = 22;
             }
             else
             {
-                m_pSH1106Display->DrawText(0, 24, pSelectedFileName, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         TRUE, FALSE, Font6x7);
+                // First line with prefix
+                char first_line[32];
+                snprintf(first_line, sizeof(first_line), "I: %.*s", (int)first_line_chars, current_iso);
+                m_pSH1106Display->DrawText(0, 10, first_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                         FALSE, FALSE, Font6x7);
+                
+                // Second line handling for very long names
+                char second_line[32] = {0};
+                
+                if (strlen(current_iso) > first_line_chars + chars_per_line - 12)
+                {
+                    // Very long name, ensure last 11 chars are visible
+                    size_t remaining_chars = chars_per_line - 12;  // Space for "…" and last 11 chars
+                    
+                    // Copy first part
+                    strncpy(second_line, current_iso + first_line_chars, remaining_chars);
+                    second_line[remaining_chars] = '\0';
+                    
+                    // Add ellipsis and last 11 chars
+                    strcat(second_line, "…");
+                    strcat(second_line, current_iso + strlen(current_iso) - 11);
+                }
+                else
+                {
+                    // Just copy the remaining part
+                    strncpy(second_line, current_iso + first_line_chars, chars_per_line);
+                    second_line[chars_per_line] = '\0';
+                }
+                
+                m_pSH1106Display->DrawText(0, 20, second_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                         FALSE, FALSE, Font6x7);
+                line_y = 32;
             }
             
-            // Draw controls
-            m_pSH1106Display->DrawText(0, 36, "Up/Down: Navigate", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                     FALSE, FALSE, Font6x7);
-            m_pSH1106Display->DrawText(0, 46, "KEY1: Select", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                     FALSE, FALSE, Font6x7);
-            m_pSH1106Display->DrawText(0, 56, "KEY2: Cancel", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                     FALSE, FALSE, Font6x7);
+            // Draw divider line
+            for (unsigned int x = 0; x < 128; x++)
+            {
+                m_pSH1106Display->SetPixel(x, line_y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            // New ISO selection with two-line support
+            const char* selected_file = pSelectedFileName;
+            
+            // Position for new selection depends on line_y
+            unsigned int selection_y = line_y + 3;
+            
+            if (strlen(selected_file) <= chars_per_line)
+            {
+                // Short name fits on one line
+                m_pSH1106Display->DrawText(0, selection_y, selected_file, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                         FALSE, FALSE, Font6x7);
+            }
+            else
+            {
+                // First line of selection
+                char sel_first_line[32];
+                snprintf(sel_first_line, sizeof(sel_first_line), "%.*s", (int)chars_per_line, selected_file);
+                m_pSH1106Display->DrawText(0, selection_y, sel_first_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                         FALSE, FALSE, Font6x7);
+                
+                // Second line handling for very long names
+                char sel_second_line[32] = {0};
+                
+                if (strlen(selected_file) > chars_per_line * 2 - 12)
+                {
+                    // Very long name, ensure last 11 chars are visible
+                    size_t remaining_chars = chars_per_line - 12;  // Space for "…" and last 11 chars
+                    
+                    // Copy first part
+                    strncpy(sel_second_line, selected_file + chars_per_line, remaining_chars);
+                    sel_second_line[remaining_chars] = '\0';
+                    
+                    // Add ellipsis and last 11 chars
+                    strcat(sel_second_line, "…");
+                    strcat(sel_second_line, selected_file + strlen(selected_file) - 11);
+                }
+                else
+                {
+                    // Just copy the remaining part
+                    strncpy(sel_second_line, selected_file + chars_per_line, chars_per_line);
+                    sel_second_line[chars_per_line] = '\0';
+                }
+                
+                m_pSH1106Display->DrawText(0, selection_y + 10, sel_second_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                         FALSE, FALSE, Font6x7);
+            }
+            
+            // Draw very minimal controls at bottom (only if there's space)
+            if (line_y < 32 || strlen(selected_file) <= chars_per_line)
+            {
+                m_pSH1106Display->DrawText(0, 58, "1:Select 2:Cancel", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                         FALSE, FALSE, Font6x7);
+            }
             
             // Ensure the display is updated
             m_pSH1106Display->Refresh();
