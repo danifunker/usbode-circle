@@ -22,6 +22,8 @@
 #include <usbode-display/st7789display.h>
 #include <assert.h>
 
+LOGMODULE ("gpiobutton");
+
 static const char FromGPIOButtonManager[] = "buttons";
 
 CGPIOButtonManager::CGPIOButtonManager(CLogger *pLogger, TDisplayType DisplayType)
@@ -82,14 +84,14 @@ boolean CGPIOButtonManager::Initialize(void)
     // Early exit if no buttons to initialize
     if (m_nButtonCount == 0)
     {
+        LOGNOTE("No buttons to initialize for this display type");
         return TRUE;
     }
     
-    m_pLogger->Write(FromGPIOButtonManager, LogNotice, 
-                    "Initializing %u buttons for %s display", 
-                    m_nButtonCount,
-                    m_DisplayType == DisplayTypeSH1106 ? "SH1106" : 
-                    m_DisplayType == DisplayTypeST7789 ? "ST7789" : "Unknown");
+    LOGNOTE("Initializing %u buttons for %s display", 
+            m_nButtonCount,
+            m_DisplayType == DisplayTypeSH1106 ? "SH1106" : 
+            m_DisplayType == DisplayTypeST7789 ? "ST7789" : "Unknown");
     
     // Allocate arrays for button states and pins
     m_ppButtonPins = new CGPIOPin*[m_nButtonCount];
@@ -100,23 +102,21 @@ boolean CGPIOButtonManager::Initialize(void)
     if (m_ppButtonPins == nullptr || m_pButtonStates == nullptr || 
         m_pLastPressTime == nullptr || m_pLastReportedState == nullptr)
     {
-        m_pLogger->Write(FromGPIOButtonManager, LogError, "Failed to allocate button arrays");
+        LOGERR("Failed to allocate button arrays");
         return FALSE;
     }
     
     // Initialize GPIO pins for each button
     for (unsigned i = 0; i < m_nButtonCount; i++)
     {
-        m_pLogger->Write(FromGPIOButtonManager, LogDebug, 
-                        "Initializing button %u (%s) on GPIO %u",
-                        i, m_pButtonLabels[i], m_pButtonPins[i]);
+        LOGDBG("Initializing button %u (%s) on GPIO %u",
+               i, m_pButtonLabels[i], m_pButtonPins[i]);
                         
         m_ppButtonPins[i] = new CGPIOPin(m_pButtonPins[i], GPIOModeInputPullUp);
         
         if (m_ppButtonPins[i] == nullptr)
         {
-            m_pLogger->Write(FromGPIOButtonManager, LogError, 
-                            "Failed to initialize button %u", i);
+            LOGERR("Failed to initialize button %u", i);
             return FALSE;
         }
         
@@ -129,7 +129,15 @@ boolean CGPIOButtonManager::Initialize(void)
     // Short delay for pins to stabilize
     CTimer::Get()->MsDelay(20);
     
-    m_pLogger->Write(FromGPIOButtonManager, LogNotice, "Button initialization complete");
+    // Log the configured pins
+    LOGNOTE("=== Button Configuration ===");
+    for (unsigned i = 0; i < m_nButtonCount; i++)
+    {
+        LOGNOTE("Button %u: %s (GPIO%u)", i, m_pButtonLabels[i], m_pButtonPins[i]);
+    }
+    LOGNOTE("=== End Button Configuration ===");
+    
+    LOGNOTE("Button initialization complete");
     
     return TRUE;
 }
@@ -138,6 +146,8 @@ void CGPIOButtonManager::RegisterEventHandler(TButtonEventHandler pHandler, void
 {
     m_pEventHandler = pHandler;
     m_pCallbackParam = pParam;
+    
+    LOGNOTE("Button event handler registered");
 }
 
 boolean CGPIOButtonManager::IsButtonPressed(unsigned nButtonIndex)
@@ -167,6 +177,16 @@ const char* CGPIOButtonManager::GetButtonLabel(unsigned nButtonIndex) const
 
 void CGPIOButtonManager::Update(void)
 {
+    static unsigned lastDebugTime = 0;
+    unsigned currentTime = CTimer::Get()->GetTicks();
+    
+    // Debug print every 5 seconds
+    if (currentTime - lastDebugTime > 5000)
+    {
+        DebugPrintPinStates();
+        lastDebugTime = currentTime;
+    }
+    
     // Check each button
     for (unsigned i = 0; i < m_nButtonCount; i++)
     {
@@ -208,11 +228,14 @@ void CGPIOButtonManager::ProcessButtonState(unsigned nButtonIndex, boolean bCurr
                 (*m_pEventHandler)(nButtonIndex, bCurrentState, m_pCallbackParam);
             }
             
-            // Only log button press events to reduce log spam
+            // Log state changes with different levels based on state
             if (bCurrentState)
             {
-                m_pLogger->Write(FromGPIOButtonManager, LogDebug, "Button %s (%u) pressed", 
-                               GetButtonLabel(nButtonIndex), nButtonIndex);
+                LOGNOTE("Button %s (%u) PRESSED", GetButtonLabel(nButtonIndex), nButtonIndex);
+            }
+            else
+            {
+                LOGDBG("Button %s (%u) released", GetButtonLabel(nButtonIndex), nButtonIndex);
             }
         }
     }
@@ -244,4 +267,23 @@ void CGPIOButtonManager::InitST7789Buttons(void)
     m_nButtonCount = ST7789_NUM_BUTTONS;
     m_pButtonPins = const_cast<unsigned*>(ST7789_BUTTON_PINS);
     m_pButtonLabels = const_cast<const char**>(ST7789_BUTTON_LABELS);
+}
+
+void CGPIOButtonManager::DebugPrintPinStates(void)
+{
+    LOGNOTE("=== Button States ===");
+    for (unsigned i = 0; i < m_nButtonCount; i++)
+    {
+        if (m_ppButtonPins[i] != nullptr)
+        {
+            // Read raw pin state
+            boolean bRawState = (m_ppButtonPins[i]->Read() == LOW);
+            
+            LOGNOTE("Button %u (%s) - GPIO%u: Raw=%s, Debounced=%s", 
+                   i, m_pButtonLabels[i], m_pButtonPins[i],
+                   bRawState ? "PRESSED" : "released", 
+                   m_pButtonStates[i] ? "PRESSED" : "released");
+        }
+    }
+    LOGNOTE("=== End Button States ===");
 }

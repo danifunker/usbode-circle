@@ -68,6 +68,9 @@ private:
     void InitSH1106Buttons(void);
     void InitST7789Buttons(void);
     
+    // Debug helper to print current pin states
+    void DebugPrintPinStates(void);
+    
 private:
     CLogger *m_pLogger;
     TDisplayType m_DisplayType;

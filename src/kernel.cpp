@@ -509,18 +509,60 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
         {
             const char* buttonLabel = pKernel->m_pButtonManager->GetButtonLabel(nButtonIndex);
             
-            // Log button press
+            // Log button press with more detail
             LOGNOTE("Button pressed: %s (index %u)", buttonLabel, nButtonIndex);
             
-            // Flash the activity LED without blocking
-            pKernel->m_ActLED.On();
-            
-            // Schedule turning off the LED after a short time
-            pKernel->m_Scheduler.MsSleep(100);
-            pKernel->m_ActLED.Off();
-            
-            // Add your button handling logic here
-            // ...
+            // Flash the activity LED with different patterns for each button
+            // This helps verify which button is being detected
+            switch (nButtonIndex)
+            {
+                case 0: // Up button
+                    // Single blink for button 0
+                    pKernel->m_ActLED.On();
+                    pKernel->m_Scheduler.MsSleep(100);
+                    pKernel->m_ActLED.Off();
+                    break;
+                    
+                case 1: // Down button
+                    // Double blink for button 1
+                    for (int i = 0; i < 2; i++)
+                    {
+                        pKernel->m_ActLED.On();
+                        pKernel->m_Scheduler.MsSleep(100);
+                        pKernel->m_ActLED.Off();
+                        pKernel->m_Scheduler.MsSleep(100);
+                    }
+                    break;
+                    
+                case 2: // Left button
+                    // Triple blink for button 2
+                    for (int i = 0; i < 3; i++)
+                    {
+                        pKernel->m_ActLED.On();
+                        pKernel->m_Scheduler.MsSleep(100);
+                        pKernel->m_ActLED.Off();
+                        pKernel->m_Scheduler.MsSleep(100);
+                    }
+                    break;
+                    
+                case 3: // Right button
+                    // Quad blink for button 3
+                    for (int i = 0; i < 4; i++)
+                    {
+                        pKernel->m_ActLED.On();
+                        pKernel->m_Scheduler.MsSleep(100);
+                        pKernel->m_ActLED.Off();
+                        pKernel->m_Scheduler.MsSleep(100);
+                    }
+                    break;
+                    
+                default:
+                    // Steady light for unknown button
+                    pKernel->m_ActLED.On();
+                    pKernel->m_Scheduler.MsSleep(500);
+                    pKernel->m_ActLED.Off();
+                    break;
+            }
         }
     }
 }

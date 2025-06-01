@@ -63,6 +63,7 @@ public:
     void ShowStatusScreen(const char *pTitle, const char *pIPAddress, const char *pISOName);
     void ShowFileSelectionScreen(const char *pCurrentISOName, const char *pSelectedFileName, 
                              unsigned int CurrentFileIndex, unsigned int TotalFiles);
+    void ShowButtonTestScreen(void); // Added method for button test screen
     
 private:
     // Initialize SH1106 display

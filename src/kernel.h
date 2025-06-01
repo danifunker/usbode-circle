@@ -112,6 +112,9 @@ private:
 
 	// Button event callback
 	static void ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* pParam);
+
+	// Flag to indicate button test mode
+	boolean m_bButtonTestMode;
 };
 
 #endif
