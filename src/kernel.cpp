@@ -39,6 +39,24 @@ static CKernel* g_pKernel = nullptr;
 
 LOGMODULE("kernel");
 
+// Custom implementation of strrchr since it's not available in Circle
+static const char* FindLastOccurrence(const char* str, int ch)
+{
+    if (str == nullptr)
+        return nullptr;
+        
+    const char* last = nullptr;
+    
+    while (*str != '\0')
+    {
+        if (*str == ch)
+            last = str;
+        str++;
+    }
+    
+    return last;
+}
+
 CKernel::CKernel(void)
 : m_Screen(m_Options.GetWidth(), m_Options.GetHeight()),
   m_Timer(&m_Interrupt),
@@ -769,7 +787,7 @@ void CKernel::ScanForISOFiles(void)
         }
         
         // Check for .iso, .cue, or .bin extensions
-        const char* Extension = strrchr(FileInfo.fname, '.');
+        const char* Extension = FindLastOccurrence(FileInfo.fname, '.');
         if (Extension != nullptr && 
             (strcasecmp(Extension, ".iso") == 0 || 
              strcasecmp(Extension, ".cue") == 0 || 
