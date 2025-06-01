@@ -154,21 +154,20 @@ boolean CKernel::Initialize (void)
 	return bOK;
 }
 
-TShutdownMode CKernel::Run (void)
+TShutdownMode CKernel::Run(void)
 {
-
-	// Initialize the global kernel pointer
+    // Initialize the global kernel pointer
     g_pKernel = this;
     
-	// Load our config file loader
-	CPropertiesFatFsFile Properties (CONFIG_FILE, &m_FileSystem);
-	if (!Properties.Load ())
-	{
-		LOGERR("Error loading properties from %s (line %u)",
-				CONFIG_FILE, Properties.GetErrorLine ());
-		return ShutdownHalt;
-	}
-	Properties.SelectSection ("usbode");
+    // Load our config file loader
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    if (!Properties.Load())
+    {
+        LOGERR("Error loading properties from %s (line %u)",
+                CONFIG_FILE, Properties.GetErrorLine());
+        return ShutdownHalt;
+    }
+    Properties.SelectSection("usbode");
 
     // Start the file logging daemon
     const char *logfile = Properties.GetString("logfile", nullptr);
@@ -192,12 +191,19 @@ TShutdownMode CKernel::Run (void)
         return ShutdownHalt;
     }
 
+    // Initialize USB CD gadget
+    LOGNOTE("Starting USB CD gadget initialization");
     m_CDGadget.SetDevice(cueBinFileDevice);
-    m_CDGadget.Initialize();
+    if (!m_CDGadget.Initialize())
+    {
+        LOGERR("Failed to initialize USB CD gadget");
+        return ShutdownHalt;
+    }
+    LOGNOTE("USB CD gadget initialized successfully");
 
-	// Display configuration
-	const char* displayType = Properties.GetString("displayhat", "none");
-	LOGNOTE("Display hat configured: %s", displayType);
+    // Display configuration
+    const char* displayType = Properties.GetString("displayhat", "none");
+    LOGNOTE("Display hat configured: %s", displayType);
     
     // Initialize the appropriate display type
     TDisplayType displayTypeEnum = GetDisplayTypeFromString(displayType);
@@ -226,6 +232,13 @@ TShutdownMode CKernel::Run (void)
                 (const char*)IPString,
                 imageName);
         }
+        
+        // Allow some time for USB to stabilize before initializing buttons
+        LOGNOTE("Waiting for USB to stabilize before initializing buttons");
+        m_Scheduler.MsSleep(2000);
+        
+        // Initialize buttons AFTER USB CD and display are initialized
+        InitializeButtons(displayTypeEnum);
     }
 
 	bool showIP = true;
@@ -245,9 +258,15 @@ TShutdownMode CKernel::Run (void)
 	for (unsigned nCount = 0; 1; nCount++)
 	{
 		// must be called from TASK_LEVEL to allow I/O operations
-		m_CDGadget.UpdatePlugAndPlay ();
-		m_CDGadget.Update ();
-
+		m_CDGadget.UpdatePlugAndPlay();
+		m_CDGadget.Update();
+		
+		// Add button update call
+		if (m_pButtonManager != nullptr)
+		{
+			m_pButtonManager->Update();
+		}
+		
 		// Show details of the network connection
 		if (m_Net.IsRunning()) {
             CString CurrentIPString;
@@ -565,4 +584,48 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
             }
         }
     }
+}
+
+void CKernel::InitializeButtons(TDisplayType displayType)
+{
+    // Early exit if no display type is specified
+    if (displayType == DisplayTypeUnknown)
+    {
+        LOGNOTE("No display configured, skipping button initialization");
+        return;
+    }
+    
+    // Skip if buttons are already initialized
+    if (m_pButtonManager != nullptr)
+    {
+        LOGNOTE("Buttons already initialized");
+        return;
+    }
+    
+    LOGNOTE("Starting button initialization for display type: %s", 
+            displayType == DisplayTypeSH1106 ? "SH1106" : 
+            displayType == DisplayTypeST7789 ? "ST7789" : "Unknown");
+    
+    // Create the button manager
+    m_pButtonManager = new CGPIOButtonManager(&m_Logger, displayType);
+    if (m_pButtonManager == nullptr)
+    {
+        LOGERR("Failed to create button manager");
+        return;
+    }
+    
+    // Initialize the button manager
+    if (!m_pButtonManager->Initialize())
+    {
+        LOGERR("Failed to initialize button manager");
+        delete m_pButtonManager;
+        m_pButtonManager = nullptr;
+        return;
+    }
+    
+    // Register the button event handler
+    m_pButtonManager->RegisterEventHandler(ButtonEventHandler, this);
+    
+    LOGNOTE("Button initialization complete - %u buttons configured", 
+            m_pButtonManager->GetButtonCount());
 }

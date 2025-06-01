@@ -115,6 +115,9 @@ private:
 
 	// Flag to indicate button test mode
 	boolean m_bButtonTestMode;
+
+	// Helper method for button initialization
+	void InitializeButtons(TDisplayType displayType);
 };
 
 #endif
