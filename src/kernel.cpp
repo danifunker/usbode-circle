@@ -48,13 +48,20 @@ CKernel::CKernel (void)
     m_WPASupplicant (SUPPLICANT_CONFIG_FILE),
     m_CDGadget (&m_Interrupt),
     m_pSPIMaster(nullptr),
-    m_pDisplayManager(nullptr)
+    m_pDisplayManager(nullptr),
+    m_pButtonManager(nullptr)
 {
 	//m_ActLED.Blink (5);	// show we are alive
 }
 
 CKernel::~CKernel (void)
 {
+    if (m_pButtonManager != nullptr)
+    {
+        delete m_pButtonManager;
+        m_pButtonManager = nullptr;
+    }
+    
     if (m_pDisplayManager != nullptr)
     {
         delete m_pDisplayManager;
@@ -489,5 +496,31 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
         LastDisplayedIP = IPString;
         LastDisplayedImage = currentImage;
         LastUpdateTime = currentTime;
+    }
+}
+
+void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* pParam)
+{
+    CKernel* pKernel = static_cast<CKernel*>(pParam);
+    if (pKernel != nullptr && pKernel->m_pButtonManager != nullptr)
+    {
+        // Only handle button press events (not releases)
+        if (bPressed)
+        {
+            const char* buttonLabel = pKernel->m_pButtonManager->GetButtonLabel(nButtonIndex);
+            
+            // Log button press
+            LOGNOTE("Button pressed: %s (index %u)", buttonLabel, nButtonIndex);
+            
+            // Flash the activity LED without blocking
+            pKernel->m_ActLED.On();
+            
+            // Schedule turning off the LED after a short time
+            pKernel->m_Scheduler.MsSleep(100);
+            pKernel->m_ActLED.Off();
+            
+            // Add your button handling logic here
+            // ...
+        }
     }
 }
