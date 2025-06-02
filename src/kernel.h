@@ -65,10 +65,6 @@ class CKernel
 
     TShutdownMode Run(void);
 
-public:
-    // Static callback for display updates (must be public to be used as a callback)
-    static void DisplayUpdateCallback(const char* imageName);
-
 private:
 	// do not change this order
 	CActLED			m_ActLED;
