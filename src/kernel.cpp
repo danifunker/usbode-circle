@@ -942,34 +942,21 @@ void CKernel::ShowISOSelectionScreen(void)
 void CKernel::LoadSelectedISO(void)
 {
     // Early validation checks...
+    if (m_nTotalISOCount == 0 || m_pISOList == nullptr)
+    {
+        LOGERR("No ISO files available");
+        return;
+    }
     
     // Get the selected ISO filename
     const char* SelectedISO = (const char*)m_pISOList[m_nCurrentISOIndex];
     
-    // Construct full path - FIXED to avoid path duplication
-    char FullPath[256];
+    // CRITICAL CHANGE: Don't construct the full path here, 
+    // just pass the filename to loadCueBinFileDevice
+    LOGNOTE("Loading ISO: %s", SelectedISO);
     
-    // Check if we're using images directory 
-    DIR Directory;
-    FRESULT result = f_opendir(&Directory, IMAGES_DIR);
-    f_closedir(&Directory);
-    
-    if (result == FR_OK)
-    {
-        // Use just the filename with IMAGES_DIR
-        // IMAGES_DIR already includes "SD:"
-        snprintf(FullPath, sizeof(FullPath), "%s/%s", IMAGES_DIR, SelectedISO);
-    }
-    else
-    {
-        // Use just the filename with DRIVE
-        snprintf(FullPath, sizeof(FullPath), "%s/%s", DRIVE, SelectedISO);
-    }
-    
-    LOGNOTE("Loading image from path: %s", FullPath);
-    
-    // Load the new ISO with full path
-    CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(FullPath);
+    // Let loadCueBinFileDevice handle the path construction
+    CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(SelectedISO);
     if (CueBinFileDevice == nullptr)
     {
         LOGERR("Failed to load Image: %s", SelectedISO);
