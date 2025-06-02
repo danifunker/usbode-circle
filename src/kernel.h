@@ -30,6 +30,8 @@
 #include <circle/logger.h>
 #include <circle/net/mdnspublisher.h>
 #include <circle/net/netsubsystem.h>
+#include <circle/net/ntpclient.h>  // Add this line for NTP client
+#include <circle/net/dnsclient.h>  // Add this line for DNS client
 #include <circle/sched/scheduler.h>
 #include <circle/screen.h>
 #include <circle/serial.h>
@@ -118,6 +120,10 @@ private:
 
 	// Helper method for button initialization
 	void InitializeButtons(TDisplayType displayType);
+
+	// NTP client configuration
+	void InitializeNTP(const char* timezone);
+	static const char ConfigOptionTimeZone[];
 
 	// Screen state tracking
 	enum TScreenState

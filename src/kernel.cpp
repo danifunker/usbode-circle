@@ -60,6 +60,9 @@ static const char* FindLastOccurrence(const char* str, int ch)
     return last;
 }
 
+// Add this near other constant definitions at the top of the file
+const char CKernel::ConfigOptionTimeZone[] = "timezone";
+
 CKernel::CKernel(void)
 : m_Screen(m_Options.GetWidth(), m_Options.GetHeight()),
   m_Timer(&m_Interrupt),
@@ -184,6 +187,27 @@ boolean CKernel::Initialize (void)
 		LOGNOTE("Initialized WAP supplicant");
         }
 
+        // If network initialization succeeded, read timezone from config.txt
+        if (bOK && m_Net.IsRunning())
+        {
+            // Read timezone from config.txt
+            CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+            if (Properties.Load())
+            {
+                Properties.SelectSection("usbode");
+                CString Value;
+                const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
+                
+                // Initialize NTP with the timezone
+                InitializeNTP(timezone);
+            }
+            else
+            {
+                // Use default timezone if config file not available
+                InitializeNTP("UTC");
+            }
+        }
+    
 	return bOK;
 }
 
@@ -973,4 +997,49 @@ void CKernel::LoadSelectedISO(void)
     
     // Update the display
     UpdateDisplayStatus(SelectedISO);
+}
+
+void CKernel::InitializeNTP(const char* timezone)
+{
+    // Make sure network is running
+    if (!m_Net.IsRunning())
+    {
+        LOGERR("Network not running, NTP initialization skipped");
+        return;
+    }
+
+    // Log the timezone
+    LOGNOTE("Setting timezone: %s", timezone);
+
+    // Create DNS client for resolving NTP server
+    CDNSClient DNSClient(&m_Net);
+    
+    // NTP server address
+    CIPAddress NTPServerIP;
+    const char* NTPServer = "pool.ntp.org";
+    
+    // Resolve NTP server address
+    if (!DNSClient.Resolve(NTPServer, &NTPServerIP))
+    {
+        LOGERR("Cannot resolve NTP server: %s", NTPServer);
+        return;
+    }
+    
+    // Create NTP client
+    CNTPClient NTPClient(&m_Net);
+    
+    // Get time from NTP server
+    unsigned nTime = NTPClient.GetTime(NTPServerIP);
+    if (nTime == 0)
+    {
+        LOGERR("NTP time synchronization failed");
+        return;
+    }
+    
+    // Set system time
+    CTime Time;
+    Time.Set(nTime);
+    
+    // Log the current time
+    LOGNOTE("Time synchronized: %s", Time.GetString());
 }
