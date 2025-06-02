@@ -537,6 +537,12 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
             m_pSH1106Display->DrawText(128 - posWidth, 58, position, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
                                      FALSE, FALSE, Font6x7);
             
+            // Draw more visible position indicator
+            snprintf(position, sizeof(position), "%u/%u ▲▼", CurrentFileIndex, TotalFiles);
+            posWidth = strlen(position) * 6; // Approximate width of text
+            m_pSH1106Display->DrawText(0, 58, position, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
             // Ensure the display is updated
             m_pSH1106Display->Refresh();
             

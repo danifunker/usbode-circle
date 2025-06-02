@@ -502,6 +502,13 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
         return;
     }
     
+    // CRITICAL: Skip updates completely while in ISO selection screen
+    if (m_ScreenState == ScreenStateLoadISO)
+    {
+        LOGDBG("Skipping display update while in image selection screen");
+        return;
+    }
+    
     // Track the last displayed image and IP to prevent redundant updates
     static CString LastDisplayedIP = "";
     static CString LastDisplayedImage = "";
@@ -562,15 +569,24 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
         return;
     }
     
-    // Change to handle button RELEASE events instead of press
-    if (!bPressed)  // Notice the logical NOT - we're checking for release
+    // HANDLE BOTH PRESS AND RELEASE with different logic
+    
+    // For button presses - just log them
+    if (bPressed)
+    {
+        const char* buttonLabel = pKernel->m_pButtonManager->GetButtonLabel(nButtonIndex);
+        LOGNOTE("Button pressed: %s (index %u)", buttonLabel, nButtonIndex);
+    }
+    
+    // For button releases - actually perform the actions
+    if (!bPressed)  
     {
         // Static variable to track last button release time
         static unsigned nLastReleaseTime = 0;
         unsigned nCurrentTime = pKernel->m_Timer.GetTicks();
         
-        // Add extra global debounce protection (300ms between any button actions)
-        if (nCurrentTime - nLastReleaseTime < 300)
+        // Reduce debounce time from 300ms to 150ms
+        if (nCurrentTime - nLastReleaseTime < 150)
         {
             return;
         }
@@ -586,157 +602,122 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
         // Flash the activity LED briefly to indicate button action
         pKernel->m_ActLED.On();
         
-        // Get display type to handle buttons differently
-        TDisplayType displayType = pKernel->m_pButtonManager->GetDisplayType();
-        
-        // Handle button differently based on display type
-        if (displayType == DisplayTypeSH1106)
+        // Handle button logic based on screen state...
+        switch (pKernel->m_ScreenState)
         {
-            // Handle buttons based on current screen state
-            switch (pKernel->m_ScreenState)
-            {
-                case ScreenStateMain:
-                    // Main screen button handling
-                    switch (nButtonIndex)
-                    {
-                        case 5: // KEY1 button - Load ISO Screen
-                            LOGNOTE("SH1106: KEY1 button - Load ISO Screen");
-                            pKernel->m_ScreenState = ScreenStateLoadISO;
-                            pKernel->ScanForISOFiles();
+            case ScreenStateMain:
+                // Main screen button handling
+                switch (nButtonIndex)
+                {
+                    case 0: // SELECT button - Enter ISO selection
+                        LOGNOTE("SELECT button - Entering ISO selection");
+                        
+                        // Stop any ongoing network services before switching modes
+                        // if (pKernel->m_Net.IsRunning())
+                        // {
+                        //     LOGNOTE("Stopping network services");
+                        //     pKernel->m_Net.Stop();
+                        // }
+                        
+                        // Switch to ISO selection screen
+                        pKernel->m_ScreenState = ScreenStateLoadISO;
+                        pKernel->ShowISOSelectionScreen();
+                        break;
+                        
+                    // case 1: // START button - Reboot system
+                    //     LOGNOTE("START button - Rebooting system");
+                    //     pKernel->m_ActLED.Blink(3, 100);  // Indicate rebooting
+                    //     mbox_set_reboot();
+                    //     break;
+                        
+                    case 5: // KEY1 button - ISO selection (without stopping network)
+                        LOGNOTE("KEY1 button - Entering ISO selection");
+                        
+                        // Change screen state
+                        pKernel->m_ScreenState = ScreenStateLoadISO;
+                        
+                        // Show loading screen for feedback
+                        if (pKernel->m_pDisplayManager != nullptr)
+                        {
+                            pKernel->m_pDisplayManager->ShowStatusScreen(
+                                "Loading ISO List",
+                                "Please wait...",
+                                "");
+                        }
+                        
+                        // Scan for ISO files and display selection screen
+                        pKernel->ScanForISOFiles();
+                        pKernel->ShowISOSelectionScreen();
+                        break;
+                        
+                    case 6: // KEY2 button - Advanced menu (for system operations)
+                        LOGNOTE("KEY2 button - Entering advanced menu - Currently disabled");
+                        // pKernel->m_ScreenState = ScreenStateAdvanced;
+                        // pKernel->ShowAdvancedMenu();
+                        break;
+                        
+                    // Add more cases for other buttons as needed
+                }
+                break;
+                
+            case ScreenStateLoadISO:
+                // ISO selection screen button handling
+                switch (nButtonIndex)
+                {
+                    case 0: // D-UP button - Scroll up through ISO list
+                        LOGNOTE("SH1106: UP button - Previous ISO");
+                        if (pKernel->m_nTotalISOCount > 0)
+                        {
+                            // Move up with wrap around
+                            if (pKernel->m_nCurrentISOIndex > 0)
+                            {
+                                pKernel->m_nCurrentISOIndex--;
+                            }
+                            else
+                            {
+                                pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
+                            }
+                            
+                            // Immediately update the display
                             pKernel->ShowISOSelectionScreen();
-                            break;
                             
-                        case 6: // KEY2 button - Advanced Menu
-                            LOGNOTE("SH1106: KEY2 button - Advanced Menu");
-                            pKernel->m_ScreenState = ScreenStateAdvanced;
-                            // Placeholder for advanced menu
-                            if (pKernel->m_pDisplayManager != nullptr)
-                            {
-                                pKernel->m_pDisplayManager->ShowStatusScreen(
-                                    "Advanced Menu",
-                                    "Functions to be added",
-                                    "Press KEY2 to return");
-                            }
-                            break;
-                    }
-                    break;
-                    
-                case ScreenStateLoadISO:
-                    // ISO selection screen button handling
-                    switch (nButtonIndex)
-                    {
-                        case 0: // D-UP button - Scroll up through ISO list
-                            LOGNOTE("SH1106: UP button - Previous ISO");
-                            if (pKernel->m_nTotalISOCount > 0)
-                            {
-                                // Add extra log to debug
-                                LOGNOTE("Navigation: current=%u, total=%u", 
-                                       pKernel->m_nCurrentISOIndex, pKernel->m_nTotalISOCount);
-                                
-                                if (pKernel->m_nCurrentISOIndex > 0)
-                                {
-                                    pKernel->m_nCurrentISOIndex--;
-                                }
-                                else
-                                {
-                                    // Wrap around to the end of the list
-                                    pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
-                                }
-                                
-                                // Debug the new position
-                                LOGNOTE("New position: %u", pKernel->m_nCurrentISOIndex);
-                                
-                                // Always call ShowISOSelectionScreen to update display
-                                pKernel->ShowISOSelectionScreen();
-                            }
-                            break;
+                            // Add very short delay to make navigation smoother
+                            pKernel->m_Scheduler.MsSleep(50);
+                        }
+                        break;
+                        
+                    case 1: // D-DOWN button - Scroll down through ISO list
+                        LOGNOTE("SH1106: DOWN button - Next ISO");
+                        if (pKernel->m_nTotalISOCount > 0)
+                        {
+                            // Move down with wrap around
+                            pKernel->m_nCurrentISOIndex = (pKernel->m_nCurrentISOIndex + 1) % pKernel->m_nTotalISOCount;
                             
-                        case 1: // D-DOWN button - Scroll down through ISO list
-                            LOGNOTE("SH1106: DOWN button - Next ISO");
-                            if (pKernel->m_nTotalISOCount > 0)
-                            {
-                                // Add extra log to debug
-                                LOGNOTE("Navigation: current=%u, total=%u", 
-                                       pKernel->m_nCurrentISOIndex, pKernel->m_nTotalISOCount);
-                                
-                                // Increment and wrap around if needed
-                                pKernel->m_nCurrentISOIndex = (pKernel->m_nCurrentISOIndex + 1) % pKernel->m_nTotalISOCount;
-                                
-                                // Debug the new position
-                                LOGNOTE("New position: %u", pKernel->m_nCurrentISOIndex);
-                                
-                                // Always call ShowISOSelectionScreen to update display
-                                pKernel->ShowISOSelectionScreen();
-                            }
-                            break;
+                            // Immediately update the display
+                            pKernel->ShowISOSelectionScreen();
                             
-                        case 5: // KEY1 button - Select displayed ISO
-                            LOGNOTE("SH1106: KEY1 button - Select ISO");
-                            pKernel->LoadSelectedISO();
-                            pKernel->m_ScreenState = ScreenStateMain;
-                            break;
-                            
-                        case 6: // KEY2 button - Cancel ISO selection
-                            LOGNOTE("SH1106: KEY2 button - Cancel selection");
-                            pKernel->m_ScreenState = ScreenStateMain;
-                            // Return to main screen without changing ISO
-                            CPropertiesFatFsFile Properties(CONFIG_FILE, &pKernel->m_FileSystem);
-                            Properties.Load();
-                            Properties.SelectSection("usbode");
-                            const char* currentImage = Properties.GetString("current_image", "image.iso");
-                            pKernel->UpdateDisplayStatus(currentImage);
-                            break;
-                    }
-                    break;
-                    
-                case ScreenStateAdvanced:
-                    // Advanced menu button handling
-                    switch (nButtonIndex)
-                    {
-                        case 6: // KEY2 button - Return to main screen
-                            LOGNOTE("SH1106: KEY2 button - Return to main");
-                            pKernel->m_ScreenState = ScreenStateMain;
-                            // Return to main screen
-                            CPropertiesFatFsFile Properties(CONFIG_FILE, &pKernel->m_FileSystem);
-                            Properties.Load();
-                            Properties.SelectSection("usbode");
-                            const char* currentImage = Properties.GetString("current_image", "image.iso");
-                            pKernel->UpdateDisplayStatus(currentImage);
-                            break;
-                    }
-                    break;
-            }
+                            // Add very short delay to make navigation smoother
+                            pKernel->m_Scheduler.MsSleep(50);
+                        }
+                        break;
+                        
+                    case 2: // SELECT button - Load selected ISO
+                        LOGNOTE("SELECT button - Loading selected ISO");
+                        pKernel->LoadSelectedISO();
+                        break;
+                        
+                    case 3: // BACK button - Return to main menu
+                        LOGNOTE("BACK button - Returning to main menu");
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->UpdateDisplayStatus(nullptr);  // Refresh display
+                        break;
+                        
+                    // Add more cases for other buttons as needed
+                }
+                break;
+
+            // Add more cases for other screen states as needed            
         }
-        else if (displayType == DisplayTypeST7789)
-        {
-            // ST7789 (Pirate Audio) handling - keeping as is
-            switch (nButtonIndex)
-            {
-                case 0: // A button (usually UP)
-                    LOGNOTE("ST7789: A button - Previous image");
-                    break;
-                    
-                case 1: // B button (usually DOWN)
-                    LOGNOTE("ST7789: B button - Next image");
-                    break;
-                    
-                case 2: // X button (usually BACK/CANCEL)
-                    LOGNOTE("ST7789: X button - Cancel/Back");
-                    break;
-                    
-                case 3: // Y button (usually SELECT/CONFIRM)
-                    LOGNOTE("ST7789: Y button - Select/Confirm");
-                    break;
-                    
-                default:
-                    LOGNOTE("ST7789: Unknown button %u", nButtonIndex);
-                    break;
-            }
-        }
-        
-        // Turn off the LED after a short delay
-        pKernel->m_Scheduler.MsSleep(100);
-        pKernel->m_ActLED.Off();
     }
 }
 
@@ -786,14 +767,9 @@ void CKernel::InitializeButtons(TDisplayType displayType)
 
 void CKernel::ScanForISOFiles(void)
 {
-    // Clean up previous list if it exists
-    if (m_pISOList != nullptr)
-    {
-        delete[] m_pISOList;
-        m_pISOList = nullptr;
-    }
+    // Clean up previous list
     
-    // Allocate new list
+    // Allocate new list with proper size
     m_pISOList = new CString[MAX_ISO_FILES];
     if (m_pISOList == nullptr)
     {
@@ -806,71 +782,77 @@ void CKernel::ScanForISOFiles(void)
     m_nTotalISOCount = 0;
     m_nCurrentISOIndex = 0;
     
+    // Try different paths
+    const char* searchPaths[] = { IMAGES_DIR, DRIVE };
+    
     // Get current ISO from config
     CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
     Properties.Load();
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
+    bool currentImageFound = false;
     
-    // Open the images directory
-    DIR Directory;
-    FILINFO FileInfo;
-    
-    // Try to open the images directory, fall back to root if it doesn't exist
-    FRESULT result = f_opendir(&Directory, IMAGES_DIR);
-    if (result != FR_OK)
+    // First pass - scan both directories to collect all ISO files
+    for (unsigned pathIndex = 0; pathIndex < sizeof(searchPaths)/sizeof(searchPaths[0]); pathIndex++)
     {
-        LOGWARN("Cannot open images directory, trying root directory");
-        result = f_opendir(&Directory, DRIVE);
+        DIR Directory;
+        FILINFO FileInfo;
         
+        // Open directory
+        FRESULT result = f_opendir(&Directory, searchPaths[pathIndex]);
         if (result != FR_OK)
         {
-            LOGERR("Cannot open root directory");
-            return;
-        }
-    }
-    
-    LOGNOTE("Scanning for ISO files in %s", 
-            result == FR_OK ? IMAGES_DIR : DRIVE);
-    
-    // Read all files
-    while (f_readdir(&Directory, &FileInfo) == FR_OK && FileInfo.fname[0] != 0)
-    {
-        // Skip directories
-        if (FileInfo.fattrib & AM_DIR)
-        {
+            LOGWARN("Cannot open directory: %s", searchPaths[pathIndex]);
             continue;
         }
         
-        // Check for .iso, .cue, or .bin extensions
-        const char* Extension = FindLastOccurrence(FileInfo.fname, '.');
-        if (Extension != nullptr && 
-            (strcasecmp(Extension, ".iso") == 0 || 
-             strcasecmp(Extension, ".cue") == 0 || 
-             strcasecmp(Extension, ".bin") == 0))
+        LOGNOTE("Scanning for ISO files in %s", searchPaths[pathIndex]);
+        
+        // Read all files in this directory
+        while (f_readdir(&Directory, &FileInfo) == FR_OK && FileInfo.fname[0] != 0)
         {
-            // Add to our list if we have space
-            if (m_nTotalISOCount < MAX_ISO_FILES)
+            // Skip directories
+            if (FileInfo.fattrib & AM_DIR)
             {
+                continue;
+            }
+            
+            // Check for .iso, .cue, or .bin extensions
+            const char* Extension = FindLastOccurrence(FileInfo.fname, '.');
+            if (Extension != nullptr && 
+                (strcasecmp(Extension, ".iso") == 0 || 
+                 strcasecmp(Extension, ".cue") == 0 || 
+                 strcasecmp(Extension, ".bin") == 0))
+            {
+                // Check if we have space left
+                if (m_nTotalISOCount >= MAX_ISO_FILES)
+                {
+                    LOGWARN("Maximum ISO file count reached (%u), some files will be omitted", MAX_ISO_FILES);
+                    break;
+                }
+                
+                // Add to our list
                 m_pISOList[m_nTotalISOCount] = FileInfo.fname;
                 
                 // Check if this is the current image
                 if (strcasecmp(FileInfo.fname, currentImage) == 0)
                 {
                     m_nCurrentISOIndex = m_nTotalISOCount;
+                    currentImageFound = true;
                 }
                 
                 m_nTotalISOCount++;
             }
-            else
-            {
-                LOGWARN("Maximum ISO file count reached (%u)", MAX_ISO_FILES);
-                break;
-            }
+        }
+        
+        f_closedir(&Directory);
+        
+        // If we found the current image, no need to search in the other directory
+        if (currentImageFound)
+        {
+            break;
         }
     }
-    
-    f_closedir(&Directory);
     
     // Sort the files alphabetically
     for (unsigned i = 0; i < m_nTotalISOCount - 1; i++)
@@ -940,31 +922,14 @@ void CKernel::ShowISOSelectionScreen(void)
 
 void CKernel::LoadSelectedISO(void)
 {
-    // Early exit if no files
-    if (m_nTotalISOCount == 0 || m_pISOList == nullptr)
-    {
-        return;
-    }
-    
-    // Add extra check for valid index
-    if (m_nCurrentISOIndex >= m_nTotalISOCount)
-    {
-        LOGERR("Invalid Image index: %u (max: %u)", m_nCurrentISOIndex, m_nTotalISOCount - 1);
-        return;
-    }
+    // Early validation checks...
     
     // Get the selected ISO filename
     const char* SelectedISO = (const char*)m_pISOList[m_nCurrentISOIndex];
     
-    // Add safety check for null pointer
-    if (SelectedISO == nullptr || *SelectedISO == '\0')
-    {
-        LOGERR("Invalid Image filename");
-        return;
-    }
-    
-    // Construct full path
+    // Construct full path - FIXED to avoid path duplication
     char FullPath[256];
+    
     // Check if we're using images directory 
     DIR Directory;
     FRESULT result = f_opendir(&Directory, IMAGES_DIR);
@@ -972,23 +937,17 @@ void CKernel::LoadSelectedISO(void)
     
     if (result == FR_OK)
     {
+        // Use just the filename with IMAGES_DIR
+        // IMAGES_DIR already includes "SD:"
         snprintf(FullPath, sizeof(FullPath), "%s/%s", IMAGES_DIR, SelectedISO);
     }
     else
     {
+        // Use just the filename with DRIVE
         snprintf(FullPath, sizeof(FullPath), "%s/%s", DRIVE, SelectedISO);
     }
     
-    LOGNOTE("Loading ISO from path: %s", FullPath);
-    
-    // Show loading message
-    if (m_pDisplayManager != nullptr)
-    {
-        m_pDisplayManager->ShowStatusScreen(
-            "Loading new ISO",
-            SelectedISO, // Show just the filename, not the full path
-            "Please wait...");
-    }
+    LOGNOTE("Loading image from path: %s", FullPath);
     
     // Load the new ISO with full path
     CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(FullPath);
