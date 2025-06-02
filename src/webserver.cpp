@@ -18,6 +18,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "webserver.h"
+#include "gitinfo.h"
 
 #include <assert.h>
 #include <circle/logger.h>
@@ -58,6 +59,7 @@ static const char HTML_LAYOUT[] =
     "        .file-link-odd {background-color: #BBDEFB;}\n"
     "        .header-bar {background-color: #2C5F7C; color: #FFFFFF; padding: 5px;}\n"
     "        .usb-info {background-color: #E3F2FD; border-top: 1px solid #BBDEFB; padding: 5px; text-align: center; margin-top: 20px;}\n"
+    "        .build-info {font-size: 9px; text-align: left; color: #CCCCCC; padding: 5px 0 0 5px; margin-top: 2px;}\n"
     "    </style>\n"
     "</head>\n"
     "<body>\n"
@@ -74,6 +76,9 @@ static const char HTML_LAYOUT[] =
     "        </div>\n"
     "        <div class=\"footer\">\n"
     "            <p>Version %s</p>\n"
+    "            <div class=\"build-info\">\n"
+    "                Build: %s @ %s | %s\n"
+    "            </div>\n"
     "        </div>\n"
     "    </div>\n"
     "</body>\n"
@@ -401,7 +406,8 @@ THTTPStatus CWebServer::list_files_as_table(char *output_buffer, size_t max_len,
     }
 
     // Format the complete HTML page using the layout template
-    snprintf(output_buffer, max_len, HTML_LAYOUT, content, pUSBSpeed, VERSION);
+    snprintf(output_buffer, max_len, HTML_LAYOUT, content, pUSBSpeed, VERSION, 
+         GIT_BRANCH, GIT_COMMIT, __DATE__ " " __TIME__);
     delete[] content;
     return HTTPOK;
 }
@@ -505,7 +511,8 @@ THTTPStatus CWebServer::generate_mount_success_page(char *output_buffer, size_t 
              filename);
 
     // Format the complete HTML page using the layout template
-    snprintf(output_buffer, max_len, HTML_LAYOUT, content, pUSBSpeed, VERSION);
+    snprintf(output_buffer, max_len, HTML_LAYOUT, content, pUSBSpeed, VERSION, 
+         GIT_BRANCH, GIT_COMMIT, __DATE__ " " __TIME__);
     delete[] content;  // Fixed: Use delete[] for array allocation
     return HTTPOK;
 }
