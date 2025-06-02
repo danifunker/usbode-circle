@@ -620,7 +620,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     {
                         pKernel->m_pDisplayManager->ShowStatusScreen(
                             "Please Wait",
-                            "Opening ISO Browser",
+                            "Opening Image Browser",
                             "Scanning files...");
                         pKernel->m_pDisplayManager->Refresh();
                     }
@@ -636,41 +636,56 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                 // OPTIMIZATION: For ISO selection screen, skip intermediary "Navigating..." screens
                 // to make button presses feel much more responsive
                 
-                if (nButtonIndex == 0) { // UP button - previous ISO (single step)
-                    if (pKernel->m_nCurrentISOIndex > 0) {
-                        // Skip intermediate feedback screens for faster response
-                        pKernel->m_nCurrentISOIndex--;
-                        pKernel->ShowISOSelectionScreen();
-                    }
-                }
-                else if (nButtonIndex == 1) { // DOWN button - next ISO (single step)
-                    if (pKernel->m_nCurrentISOIndex < pKernel->m_nTotalISOCount - 1) {
-                        // Skip intermediate feedback screens for faster response
-                        pKernel->m_nCurrentISOIndex++;
-                        pKernel->ShowISOSelectionScreen();
-                    }
-                }
-                else if (nButtonIndex == 2) { // LEFT button - skip back 5 files
-                    if (pKernel->m_nCurrentISOIndex > 0) {
-                        // Jump back 5 files, but not below 0
-                        if (pKernel->m_nCurrentISOIndex >= 5) {
-                            pKernel->m_nCurrentISOIndex -= 5;
-                        } else {
-                            pKernel->m_nCurrentISOIndex = 0;
-                        }
-                        
-                        pKernel->ShowISOSelectionScreen();
-                    }
-                }
-                else if (nButtonIndex == 3) { // RIGHT button - skip forward 5 files
-                    if (pKernel->m_nCurrentISOIndex < pKernel->m_nTotalISOCount - 1) {
-                        // Jump forward 5 files, but not beyond the end
-                        if (pKernel->m_nCurrentISOIndex + 5 < pKernel->m_nTotalISOCount) {
-                            pKernel->m_nCurrentISOIndex += 5;
-                        } else {
+                if (nButtonIndex == 0) { // UP button - previous ISO (single step) with wrapping
+                    if (pKernel->m_nTotalISOCount > 0) {
+                        // Handle wrapping from first to last file
+                        if (pKernel->m_nCurrentISOIndex == 0) {
                             pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
+                        } else {
+                            pKernel->m_nCurrentISOIndex--;
                         }
-                        
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                }
+                else if (nButtonIndex == 1) { // DOWN button - next ISO (single step) with wrapping
+                    if (pKernel->m_nTotalISOCount > 0) {
+                        // Handle wrapping from last to first file
+                        if (pKernel->m_nCurrentISOIndex >= pKernel->m_nTotalISOCount - 1) {
+                            pKernel->m_nCurrentISOIndex = 0;
+                        } else {
+                            pKernel->m_nCurrentISOIndex++;
+                        }
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                }
+                else if (nButtonIndex == 2) { // LEFT button - skip back 5 files with wrapping
+                    if (pKernel->m_nTotalISOCount > 0) {
+                        // Skip back 5 files with wrapping
+                        if (pKernel->m_nCurrentISOIndex < 5) {
+                            // Wrap around to the end
+                            pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 
+                                (5 - pKernel->m_nCurrentISOIndex);
+                            
+                            // Make sure we don't go out of bounds
+                            if (pKernel->m_nCurrentISOIndex >= pKernel->m_nTotalISOCount) {
+                                pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
+                            }
+                        } else {
+                            pKernel->m_nCurrentISOIndex -= 5;
+                        }
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                }
+                else if (nButtonIndex == 3) { // RIGHT button - skip forward 5 files with wrapping
+                    if (pKernel->m_nTotalISOCount > 0) {
+                        // Skip forward 5 files with wrapping
+                        if (pKernel->m_nCurrentISOIndex + 5 >= pKernel->m_nTotalISOCount) {
+                            // Wrap around to the beginning
+                            pKernel->m_nCurrentISOIndex = 
+                                (pKernel->m_nCurrentISOIndex + 5) % pKernel->m_nTotalISOCount;
+                        } else {
+                            pKernel->m_nCurrentISOIndex += 5;
+                        }
                         pKernel->ShowISOSelectionScreen();
                     }
                 }
