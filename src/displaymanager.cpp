@@ -473,18 +473,18 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
                 char second_line[32];
                 memset(second_line, 0, sizeof(second_line));
                 
-                if (strlen(currentImage) > first_line_chars + chars_per_line - 12)
+                if (strlen(currentImage) > first_line_chars + chars_per_line - 14)  // Changed from -12 to -14
                 {
                     // Very long name, ensure last 11 chars are visible
-                    size_t remaining_chars = chars_per_line - 12;
+                    size_t remaining_chars = chars_per_line - 14;  // Changed from -12 to -14
                     
                     // Copy first part with explicit termination
                     strncpy(second_line, currentImage + first_line_chars, remaining_chars);
                     second_line[remaining_chars] = '\0';
                     
-                    // Add three periods instead of ellipsis character
+                    // Add three periods instead of ellipsis character and ensure the last 11 chars
                     strcat(second_line, "...");
-                    strcat(second_line, currentImage + strlen(currentImage) - 11);
+                    strcat(second_line, currentImage + strlen(currentImage) - 11);  // Keep last 11 chars
                 }
                 else
                 {
