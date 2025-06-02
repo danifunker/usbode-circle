@@ -475,12 +475,29 @@ TShutdownMode CKernel::Run(void)
 	return ShutdownHalt;
 }
 
-// Static callback implementation (outside of any function)
+// Static callback implementation
 void CKernel::DisplayUpdateCallback(const char* imageName)
 {
     // Use the global kernel pointer
     if (g_pKernel != nullptr)
     {
+        // When called from web server, we need to explicitly set the current_image
+        // in config.txt, just like LoadSelectedISO does
+        if (imageName != nullptr && *imageName != '\0')
+        {
+            // Update the config file with the new image name
+            CPropertiesFatFsFile Properties(CONFIG_FILE, &g_pKernel->m_FileSystem);
+            if (Properties.Load())
+            {
+                Properties.SelectSection("usbode");
+                Properties.SetString("current_image", imageName);
+                Properties.Save();
+                
+                LOGNOTE("Web server changed image to: %s", imageName);
+            }
+        }
+        
+        // Now update the display with a force update
         g_pKernel->UpdateDisplayStatus(imageName);
     }
 }
@@ -595,7 +612,11 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     unsigned currentTime = m_Timer.GetTicks();
     if (currentTime - LastUpdateTime < 500) // 500ms debounce time
     {
-        return;
+        // But don't apply debounce if explicitly requested from web server
+        if (imageName == nullptr || *imageName == '\0')
+        {
+            return;
+        }
     }
     
     // Always load the current image from properties to ensure consistency
@@ -705,7 +726,8 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     }
                 }
                 else if (nButtonIndex == 2) { // LEFT button - skip back 5 files with wrapping
-                    if (pKernel->m_nTotalISOCount > 0) {
+                    if (pKernel->m_nTotalISOCount > 0)
+                    {
                         // Skip back 5 files with wrapping
                         if (pKernel->m_nCurrentISOIndex < 5) {
                             // Wrap around to the end
@@ -1031,7 +1053,7 @@ void CKernel::InitializeNTP(const char* timezone)
     }
 
     // Log that we're starting NTP synchronization
-    LOGNOTE("Starting NTP time synchronization (timezone: %s)", timezone);
+    LOGNOTE("Starting NTP time synchronization (using UTC/GMT)");
 
     // Create DNS client for resolving NTP server
     CDNSClient DNSClient(&m_Net);
@@ -1072,37 +1094,6 @@ void CKernel::InitializeNTP(const char* timezone)
     // Set time in the CTimer singleton for system-wide use
     CTimer::Get()->SetTime(nTime);
     
-    // Apply timezone offset (if Circle supports it)
-    // Convert timezone string to minutes offset from UTC
-    int nTimeZoneOffset = 0; // Default to UTC
-    
-    // Very basic timezone handling for common US timezones
-    if (strcasecmp(timezone, "America/New_York") == 0 || 
-        strcasecmp(timezone, "America/Detroit") == 0 ||
-        strcasecmp(timezone, "US/Eastern") == 0)
-    {
-        nTimeZoneOffset = -5 * 60; // Eastern Time (non-DST)
-    }
-    else if (strcasecmp(timezone, "America/Chicago") == 0 ||
-             strcasecmp(timezone, "US/Central") == 0)
-    {
-        nTimeZoneOffset = -6 * 60; // Central Time (non-DST)
-    }
-    else if (strcasecmp(timezone, "America/Denver") == 0 ||
-             strcasecmp(timezone, "US/Mountain") == 0)
-    {
-        nTimeZoneOffset = -7 * 60; // Mountain Time (non-DST)
-    }
-    else if (strcasecmp(timezone, "America/Los_Angeles") == 0 ||
-             strcasecmp(timezone, "US/Pacific") == 0)
-    {
-        nTimeZoneOffset = -8 * 60; // Pacific Time (non-DST)
-    }
-    
-    // Apply the timezone offset to the timer
-    CTimer::Get()->SetTimeZone(nTimeZoneOffset);
-    
-    // Log the current time
-    LOGNOTE("Time synchronized successfully: %s (Offset: %d minutes)", 
-            Time.GetString(), nTimeZoneOffset);
+    // Log the current time (in UTC/GMT)
+    LOGNOTE("Time synchronized successfully: %s (UTC/GMT)", Time.GetString());
 }
