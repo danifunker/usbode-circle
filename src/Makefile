@@ -9,12 +9,13 @@ CFLAGS += -I ../include -I ../addon
 
 OBJS	= main.o kernel.o webserver.o util.o displaymanager.o gpiobuttonmanager.o
 
-# Add gitinfo.h as a dependency for kernel.o
-kernel.o: gitinfo.h
+# Add default target at the top
+.PHONY: all
+all: kernel7.img
 
-# Add rule to generate gitinfo.h
-gitinfo.h:
-	@./gitinfo.sh
+# Add gitinfo.h as a dependency for kernel.o and webserver.o
+kernel.o: gitinfo.h
+webserver.o: gitinfo.h
 
 LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/usb/gadget/libusbgadget.a \
