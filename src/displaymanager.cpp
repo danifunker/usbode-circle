@@ -482,8 +482,8 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
                     strncpy(second_line, currentImage + first_line_chars, remaining_chars);
                     second_line[remaining_chars] = '\0';
                     
-                    // Add ellipsis and last 11 chars
-                    strcat(second_line, "…");
+                    // Add three periods instead of ellipsis character
+                    strcat(second_line, "...");
                     strcat(second_line, currentImage + strlen(currentImage) - 11);
                 }
                 else
