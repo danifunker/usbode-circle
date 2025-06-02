@@ -638,12 +638,18 @@ THTTPStatus CWebServer::GetContent (const char  *pPath,
                 LOGERR("Failed to get cueBinFileDevice");
                 return HTTPInternalServerError;
             }
+            
+            // Set the new device in the CD gadget
             m_pCDGadget->SetDevice(cueBinFileDevice);
+            LOGNOTE("CD gadget updated with new image: %s", decodedValue);
 
             // Generate a success page
             resultCode = generate_mount_success_page((char*)m_pContentBuffer, MAX_CONTENT_SIZE, decodedValue, pUSBSpeed);
-            // Notify display about the image change
+            
+            // IMPORTANT: Only notify display AFTER successful ISO load
+            LOGNOTE("ISO load successful, now updating display for: %s", decodedValue);
             NotifyDisplayUpdate(decodedValue);
+            
             nLength = strlen((char*)m_pContentBuffer);
             *ppContentType = "text/html; charset=utf-8";
         } else {

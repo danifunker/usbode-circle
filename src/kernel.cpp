@@ -339,9 +339,15 @@ TShutdownMode CKernel::Run(void)
 			
 			// Check and maintain FTP and Web services
 			if (pCWebServer == nullptr) {
+				// Create the web server
 				pCWebServer = new CWebServer(&m_Net, &m_CDGadget, &m_ActLED, &Properties);
-				pCWebServer->SetDisplayUpdateHandler(DisplayUpdateCallback);
-				LOGNOTE("Started Webserver");
+				
+				// CRITICAL: Set the display update handler IMMEDIATELY after creating web server
+				if (pCWebServer != nullptr) {
+					LOGNOTE("Setting display update handler");
+					pCWebServer->SetDisplayUpdateHandler(DisplayUpdateCallback);
+					LOGNOTE("Started Webserver and registered display update handler");
+				}
 			}
 			
 			if (m_pFTPDaemon == nullptr) {
@@ -471,14 +477,38 @@ TShutdownMode CKernel::Run(void)
 // Static callback implementation
 void CKernel::DisplayUpdateCallback(const char* imageName)
 {
-    // Just log that we got a callback and trigger a display update
-    LOGNOTE("Received display update callback for image: %s", imageName ? imageName : "NULL");
+    // Log that we got a callback with high visibility
+    LOGNOTE("************ DISPLAY UPDATE CALLBACK RECEIVED: %s ************", 
+            imageName ? imageName : "NULL");
     
     // Use the global kernel pointer
     if (g_pKernel != nullptr)
     {
-        // Force the display to update with current settings from config file
-        g_pKernel->UpdateDisplayStatus(nullptr);
+        // Make sure we're not in ISO selection mode
+        g_pKernel->m_ScreenState = ScreenStateMain;
+        
+        // Re-read the current image from config file to ensure we have the latest
+        CPropertiesFatFsFile Properties(CONFIG_FILE, &g_pKernel->m_FileSystem);
+        if (Properties.Load())
+        {
+            Properties.SelectSection("usbode");
+            const char* currentImage = Properties.GetString("current_image", "image.iso");
+            
+            // Force display update with current image from config
+            LOGNOTE("Forcing display update with current image: %s", currentImage);
+            g_pKernel->UpdateDisplayStatus(currentImage);
+        }
+        else
+        {
+            // If we can't load config, try to use the passed image name
+            LOGWARN("Cannot load config file, using passed image name: %s", 
+                    imageName ? imageName : "unknown");
+            
+            if (imageName != nullptr && *imageName != '\0')
+            {
+                g_pKernel->UpdateDisplayStatus(imageName);
+            }
+        }
     }
     else
     {
