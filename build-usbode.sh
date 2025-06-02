@@ -36,6 +36,9 @@ make
 cd ${projectRoot}/addon/filelogdaemon
 make clean
 make
+cd ${projectRoot}/addon/ftpserver
+make clean
+make
 cd ${projectRoot}/circle/addon/linux
 make clean
 make

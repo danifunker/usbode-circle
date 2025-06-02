@@ -34,3 +34,6 @@ cd ${projectRoot}/src
 make clean
 
 rm -rf ${destDir}
+
+cd ${projectRoot}
+find . -name Makefile -exec bash -c 'make -C "${1%/*}" clean' -- {} \;
