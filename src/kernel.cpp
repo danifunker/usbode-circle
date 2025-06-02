@@ -530,7 +530,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     // CRITICAL: Skip updates completely while in ISO selection screen
     if (m_ScreenState == ScreenStateLoadISO)
     {
-        LOGDBG("Skipping display update while in image selection screen");
+        // Remove the debug log message here
         return;
     }
     
@@ -552,9 +552,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
     
-    // Log for debugging
-    LOGNOTE("UpdateDisplayStatus - Current image in properties: %s, passed image: %s", 
-            currentImage, imageName ? imageName : "NULL");
+    // Remove the excessive debug log here
     
     // Get current IP address
     CString IPString;
@@ -576,7 +574,8 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
             (const char*)IPString,
             currentImage);  // Use the image from properties file
             
-        LOGNOTE("Display status updated: IP=%s, Image=%s", 
+        // Only log when the display actually changes
+        LOGNOTE("Display updated: IP=%s, Image=%s", 
                 (const char*)IPString, currentImage);
                 
         // Store current values
