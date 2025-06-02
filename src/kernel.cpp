@@ -479,25 +479,35 @@ TShutdownMode CKernel::Run(void)
 void CKernel::DisplayUpdateCallback(const char* imageName)
 {
     // Use the global kernel pointer
-    if (g_pKernel != nullptr)
+    if (g_pKernel != nullptr && imageName != nullptr && *imageName != '\0')
     {
-        // When called from web server, we need to explicitly set the current_image
-        // in config.txt, just like LoadSelectedISO does
-        if (imageName != nullptr && *imageName != '\0')
+        LOGNOTE("Web UI requested image change to: %s", imageName);
+        
+        // Update the config file with the new image name
+        CPropertiesFatFsFile Properties(CONFIG_FILE, &g_pKernel->m_FileSystem);
+        if (Properties.Load())
         {
-            // Update the config file with the new image name
-            CPropertiesFatFsFile Properties(CONFIG_FILE, &g_pKernel->m_FileSystem);
-            if (Properties.Load())
+            Properties.SelectSection("usbode");
+            Properties.SetString("current_image", imageName);
+            if (!Properties.Save())
             {
-                Properties.SelectSection("usbode");
-                Properties.SetString("current_image", imageName);
-                Properties.Save();
-                
-                LOGNOTE("Web server changed image to: %s", imageName);
+                LOGERR("Failed to save config file after web image change");
             }
+            
+            // Load the actual ISO file
+            CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(imageName);
+            if (CueBinFileDevice == nullptr)
+            {
+                LOGERR("Failed to load Image from web UI: %s", imageName);
+                return;
+            }
+            
+            // Set the new device in the CD gadget
+            g_pKernel->m_CDGadget.SetDevice(CueBinFileDevice);
+            LOGNOTE("Web UI changed image to: %s", imageName);
         }
         
-        // Now update the display with a force update
+        // Force update the display with the new image name
         g_pKernel->UpdateDisplayStatus(imageName);
     }
 }
