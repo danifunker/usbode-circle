@@ -1008,8 +1008,8 @@ void CKernel::InitializeNTP(const char* timezone)
         return;
     }
 
-    // Log the timezone
-    LOGNOTE("Setting timezone: %s", timezone);
+    // Log that we're starting NTP synchronization
+    LOGNOTE("Starting NTP time synchronization (timezone: %s)", timezone);
 
     // Create DNS client for resolving NTP server
     CDNSClient DNSClient(&m_Net);
@@ -1019,16 +1019,23 @@ void CKernel::InitializeNTP(const char* timezone)
     const char* NTPServer = "pool.ntp.org";
     
     // Resolve NTP server address
+    LOGNOTE("Resolving NTP server: %s", NTPServer);
     if (!DNSClient.Resolve(NTPServer, &NTPServerIP))
     {
         LOGERR("Cannot resolve NTP server: %s", NTPServer);
         return;
     }
+
+    // Log the resolved IP
+    CString IPString;
+    NTPServerIP.Format(&IPString);
+    LOGNOTE("NTP server resolved to: %s", (const char*)IPString);
     
     // Create NTP client
     CNTPClient NTPClient(&m_Net);
     
     // Get time from NTP server
+    LOGNOTE("Requesting time from NTP server...");
     unsigned nTime = NTPClient.GetTime(NTPServerIP);
     if (nTime == 0)
     {
@@ -1041,5 +1048,5 @@ void CKernel::InitializeNTP(const char* timezone)
     Time.Set(nTime);
     
     // Log the current time
-    LOGNOTE("Time synchronized: %s", Time.GetString());
+    LOGNOTE("Time synchronized successfully: %s", Time.GetString());
 }
