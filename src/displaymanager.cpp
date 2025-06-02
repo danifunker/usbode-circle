@@ -422,7 +422,27 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
             // Use the current ISO passed as parameter
             const char* currentImage = pCurrentISOName;
             
-            // First line has "I: " prefix, so fewer characters per line
+            // Draw CD icon (replacing "I: " text)
+            unsigned int cd_x = 0;
+            unsigned int cd_y = 12;
+            
+            // Draw CD as a ring
+            for (int y = -4; y <= 4; y++) {
+                for (int x = -4; x <= 4; x++) {
+                    int dist_squared = x*x + y*y;
+                    // Draw pixels between inner and outer radius
+                    if (dist_squared <= 16 && dist_squared > 4) {
+                        unsigned int px = cd_x+4+x;
+                        unsigned int py = cd_y+4+y;
+                        // Ensure coordinates are in valid range
+                        if (px < CSH1106Display::OLED_WIDTH && py < CSH1106Display::OLED_HEIGHT) {
+                            m_pSH1106Display->SetPixel(px, py, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+                        }
+                    }
+                }
+            }
+            
+            // First line has CD icon + space, so fewer characters per line
             const size_t first_line_chars = 18;
             // Second line and selection lines have no prefix, so can use more characters
             const size_t chars_per_line = 21;
@@ -434,18 +454,17 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
             if (strlen(currentImage) <= first_line_chars)
             {
                 // Short name fits on one line
-                m_pSH1106Display->DrawText(0, 12, "I: ", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
                 m_pSH1106Display->DrawText(12, 12, currentImage, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
                                          FALSE, FALSE, Font6x7);
                 line_y = 22;
             }
             else
             {
-                // First line with prefix
+                // First line with CD icon
                 char first_line[32];
-                snprintf(first_line, sizeof(first_line), "I: %.18s", currentImage);
-                m_pSH1106Display->DrawText(0, 12, first_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                strncpy(first_line, currentImage, first_line_chars);
+                first_line[first_line_chars] = '\0';
+                m_pSH1106Display->DrawText(12, 12, first_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
                                          FALSE, FALSE, Font6x7);
                 
                 // Second line handling for very long names

@@ -641,8 +641,8 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
         const char* buttonLabel = pKernel->m_pButtonManager->GetButtonLabel(nButtonIndex);
         LOGNOTE("Button released: %s (index %u)", buttonLabel, nButtonIndex);
         
-        // Flash the activity LED briefly
-        pKernel->m_ActLED.On();
+        // REMOVED: Flash the activity LED briefly
+        // pKernel->m_ActLED.On();
         
         // Handle based on screen state
         switch (pKernel->m_ScreenState)
@@ -674,10 +674,13 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         
                     case 5: // KEY1 button - ISO selection (without stopping network)
                         LOGNOTE("KEY1 button - Entering ISO selection");
-                        
+    
+                        // REMOVED: LED blink feedback
+                        // pKernel->m_ActLED.Blink(2, 100);
+    
                         // Change screen state
                         pKernel->m_ScreenState = ScreenStateLoadISO;
-                        
+    
                         // Show loading screen for feedback
                         if (pKernel->m_pDisplayManager != nullptr)
                         {
@@ -686,7 +689,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                                 "Please wait...",
                                 "");
                         }
-                        
+    
                         // Scan for ISO files and display selection screen
                         pKernel->ScanForISOFiles();
                         pKernel->ShowISOSelectionScreen();
@@ -708,8 +711,10 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                 {
                     // UP/DOWN handled on button press
                     
+                    case 4: // CENTER button - Select ISO (just like KEY1)
                     case 5: // KEY1 button - Select ISO (OK)
-                        LOGNOTE("KEY1 button in ISO screen - Selecting ISO");
+                        LOGNOTE("%s button in ISO screen - Selecting ISO", 
+                                nButtonIndex == 4 ? "CENTER" : "KEY1");
                         pKernel->LoadSelectedISO();
                         pKernel->m_ScreenState = ScreenStateMain;
                         break;
