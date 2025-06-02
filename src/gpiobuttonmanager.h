@@ -98,7 +98,7 @@ private:
     void* m_pCallbackParam;
     
     // Constants
-    static const unsigned DEBOUNCE_TIME_MS = 150;  // Increased from 50ms to 150ms
+    static const unsigned DEBOUNCE_TIME_MS = 50;  // Reduced from 150ms to 50ms
 };
 
 #endif
