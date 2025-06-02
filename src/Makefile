@@ -14,8 +14,7 @@ kernel.o: gitinfo.h
 
 # Add rule to generate gitinfo.h
 gitinfo.h:
-	@mkdir -p $(dir $@)
-	@../tools/gitinfo.sh
+	@./gitinfo.sh
 
 LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/usb/gadget/libusbgadget.a \
