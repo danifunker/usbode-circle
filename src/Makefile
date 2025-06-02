@@ -7,7 +7,7 @@ USBODEHOME = ..
 
 CFLAGS += -I ../include -I ../addon
 
-OBJS	= main.o kernel.o webserver.o util.o displaymanager.o
+OBJS	= main.o kernel.o webserver.o util.o displaymanager.o gpiobuttonmanager.o
 
 LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/usb/gadget/libusbgadget.a \

@@ -44,6 +44,7 @@
 #include <circle/spimaster.h>
 #include <circle/gpiopin.h>
 #include "displaymanager.h"
+#include "gpiobuttonmanager.h"
 
 enum TShutdownMode {
     ShutdownNone,
@@ -90,6 +91,9 @@ private:
 	CSPIMaster* m_pSPIMaster;
 	CDisplayManager* m_pDisplayManager;
 
+	// GPIO button manager
+	CGPIOButtonManager* m_pButtonManager;
+
 	// Helper method to parse display type from config.txt
 	TDisplayType ParseDisplayType(void);
 
@@ -105,6 +109,36 @@ private:
 
 	// Updates the display with current status information
 	void UpdateDisplayStatus(const char* imageName);
+
+	// Button event callback
+	static void ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* pParam);
+
+	// Flag to indicate button test mode
+	boolean m_bButtonTestMode;
+
+	// Helper method for button initialization
+	void InitializeButtons(TDisplayType displayType);
+
+	// Screen state tracking
+	enum TScreenState
+	{
+		ScreenStateMain,
+		ScreenStateLoadISO,
+		ScreenStateAdvanced
+	};
+	
+	TScreenState m_ScreenState;
+	
+	// ISO file browsing
+	unsigned m_nCurrentISOIndex;
+	unsigned m_nTotalISOCount;
+	CString *m_pISOList;
+	static const unsigned MAX_ISO_FILES = 500;
+	
+	// Helper methods for ISO file management
+	void ScanForISOFiles(void);
+	void ShowISOSelectionScreen(void);
+	void LoadSelectedISO(void);
 };
 
 #endif

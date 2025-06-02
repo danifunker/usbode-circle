@@ -24,6 +24,7 @@
 #include <ftpserver/ftpdaemon.h>
 #include "util.h"
 #include "webserver.h"
+#include <string.h>
 
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
@@ -33,28 +34,67 @@
 #define HOSTNAME "CDROM"
 #define SPI_MASTER_DEVICE  0
 
+// Define the images directory
+#define IMAGES_DIR "SD:/images"
+
 // Static global pointer to the kernel instance (needed for the callback)
 static CKernel* g_pKernel = nullptr;
 
 LOGMODULE("kernel");
 
-CKernel::CKernel (void)
-:	m_Screen (m_Options.GetWidth (), m_Options.GetHeight ()),
-    m_Timer (&m_Interrupt),
-    m_Logger (m_Options.GetLogLevel (), &m_Timer),
-    m_EMMC (&m_Interrupt, &m_Timer, &m_ActLED),
-    m_WLAN (FIRMWARE_PATH),
-    m_Net (0, 0, 0, 0, HOSTNAME, NetDeviceTypeWLAN),
-    m_WPASupplicant (SUPPLICANT_CONFIG_FILE),
-    m_CDGadget (&m_Interrupt),
-    m_pSPIMaster(nullptr),
-    m_pDisplayManager(nullptr)
+// Custom implementation of strrchr since it's not available in Circle
+static const char* FindLastOccurrence(const char* str, int ch)
 {
-	//m_ActLED.Blink (5);	// show we are alive
+    if (str == nullptr)
+        return nullptr;
+        
+    const char* last = nullptr;
+    
+    while (*str != '\0')
+    {
+        if (*str == ch)
+            last = str;
+        str++;
+    }
+    
+    return last;
 }
 
-CKernel::~CKernel (void)
+CKernel::CKernel(void)
+: m_Screen(m_Options.GetWidth(), m_Options.GetHeight()),
+  m_Timer(&m_Interrupt),
+  m_Logger(m_Options.GetLogLevel(), &m_Timer),
+  m_EMMC(&m_Interrupt, &m_Timer, &m_ActLED),
+  m_WLAN(FIRMWARE_PATH),
+  m_Net(0, 0, 0, 0, HOSTNAME, NetDeviceTypeWLAN),
+  m_WPASupplicant(SUPPLICANT_CONFIG_FILE),
+  m_CDGadget(&m_Interrupt),
+  m_pSPIMaster(nullptr),
+  m_pDisplayManager(nullptr),
+  m_pButtonManager(nullptr),
+  m_ScreenState(ScreenStateMain),
+  m_nCurrentISOIndex(0),
+  m_nTotalISOCount(0),
+  m_pISOList(nullptr)
 {
+    //m_ActLED.Blink(5);  // show we are alive
+}
+
+CKernel::~CKernel(void)
+{
+    // Clean up ISO list if allocated
+    if (m_pISOList != nullptr)
+    {
+        delete[] m_pISOList;
+        m_pISOList = nullptr;
+    }
+    
+    if (m_pButtonManager != nullptr)
+    {
+        delete m_pButtonManager;
+        m_pButtonManager = nullptr;
+    }
+    
     if (m_pDisplayManager != nullptr)
     {
         delete m_pDisplayManager;
@@ -147,21 +187,20 @@ boolean CKernel::Initialize (void)
 	return bOK;
 }
 
-TShutdownMode CKernel::Run (void)
+TShutdownMode CKernel::Run(void)
 {
-
-	// Initialize the global kernel pointer
+    // Initialize the global kernel pointer
     g_pKernel = this;
     
-	// Load our config file loader
-	CPropertiesFatFsFile Properties (CONFIG_FILE, &m_FileSystem);
-	if (!Properties.Load ())
-	{
-		LOGERR("Error loading properties from %s (line %u)",
-				CONFIG_FILE, Properties.GetErrorLine ());
-		return ShutdownHalt;
-	}
-	Properties.SelectSection ("usbode");
+    // Load our config file loader
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    if (!Properties.Load())
+    {
+        LOGERR("Error loading properties from %s (line %u)",
+                CONFIG_FILE, Properties.GetErrorLine());
+        return ShutdownHalt;
+    }
+    Properties.SelectSection("usbode");
 
     // Start the file logging daemon
     const char *logfile = Properties.GetString("logfile", nullptr);
@@ -185,12 +224,19 @@ TShutdownMode CKernel::Run (void)
         return ShutdownHalt;
     }
 
+    // Initialize USB CD gadget
+    LOGNOTE("Starting USB CD gadget initialization");
     m_CDGadget.SetDevice(cueBinFileDevice);
-    m_CDGadget.Initialize();
+    if (!m_CDGadget.Initialize())
+    {
+        LOGERR("Failed to initialize USB CD gadget");
+        return ShutdownHalt;
+    }
+    LOGNOTE("USB CD gadget initialized successfully");
 
-	// Display configuration
-	const char* displayType = Properties.GetString("displayhat", "none");
-	LOGNOTE("Display hat configured: %s", displayType);
+    // Display configuration
+    const char* displayType = Properties.GetString("displayhat", "none");
+    LOGNOTE("Display hat configured: %s", displayType);
     
     // Initialize the appropriate display type
     TDisplayType displayTypeEnum = GetDisplayTypeFromString(displayType);
@@ -219,6 +265,13 @@ TShutdownMode CKernel::Run (void)
                 (const char*)IPString,
                 imageName);
         }
+        
+        // Allow some time for USB to stabilize before initializing buttons
+        LOGNOTE("Waiting for USB to stabilize before initializing buttons");
+        m_Scheduler.MsSleep(2000);
+        
+        // Initialize buttons AFTER USB CD and display are initialized
+        InitializeButtons(displayTypeEnum);
     }
 
 	bool showIP = true;
@@ -237,10 +290,48 @@ TShutdownMode CKernel::Run (void)
 
 	for (unsigned nCount = 0; 1; nCount++)
 	{
-		// must be called from TASK_LEVEL to allow I/O operations
-		m_CDGadget.UpdatePlugAndPlay ();
-		m_CDGadget.Update ();
-
+		// Process button updates FIRST for best responsiveness
+		if (m_pButtonManager != nullptr)
+		{
+			m_pButtonManager->Update();
+			
+			// OPTIMIZATION: Check for button updates more frequently during file selection
+			// This makes the UI feel much more responsive when navigating file lists
+			if (m_ScreenState == ScreenStateLoadISO) {
+				// If we're in the file selection screen, check buttons again immediately
+				m_pButtonManager->Update();
+			}
+		}
+		
+		// Then handle USB and network
+		m_CDGadget.UpdatePlugAndPlay();
+		m_CDGadget.Update();
+		
+		// CRITICAL: Process network tasks even in ISO selection mode
+		if (m_Net.IsRunning()) 
+		{
+			m_Net.Process();
+			
+			// Check and maintain FTP and Web services
+			if (pCWebServer == nullptr) {
+				pCWebServer = new CWebServer(&m_Net, &m_CDGadget, &m_ActLED, &Properties);
+				pCWebServer->SetDisplayUpdateHandler(DisplayUpdateCallback);
+				LOGNOTE("Started Webserver");
+			}
+			
+			if (m_pFTPDaemon == nullptr) {
+				m_pFTPDaemon = new CFTPDaemon("cdrom", "cdrom");
+				if (!m_pFTPDaemon->Initialize()) {
+					LOGERR("Failed to init FTP daemon");
+					delete m_pFTPDaemon;
+					m_pFTPDaemon = nullptr;
+				}
+				else {
+					LOGNOTE("FTP daemon initialized");
+				}
+			}
+		}
+		
 		// Show details of the network connection
 		if (m_Net.IsRunning()) {
             CString CurrentIPString;
@@ -313,22 +404,31 @@ TShutdownMode CKernel::Run (void)
             }
         }
 
-        m_Scheduler.Yield();
-
-		// Periodic status update
-		unsigned currentTime = m_Timer.GetTicks();
-		if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL) {
-			// Get the current image name from properties
-			Properties.SelectSection("usbode");
-			const char* currentImage = Properties.GetString("current_image", "image.iso");
-			
-			// Update display with current image name
-			UpdateDisplayStatus(currentImage);
-			lastStatusUpdate = currentTime;
+		// Use shorter yielding for more responsive button checks
+		// OPTIMIZATION: Yield less frequently when in file selection mode
+		if (m_ScreenState != ScreenStateLoadISO || nCount % 10 == 0)
+		{
+			m_Scheduler.Yield();
 		}
-
-		// Stop spinning
-                //m_Scheduler.MsSleep(10);
+		
+		// Status updates less frequently
+		if (nCount % 100 == 0)  // Only update status occasionally
+		{
+			// Periodic status update
+			unsigned currentTime = m_Timer.GetTicks();
+			if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL && 
+			    m_ScreenState != ScreenStateLoadISO) {  // Skip updates while in ISO selection screen
+				// Get the current image name from properties
+				Properties.SelectSection("usbode");
+				const char* currentImage = Properties.GetString("current_image", "image.iso");
+				
+				// Update display with current image name ONLY if not in ISO selection
+				if (m_ScreenState != ScreenStateLoadISO) {
+					UpdateDisplayStatus(currentImage);
+					lastStatusUpdate = currentTime;
+				}
+			}
+		}
 	}
 
 	LOGNOTE("ShutdownHalt");
@@ -440,6 +540,13 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
         return;
     }
     
+    // CRITICAL: Skip updates completely while in ISO selection screen
+    if (m_ScreenState == ScreenStateLoadISO)
+    {
+        // Remove the debug log message here
+        return;
+    }
+    
     // Track the last displayed image and IP to prevent redundant updates
     static CString LastDisplayedIP = "";
     static CString LastDisplayedImage = "";
@@ -458,9 +565,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
     
-    // Log for debugging
-    LOGNOTE("UpdateDisplayStatus - Current image in properties: %s, passed image: %s", 
-            currentImage, imageName ? imageName : "NULL");
+    // Remove the excessive debug log here
     
     // Get current IP address
     CString IPString;
@@ -482,7 +587,8 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
             (const char*)IPString,
             currentImage);  // Use the image from properties file
             
-        LOGNOTE("Display status updated: IP=%s, Image=%s", 
+        // Only log when the display actually changes
+        LOGNOTE("Display updated: IP=%s, Image=%s", 
                 (const char*)IPString, currentImage);
                 
         // Store current values
@@ -490,4 +596,381 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
         LastDisplayedImage = currentImage;
         LastUpdateTime = currentTime;
     }
+}
+
+void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* pParam)
+{
+    CKernel* pKernel = static_cast<CKernel*>(pParam);
+    if (pKernel == nullptr || pKernel->m_pButtonManager == nullptr)
+    {
+        return;
+    }
+    
+    // For button presses - handle actions IMMEDIATELY for responsiveness
+    if (bPressed)
+    {
+        // Handle specific actions based on current screen state
+        switch (pKernel->m_ScreenState)
+        {
+            case ScreenStateMain:
+                // On main screen, only KEY1 (button 5) should work to open ISO selection
+                if (nButtonIndex == 5) { // KEY1 button
+                    // Show a loading message before scanning for files
+                    if (pKernel->m_pDisplayManager != nullptr)
+                    {
+                        pKernel->m_pDisplayManager->ShowStatusScreen(
+                            "Please Wait",
+                            "Opening Image Browser",
+                            "Scanning files...");
+                        pKernel->m_pDisplayManager->Refresh();
+                    }
+                    
+                    // Immediate response to KEY1 button in main screen
+                    pKernel->m_ScreenState = ScreenStateLoadISO;
+                    pKernel->ScanForISOFiles();
+                    pKernel->ShowISOSelectionScreen();
+                }
+                break;
+                
+            case ScreenStateLoadISO:
+                // OPTIMIZATION: For ISO selection screen, skip intermediary "Navigating..." screens
+                // to make button presses feel much more responsive
+                
+                if (nButtonIndex == 0) { // UP button - previous ISO (single step) with wrapping
+                    if (pKernel->m_nTotalISOCount > 0) {
+                        // Handle wrapping from first to last file
+                        if (pKernel->m_nCurrentISOIndex == 0) {
+                            pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
+                        } else {
+                            pKernel->m_nCurrentISOIndex--;
+                        }
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                }
+                else if (nButtonIndex == 1) { // DOWN button - next ISO (single step) with wrapping
+                    if (pKernel->m_nTotalISOCount > 0) {
+                        // Handle wrapping from last to first file
+                        if (pKernel->m_nCurrentISOIndex >= pKernel->m_nTotalISOCount - 1) {
+                            pKernel->m_nCurrentISOIndex = 0;
+                        } else {
+                            pKernel->m_nCurrentISOIndex++;
+                        }
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                }
+                else if (nButtonIndex == 2) { // LEFT button - skip back 5 files with wrapping
+                    if (pKernel->m_nTotalISOCount > 0) {
+                        // Skip back 5 files with wrapping
+                        if (pKernel->m_nCurrentISOIndex < 5) {
+                            // Wrap around to the end
+                            pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 
+                                (5 - pKernel->m_nCurrentISOIndex);
+                            
+                            // Make sure we don't go out of bounds
+                            if (pKernel->m_nCurrentISOIndex >= pKernel->m_nTotalISOCount) {
+                                pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
+                            }
+                        } else {
+                            pKernel->m_nCurrentISOIndex -= 5;
+                        }
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                }
+                else if (nButtonIndex == 3) { // RIGHT button - skip forward 5 files with wrapping
+                    if (pKernel->m_nTotalISOCount > 0) {
+                        // Skip forward 5 files with wrapping
+                        if (pKernel->m_nCurrentISOIndex + 5 >= pKernel->m_nTotalISOCount) {
+                            // Wrap around to the beginning
+                            pKernel->m_nCurrentISOIndex = 
+                                (pKernel->m_nCurrentISOIndex + 5) % pKernel->m_nTotalISOCount;
+                        } else {
+                            pKernel->m_nCurrentISOIndex += 5;
+                        }
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                }
+                else if (nButtonIndex == 5) { // KEY1 button - load selected ISO
+                    // Show loading message
+                    if (pKernel->m_pDisplayManager != nullptr) {
+                        const char* selectedFile = 
+                            (pKernel->m_nTotalISOCount > 0 && pKernel->m_pISOList != nullptr) ?
+                            (const char*)pKernel->m_pISOList[pKernel->m_nCurrentISOIndex] : "Unknown";
+                            
+                        pKernel->m_pDisplayManager->ShowStatusScreen(
+                            "Please Wait",
+                            "Loading Image:",
+                            selectedFile);
+                        pKernel->m_pDisplayManager->Refresh();
+                    }
+                    
+                    pKernel->LoadSelectedISO();
+                    pKernel->m_ScreenState = ScreenStateMain;
+                    // Update main screen after loading ISO
+                    pKernel->UpdateDisplayStatus(nullptr);
+                }
+                else if (nButtonIndex == 6) { // KEY2 button - cancel and return to main
+                    pKernel->m_ScreenState = ScreenStateMain;
+                    pKernel->UpdateDisplayStatus(nullptr);
+                }
+                break;
+        }
+    }
+}
+
+void CKernel::InitializeButtons(TDisplayType displayType)
+{
+    // Early exit if no display type is specified
+    if (displayType == DisplayTypeUnknown)
+    {
+        LOGNOTE("No display configured, skipping button initialization");
+        return;
+    }
+    
+    // Skip if buttons are already initialized
+    if (m_pButtonManager != nullptr)
+    {
+        LOGNOTE("Buttons already initialized");
+        return;
+    }
+    
+    LOGNOTE("Starting button initialization for display type: %s", 
+            displayType == DisplayTypeSH1106 ? "SH1106" : 
+            displayType == DisplayTypeST7789 ? "ST7789" : "Unknown");
+    
+    // Create the button manager
+    m_pButtonManager = new CGPIOButtonManager(&m_Logger, displayType);
+    if (m_pButtonManager == nullptr)
+    {
+        LOGERR("Failed to create button manager");
+        return;
+    }
+    
+    // Initialize the button manager
+    if (!m_pButtonManager->Initialize())
+    {
+        LOGERR("Failed to initialize button manager");
+        delete m_pButtonManager;
+        m_pButtonManager = nullptr;
+        return;
+    }
+    
+    // Register the button event handler
+    m_pButtonManager->RegisterEventHandler(ButtonEventHandler, this);
+    
+    LOGNOTE("Button initialization complete - %u buttons configured", 
+            m_pButtonManager->GetButtonCount());
+}
+
+void CKernel::ScanForISOFiles(void)
+{
+    // Show loading indicator immediately before starting the operation
+    if (m_pDisplayManager != nullptr)
+    {
+        m_pDisplayManager->ShowStatusScreen(
+            "Please Wait",
+            "Scanning for ISOs...",
+            "This may take a moment");
+        
+        // Ensure the display is updated immediately
+        m_pDisplayManager->Refresh();
+    }
+    
+    // Clean up previous list
+    if (m_pISOList != nullptr)
+    {
+        delete[] m_pISOList;
+        m_pISOList = nullptr;
+    }
+    
+    // Reset counters
+    m_nTotalISOCount = 0;
+    m_nCurrentISOIndex = 0;
+    
+    // Allocate with larger MAX_ISO_FILES value
+    m_pISOList = new CString[MAX_ISO_FILES];
+    if (m_pISOList == nullptr)
+    {
+        LOGERR("Failed to allocate memory for ISO list");
+        return;
+    }
+    
+    // Get current ISO from config just once
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    Properties.Load();
+    Properties.SelectSection("usbode");
+    const char* currentImage = Properties.GetString("current_image", "image.iso");
+    bool currentImageFound = false;
+    
+    // First try to scan the images directory
+    DIR Directory;
+    FILINFO FileInfo;
+    
+    FRESULT result = f_opendir(&Directory, IMAGES_DIR);
+    if (result == FR_OK)
+    {
+        LOGNOTE("Scanning for ISO files in %s", IMAGES_DIR);
+        
+        // Read all files in this directory
+        while (f_readdir(&Directory, &FileInfo) == FR_OK && FileInfo.fname[0] != 0)
+        {
+            // Skip directories
+            if (FileInfo.fattrib & AM_DIR)
+                continue;
+            
+            // Check for .iso, .cue, or .bin extensions
+            const char* Extension = FindLastOccurrence(FileInfo.fname, '.');
+            if (Extension == nullptr)
+                continue;
+                
+            if (strcasecmp(Extension, ".iso") == 0 || 
+                strcasecmp(Extension, ".cue") == 0 || 
+                strcasecmp(Extension, ".bin") == 0)
+            {
+                // Check if we have space left
+                if (m_nTotalISOCount >= MAX_ISO_FILES)
+                {
+                    LOGWARN("Maximum ISO file count reached (%u)", MAX_ISO_FILES);
+                    break;
+                }
+                
+                // Add to our list
+                m_pISOList[m_nTotalISOCount] = FileInfo.fname;
+                
+                // Check if this is the current image
+                if (strcasecmp(FileInfo.fname, currentImage) == 0)
+                {
+                    m_nCurrentISOIndex = m_nTotalISOCount;
+                    currentImageFound = true;
+                }
+                
+                m_nTotalISOCount++;
+            }
+        }
+        
+        f_closedir(&Directory);
+    }
+    
+    // Sort files alphabetically using a more efficient algorithm
+    for (unsigned i = 0; i < m_nTotalISOCount - 1; i++)
+    {
+        unsigned minIndex = i;
+        
+        for (unsigned j = i + 1; j < m_nTotalISOCount; j++)
+        {
+            if (strcasecmp((const char*)m_pISOList[j], (const char*)m_pISOList[minIndex]) < 0)
+            {
+                minIndex = j;
+            }
+        }
+        
+        if (minIndex != i)
+        {
+            // Swap
+            CString Temp = m_pISOList[i];
+            m_pISOList[i] = m_pISOList[minIndex];
+            m_pISOList[minIndex] = Temp;
+            
+            // Update current index if affected
+            if (m_nCurrentISOIndex == i)
+                m_nCurrentISOIndex = minIndex;
+            else if (m_nCurrentISOIndex == minIndex)
+                m_nCurrentISOIndex = i;
+        }
+    }
+    
+    LOGNOTE("Found %u ISO/CUE/BIN files, current is %u (%s)", 
+            m_nTotalISOCount, 
+            m_nCurrentISOIndex, 
+            m_nTotalISOCount > 0 ? (const char*)m_pISOList[m_nCurrentISOIndex] : "none");
+}
+
+void CKernel::ShowISOSelectionScreen(void)
+{
+    if (m_pDisplayManager == nullptr)
+    {
+        return;
+    }
+    
+    // Get current ISO from config
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    Properties.Load();
+    Properties.SelectSection("usbode");
+    const char* currentImage = Properties.GetString("current_image", "image.iso");
+    
+    if (m_nTotalISOCount == 0)
+    {
+        // No ISO files found
+        m_pDisplayManager->ShowStatusScreen(
+            "Select Image",
+            "No Images files found",
+            "Place files on SD card");
+    }
+    else
+    {
+        // Display current file in the selection
+        const char* selectedFile = (const char*)m_pISOList[m_nCurrentISOIndex];
+        
+        // Pass both current and selected ISO
+        m_pDisplayManager->ShowFileSelectionScreen(
+            currentImage,  // Currently loaded ISO
+            selectedFile,  // Currently selected ISO in the list
+            m_nCurrentISOIndex + 1,
+            m_nTotalISOCount);
+    }
+}
+
+void CKernel::LoadSelectedISO(void)
+{
+    // Early validation checks...
+    if (m_nTotalISOCount == 0 || m_pISOList == nullptr)
+    {
+        LOGERR("No ISO files available");
+        return;
+    }
+    
+    // Get the selected ISO filename
+    const char* SelectedISO = (const char*)m_pISOList[m_nCurrentISOIndex];
+    
+    // CRITICAL CHANGE: Don't construct the full path here, 
+    // just pass the filename to loadCueBinFileDevice
+    LOGNOTE("Loading ISO: %s", SelectedISO);
+    
+    // Let loadCueBinFileDevice handle the path construction
+    CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(SelectedISO);
+    if (CueBinFileDevice == nullptr)
+    {
+        LOGERR("Failed to load Image: %s", SelectedISO);
+        
+        // Get the current image that's still loaded
+        CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+        Properties.Load();
+        Properties.SelectSection("usbode");
+        const char* currentImage = Properties.GetString("current_image", "image.iso");
+        
+        // Show error message with current loaded image
+        if (m_pDisplayManager != nullptr)
+        {
+            m_pDisplayManager->ShowStatusScreen(
+                "Error loading Image",
+                "Failed to load file",
+                currentImage);  // Show currently loaded ISO
+        }
+        
+        return;
+    }
+    
+    // Update the config file only after successful load
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    Properties.Load();
+    Properties.SelectSection("usbode");
+    Properties.SetString("current_image", SelectedISO);
+    Properties.Save();
+    
+    LOGNOTE("Selected new Image: %s", SelectedISO);
+    
+    // Set the new device in the CD gadget
+    m_CDGadget.SetDevice(CueBinFileDevice);
+    
+    // Update the display
+    UpdateDisplayStatus(SelectedISO);
 }
