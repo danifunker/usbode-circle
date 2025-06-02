@@ -381,6 +381,17 @@ TShutdownMode CKernel::Run(void)
                     InitializeNTP(timezone);
                     ntpInitialized = true;
                 }
+                
+                // Update the display with the new IP address
+                // but only if we're not in the ISO selection screen
+                if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr) {
+                    // Get the current ISO name
+                    Properties.SelectSection("usbode");
+                    const char* currentImage = Properties.GetString("current_image", "image.iso");
+                    
+                    // Force an update of the display
+                    UpdateDisplayStatus(currentImage);
+                }
             }
         }
 
@@ -572,7 +583,6 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     // CRITICAL: Skip updates completely while in ISO selection screen
     if (m_ScreenState == ScreenStateLoadISO)
     {
-        // Remove the debug log message here
         return;
     }
     
@@ -594,7 +604,11 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
     
-    // Remove the excessive debug log here
+    // Use the provided imageName if it's not null, otherwise use the one from properties
+    if (imageName != nullptr && *imageName != '\0')
+    {
+        currentImage = imageName;
+    }
     
     // Get current IP address
     CString IPString;
@@ -607,8 +621,11 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
         IPString = "Not connected";
     }
     
-    // Only update if something has changed
-    if (IPString != LastDisplayedIP || CString(currentImage) != LastDisplayedImage)
+    // Force update if explicitly requested by passing a non-null imageName
+    bool forceUpdate = (imageName != nullptr && *imageName != '\0');
+    
+    // Only update if something has changed or force update requested
+    if (forceUpdate || IPString != LastDisplayedIP || CString(currentImage) != LastDisplayedImage)
     {
         // Update the status screen
         m_pDisplayManager->ShowStatusScreen(
@@ -1052,6 +1069,40 @@ void CKernel::InitializeNTP(const char* timezone)
     CTime Time;
     Time.Set(nTime);
     
+    // Set time in the CTimer singleton for system-wide use
+    CTimer::Get()->SetTime(nTime);
+    
+    // Apply timezone offset (if Circle supports it)
+    // Convert timezone string to minutes offset from UTC
+    int nTimeZoneOffset = 0; // Default to UTC
+    
+    // Very basic timezone handling for common US timezones
+    if (strcasecmp(timezone, "America/New_York") == 0 || 
+        strcasecmp(timezone, "America/Detroit") == 0 ||
+        strcasecmp(timezone, "US/Eastern") == 0)
+    {
+        nTimeZoneOffset = -5 * 60; // Eastern Time (non-DST)
+    }
+    else if (strcasecmp(timezone, "America/Chicago") == 0 ||
+             strcasecmp(timezone, "US/Central") == 0)
+    {
+        nTimeZoneOffset = -6 * 60; // Central Time (non-DST)
+    }
+    else if (strcasecmp(timezone, "America/Denver") == 0 ||
+             strcasecmp(timezone, "US/Mountain") == 0)
+    {
+        nTimeZoneOffset = -7 * 60; // Mountain Time (non-DST)
+    }
+    else if (strcasecmp(timezone, "America/Los_Angeles") == 0 ||
+             strcasecmp(timezone, "US/Pacific") == 0)
+    {
+        nTimeZoneOffset = -8 * 60; // Pacific Time (non-DST)
+    }
+    
+    // Apply the timezone offset to the timer
+    CTimer::Get()->SetTimeZone(nTimeZoneOffset);
+    
     // Log the current time
-    LOGNOTE("Time synchronized successfully: %s", Time.GetString());
+    LOGNOTE("Time synchronized successfully: %s (Offset: %d minutes)", 
+            Time.GetString(), nTimeZoneOffset);
 }
