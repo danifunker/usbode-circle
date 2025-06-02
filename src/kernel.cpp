@@ -363,11 +363,11 @@ TShutdownMode CKernel::Run(void)
             m_Net.GetConfig()->GetIPAddress()->Format(&CurrentIPString);
             
             // If IP changed (including from not connected to connected)
-            if (CurrentIPString != PreviousIPString) {
+            if (strcmp((const char*)CurrentIPString, (const char*)PreviousIPString) != 0) {
                 // Log the new IP address
                 LOGNOTE("IP address: %s", (const char*)CurrentIPString);
                 
-                // Store for next time
+                // Store for next time - make sure to use deep copy
                 PreviousIPString = CurrentIPString;
                 
                 // If network is newly up and running with a valid IP address
