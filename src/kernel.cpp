@@ -307,6 +307,7 @@ TShutdownMode CKernel::Run(void)
 
 	// Previous IP tracking
 	static CString PreviousIPString = "";
+	bool ntpInitialized = false;
 
 	// Status update timing
 	static unsigned lastStatusUpdate = 0;
@@ -363,19 +364,23 @@ TShutdownMode CKernel::Run(void)
             
             // If IP changed (including from not connected to connected)
             if (CurrentIPString != PreviousIPString) {
+                // Log the new IP address
+                LOGNOTE("IP address: %s", (const char*)CurrentIPString);
+                
+                // Store for next time
                 PreviousIPString = CurrentIPString;
                 
-                // Log network info
-                if (showIP) {
-                    showIP = false;
-                    LOGNOTE("==========================================");
-                    m_WLAN.DumpStatus();
-                    LOGNOTE("Our IP address is %s", (const char*)CurrentIPString);
-                    LOGNOTE("==========================================");
+                // If network is newly up and running with a valid IP address
+                // and NTP hasn't been initialized yet, do it now
+                if (!ntpInitialized && CurrentIPString != "0.0.0.0") {
+                    // Read timezone from config.txt
+                    Properties.SelectSection("usbode");
+                    const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
+                    
+                    // Initialize NTP with the timezone
+                    InitializeNTP(timezone);
+                    ntpInitialized = true;
                 }
-                
-                // Update display with new IP
-                UpdateDisplayStatus(imageName);
             }
         }
 
