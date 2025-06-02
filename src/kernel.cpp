@@ -601,22 +601,12 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
     // For button presses - handle actions IMMEDIATELY for responsiveness
     if (bPressed)
     {
-        // Set the appropriate display feedback immediately
-        if (pKernel->m_pDisplayManager != nullptr)
-        {
-            // Provide immediate visual feedback that the button was pressed
-            pKernel->m_pDisplayManager->ShowButtonPress(nButtonIndex, 
-                pKernel->m_pButtonManager->GetButtonLabel(nButtonIndex));
-            
-            // Ensure feedback is displayed immediately
-            pKernel->m_pDisplayManager->Refresh();
-        }
-        
         // Handle specific actions based on current screen state
         switch (pKernel->m_ScreenState)
         {
             case ScreenStateMain:
-                if (nButtonIndex == 0) { // UP button
+                // On main screen, only KEY1 (button 5) should work to open ISO selection
+                if (nButtonIndex == 5) { // KEY1 button
                     // Show a loading message before scanning for files
                     if (pKernel->m_pDisplayManager != nullptr)
                     {
@@ -627,7 +617,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->m_pDisplayManager->Refresh();
                     }
                     
-                    // Immediate response to UP button in main screen
+                    // Immediate response to KEY1 button in main screen
                     pKernel->m_ScreenState = ScreenStateLoadISO;
                     pKernel->ScanForISOFiles();
                     pKernel->ShowISOSelectionScreen();
@@ -635,7 +625,8 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                 break;
                 
             case ScreenStateLoadISO:
-                if (nButtonIndex == 2) { // LEFT button - previous ISO
+                // In ISO selection screen, handle UP/DOWN/KEY1/KEY2
+                if (nButtonIndex == 0) { // UP button - previous ISO
                     if (pKernel->m_nCurrentISOIndex > 0) {
                         // Show quick feedback before updating
                         if (pKernel->m_pDisplayManager != nullptr) {
@@ -650,7 +641,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->ShowISOSelectionScreen();
                     }
                 }
-                else if (nButtonIndex == 3) { // RIGHT button - next ISO
+                else if (nButtonIndex == 1) { // DOWN button - next ISO
                     if (pKernel->m_nCurrentISOIndex < pKernel->m_nTotalISOCount - 1) {
                         // Show quick feedback before updating
                         if (pKernel->m_pDisplayManager != nullptr) {
@@ -665,21 +656,20 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->ShowISOSelectionScreen();
                     }
                 }
-                break;
-        }
-    }
-    
-    // For button releases - handle actions that should happen on release
-    if (!bPressed)  
-    {
-        switch (pKernel->m_ScreenState)
-        {
-            case ScreenStateMain:
-                // Most actions now handled on press, not release
-                break;
-                
-            case ScreenStateLoadISO:
-                if (nButtonIndex == 4) { // CENTER button - load selected ISO
+                else if (nButtonIndex == 5) { // KEY1 button - load selected ISO
+                    // Show loading message
+                    if (pKernel->m_pDisplayManager != nullptr) {
+                        const char* selectedFile = 
+                            (pKernel->m_nTotalISOCount > 0 && pKernel->m_pISOList != nullptr) ?
+                            (const char*)pKernel->m_pISOList[pKernel->m_nCurrentISOIndex] : "Unknown";
+                            
+                        pKernel->m_pDisplayManager->ShowStatusScreen(
+                            "Please Wait",
+                            "Loading Image:",
+                            selectedFile);
+                        pKernel->m_pDisplayManager->Refresh();
+                    }
+                    
                     pKernel->LoadSelectedISO();
                     pKernel->m_ScreenState = ScreenStateMain;
                     // Update main screen after loading ISO
@@ -692,6 +682,8 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                 break;
         }
     }
+    
+    // We no longer need to handle button releases for these operations
 }
 
 void CKernel::InitializeButtons(TDisplayType displayType)
