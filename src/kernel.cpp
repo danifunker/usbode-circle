@@ -382,9 +382,11 @@ TShutdownMode CKernel::Run(void)
 			Properties.SelectSection("usbode");
 			const char* currentImage = Properties.GetString("current_image", "image.iso");
 			
-			// Update display with current image name
-			UpdateDisplayStatus(currentImage);
-			lastStatusUpdate = currentTime;
+			// Update display with current image name ONLY if not in ISO selection
+			if (m_ScreenState != ScreenStateLoadISO) {
+				UpdateDisplayStatus(currentImage);
+				lastStatusUpdate = currentTime;
+			}
 		}
 
 		// Stop spinning
@@ -560,28 +562,28 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
         return;
     }
     
-    // Only handle button press events (not releases)
-    if (bPressed)
+    // Change to handle button RELEASE events instead of press
+    if (!bPressed)  // Notice the logical NOT - we're checking for release
     {
-        // Add static variable to track last button press time
-        static unsigned nLastPressTime = 0;
+        // Static variable to track last button release time
+        static unsigned nLastReleaseTime = 0;
         unsigned nCurrentTime = pKernel->m_Timer.GetTicks();
         
-        // Add extra global debounce protection (250ms between any button actions)
-        if (nCurrentTime - nLastPressTime < 250)
+        // Add extra global debounce protection (300ms between any button actions)
+        if (nCurrentTime - nLastReleaseTime < 300)
         {
             return;
         }
         
-        // Update the last press time
-        nLastPressTime = nCurrentTime;
+        // Update the last release time
+        nLastReleaseTime = nCurrentTime;
         
         const char* buttonLabel = pKernel->m_pButtonManager->GetButtonLabel(nButtonIndex);
         
-        // Log button press with more detail
-        LOGNOTE("Button pressed: %s (index %u)", buttonLabel, nButtonIndex);
+        // Log button release with more detail
+        LOGNOTE("Button released: %s (index %u)", buttonLabel, nButtonIndex);
         
-        // Flash the activity LED briefly to indicate button press
+        // Flash the activity LED briefly to indicate button action
         pKernel->m_ActLED.On();
         
         // Get display type to handle buttons differently
@@ -625,19 +627,45 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     {
                         case 0: // D-UP button - Scroll up through ISO list
                             LOGNOTE("SH1106: UP button - Previous ISO");
-                            if (pKernel->m_nTotalISOCount > 0 && pKernel->m_nCurrentISOIndex > 0)
+                            if (pKernel->m_nTotalISOCount > 0)
                             {
-                                pKernel->m_nCurrentISOIndex--;
+                                // Add extra log to debug
+                                LOGNOTE("Navigation: current=%u, total=%u", 
+                                       pKernel->m_nCurrentISOIndex, pKernel->m_nTotalISOCount);
+                                
+                                if (pKernel->m_nCurrentISOIndex > 0)
+                                {
+                                    pKernel->m_nCurrentISOIndex--;
+                                }
+                                else
+                                {
+                                    // Wrap around to the end of the list
+                                    pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
+                                }
+                                
+                                // Debug the new position
+                                LOGNOTE("New position: %u", pKernel->m_nCurrentISOIndex);
+                                
+                                // Always call ShowISOSelectionScreen to update display
                                 pKernel->ShowISOSelectionScreen();
                             }
                             break;
                             
                         case 1: // D-DOWN button - Scroll down through ISO list
                             LOGNOTE("SH1106: DOWN button - Next ISO");
-                            if (pKernel->m_nTotalISOCount > 0 && 
-                                pKernel->m_nCurrentISOIndex < pKernel->m_nTotalISOCount - 1)
+                            if (pKernel->m_nTotalISOCount > 0)
                             {
-                                pKernel->m_nCurrentISOIndex++;
+                                // Add extra log to debug
+                                LOGNOTE("Navigation: current=%u, total=%u", 
+                                       pKernel->m_nCurrentISOIndex, pKernel->m_nTotalISOCount);
+                                
+                                // Increment and wrap around if needed
+                                pKernel->m_nCurrentISOIndex = (pKernel->m_nCurrentISOIndex + 1) % pKernel->m_nTotalISOCount;
+                                
+                                // Debug the new position
+                                LOGNOTE("New position: %u", pKernel->m_nCurrentISOIndex);
+                                
+                                // Always call ShowISOSelectionScreen to update display
                                 pKernel->ShowISOSelectionScreen();
                             }
                             break;
@@ -882,27 +910,29 @@ void CKernel::ShowISOSelectionScreen(void)
         return;
     }
     
-    // Prepare header text
-    char HeaderText[32];
-    snprintf(HeaderText, sizeof(HeaderText), "Select ISO (%u/%u)", 
-             m_nCurrentISOIndex + 1, m_nTotalISOCount);
+    // Get current ISO from config
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    Properties.Load();
+    Properties.SelectSection("usbode");
+    const char* currentImage = Properties.GetString("current_image", "image.iso");
     
     if (m_nTotalISOCount == 0)
     {
         // No ISO files found
         m_pDisplayManager->ShowStatusScreen(
-            HeaderText,
-            "No ISO files found",
+            "Select Image",
+            "No Images files found",
             "Place files on SD card");
     }
     else
     {
         // Display current file in the selection
-        const char* CurrentFile = (const char*)m_pISOList[m_nCurrentISOIndex];
+        const char* selectedFile = (const char*)m_pISOList[m_nCurrentISOIndex];
         
+        // Pass both current and selected ISO
         m_pDisplayManager->ShowFileSelectionScreen(
-            "Current: Select to load",
-            CurrentFile,
+            currentImage,  // Currently loaded ISO
+            selectedFile,  // Currently selected ISO in the list
             m_nCurrentISOIndex + 1,
             m_nTotalISOCount);
     }
@@ -916,23 +946,55 @@ void CKernel::LoadSelectedISO(void)
         return;
     }
     
+    // Add extra check for valid index
+    if (m_nCurrentISOIndex >= m_nTotalISOCount)
+    {
+        LOGERR("Invalid Image index: %u (max: %u)", m_nCurrentISOIndex, m_nTotalISOCount - 1);
+        return;
+    }
+    
     // Get the selected ISO filename
     const char* SelectedISO = (const char*)m_pISOList[m_nCurrentISOIndex];
+    
+    // Add safety check for null pointer
+    if (SelectedISO == nullptr || *SelectedISO == '\0')
+    {
+        LOGERR("Invalid Image filename");
+        return;
+    }
+    
+    // Construct full path
+    char FullPath[256];
+    // Check if we're using images directory 
+    DIR Directory;
+    FRESULT result = f_opendir(&Directory, IMAGES_DIR);
+    f_closedir(&Directory);
+    
+    if (result == FR_OK)
+    {
+        snprintf(FullPath, sizeof(FullPath), "%s/%s", IMAGES_DIR, SelectedISO);
+    }
+    else
+    {
+        snprintf(FullPath, sizeof(FullPath), "%s/%s", DRIVE, SelectedISO);
+    }
+    
+    LOGNOTE("Loading ISO from path: %s", FullPath);
     
     // Show loading message
     if (m_pDisplayManager != nullptr)
     {
         m_pDisplayManager->ShowStatusScreen(
             "Loading new ISO",
-            SelectedISO,
+            SelectedISO, // Show just the filename, not the full path
             "Please wait...");
     }
     
-    // Load the new ISO
-    CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(SelectedISO);
+    // Load the new ISO with full path
+    CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(FullPath);
     if (CueBinFileDevice == nullptr)
     {
-        LOGERR("Failed to load ISO: %s", SelectedISO);
+        LOGERR("Failed to load Image: %s", SelectedISO);
         
         // Get the current image that's still loaded
         CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
@@ -944,7 +1006,7 @@ void CKernel::LoadSelectedISO(void)
         if (m_pDisplayManager != nullptr)
         {
             m_pDisplayManager->ShowStatusScreen(
-                "Error loading ISO",
+                "Error loading Image",
                 "Failed to load file",
                 currentImage);  // Show currently loaded ISO
         }
@@ -959,7 +1021,7 @@ void CKernel::LoadSelectedISO(void)
     Properties.SetString("current_image", SelectedISO);
     Properties.Save();
     
-    LOGNOTE("Selected new ISO: %s", SelectedISO);
+    LOGNOTE("Selected new Image: %s", SelectedISO);
     
     // Set the new device in the CD gadget
     m_CDGadget.SetDevice(CueBinFileDevice);
