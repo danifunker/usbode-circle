@@ -294,6 +294,13 @@ TShutdownMode CKernel::Run(void)
 		if (m_pButtonManager != nullptr)
 		{
 			m_pButtonManager->Update();
+			
+			// OPTIMIZATION: Check for button updates more frequently during file selection
+			// This makes the UI feel much more responsive when navigating file lists
+			if (m_ScreenState == ScreenStateLoadISO) {
+				// If we're in the file selection screen, check buttons again immediately
+				m_pButtonManager->Update();
+			}
 		}
 		
 		// Then handle USB and network
@@ -398,7 +405,8 @@ TShutdownMode CKernel::Run(void)
         }
 
 		// Use shorter yielding for more responsive button checks
-		if (nCount % 5 == 0)  // Only yield every 5 loops
+		// OPTIMIZATION: Yield less frequently when in file selection mode
+		if (m_ScreenState != ScreenStateLoadISO || nCount % 10 == 0)
 		{
 			m_Scheduler.Yield();
 		}
@@ -625,34 +633,44 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                 break;
                 
             case ScreenStateLoadISO:
-                // In ISO selection screen, handle UP/DOWN/KEY1/KEY2
-                if (nButtonIndex == 0) { // UP button - previous ISO
+                // OPTIMIZATION: For ISO selection screen, skip intermediary "Navigating..." screens
+                // to make button presses feel much more responsive
+                
+                if (nButtonIndex == 0) { // UP button - previous ISO (single step)
                     if (pKernel->m_nCurrentISOIndex > 0) {
-                        // Show quick feedback before updating
-                        if (pKernel->m_pDisplayManager != nullptr) {
-                            pKernel->m_pDisplayManager->ShowStatusScreen(
-                                "Select Image",
-                                "Navigating...",
-                                "Previous");
-                            pKernel->m_pDisplayManager->Refresh();
-                        }
-                        
+                        // Skip intermediate feedback screens for faster response
                         pKernel->m_nCurrentISOIndex--;
                         pKernel->ShowISOSelectionScreen();
                     }
                 }
-                else if (nButtonIndex == 1) { // DOWN button - next ISO
+                else if (nButtonIndex == 1) { // DOWN button - next ISO (single step)
                     if (pKernel->m_nCurrentISOIndex < pKernel->m_nTotalISOCount - 1) {
-                        // Show quick feedback before updating
-                        if (pKernel->m_pDisplayManager != nullptr) {
-                            pKernel->m_pDisplayManager->ShowStatusScreen(
-                                "Select Image",
-                                "Navigating...",
-                                "Next");
-                            pKernel->m_pDisplayManager->Refresh();
+                        // Skip intermediate feedback screens for faster response
+                        pKernel->m_nCurrentISOIndex++;
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                }
+                else if (nButtonIndex == 2) { // LEFT button - skip back 5 files
+                    if (pKernel->m_nCurrentISOIndex > 0) {
+                        // Jump back 5 files, but not below 0
+                        if (pKernel->m_nCurrentISOIndex >= 5) {
+                            pKernel->m_nCurrentISOIndex -= 5;
+                        } else {
+                            pKernel->m_nCurrentISOIndex = 0;
                         }
                         
-                        pKernel->m_nCurrentISOIndex++;
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                }
+                else if (nButtonIndex == 3) { // RIGHT button - skip forward 5 files
+                    if (pKernel->m_nCurrentISOIndex < pKernel->m_nTotalISOCount - 1) {
+                        // Jump forward 5 files, but not beyond the end
+                        if (pKernel->m_nCurrentISOIndex + 5 < pKernel->m_nTotalISOCount) {
+                            pKernel->m_nCurrentISOIndex += 5;
+                        } else {
+                            pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
+                        }
+                        
                         pKernel->ShowISOSelectionScreen();
                     }
                 }
@@ -682,8 +700,6 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                 break;
         }
     }
-    
-    // We no longer need to handle button releases for these operations
 }
 
 void CKernel::InitializeButtons(TDisplayType displayType)

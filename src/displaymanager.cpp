@@ -407,6 +407,20 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
 void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const char *pSelectedFileName, 
                                            unsigned int CurrentFileIndex, unsigned int TotalFiles)
 {
+    // OPTIMIZATION: Skip redundant updates for the same file
+    static CString LastSelectedFileName = "";
+    static unsigned int LastFileIndex = 0;
+    
+    // If nothing changed, skip the update completely
+    if (LastSelectedFileName == pSelectedFileName && LastFileIndex == CurrentFileIndex)
+    {
+        return;
+    }
+    
+    // Remember current selection for next time
+    LastSelectedFileName = pSelectedFileName;
+    LastFileIndex = CurrentFileIndex;
+    
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
