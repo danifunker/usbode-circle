@@ -294,7 +294,32 @@ TShutdownMode CKernel::Run(void)
 		m_CDGadget.UpdatePlugAndPlay();
 		m_CDGadget.Update();
 		
-		// Add button update call
+		// CRITICAL: Process network tasks even in ISO selection mode
+		if (m_Net.IsRunning()) 
+		{
+			m_Net.Process();
+			
+			// Check and maintain FTP and Web services
+			if (pCWebServer == nullptr) {
+				pCWebServer = new CWebServer(&m_Net, &m_CDGadget, &m_ActLED, &Properties);
+				pCWebServer->SetDisplayUpdateHandler(DisplayUpdateCallback);
+				LOGNOTE("Started Webserver");
+			}
+			
+			if (m_pFTPDaemon == nullptr) {
+				m_pFTPDaemon = new CFTPDaemon("cdrom", "cdrom");
+				if (!m_pFTPDaemon->Initialize()) {
+					LOGERR("Failed to init FTP daemon");
+					delete m_pFTPDaemon;
+					m_pFTPDaemon = nullptr;
+				}
+				else {
+					LOGNOTE("FTP daemon initialized");
+				}
+			}
+		}
+		
+		// Add button update call with shorter processing time
 		if (m_pButtonManager != nullptr)
 		{
 			m_pButtonManager->Update();
@@ -569,40 +594,58 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
         return;
     }
     
-    // HANDLE BOTH PRESS AND RELEASE with different logic
-    
-    // For button presses - just log them
+    // For button presses - handle some actions immediately for responsiveness
     if (bPressed)
     {
-        const char* buttonLabel = pKernel->m_pButtonManager->GetButtonLabel(nButtonIndex);
-        LOGNOTE("Button pressed: %s (index %u)", buttonLabel, nButtonIndex);
+        // In ISO selection screen, respond to up/down on press for better responsiveness
+        if (pKernel->m_ScreenState == ScreenStateLoadISO)
+        {
+            switch (nButtonIndex)
+            {
+                case 0: // UP button
+                    if (pKernel->m_nTotalISOCount > 0)
+                    {
+                        if (pKernel->m_nCurrentISOIndex > 0)
+                            pKernel->m_nCurrentISOIndex--;
+                        else
+                            pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
+                            
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                    return; // Skip the release handling for this button
+                    
+                case 1: // DOWN button
+                    if (pKernel->m_nTotalISOCount > 0)
+                    {
+                        pKernel->m_nCurrentISOIndex = (pKernel->m_nCurrentISOIndex + 1) % pKernel->m_nTotalISOCount;
+                        pKernel->ShowISOSelectionScreen();
+                    }
+                    return; // Skip the release handling for this button
+            }
+        }
     }
     
-    // For button releases - actually perform the actions
+    // For button releases - handle the rest of the actions
     if (!bPressed)  
     {
-        // Static variable to track last button release time
+        // Less aggressive debounce for release actions (100ms instead of 150ms)
         static unsigned nLastReleaseTime = 0;
         unsigned nCurrentTime = pKernel->m_Timer.GetTicks();
         
-        // Reduce debounce time from 300ms to 150ms
-        if (nCurrentTime - nLastReleaseTime < 150)
+        if (nCurrentTime - nLastReleaseTime < 100)
         {
             return;
         }
         
-        // Update the last release time
         nLastReleaseTime = nCurrentTime;
         
         const char* buttonLabel = pKernel->m_pButtonManager->GetButtonLabel(nButtonIndex);
-        
-        // Log button release with more detail
         LOGNOTE("Button released: %s (index %u)", buttonLabel, nButtonIndex);
         
-        // Flash the activity LED briefly to indicate button action
+        // Flash the activity LED briefly
         pKernel->m_ActLED.On();
         
-        // Handle button logic based on screen state...
+        // Handle based on screen state
         switch (pKernel->m_ScreenState)
         {
             case ScreenStateMain:
@@ -664,55 +707,32 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                 // ISO selection screen button handling
                 switch (nButtonIndex)
                 {
-                    case 0: // D-UP button - Scroll up through ISO list
-                        LOGNOTE("SH1106: UP button - Previous ISO");
-                        if (pKernel->m_nTotalISOCount > 0)
-                        {
-                            // Move up with wrap around
-                            if (pKernel->m_nCurrentISOIndex > 0)
-                            {
-                                pKernel->m_nCurrentISOIndex--;
-                            }
-                            else
-                            {
-                                pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
-                            }
-                            
-                            // Immediately update the display
-                            pKernel->ShowISOSelectionScreen();
-                            
-                            // Add very short delay to make navigation smoother
-                            pKernel->m_Scheduler.MsSleep(50);
-                        }
-                        break;
-                        
-                    case 1: // D-DOWN button - Scroll down through ISO list
-                        LOGNOTE("SH1106: DOWN button - Next ISO");
-                        if (pKernel->m_nTotalISOCount > 0)
-                        {
-                            // Move down with wrap around
-                            pKernel->m_nCurrentISOIndex = (pKernel->m_nCurrentISOIndex + 1) % pKernel->m_nTotalISOCount;
-                            
-                            // Immediately update the display
-                            pKernel->ShowISOSelectionScreen();
-                            
-                            // Add very short delay to make navigation smoother
-                            pKernel->m_Scheduler.MsSleep(50);
-                        }
-                        break;
-                        
-                    case 2: // SELECT button - Load selected ISO
-                        LOGNOTE("SELECT button - Loading selected ISO");
+                    // UP/DOWN handled on button press
+                    
+                    case 5: // KEY1 button - Select ISO (OK)
+                        LOGNOTE("KEY1 button in ISO screen - Selecting ISO");
                         pKernel->LoadSelectedISO();
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        break;
+                        
+                    case 6: // KEY2 button - Cancel selection
+                        LOGNOTE("KEY2 button in ISO screen - Cancel selection");
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->UpdateDisplayStatus(nullptr);
+                        break;
+                        
+                    // Legacy handling for SELECT/BACK buttons (buttons 2/3)
+                    case 2: // SELECT button - Select current ISO
+                        LOGNOTE("SELECT button - Selecting ISO");
+                        pKernel->LoadSelectedISO();
+                        pKernel->m_ScreenState = ScreenStateMain;
                         break;
                         
                     case 3: // BACK button - Return to main menu
-                        LOGNOTE("BACK button - Returning to main menu");
+                        LOGNOTE("BACK button - Return to main");
                         pKernel->m_ScreenState = ScreenStateMain;
-                        pKernel->UpdateDisplayStatus(nullptr);  // Refresh display
+                        pKernel->UpdateDisplayStatus(nullptr);
                         break;
-                        
-                    // Add more cases for other buttons as needed
                 }
                 break;
 
