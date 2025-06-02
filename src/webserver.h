@@ -76,8 +76,15 @@ private:
     // Static shutdown mode that is shared across all instances
     static TShutdownMode s_GlobalShutdownMode;
 
-    // Add this member variable
-    TDisplayUpdateHandler m_pDisplayUpdateHandler;
+    // Remove the display update handler callback and use a simple flag
+    static bool s_DisplayUpdateNeeded;
+    static CString s_LastMountedImage;
+
+public:
+    // Add these static methods for the kernel to use
+    static bool IsDisplayUpdateNeeded(void);
+    static const char* GetLastMountedImage(void);
+    static void ClearDisplayUpdateFlag(void);
 };
 
 #endif

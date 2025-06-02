@@ -87,14 +87,17 @@ LOGMODULE("webserver");
 
 TShutdownMode CWebServer::s_GlobalShutdownMode = ShutdownNone;
 
+// Add these static member definitions at the top with other static variables
+bool CWebServer::s_DisplayUpdateNeeded = false;
+CString CWebServer::s_LastMountedImage = "";
+
 CWebServer::CWebServer (CNetSubSystem *pNetSubSystem, CUSBCDGadget *pCDGadget, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket)
 :       CHTTPDaemon (pNetSubSystem, pSocket, MAX_CONTENT_SIZE),
         m_pActLED (pActLED),
         m_pCDGadget (pCDGadget),
         m_pContentBuffer(new u8[MAX_CONTENT_SIZE]),
         m_pProperties(pProperties),
-        m_ShutdownMode(ShutdownNone),
-        m_pDisplayUpdateHandler(nullptr) // Initialize the display update handler
+        m_ShutdownMode(ShutdownNone)
 {
     // Select the correct section for all property operations
     m_pProperties->SelectSection("usbode");
@@ -638,12 +641,23 @@ THTTPStatus CWebServer::GetContent (const char  *pPath,
                 LOGERR("Failed to get cueBinFileDevice");
                 return HTTPInternalServerError;
             }
+            
+            // Set the new device in the CD gadget
             m_pCDGadget->SetDevice(cueBinFileDevice);
+            LOGNOTE("CD gadget updated with new image: %s", decodedValue);
 
             // Generate a success page
             resultCode = generate_mount_success_page((char*)m_pContentBuffer, MAX_CONTENT_SIZE, decodedValue, pUSBSpeed);
-            // Notify display about the image change
-            NotifyDisplayUpdate(decodedValue);
+            
+            // IMPORTANT: Only notify display AFTER successful ISO load
+            // LOGNOTE("ISO load successful, now updating display for: %s", decodedValue);
+            // NotifyDisplayUpdate(decodedValue);
+            
+            // Set the static flag and image name instead of calling a callback
+            s_DisplayUpdateNeeded = true;
+            s_LastMountedImage = decodedValue;
+            LOGNOTE("ISO load successful, display update flag set for: %s", decodedValue);
+            
             nLength = strlen((char*)m_pContentBuffer);
             *ppContentType = "text/html; charset=utf-8";
         } else {
@@ -681,7 +695,7 @@ THTTPStatus CWebServer::GetContent (const char  *pPath,
             m_pCDGadget->SetDevice(cueBinFileDevice);
             
             // Add explicit call to notify display update
-            NotifyDisplayUpdate(decodedValue);
+            // NotifyDisplayUpdate(decodedValue);
             
             strcpy((char*)m_pContentBuffer, "{\"status\": \"OK\"}");
             nLength = 16;
@@ -727,15 +741,37 @@ void CWebServer::SetGlobalShutdownMode(TShutdownMode mode)
 }
 
 // Add a setter for the callback
-void CWebServer::SetDisplayUpdateHandler(TDisplayUpdateHandler pHandler)
-{
-    m_pDisplayUpdateHandler = pHandler;
-}
+// void CWebServer::SetDisplayUpdateHandler(TDisplayUpdateHandler pHandler)
+// {
+//     LOGNOTE("Setting display update handler: %p", pHandler);
+//     m_pDisplayUpdateHandler = pHandler;
+// }
 // Notifier method to call the callback
-void CWebServer::NotifyDisplayUpdate(const char* imageName)
+// void CWebServer::NotifyDisplayUpdate(const char* imageName)
+// {
+//     if (m_pDisplayUpdateHandler != nullptr)
+//     {
+//         LOGNOTE("Calling display update handler for file: %s", imageName);
+//         (*m_pDisplayUpdateHandler)(imageName);
+//     }
+//     else
+//     {
+//         LOGERR("Display update handler is NULL - cannot update display");
+//     }
+// }
+
+// Add implementations of the static methods
+bool CWebServer::IsDisplayUpdateNeeded(void)
 {
-    if (m_pDisplayUpdateHandler != nullptr)
-    {
-        m_pDisplayUpdateHandler(imageName);
-    }
+    return s_DisplayUpdateNeeded;
+}
+
+const char* CWebServer::GetLastMountedImage(void)
+{
+    return (const char*)s_LastMountedImage;
+}
+
+void CWebServer::ClearDisplayUpdateFlag(void)
+{
+    s_DisplayUpdateNeeded = false;
 }

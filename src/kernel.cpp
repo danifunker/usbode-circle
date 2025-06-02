@@ -60,6 +60,9 @@ static const char* FindLastOccurrence(const char* str, int ch)
     return last;
 }
 
+// Add this near other constant definitions at the top of the file
+const char CKernel::ConfigOptionTimeZone[] = "timezone";
+
 CKernel::CKernel(void)
 : m_Screen(m_Options.GetWidth(), m_Options.GetHeight()),
   m_Timer(&m_Interrupt),
@@ -184,6 +187,27 @@ boolean CKernel::Initialize (void)
 		LOGNOTE("Initialized WAP supplicant");
         }
 
+        // If network initialization succeeded, read timezone from config.txt
+        if (bOK && m_Net.IsRunning())
+        {
+            // Read timezone from config.txt
+            CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+            if (Properties.Load())
+            {
+                Properties.SelectSection("usbode");
+                CString Value;
+                const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
+                
+                // Initialize NTP with the timezone
+                InitializeNTP(timezone);
+            }
+            else
+            {
+                // Use default timezone if config file not available
+                InitializeNTP("UTC");
+            }
+        }
+    
 	return bOK;
 }
 
@@ -283,6 +307,7 @@ TShutdownMode CKernel::Run(void)
 
 	// Previous IP tracking
 	static CString PreviousIPString = "";
+	bool ntpInitialized = false;
 
 	// Status update timing
 	static unsigned lastStatusUpdate = 0;
@@ -314,8 +339,9 @@ TShutdownMode CKernel::Run(void)
 			
 			// Check and maintain FTP and Web services
 			if (pCWebServer == nullptr) {
+				// Create the web server
 				pCWebServer = new CWebServer(&m_Net, &m_CDGadget, &m_ActLED, &Properties);
-				pCWebServer->SetDisplayUpdateHandler(DisplayUpdateCallback);
+				
 				LOGNOTE("Started Webserver");
 			}
 			
@@ -338,20 +364,35 @@ TShutdownMode CKernel::Run(void)
             m_Net.GetConfig()->GetIPAddress()->Format(&CurrentIPString);
             
             // If IP changed (including from not connected to connected)
-            if (CurrentIPString != PreviousIPString) {
+            if (strcmp((const char*)CurrentIPString, (const char*)PreviousIPString) != 0) {
+                // Log the new IP address
+                LOGNOTE("IP address: %s", (const char*)CurrentIPString);
+                
+                // Store for next time - make sure to use deep copy
                 PreviousIPString = CurrentIPString;
                 
-                // Log network info
-                if (showIP) {
-                    showIP = false;
-                    LOGNOTE("==========================================");
-                    m_WLAN.DumpStatus();
-                    LOGNOTE("Our IP address is %s", (const char*)CurrentIPString);
-                    LOGNOTE("==========================================");
+                // If network is newly up and running with a valid IP address
+                // and NTP hasn't been initialized yet, do it now
+                if (!ntpInitialized && CurrentIPString != "0.0.0.0") {
+                    // Read timezone from config.txt
+                    Properties.SelectSection("usbode");
+                    const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
+                    
+                    // Initialize NTP with the timezone
+                    InitializeNTP(timezone);
+                    ntpInitialized = true;
                 }
                 
-                // Update display with new IP
-                UpdateDisplayStatus(imageName);
+                // Update the display with the new IP address
+                // but only if we're not in the ISO selection screen
+                if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr) {
+                    // Get the current ISO name
+                    Properties.SelectSection("usbode");
+                    const char* currentImage = Properties.GetString("current_image", "image.iso");
+                    
+                    // Force an update of the display
+                    UpdateDisplayStatus(currentImage);
+                }
             }
         }
 
@@ -364,13 +405,6 @@ TShutdownMode CKernel::Run(void)
 			}
 			LOGNOTE("Published mDNS");
 		}
-
-		// Start the Web Server
-		if (m_Net.IsRunning() && pCWebServer == nullptr) {
-			pCWebServer = new CWebServer(&m_Net, &m_CDGadget, &m_ActLED, &Properties);
-			pCWebServer->SetDisplayUpdateHandler(DisplayUpdateCallback);
-			LOGNOTE("Started Webserver");
-                }
 
 		// Start the FTP Server
 		if (m_Net.IsRunning() && !m_pFTPDaemon)
@@ -429,20 +463,26 @@ TShutdownMode CKernel::Run(void)
 				}
 			}
 		}
+		
+		// Process display updates if needed - after network processing but before yielding
+		if (CWebServer::IsDisplayUpdateNeeded() && m_pDisplayManager != nullptr && m_ScreenState != ScreenStateLoadISO)
+		{
+			const char* imageName = CWebServer::GetLastMountedImage();
+			LOGNOTE("Processing pending display update for: %s", imageName);
+			
+			// Make sure we're not in ISO selection mode
+			m_ScreenState = ScreenStateMain;
+			
+			// Update the display with the image name
+			UpdateDisplayStatus(imageName);
+			
+			// Clear the flag
+			CWebServer::ClearDisplayUpdateFlag();
+		}
 	}
 
 	LOGNOTE("ShutdownHalt");
 	return ShutdownHalt;
-}
-
-// Static callback implementation (outside of any function)
-void CKernel::DisplayUpdateCallback(const char* imageName)
-{
-    // Use the global kernel pointer
-    if (g_pKernel != nullptr)
-    {
-        g_pKernel->UpdateDisplayStatus(imageName);
-    }
 }
 
 TDisplayType CKernel::GetDisplayTypeFromString(const char* displayType)
@@ -543,7 +583,6 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     // CRITICAL: Skip updates completely while in ISO selection screen
     if (m_ScreenState == ScreenStateLoadISO)
     {
-        // Remove the debug log message here
         return;
     }
     
@@ -556,7 +595,11 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     unsigned currentTime = m_Timer.GetTicks();
     if (currentTime - LastUpdateTime < 500) // 500ms debounce time
     {
-        return;
+        // But don't apply debounce if explicitly requested from web server
+        if (imageName == nullptr || *imageName == '\0')
+        {
+            return;
+        }
     }
     
     // Always load the current image from properties to ensure consistency
@@ -565,7 +608,11 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
     
-    // Remove the excessive debug log here
+    // Use the provided imageName if it's not null, otherwise use the one from properties
+    if (imageName != nullptr && *imageName != '\0')
+    {
+        currentImage = imageName;
+    }
     
     // Get current IP address
     CString IPString;
@@ -578,8 +625,11 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
         IPString = "Not connected";
     }
     
-    // Only update if something has changed
-    if (IPString != LastDisplayedIP || CString(currentImage) != LastDisplayedImage)
+    // Force update if explicitly requested by passing a non-null imageName
+    bool forceUpdate = (imageName != nullptr && *imageName != '\0');
+    
+    // Only update if something has changed or force update requested
+    if (forceUpdate || IPString != LastDisplayedIP || CString(currentImage) != LastDisplayedImage)
     {
         // Update the status screen
         m_pDisplayManager->ShowStatusScreen(
@@ -659,7 +709,8 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     }
                 }
                 else if (nButtonIndex == 2) { // LEFT button - skip back 5 files with wrapping
-                    if (pKernel->m_nTotalISOCount > 0) {
+                    if (pKernel->m_nTotalISOCount > 0)
+                    {
                         // Skip back 5 files with wrapping
                         if (pKernel->m_nCurrentISOIndex < 5) {
                             // Wrap around to the end
@@ -973,4 +1024,59 @@ void CKernel::LoadSelectedISO(void)
     
     // Update the display
     UpdateDisplayStatus(SelectedISO);
+}
+
+void CKernel::InitializeNTP(const char* timezone)
+{
+    // Make sure network is running
+    if (!m_Net.IsRunning())
+    {
+        LOGERR("Network not running, NTP initialization skipped");
+        return;
+    }
+
+    // Log that we're starting NTP synchronization
+    LOGNOTE("Starting NTP time synchronization (using UTC/GMT)");
+
+    // Create DNS client for resolving NTP server
+    CDNSClient DNSClient(&m_Net);
+    
+    // NTP server address
+    CIPAddress NTPServerIP;
+    const char* NTPServer = "pool.ntp.org";
+    
+    // Resolve NTP server address
+    LOGNOTE("Resolving NTP server: %s", NTPServer);
+    if (!DNSClient.Resolve(NTPServer, &NTPServerIP))
+    {
+        LOGERR("Cannot resolve NTP server: %s", NTPServer);
+        return;
+    }
+
+    // Log the resolved IP
+    CString IPString;
+    NTPServerIP.Format(&IPString);
+    LOGNOTE("NTP server resolved to: %s", (const char*)IPString);
+    
+    // Create NTP client
+    CNTPClient NTPClient(&m_Net);
+    
+    // Get time from NTP server
+    LOGNOTE("Requesting time from NTP server...");
+    unsigned nTime = NTPClient.GetTime(NTPServerIP);
+    if (nTime == 0)
+    {
+        LOGERR("NTP time synchronization failed");
+        return;
+    }
+    
+    // Set system time
+    CTime Time;
+    Time.Set(nTime);
+    
+    // Set time in the CTimer singleton for system-wide use
+    CTimer::Get()->SetTime(nTime);
+    
+    // Log the current time (in UTC/GMT)
+    LOGNOTE("Time synchronized successfully: %s (UTC/GMT)", Time.GetString());
 }
