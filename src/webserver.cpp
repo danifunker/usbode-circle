@@ -729,6 +729,7 @@ void CWebServer::SetGlobalShutdownMode(TShutdownMode mode)
 // Add a setter for the callback
 void CWebServer::SetDisplayUpdateHandler(TDisplayUpdateHandler pHandler)
 {
+    LOGNOTE("Setting display update handler: %p", pHandler);
     m_pDisplayUpdateHandler = pHandler;
 }
 // Notifier method to call the callback
@@ -736,6 +737,11 @@ void CWebServer::NotifyDisplayUpdate(const char* imageName)
 {
     if (m_pDisplayUpdateHandler != nullptr)
     {
-        m_pDisplayUpdateHandler(imageName);
+        LOGNOTE("Calling display update handler for file: %s", imageName);
+        (*m_pDisplayUpdateHandler)(imageName);
+    }
+    else
+    {
+        LOGERR("Display update handler is NULL - cannot update display");
     }
 }

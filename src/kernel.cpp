@@ -481,7 +481,8 @@ void CKernel::DisplayUpdateCallback(const char* imageName)
     // Use the global kernel pointer
     if (g_pKernel != nullptr && imageName != nullptr && *imageName != '\0')
     {
-        LOGNOTE("Web UI requested image change to: %s", imageName);
+        // Log the image change request with high visibility
+        LOGNOTE("**************** Web UI requested image change to: %s ****************", imageName);
         
         // Update the config file with the new image name
         CPropertiesFatFsFile Properties(CONFIG_FILE, &g_pKernel->m_FileSystem);
@@ -493,8 +494,12 @@ void CKernel::DisplayUpdateCallback(const char* imageName)
             {
                 LOGERR("Failed to save config file after web image change");
             }
+            else
+            {
+                LOGNOTE("Config file updated with new image: %s", imageName);
+            }
             
-            // Load the actual ISO file
+            // Load the actual ISO file - make sure the path is correct
             CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(imageName);
             if (CueBinFileDevice == nullptr)
             {
@@ -504,11 +509,53 @@ void CKernel::DisplayUpdateCallback(const char* imageName)
             
             // Set the new device in the CD gadget
             g_pKernel->m_CDGadget.SetDevice(CueBinFileDevice);
-            LOGNOTE("Web UI changed image to: %s", imageName);
+            LOGNOTE("CD gadget updated with new image: %s", imageName);
+            
+            // Make sure we're not in ISO selection screen
+            g_pKernel->m_ScreenState = ScreenStateMain;
+            
+            // Force display update with very explicit parameters
+            if (g_pKernel->m_pDisplayManager != nullptr)
+            {
+                // Get current IP address for display
+                CString IPString;
+                if (g_pKernel->m_Net.IsRunning())
+                {
+                    g_pKernel->m_Net.GetConfig()->GetIPAddress()->Format(&IPString);
+                }
+                else
+                {
+                    IPString = "Not connected";
+                }
+                
+                // Directly call display update with new image name
+                LOGNOTE("Forcing display update for image: %s", imageName);
+                g_pKernel->m_pDisplayManager->ShowStatusScreen(
+                    "USBODE v2.00-pre1",
+                    (const char*)IPString,
+                    imageName);
+                
+                // Ensure the display is refreshed
+                g_pKernel->m_pDisplayManager->Refresh();
+                
+                LOGNOTE("Display update completed for image: %s", imageName);
+            }
+            else
+            {
+                LOGERR("Display manager is NULL - cannot update display");
+            }
         }
-        
-        // Force update the display with the new image name
-        g_pKernel->UpdateDisplayStatus(imageName);
+    }
+    else
+    {
+        if (g_pKernel == nullptr)
+        {
+            LOGERR("g_pKernel is NULL in DisplayUpdateCallback");
+        }
+        if (imageName == nullptr || *imageName == '\0')
+        {
+            LOGERR("Invalid image name in DisplayUpdateCallback");
+        }
     }
 }
 
