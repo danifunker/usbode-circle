@@ -587,3 +587,65 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
         break;
     }
 }
+
+void CDisplayManager::Refresh(void)
+{
+    // Call the appropriate display's refresh method based on type
+    if (m_pSH1106Display != nullptr)
+    {
+        m_pSH1106Display->Refresh();
+    }
+    else if (m_pST7789Display != nullptr)
+    {
+        // For now, log that we tried to refresh ST7789 but it's not implemented
+        if (m_pLogger != nullptr)
+        {
+            m_pLogger->Write(FromDisplayManager, LogWarning, 
+                "ST7789 display refresh requested but not implemented");
+        }
+        
+        // When ST7789 is implemented, uncomment and use correct method:
+        // m_pST7789Display->Refresh();  // or whatever method is appropriate
+    }
+}
+
+void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel)
+{
+    // Early validation - only proceed if we have a valid display
+    if (m_pSH1106Display == nullptr && m_pST7789Display == nullptr)
+    {
+        return;
+    }
+    
+    // Skip if no button label is provided
+    if (pButtonLabel == nullptr)
+    {
+        return;
+    }
+    
+    // For SH1106 display
+    if (m_pSH1106Display != nullptr)
+    {
+        // Save current screen content (if we want to restore it)
+        // NOTE: This is optional and depends on your display implementation
+        
+        // Create a small notification at the bottom of the screen
+        char notification[32];
+        snprintf(notification, sizeof(notification), "Button: %s", pButtonLabel);
+        
+        // Draw at the bottom of the screen (clear that area first)
+        m_pSH1106Display->DrawFilledRect(0, 56, 128, 8, SH1106_BLACK_COLOR);
+        m_pSH1106Display->DrawText(0, 56, notification, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                 FALSE, FALSE, Font8x8);
+        
+        // Update the display immediately
+        m_pSH1106Display->Refresh();
+    }
+    
+    // For ST7789 display
+    else if (m_pST7789Display != nullptr)
+    {
+        // Similar implementation for ST7789 display
+        // ...
+    }
+}

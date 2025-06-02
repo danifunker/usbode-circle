@@ -180,8 +180,8 @@ void CGPIOButtonManager::Update(void)
     static unsigned lastDebugTime = 0;
     unsigned currentTime = CTimer::Get()->GetTicks();
     
-    // Debug print every 5 seconds
-    if (currentTime - lastDebugTime > 5000)
+    // Only debug print every 10 seconds - reduce overhead from logging
+    if (currentTime - lastDebugTime > 10000)
     {
         DebugPrintPinStates();
         lastDebugTime = currentTime;
@@ -211,7 +211,7 @@ void CGPIOButtonManager::ProcessButtonState(unsigned nButtonIndex, boolean bCurr
         // If enough time has passed since the last state change (debouncing)
         if (nTicks - m_pLastPressTime[nButtonIndex] > DEBOUNCE_TIME_MS)
         {
-            // Update the last press time
+            // Update the last press time immediately
             m_pLastPressTime[nButtonIndex] = nTicks;
             
             // Update the button state safely
@@ -219,23 +219,20 @@ void CGPIOButtonManager::ProcessButtonState(unsigned nButtonIndex, boolean bCurr
             m_pButtonStates[nButtonIndex] = bCurrentState;
             m_Lock.Release();
             
-            // Update the last reported state
+            // Update the last reported state immediately
             m_pLastReportedState[nButtonIndex] = bCurrentState;
             
-            // Call the event handler if registered
+            // IMPORTANT: Call the event handler IMMEDIATELY for press events
+            // This is key to responsive UI - handle button presses right away
             if (m_pEventHandler != nullptr)
             {
                 (*m_pEventHandler)(nButtonIndex, bCurrentState, m_pCallbackParam);
             }
             
-            // Log state changes with different levels based on state
+            // Log state changes (reduce logging for faster response)
             if (bCurrentState)
             {
                 LOGNOTE("Button %s (%u) PRESSED", GetButtonLabel(nButtonIndex), nButtonIndex);
-            }
-            else
-            {
-                LOGDBG("Button %s (%u) released", GetButtonLabel(nButtonIndex), nButtonIndex);
             }
         }
     }
