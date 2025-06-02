@@ -674,23 +674,24 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         
                     case 5: // KEY1 button - ISO selection (without stopping network)
                         LOGNOTE("KEY1 button - Entering ISO selection");
-    
-                        // REMOVED: LED blink feedback
-                        // pKernel->m_ActLED.Blink(2, 100);
-    
-                        // Change screen state
+
+                        // Change screen state immediately
                         pKernel->m_ScreenState = ScreenStateLoadISO;
-    
-                        // Show loading screen for feedback
+
+                        // Show immediate visual feedback
                         if (pKernel->m_pDisplayManager != nullptr)
                         {
+                            pKernel->m_pDisplayManager->ClearDisplay();
                             pKernel->m_pDisplayManager->ShowStatusScreen(
                                 "Loading ISO List",
                                 "Please wait...",
                                 "");
+                            
+                            // Add a brief delay to ensure the display is updated
+                            pKernel->m_Scheduler.MsSleep(100);
                         }
-    
-                        // Scan for ISO files and display selection screen
+
+                        // Perform the file scan in a more optimized way
                         pKernel->ScanForISOFiles();
                         pKernel->ShowISOSelectionScreen();
                         break;
@@ -792,66 +793,60 @@ void CKernel::InitializeButtons(TDisplayType displayType)
 void CKernel::ScanForISOFiles(void)
 {
     // Clean up previous list
-    
-    // Allocate new list with proper size
-    m_pISOList = new CString[MAX_ISO_FILES];
-    if (m_pISOList == nullptr)
+    if (m_pISOList != nullptr)
     {
-        LOGERR("Failed to allocate memory for ISO list");
-        m_nTotalISOCount = 0;
-        return;
+        delete[] m_pISOList;
+        m_pISOList = nullptr;
     }
     
     // Reset counters
     m_nTotalISOCount = 0;
     m_nCurrentISOIndex = 0;
     
-    // Try different paths
-    const char* searchPaths[] = { IMAGES_DIR, DRIVE };
+    // Allocate with larger MAX_ISO_FILES value
+    m_pISOList = new CString[MAX_ISO_FILES];
+    if (m_pISOList == nullptr)
+    {
+        LOGERR("Failed to allocate memory for ISO list");
+        return;
+    }
     
-    // Get current ISO from config
+    // Get current ISO from config just once
     CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
     Properties.Load();
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
     bool currentImageFound = false;
     
-    // First pass - scan both directories to collect all ISO files
-    for (unsigned pathIndex = 0; pathIndex < sizeof(searchPaths)/sizeof(searchPaths[0]); pathIndex++)
+    // First try to scan the images directory
+    DIR Directory;
+    FILINFO FileInfo;
+    
+    FRESULT result = f_opendir(&Directory, IMAGES_DIR);
+    if (result == FR_OK)
     {
-        DIR Directory;
-        FILINFO FileInfo;
-        
-        // Open directory
-        FRESULT result = f_opendir(&Directory, searchPaths[pathIndex]);
-        if (result != FR_OK)
-        {
-            LOGWARN("Cannot open directory: %s", searchPaths[pathIndex]);
-            continue;
-        }
-        
-        LOGNOTE("Scanning for ISO files in %s", searchPaths[pathIndex]);
+        LOGNOTE("Scanning for ISO files in %s", IMAGES_DIR);
         
         // Read all files in this directory
         while (f_readdir(&Directory, &FileInfo) == FR_OK && FileInfo.fname[0] != 0)
         {
             // Skip directories
             if (FileInfo.fattrib & AM_DIR)
-            {
                 continue;
-            }
             
             // Check for .iso, .cue, or .bin extensions
             const char* Extension = FindLastOccurrence(FileInfo.fname, '.');
-            if (Extension != nullptr && 
-                (strcasecmp(Extension, ".iso") == 0 || 
-                 strcasecmp(Extension, ".cue") == 0 || 
-                 strcasecmp(Extension, ".bin") == 0))
+            if (Extension == nullptr)
+                continue;
+                
+            if (strcasecmp(Extension, ".iso") == 0 || 
+                strcasecmp(Extension, ".cue") == 0 || 
+                strcasecmp(Extension, ".bin") == 0)
             {
                 // Check if we have space left
                 if (m_nTotalISOCount >= MAX_ISO_FILES)
                 {
-                    LOGWARN("Maximum ISO file count reached (%u), some files will be omitted", MAX_ISO_FILES);
+                    LOGWARN("Maximum ISO file count reached (%u)", MAX_ISO_FILES);
                     break;
                 }
                 
@@ -870,36 +865,33 @@ void CKernel::ScanForISOFiles(void)
         }
         
         f_closedir(&Directory);
-        
-        // If we found the current image, no need to search in the other directory
-        if (currentImageFound)
-        {
-            break;
-        }
     }
     
-    // Sort the files alphabetically
+    // Sort files alphabetically using a more efficient algorithm
     for (unsigned i = 0; i < m_nTotalISOCount - 1; i++)
     {
+        unsigned minIndex = i;
+        
         for (unsigned j = i + 1; j < m_nTotalISOCount; j++)
         {
-            if (strcasecmp((const char*)m_pISOList[i], (const char*)m_pISOList[j]) > 0)
+            if (strcasecmp((const char*)m_pISOList[j], (const char*)m_pISOList[minIndex]) < 0)
             {
-                // Swap
-                CString Temp = m_pISOList[i];
-                m_pISOList[i] = m_pISOList[j];
-                m_pISOList[j] = Temp;
-                
-                // Update current index if affected
-                if (m_nCurrentISOIndex == i)
-                {
-                    m_nCurrentISOIndex = j;
-                }
-                else if (m_nCurrentISOIndex == j)
-                {
-                    m_nCurrentISOIndex = i;
-                }
+                minIndex = j;
             }
+        }
+        
+        if (minIndex != i)
+        {
+            // Swap
+            CString Temp = m_pISOList[i];
+            m_pISOList[i] = m_pISOList[minIndex];
+            m_pISOList[minIndex] = Temp;
+            
+            // Update current index if affected
+            if (m_nCurrentISOIndex == i)
+                m_nCurrentISOIndex = minIndex;
+            else if (m_nCurrentISOIndex == minIndex)
+                m_nCurrentISOIndex = i;
         }
     }
     

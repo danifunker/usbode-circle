@@ -453,29 +453,32 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
             // CURRENT ISO (Top of screen) =========================
             if (strlen(currentImage) <= first_line_chars)
             {
-                // Short name fits on one line
+                // Short name fits on one line - use direct text copy instead of format strings
                 m_pSH1106Display->DrawText(12, 12, currentImage, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
                                          FALSE, FALSE, Font6x7);
                 line_y = 22;
             }
             else
             {
-                // First line with CD icon
+                // First line with CD icon - use safe string handling
                 char first_line[32];
+                memset(first_line, 0, sizeof(first_line));
                 strncpy(first_line, currentImage, first_line_chars);
                 first_line[first_line_chars] = '\0';
+                
                 m_pSH1106Display->DrawText(12, 12, first_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
                                          FALSE, FALSE, Font6x7);
                 
                 // Second line handling for very long names
-                char second_line[32] = {0};
+                char second_line[32];
+                memset(second_line, 0, sizeof(second_line));
                 
                 if (strlen(currentImage) > first_line_chars + chars_per_line - 12)
                 {
                     // Very long name, ensure last 11 chars are visible
-                    size_t remaining_chars = chars_per_line - 12;  // Space for "…" and last 11 chars
+                    size_t remaining_chars = chars_per_line - 12;
                     
-                    // Copy first part
+                    // Copy first part with explicit termination
                     strncpy(second_line, currentImage + first_line_chars, remaining_chars);
                     second_line[remaining_chars] = '\0';
                     
@@ -485,7 +488,7 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
                 }
                 else
                 {
-                    // Just copy the remaining part
+                    // Just copy the remaining part with explicit termination
                     strncpy(second_line, currentImage + first_line_chars, chars_per_line);
                     second_line[chars_per_line] = '\0';
                 }

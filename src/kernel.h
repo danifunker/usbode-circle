@@ -133,7 +133,7 @@ private:
 	unsigned m_nCurrentISOIndex;
 	unsigned m_nTotalISOCount;
 	CString *m_pISOList;
-	static const unsigned MAX_ISO_FILES = 50;
+	static const unsigned MAX_ISO_FILES = 500;
 	
 	// Helper methods for ISO file management
 	void ScanForISOFiles(void);
