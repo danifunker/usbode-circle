@@ -25,6 +25,7 @@
 #include "util.h"
 #include "webserver.h"
 #include <string.h>
+#include "gitinfo.h"
 
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
@@ -236,6 +237,7 @@ TShutdownMode CKernel::Run(void)
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
+    LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
     LOGNOTE("=====================================");
 
     // Load our current disc image
