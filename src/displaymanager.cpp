@@ -447,52 +447,38 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             // Draw header bar with blue background
             graphics.DrawRect(0, 0, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
             
-            // Draw title text in white - INCREASED FONT SIZE
+            // Draw title text in white
             graphics.DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
             
             // Draw WiFi icon as signal bars (3 bars) instead of antenna
             unsigned wifi_x = 10;
             unsigned wifi_y = 40;
-            
+
             // Base of WiFi icon
             graphics.DrawRect(wifi_x + 8, wifi_y + 16, 4, 4, COLOR2D(0, 0, 0));
-            
+
             // First (shortest) bar
             graphics.DrawRect(wifi_x + 7, wifi_y + 11, 6, 3, COLOR2D(0, 0, 0));
-            
+
             // Second (medium) bar
             graphics.DrawRect(wifi_x + 4, wifi_y + 6, 12, 3, COLOR2D(0, 0, 0));
-            
+
             // Third (longest) bar
             graphics.DrawRect(wifi_x + 1, wifi_y + 1, 18, 3, COLOR2D(0, 0, 0));
             
-            // Draw IP address text (BLACK) - INCREASED FONT SIZE by adjusting position
+            // Draw IP address
             graphics.DrawText(35, 45, COLOR2D(0, 0, 0), pIPAddress, C2DGraphics::AlignLeft);
-            
-            // Draw CD icon - IMPROVED with clearer center hole
-            unsigned cd_x = 10;
-            unsigned cd_y = 70;
-            unsigned cd_radius = 10;
-            
-            // Draw outer circle of CD
-            graphics.DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, cd_radius, COLOR2D(0, 0, 0));
-            
-            // Draw middle circle of CD (making it more visible)
-            graphics.DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, 5, COLOR2D(0, 0, 0));
-            
-            // Draw center hole of CD
-            graphics.DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 2, COLOR2D(0, 0, 0));
             
             // ISO name handling with THREE-line support
             size_t first_line_chars = 25;  // First line chars
             size_t second_line_chars = 25; // Second line chars
             size_t third_line_chars = 25;  // Third line chars
-            
+
             char first_line[40] = {0};
             char second_line[40] = {0};
             char third_line[40] = {0};
             size_t iso_length = strlen(pISOName);
-            
+
             if (iso_length <= first_line_chars)
             {
                 // Short name fits on one line
@@ -548,29 +534,27 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
                 graphics.DrawText(35, 115, COLOR2D(0, 0, 0), third_line, C2DGraphics::AlignLeft);
             }
             
-            // Move the USB icon further down to accommodate 3 lines of text
+            // Move the USB icon further down to accommodate 3 lines of text and make it larger
             unsigned usb_x = 10;
-            unsigned usb_y = 145; // Moved down from original position
-            
+            unsigned usb_y = 170; // Moved down close to nav bar
+
             // USB outline - rectangular shape (3x larger)
             // Using DrawRect for thicker lines instead of individual pixels
             graphics.DrawRect(usb_x, usb_y, 24, 2, COLOR2D(0, 0, 0)); // Top horizontal
             graphics.DrawRect(usb_x, usb_y+21, 24, 2, COLOR2D(0, 0, 0)); // Bottom horizontal
             graphics.DrawRect(usb_x, usb_y, 2, 23, COLOR2D(0, 0, 0)); // Left vertical
             graphics.DrawRect(usb_x+22, usb_y, 2, 23, COLOR2D(0, 0, 0)); // Right vertical
-            
+
             // USB pins (larger)
             graphics.DrawRect(usb_x+6, usb_y+6, 4, 12, COLOR2D(0, 0, 0)); // Left pin
             graphics.DrawRect(usb_x+14, usb_y+6, 4, 12, COLOR2D(0, 0, 0)); // Right pin
-            
+
             // Draw USB speed info next to the USB icon
             graphics.DrawText(40, 180, COLOR2D(0, 0, 0), pUSBSpeed, C2DGraphics::AlignLeft);
             
-            // 1. Add navigation bar to main status screen
             // Draw button bar at bottom
             graphics.DrawRect(0, 210, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
             
-            // UPDATED NAVIGATION BUTTONS with LARGER arrows
             // A button with UP arrow (2x larger)
             graphics.DrawText(12, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
             
@@ -625,27 +609,96 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             // Folder tab
             graphics.DrawRect(folder_x + 2, folder_y, 8, 3, COLOR2D(255, 255, 255));
             
-            // Update the display with all the graphics we've drawn
+            // Update the display
             graphics.UpdateDisplay();
             
             // Ensure display stays on
             m_pST7789Display->On();
         }
         break;
-    
+        
     default:
         break;
     }
 }
 
-// 4. Add method for advanced screen with navigation bar only
-
-void CDisplayManager::ShowAdvancedScreen(void)
+void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const char* pSelectedFileName, 
+                                            unsigned CurrentFileIndex, unsigned TotalFiles)
 {
+    assert(pCurrentISOName != nullptr);
+    assert(pSelectedFileName != nullptr);
+    
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
-        // Implement SH1106 advanced screen if needed
+        if (m_pSH1106Display != nullptr)
+        {
+            // Clear display first
+            m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
+            
+            // Draw header - "Select ISO:"
+            m_pSH1106Display->DrawText(0, 0, "Select ISO:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                     FALSE, FALSE, Font6x7);
+            
+            // Draw current ISO information
+            m_pSH1106Display->DrawText(0, 10, "Current:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                     FALSE, FALSE, Font6x7);
+            
+            // Show current ISO name (truncate if too long)
+            const size_t max_cur_chars = 18;
+            char current_iso[24] = {0};
+            
+            if (strlen(pCurrentISOName) <= max_cur_chars) {
+                m_pSH1106Display->DrawText(0, 20, pCurrentISOName, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                         FALSE, FALSE, Font6x7);
+            } else {
+                // Truncate with ellipsis
+                strncpy(current_iso, pCurrentISOName, max_cur_chars - 3);
+                strcat(current_iso, "...");
+                m_pSH1106Display->DrawText(0, 20, current_iso, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                         FALSE, FALSE, Font6x7);
+            }
+            
+            // Draw selected ISO info (with highlighting)
+            m_pSH1106Display->DrawText(0, 30, "Selected:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                     FALSE, FALSE, Font6x7);
+            
+            // Show selected filename in highlighted box
+            // First draw the box
+            for (int y = 40; y < 50; y++) {
+                for (int x = 0; x < m_pSH1106Display->GetWidth(); x++) {
+                    m_pSH1106Display->SetPixel(x, y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+                }
+            }
+            
+            // Truncate selected filename if needed
+            const size_t max_sel_chars = 16;
+            char selected[24] = {0};
+            
+            if (strlen(pSelectedFileName) <= max_sel_chars) {
+                m_pSH1106Display->DrawText(4, 42, pSelectedFileName, SH1106_BLACK_COLOR, SH1106_WHITE_COLOR,
+                                         FALSE, FALSE, Font6x7);
+            } else {
+                // Truncate with ellipsis
+                strncpy(selected, pSelectedFileName, max_sel_chars - 3);
+                strcat(selected, "...");
+                m_pSH1106Display->DrawText(4, 42, selected, SH1106_BLACK_COLOR, SH1106_WHITE_COLOR,
+                                         FALSE, FALSE, Font6x7);
+            }
+            
+            // Draw navigation info
+            char position[16];
+            snprintf(position, sizeof(position), "%u/%u", CurrentFileIndex, TotalFiles);
+            m_pSH1106Display->DrawText(0, 56, position, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                     FALSE, FALSE, Font6x7);
+            
+            // Draw buttons
+            m_pSH1106Display->DrawText(64, 56, "UP/DN/X/Y", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                     FALSE, FALSE, Font6x7);
+            
+            // Ensure the display is updated
+            m_pSH1106Display->Refresh();
+        }
         break;
         
     case DisplayTypeST7789:
@@ -665,8 +718,162 @@ void CDisplayManager::ShowAdvancedScreen(void)
             // Draw header bar with blue background
             graphics.DrawRect(0, 0, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
             
-            // Draw title text in white
-            graphics.DrawText(10, 8, COLOR2D(255, 255, 255), "Advanced Menu", C2DGraphics::AlignLeft);
+            // Draw title text in white - "Select an Image"
+            graphics.DrawText(10, 8, COLOR2D(255, 255, 255), "Select Image:", C2DGraphics::AlignLeft);
+            
+            // Move counter to header area
+            char position[16];
+            snprintf(position, sizeof(position), "%u/%u", CurrentFileIndex, TotalFiles);
+            graphics.DrawText(200, 8, COLOR2D(255, 255, 255), position, C2DGraphics::AlignRight);
+            
+            // Draw CD icon
+            unsigned cd_x = 10;
+            unsigned cd_y = 40;
+            unsigned cd_radius = 10;
+            
+            // Draw outer circle of CD
+            graphics.DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, cd_radius, COLOR2D(0, 0, 0));
+            
+            // Draw middle circle of CD
+            graphics.DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, 5, COLOR2D(0, 0, 0));
+            
+            // Draw center hole of CD
+            graphics.DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 2, COLOR2D(0, 0, 0));
+            
+            // Handle current ISO name (could be long)
+            // Start with full string display and then truncate if needed
+            if (strlen(pCurrentISOName) == 0) {
+                // Handle empty current ISO name
+                graphics.DrawText(35, 45, COLOR2D(0, 0, 0), "No image loaded", C2DGraphics::AlignLeft);
+            } else {
+                // Improved current filename display
+                const size_t first_line_chars = 22;
+                const size_t second_line_chars = 30;
+                
+                char first_line[40] = {0};
+                char second_line[40] = {0};
+                size_t iso_length = strlen(pCurrentISOName);
+                
+                if (iso_length <= first_line_chars) {
+                    // Short name fits on one line
+                    graphics.DrawText(35, 45, COLOR2D(0, 0, 0), pCurrentISOName, C2DGraphics::AlignLeft);
+                } else {
+                    // First line starting on same line as CD icon
+                    strncpy(first_line, pCurrentISOName, first_line_chars);
+                    first_line[first_line_chars] = '\0';
+                    graphics.DrawText(35, 45, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
+                    
+                    // Second line - show remainder of text
+                    if (iso_length > first_line_chars + second_line_chars) {
+                        // Very long filename, truncate middle
+                        // First part (12 chars)
+                        strncpy(second_line, pCurrentISOName + first_line_chars, 12);
+                        second_line[12] = '\0';
+                        // Add ellipsis
+                        strcat(second_line, "...");
+                        // Last part (12 chars)
+                        strncat(second_line, 
+                                pCurrentISOName + iso_length - 12,
+                                12);
+                    } else {
+                        // Just display remainder
+                        strncpy(second_line, pCurrentISOName + first_line_chars, second_line_chars);
+                        second_line[second_line_chars] = '\0';
+                    }
+                    
+                    second_line[sizeof(second_line) - 1] = '\0';
+                    graphics.DrawText(10, 65, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
+                }
+            }
+            
+            // Draw a thicker horizontal line (3 pixels thick)
+            for (int i = 0; i < 3; i++) {
+                graphics.DrawLine(0, 85 + i, m_pST7789Display->GetWidth(), 85 + i, COLOR2D(80, 80, 80));
+            }
+            
+            // Draw selection background
+            graphics.DrawRect(5, 95, m_pST7789Display->GetWidth() - 10, 80, COLOR2D(0, 80, 120));
+            graphics.DrawRectOutline(5, 95, m_pST7789Display->GetWidth() - 10, 80, COLOR2D(255, 255, 255));
+            
+            // Handle selected filename display
+            if (strlen(pSelectedFileName) == 0) {
+                // Handle empty selection
+                graphics.DrawText(10, 135, COLOR2D(255, 255, 255), "No files found", C2DGraphics::AlignCenter);
+            } else {
+                // Get actual filename length
+                size_t filename_len = strlen(pSelectedFileName);
+                
+                // Split filename into three lines if needed
+                // Use smaller chunks to ensure more of the filename is visible
+                size_t chars_per_line = 28;
+                
+                if (filename_len <= chars_per_line) {
+                    // Short filename fits on one line
+                    graphics.DrawText(10, 135, COLOR2D(255, 255, 255), pSelectedFileName, C2DGraphics::AlignLeft);
+                } 
+                else if (filename_len <= chars_per_line * 2) {
+                    // Medium filename fits on two lines
+                    char line1[40] = {0};
+                    char line2[40] = {0};
+                    
+                    // First line
+                    strncpy(line1, pSelectedFileName, chars_per_line);
+                    line1[chars_per_line] = '\0';
+                    
+                    // Second line
+                    strncpy(line2, pSelectedFileName + chars_per_line, chars_per_line);
+                    line2[chars_per_line] = '\0';
+                    
+                    graphics.DrawText(10, 120, COLOR2D(255, 255, 255), line1, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 145, COLOR2D(255, 255, 255), line2, C2DGraphics::AlignLeft);
+                }
+                else if (filename_len <= chars_per_line * 3) {
+                    // Long filename fits on three lines
+                    char line1[40] = {0};
+                    char line2[40] = {0};
+                    char line3[40] = {0};
+                    
+                    // First line
+                    strncpy(line1, pSelectedFileName, chars_per_line);
+                    line1[chars_per_line] = '\0';
+                    
+                    // Second line
+                    strncpy(line2, pSelectedFileName + chars_per_line, chars_per_line);
+                    line2[chars_per_line] = '\0';
+                    
+                    // Third line
+                    strncpy(line3, pSelectedFileName + (chars_per_line * 2), chars_per_line);
+                    line3[chars_per_line] = '\0';
+                    
+                    graphics.DrawText(10, 110, COLOR2D(255, 255, 255), line1, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 135, COLOR2D(255, 255, 255), line2, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 160, COLOR2D(255, 255, 255), line3, C2DGraphics::AlignLeft);
+                }
+                else {
+                    // Very long filename - show first two lines and last part
+                    char line1[40] = {0};
+                    char line2[40] = {0};
+                    char line3[40] = {0};
+                    
+                    // First line
+                    strncpy(line1, pSelectedFileName, chars_per_line);
+                    line1[chars_per_line] = '\0';
+                    
+                    // Second line
+                    strncpy(line2, pSelectedFileName + chars_per_line, chars_per_line);
+                    line2[chars_per_line] = '\0';
+                    
+                    // Third line - show last part with ellipsis
+                    strcpy(line3, "...");
+                    strncat(line3, 
+                           pSelectedFileName + (filename_len - (chars_per_line - 3)),
+                           chars_per_line - 3);
+                    
+                    graphics.DrawText(10, 110, COLOR2D(255, 255, 255), line1, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 135, COLOR2D(255, 255, 255), line2, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 160, COLOR2D(255, 255, 255), line3, C2DGraphics::AlignLeft);
+                }
+            }
             
             // Draw button bar at bottom
             graphics.DrawRect(0, 210, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
@@ -703,31 +910,27 @@ void CDisplayManager::ShowAdvancedScreen(void)
             graphics.DrawLine(arrow_x + 6, arrow_y + 6, arrow_x, arrow_y + 12, COLOR2D(255, 255, 255));
             graphics.DrawLine(arrow_x + 6, arrow_y + 5, arrow_x + 1, arrow_y + 11, COLOR2D(255, 255, 255));
             
-            // X button with RED X (Cancel)
+            // X button with MENU BARS (3 horizontal lines)
             graphics.DrawText(132, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
             
-            // Draw RED X
-            unsigned x_center = 150;
-            unsigned y_center = 225;
-            // Red X (drawn with white on blue background)
-            graphics.DrawLine(x_center - 8, y_center - 8, x_center + 8, y_center + 8, COLOR2D(255, 100, 100));
-            graphics.DrawLine(x_center + 8, y_center - 8, x_center - 8, y_center + 8, COLOR2D(255, 100, 100));
-            // Thicker lines
-            graphics.DrawLine(x_center - 7, y_center - 8, x_center + 9, y_center + 8, COLOR2D(255, 100, 100));
-            graphics.DrawLine(x_center + 7, y_center - 8, x_center - 9, y_center + 8, COLOR2D(255, 100, 100));
+            // Draw 3 horizontal bars for menu
+            unsigned menu_x = 150;
+            unsigned menu_y = 220;
+            graphics.DrawLine(menu_x, menu_y, menu_x + 15, menu_y, COLOR2D(255, 255, 255));
+            graphics.DrawLine(menu_x, menu_y + 5, menu_x + 15, menu_y + 5, COLOR2D(255, 255, 255));
+            graphics.DrawLine(menu_x, menu_y + 10, menu_x + 15, menu_y + 10, COLOR2D(255, 255, 255));
             
-            // Y button with GREEN CHECKMARK (OK)
+            // Y button with FOLDER icon
             graphics.DrawText(192, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
             
-            // Draw GREEN CHECKMARK
-            unsigned check_x = 210;
-            unsigned check_y = 225;
-            // Green checkmark (drawn with white on blue background)
-            graphics.DrawLine(check_x - 8, check_y, check_x - 3, check_y + 8, COLOR2D(100, 255, 100));
-            graphics.DrawLine(check_x - 3, check_y + 8, check_x + 8, check_y - 5, COLOR2D(100, 255, 100));
-            // Thicker checkmark
-            graphics.DrawLine(check_x - 8, check_y + 1, check_x - 3, check_y + 9, COLOR2D(100, 255, 100));
-            graphics.DrawLine(check_x - 3, check_y + 9, check_x + 8, check_y - 4, COLOR2D(100, 255, 100));
+            // Draw folder icon
+            unsigned folder_x = 210;
+            unsigned folder_y = 220;
+            
+            // Folder base
+            graphics.DrawRect(folder_x, folder_y + 3, 16, 10, COLOR2D(255, 255, 255));
+            // Folder tab
+            graphics.DrawRect(folder_x + 2, folder_y, 8, 3, COLOR2D(255, 255, 255));
             
             // Update the display
             graphics.UpdateDisplay();
