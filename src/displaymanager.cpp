@@ -885,17 +885,22 @@ void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButton
     // This would show a brief button press indicator on the screen
 }
 
-// Update the helper function to clearly show button labels next to icons
+// Update the helper function to make button labels more visible
 void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* screenType)
 {
     // Draw button bar at bottom
     graphics.DrawRect(0, 210, graphics.GetWidth(), 30, COLOR2D(58, 124, 165));
     
-    // A button with UP arrow
-    graphics.DrawText(5, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
+    // --- A BUTTON ---
+    // Draw a more visible button with border
+    graphics.DrawRect(5, 215, 18, 20, COLOR2D(100, 100, 100));
+    graphics.DrawRectOutline(5, 215, 18, 20, COLOR2D(200, 200, 200));
     
-    // Thicker Up arrow
-    unsigned arrow_x = 20;
+    // A button label - make it larger and centered in the button
+    graphics.DrawText(11, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignCenter);
+    
+    // Thicker Up arrow - positioned after the button
+    unsigned arrow_x = 35;
     unsigned arrow_y = 225;
     // Stem (2px thick)
     graphics.DrawLine(arrow_x, arrow_y - 12, arrow_x, arrow_y, COLOR2D(255, 255, 255));
@@ -907,11 +912,16 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawLine(arrow_x + 6, arrow_y - 6, arrow_x, arrow_y - 12, COLOR2D(255, 255, 255));
     graphics.DrawLine(arrow_x + 6, arrow_y - 5, arrow_x + 1, arrow_y - 11, COLOR2D(255, 255, 255));
     
-    // B button with DOWN arrow
-    graphics.DrawText(65, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft);
+    // --- B BUTTON ---
+    // Draw a more visible button with border
+    graphics.DrawRect(65, 215, 18, 20, COLOR2D(100, 100, 100));
+    graphics.DrawRectOutline(65, 215, 18, 20, COLOR2D(200, 200, 200));
     
-    // Thicker Down arrow
-    arrow_x = 80;
+    // B button label - make it larger and centered in the button
+    graphics.DrawText(71, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignCenter);
+    
+    // Thicker Down arrow - positioned after the button
+    arrow_x = 95;
     arrow_y = 225;
     // Stem (2px thick)
     graphics.DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 12, COLOR2D(255, 255, 255));
@@ -925,21 +935,31 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     
     // Compare strings to determine which screen type we're displaying
     if (strcmp(screenType, "main") == 0) {
-        // X button with MENU BARS (3 horizontal lines) for main screen
-        graphics.DrawText(125, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
+        // --- X BUTTON ---
+        // Draw a more visible button with border
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(100, 100, 100));
+        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(200, 200, 200));
         
-        // Draw 3 horizontal bars for menu
-        unsigned menu_x = 140;
+        // X button label - make it larger and centered in the button
+        graphics.DrawText(131, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignCenter);
+        
+        // Draw 3 horizontal bars for menu - positioned after the button
+        unsigned menu_x = 155;
         unsigned menu_y = 220;
         graphics.DrawLine(menu_x, menu_y, menu_x + 15, menu_y, COLOR2D(255, 255, 255));
         graphics.DrawLine(menu_x, menu_y + 5, menu_x + 15, menu_y + 5, COLOR2D(255, 255, 255));
         graphics.DrawLine(menu_x, menu_y + 10, menu_x + 15, menu_y + 10, COLOR2D(255, 255, 255));
         
-        // Y button with FOLDER icon
-        graphics.DrawText(185, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
+        // --- Y BUTTON ---
+        // Draw a more visible button with border
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(100, 100, 100));
+        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(200, 200, 200));
         
-        // Draw folder icon
-        unsigned folder_x = 200;
+        // Y button label - make it larger and centered in the button
+        graphics.DrawText(191, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignCenter);
+        
+        // Draw folder icon - positioned after the button
+        unsigned folder_x = 215;
         unsigned folder_y = 220;
         
         // Folder base
@@ -948,11 +968,16 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
         graphics.DrawRect(folder_x + 2, folder_y, 8, 3, COLOR2D(255, 255, 255));
     } 
     else if (strcmp(screenType, "selection") == 0 || strcmp(screenType, "advanced") == 0) {
-        // X button with RED X (Cancel) for selection/advanced screens
-        graphics.DrawText(125, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
+        // --- X BUTTON ---
+        // Draw a more visible button with border
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(100, 100, 100));
+        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(200, 200, 200));
         
-        // Draw RED X
-        unsigned x_center = 140;
+        // X button label - make it larger and centered in the button
+        graphics.DrawText(131, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignCenter);
+        
+        // Draw RED X - positioned after the button
+        unsigned x_center = 155;
         unsigned y_center = 225;
         // Red X (drawn with white on blue background)
         graphics.DrawLine(x_center - 8, y_center - 8, x_center + 8, y_center + 8, COLOR2D(255, 100, 100));
@@ -961,11 +986,16 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
         graphics.DrawLine(x_center - 7, y_center - 8, x_center + 9, y_center + 8, COLOR2D(255, 100, 100));
         graphics.DrawLine(x_center + 7, y_center - 8, x_center - 9, y_center + 8, COLOR2D(255, 100, 100));
         
-        // Y button with GREEN CHECKMARK (OK)
-        graphics.DrawText(185, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
+        // --- Y BUTTON ---
+        // Draw a more visible button with border
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(100, 100, 100));
+        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(200, 200, 200));
         
-        // Draw GREEN CHECKMARK
-        unsigned check_x = 200;
+        // Y button label - make it larger and centered in the button
+        graphics.DrawText(191, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignCenter);
+        
+        // Draw GREEN CHECKMARK - positioned after the button
+        unsigned check_x = 215;
         unsigned check_y = 225;
         // Green checkmark (drawn with white on blue background)
         graphics.DrawLine(check_x - 8, check_y, check_x - 3, check_y + 8, COLOR2D(100, 255, 100));
