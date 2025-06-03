@@ -218,8 +218,8 @@ boolean CDisplayManager::InitializeST7789(CSPIMaster *pSPIMaster)
     // Set rotation to 270 degrees for the Pirate Audio display
     m_pST7789Display->SetRotation(270);
     
-    // Clear the display initially
-    m_pST7789Display->Clear(ST7789_BLACK_COLOR);
+    // Initialize with WHITE background to match sample
+    m_pST7789Display->Clear(ST7789_COLOR(255, 255, 255)); // WHITE background
     
     // Display initialized successfully
     m_pLogger->Write("dispman", LogNotice, "ST7789 display initialized successfully");
@@ -434,8 +434,8 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
     case DisplayTypeST7789:
         if (m_pST7789Display != nullptr)
         {
-            // Clear the display first
-            m_pST7789Display->Clear(ST7789_BLACK_COLOR);
+            // Clear the display first with WHITE background to match sample
+            m_pST7789Display->Clear(ST7789_COLOR(255, 255, 255));
             
             // Create a 2D graphics instance for drawing
             C2DGraphics graphics(m_pST7789Display);
@@ -447,141 +447,25 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             // Draw title text in white
             graphics.DrawText(10, 5, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
             
-            // Draw WiFi icon
+            // For the main content, use BLACK text on WHITE background for better contrast
+            
+            // Draw WiFi icon - in BLACK for better contrast on white background
             unsigned wifi_x = 10;
             unsigned wifi_y = 40;
             
-            // Draw WiFi icon - outer arc
-            graphics.DrawCircleOutline(wifi_x + 10, wifi_y + 10, 10, COLOR2D(255, 255, 255));
-            // Draw WiFi icon - inner arc
-            graphics.DrawCircleOutline(wifi_x + 10, wifi_y + 10, 5, COLOR2D(255, 255, 255));
-            // Center dot
-            graphics.DrawCircle(wifi_x + 10, wifi_y + 10, 2, COLOR2D(255, 255, 255));
+            // Draw WiFi icon - outer arc (BLACK)
+            graphics.DrawCircleOutline(wifi_x + 10, wifi_y + 10, 10, COLOR2D(0, 0, 0));
+            // Draw WiFi icon - inner arc (BLACK)
+            graphics.DrawCircleOutline(wifi_x + 10, wifi_y + 10, 5, COLOR2D(0, 0, 0));
+            // Center dot (BLACK)
+            graphics.DrawCircle(wifi_x + 10, wifi_y + 10, 2, COLOR2D(0, 0, 0));
             
-            // Draw IP address text
-            graphics.DrawText(35, 40, COLOR2D(255, 255, 255), pIPAddress, C2DGraphics::AlignLeft);
+            // Draw IP address text (BLACK)
+            graphics.DrawText(35, 40, COLOR2D(0, 0, 0), pIPAddress, C2DGraphics::AlignLeft);
             
-            // Draw CD icon
-            unsigned cd_x = 10;
-            unsigned cd_y = 70;
-            unsigned cd_radius = 10;
-            
-            // Draw outer circle of CD
-            graphics.DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, cd_radius, COLOR2D(192, 192, 192));
-            
-            // Draw inner hole of CD
-            graphics.DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 3, COLOR2D(0, 0, 0));
-            
-            // Draw shine highlight
-            graphics.DrawLine(cd_x + 3, cd_y + 3, cd_x + cd_radius - 3, cd_y + cd_radius - 3, COLOR2D(255, 255, 255));
-            
-            // Prepare ISO name for display (handle long names)
-            const size_t max_iso_chars = 18;
-            char iso_line1[32] = {0};
-            char iso_line2[32] = {0};
-            
-            size_t iso_length = strlen(pISOName);
-            
-            if (iso_length <= max_iso_chars)
-            {
-                // Short name fits on one line
-                strncpy(iso_line1, pISOName, sizeof(iso_line1) - 1);
-                graphics.DrawText(35, 70, COLOR2D(255, 255, 255), iso_line1, C2DGraphics::AlignLeft);
-            }
-            else
-            {
-                // First line
-                strncpy(iso_line1, pISOName, max_iso_chars);
-                iso_line1[max_iso_chars] = '\0';
-                graphics.DrawText(35, 70, COLOR2D(255, 255, 255), iso_line1, C2DGraphics::AlignLeft);
-                
-                // Second line (with ellipsis for very long names)
-                if (iso_length > max_iso_chars * 2 - 3)
-                {
-                    strncpy(iso_line2, pISOName + max_iso_chars, max_iso_chars - 6);
-                    strcat(iso_line2, "...");
-                }
-                else
-                {
-                    strncpy(iso_line2, pISOName + max_iso_chars, max_iso_chars);
-                }
-                iso_line2[max_iso_chars] = '\0';
-                
-                graphics.DrawText(35, 90, COLOR2D(255, 255, 255), iso_line2, C2DGraphics::AlignLeft);
-            }
-            
-            // Draw USB icon
-            unsigned usb_x = 10;
-            unsigned usb_y = 155;
-            
-            // Draw USB icon - horizontal line (main stem)
-            graphics.DrawLine(usb_x, usb_y + 8, usb_x + 20, usb_y + 8, COLOR2D(255, 255, 255));
-            
-            // Draw circle at left of USB icon
-            graphics.DrawCircleOutline(usb_x - 2, usb_y + 8, 4, COLOR2D(255, 255, 255));
-            
-            // Draw USB icon - top arm
-            graphics.DrawLine(usb_x + 6, usb_y + 8, usb_x + 6, usb_y, COLOR2D(255, 255, 255));
-            graphics.DrawLine(usb_x + 6, usb_y, usb_x + 14, usb_y, COLOR2D(255, 255, 255));
-            
-            // Draw USB icon - bottom arm
-            graphics.DrawLine(usb_x + 14, usb_y + 8, usb_x + 14, usb_y + 16, COLOR2D(255, 255, 255));
-            graphics.DrawLine(usb_x + 14, usb_y + 16, usb_x + 22, usb_y + 16, COLOR2D(255, 255, 255));
-            
-            // Draw USB speed
-            graphics.DrawText(40, 155, COLOR2D(255, 255, 255), pUSBSpeed, C2DGraphics::AlignLeft);
-            
-            // Draw button bar at bottom
-            graphics.DrawRect(0, 190, m_pST7789Display->GetWidth(), 50, COLOR2D(58, 124, 165));
-            
-            // Draw button labels
-            // A button (Up/Open ISO)
-            graphics.DrawText(12, 200, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
-            
-            // Draw up arrow for A button
-            unsigned arrow_x = 30;
-            unsigned arrow_y = 205;
-            graphics.DrawLine(arrow_x, arrow_y, arrow_x, arrow_y - 8, COLOR2D(255, 255, 255));
-            graphics.DrawLine(arrow_x - 4, arrow_y - 4, arrow_x, arrow_y - 8, COLOR2D(255, 255, 255));
-            graphics.DrawLine(arrow_x + 4, arrow_y - 4, arrow_x, arrow_y - 8, COLOR2D(255, 255, 255));
-            
-            // B button (Down/Open ISO)
-            graphics.DrawText(72, 200, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft);
-            
-            // Draw down arrow for B button
-            arrow_x = 90;
-            arrow_y = 205;
-            graphics.DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 8, COLOR2D(255, 255, 255));
-            graphics.DrawLine(arrow_x - 4, arrow_y + 4, arrow_x, arrow_y + 8, COLOR2D(255, 255, 255));
-            graphics.DrawLine(arrow_x + 4, arrow_y + 4, arrow_x, arrow_y + 8, COLOR2D(255, 255, 255));
-            
-            // X button (Advanced)
-            graphics.DrawText(132, 200, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
-            
-            // Draw hamburger menu icon for X button
-            unsigned menu_x = 150;
-            unsigned menu_y = 200;
-            graphics.DrawLine(menu_x, menu_y + 1, menu_x + 20, menu_y + 1, COLOR2D(255, 255, 255));
-            graphics.DrawLine(menu_x, menu_y + 8, menu_x + 20, menu_y + 8, COLOR2D(255, 255, 255));
-            graphics.DrawLine(menu_x, menu_y + 15, menu_x + 20, menu_y + 15, COLOR2D(255, 255, 255));
-            
-            // Y button (Open ISO)
-            graphics.DrawText(192, 200, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
-            
-            // Draw folder icon for Y button
-            unsigned folder_x = 210;
-            unsigned folder_y = 198;
-            
-            // Folder outline
-            graphics.DrawRectOutline(folder_x, folder_y + 5, 20, 15, COLOR2D(255, 255, 255));
-            graphics.DrawRectOutline(folder_x + 2, folder_y, 8, 5, COLOR2D(255, 255, 255));
-            
-            // Update the display
+            // Make sure to call UpdateDisplay at the end
             graphics.UpdateDisplay();
         }
-        break;
-        
-    default:
         break;
     }
 }
