@@ -1176,7 +1176,10 @@ void CKernel::LoadSelectedISO(void)
                 "Error loading Image",
                 "Failed to load file",
                 currentImage,  // Show currently loaded ISO
-                m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
+                m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");
+                
+            // Ensure the display is refreshed immediately
+            m_pDisplayManager->Refresh();
         }
         
         return;
@@ -1194,8 +1197,33 @@ void CKernel::LoadSelectedISO(void)
     // Set the new device in the CD gadget
     m_CDGadget.SetDevice(CueBinFileDevice);
     
-    // Update the display
+    // Return to main screen state first
+    m_ScreenState = ScreenStateMain;
+    
+    // Show a success message before returning to main screen
+    if (m_pDisplayManager != nullptr)
+    {
+        m_pDisplayManager->ShowStatusScreen(
+            "Image Loaded",
+            "Successfully mounted:",
+            SelectedISO,
+            m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");
+            
+        // Ensure the display is refreshed immediately
+        m_pDisplayManager->Refresh();
+        
+        // Small delay to show the success message
+        m_Timer.MsDelay(1000);
+    }
+    
+    // Update the display with the new ISO
     UpdateDisplayStatus(SelectedISO);
+    
+    // Explicitly refresh again to ensure display is updated
+    if (m_pDisplayManager != nullptr)
+    {
+        m_pDisplayManager->Refresh();
+    }
 }
 
 void CKernel::InitializeNTP(const char* timezone)
