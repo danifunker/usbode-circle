@@ -885,18 +885,17 @@ void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButton
     // This would show a brief button press indicator on the screen
 }
 
-// Update the button label drawing in DrawNavigationBar
+// Update the button label drawing in DrawNavigationBar to make buttons more visible
 void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* screenType)
 {
     // Draw button bar at bottom
     graphics.DrawRect(0, 210, graphics.GetWidth(), 30, COLOR2D(58, 124, 165));
     
     // --- A BUTTON ---
-    // Draw a more visible button with border - use a DARKER gray for better contrast with white text
-    graphics.DrawRect(5, 215, 18, 20, COLOR2D(80, 80, 80));
-    graphics.DrawRectOutline(5, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
+    // Draw a solid white button with high contrast
+    graphics.DrawRect(5, 215, 18, 20, COLOR2D(255, 255, 255));
     
-    // Draw "A" in BLACK instead of white for better visibility
+    // Draw "A" in BLACK for maximum contrast
     graphics.DrawText(10, 225, COLOR2D(0, 0, 0), "A", C2DGraphics::AlignLeft);
     // Make it bolder by drawing it slightly offset
     graphics.DrawText(11, 225, COLOR2D(0, 0, 0), "A", C2DGraphics::AlignLeft);
@@ -922,11 +921,10 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawLine(arrow_x + 6, arrow_y - 7, arrow_x - 1, arrow_y - 13, COLOR2D(255, 255, 255));
     
     // --- B BUTTON ---
-    // Draw a more visible button with border - use a DARKER gray for better contrast
-    graphics.DrawRect(65, 215, 18, 20, COLOR2D(80, 80, 80));
-    graphics.DrawRectOutline(65, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
+    // Draw a solid white button with high contrast
+    graphics.DrawRect(65, 215, 18, 20, COLOR2D(255, 255, 255));
     
-    // Draw "B" in BLACK for better visibility
+    // Draw "B" in BLACK for maximum contrast
     graphics.DrawText(70, 225, COLOR2D(0, 0, 0), "B", C2DGraphics::AlignLeft);
     // Make it bolder by drawing it slightly offset
     graphics.DrawText(71, 225, COLOR2D(0, 0, 0), "B", C2DGraphics::AlignLeft);
@@ -954,10 +952,10 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     // Compare strings to determine which screen type we're displaying
     if (strcmp(screenType, "main") == 0) {
         // --- X BUTTON ---
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(80, 80, 80));
-        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
+        // Draw a solid white button with high contrast
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
         
-        // Draw "X" in BLACK for better visibility
+        // Draw "X" in BLACK for maximum contrast
         graphics.DrawText(130, 225, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
         // Make it bolder by drawing it slightly offset
         graphics.DrawText(131, 225, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
@@ -977,10 +975,10 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
         graphics.DrawLine(menu_x, menu_y + 11, menu_x + 15, menu_y + 11, COLOR2D(255, 255, 255));
         
         // --- Y BUTTON ---
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(80, 80, 80));
-        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
+        // Draw a solid white button with high contrast
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
         
-        // Draw "Y" in BLACK for better visibility
+        // Draw "Y" in BLACK for maximum contrast
         graphics.DrawText(190, 225, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
         // Make it bolder by drawing it slightly offset
         graphics.DrawText(191, 225, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
@@ -998,10 +996,10 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     } 
     else if (strcmp(screenType, "selection") == 0 || strcmp(screenType, "advanced") == 0) {
         // --- X BUTTON ---
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(80, 80, 80));
-        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
+        // Draw a solid white button with high contrast
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
         
-        // Draw "X" in BLACK for better visibility
+        // Draw "X" in BLACK for maximum contrast
         graphics.DrawText(130, 225, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
         // Make it bolder by drawing it slightly offset
         graphics.DrawText(131, 225, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
@@ -1022,10 +1020,10 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
         graphics.DrawLine(x_center + 9, y_center - 8, x_center - 8, y_center + 9, COLOR2D(255, 100, 100));
         
         // --- Y BUTTON ---
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(80, 80, 80));
-        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
+        // Draw a solid white button with high contrast
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
         
-        // Draw "Y" in BLACK for better visibility
+        // Draw "Y" in BLACK for maximum contrast
         graphics.DrawText(190, 225, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
         // Make it bolder by drawing it slightly offset
         graphics.DrawText(191, 225, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
