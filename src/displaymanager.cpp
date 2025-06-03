@@ -475,8 +475,43 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             // Draw inner hole of CD
             graphics.DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 3, COLOR2D(255, 255, 255));
             
-            // Draw ISO name
-            graphics.DrawText(35, 70, COLOR2D(0, 0, 0), pISOName, C2DGraphics::AlignLeft);
+            // Update the ST7789 implementation in ShowStatusScreen to better handle ISO names
+            // ISO name handling with two-line support (like SH1106)
+            size_t first_line_chars = 30;  // More chars on ST7789 due to larger display
+            size_t second_line_chars = 35; // More chars on second line
+            
+            char first_line[40] = {0};
+            char second_line[40] = {0};
+            size_t iso_length = strlen(pISOName);
+            
+            if (iso_length <= first_line_chars)
+            {
+                // Short name fits on one line
+                graphics.DrawText(35, 70, COLOR2D(0, 0, 0), pISOName, C2DGraphics::AlignLeft);
+            }
+            else
+            {
+                // First line
+                strncpy(first_line, pISOName, first_line_chars);
+                first_line[first_line_chars] = '\0';
+                graphics.DrawText(35, 70, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
+                
+                // Second line (potentially with ellipsis for very long names)
+                if (iso_length > first_line_chars + second_line_chars - 4)
+                {
+                    // Very long name, use ellipsis and last portion
+                    strncpy(second_line, pISOName + first_line_chars, second_line_chars - 17);
+                    strcat(second_line, "...");
+                    strcat(second_line, pISOName + iso_length - 13);
+                }
+                else
+                {
+                    strncpy(second_line, pISOName + first_line_chars, second_line_chars);
+                    second_line[second_line_chars] = '\0';
+                }
+                
+                graphics.DrawText(35, 90, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
+            }
             
             // Draw USB icon
             unsigned usb_x = 10;
