@@ -187,7 +187,7 @@ boolean CDisplayManager::InitializeSH1106(CSPIMaster *pSPIMaster)
 
 boolean CDisplayManager::InitializeST7789(CSPIMaster *pSPIMaster)
 {
-    // Create ST7789 display
+    // Create ST7789 display with correct parameters for Pirate Audio
     m_pST7789Display = new CST7789Display(
         pSPIMaster,
         CST7789Display::DEFAULT_DC_PIN,
@@ -217,35 +217,6 @@ boolean CDisplayManager::InitializeST7789(CSPIMaster *pSPIMaster)
     
     // Set rotation to 270 degrees for the Pirate Audio display
     m_pST7789Display->SetRotation(270);
-    
-    // Create ST7789 device
-    m_pST7789Device = new CST7789Device(
-        pSPIMaster,
-        m_pST7789Display,
-        25,  // Number of columns
-        15,  // Number of rows
-        Font8x16,  // Default font
-        FALSE,    // Not double width
-        FALSE);   // Not double height
-    
-    if (m_pST7789Device == nullptr)
-    {
-        m_pLogger->Write("dispman", LogError, "Failed to create ST7789 device");
-        delete m_pST7789Display;
-        m_pST7789Display = nullptr;
-        return FALSE;
-    }
-    
-    // Initialize the device
-    if (!m_pST7789Device->Initialize())
-    {
-        m_pLogger->Write("dispman", LogError, "Failed to initialize ST7789 device");
-        delete m_pST7789Device;
-        m_pST7789Device = nullptr;
-        delete m_pST7789Display;
-        m_pST7789Display = nullptr;
-        return FALSE;
-    }
     
     // Clear the display initially
     m_pST7789Display->Clear(ST7789_BLACK_COLOR);

@@ -1090,3 +1090,11 @@ void CKernel::InitializeNTP(const char* timezone)
     // Log the current time (in UTC/GMT)
     LOGNOTE("Time synchronized successfully: %s (UTC/GMT)", Time.GetString());
 }
+
+// Static button pin configuration for ST7789 display
+static const unsigned ST7789_BUTTON_PINS[ST7789_NUM_BUTTONS] = {
+    5,  // Button A (Up)
+    6,  // Button B (Down)
+    16, // Button X (Cancel) - Changed from 19 to 16
+    24  // Button Y (Select) - Changed from 26 to 24
+};
