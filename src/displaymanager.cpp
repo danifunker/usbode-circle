@@ -885,23 +885,24 @@ void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButton
     // This would show a brief button press indicator on the screen
 }
 
-// Update the button drawing in DrawNavigationBar with a simpler, high-contrast approach
+// Update button labels with larger font size and better positioning
 void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* screenType)
 {
     // Draw button bar at bottom
     graphics.DrawRect(0, 210, graphics.GetWidth(), 30, COLOR2D(58, 124, 165));
     
     // --- A BUTTON ---
-    // Draw a dark blue button with high contrast
-    graphics.DrawRect(5, 215, 18, 20, COLOR2D(0, 0, 150));
+    // Draw a white button with dark border for better contrast
+    graphics.DrawRect(5, 215, 18, 20, COLOR2D(255, 255, 255));
+    graphics.DrawRectOutline(5, 215, 18, 20, COLOR2D(0, 0, 0));
     
-    // Draw "A" in WHITE for maximum contrast
-    graphics.DrawText(10, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
-    // Make it bolder by drawing it slightly offset
-    graphics.DrawText(11, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
-    graphics.DrawText(10, 226, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
+    // Draw large "A" in BLACK - position adjusted to center in the button
+    // Draw multiple times at slightly different positions to make it bolder
+    graphics.DrawText(8, 228, COLOR2D(0, 0, 0), "A", C2DGraphics::AlignLeft);
+    graphics.DrawText(9, 228, COLOR2D(0, 0, 0), "A", C2DGraphics::AlignLeft);
+    graphics.DrawText(8, 229, COLOR2D(0, 0, 0), "A", C2DGraphics::AlignLeft);
     
-    // Same arrow code as before
+    // Same arrow code as before but with black color for better visibility
     unsigned arrow_x = 35;
     unsigned arrow_y = 225;
     
@@ -910,27 +911,22 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawLine(arrow_x - 1, arrow_y - 13, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));
     graphics.DrawLine(arrow_x + 1, arrow_y - 13, arrow_x + 1, arrow_y, COLOR2D(255, 255, 255));
     
-    // Left side of arrowhead
-    graphics.DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255)); 
-    graphics.DrawLine(arrow_x - 7, arrow_y - 5, arrow_x - 1, arrow_y - 12, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x - 6, arrow_y - 7, arrow_x + 1, arrow_y - 13, COLOR2D(255, 255, 255));
-    
-    // Right side of arrowhead
+    // Arrow head
+    graphics.DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
     graphics.DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x + 7, arrow_y - 5, arrow_x + 1, arrow_y - 12, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x + 6, arrow_y - 7, arrow_x - 1, arrow_y - 13, COLOR2D(255, 255, 255));
     
     // --- B BUTTON ---
-    // Draw a dark green button
-    graphics.DrawRect(65, 215, 18, 20, COLOR2D(0, 150, 0));
+    // Draw a white button with dark border for better contrast
+    graphics.DrawRect(65, 215, 18, 20, COLOR2D(255, 255, 255));
+    graphics.DrawRectOutline(65, 215, 18, 20, COLOR2D(0, 0, 0));
     
-    // Draw "B" in WHITE for maximum contrast
-    graphics.DrawText(70, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft);
-    // Make it bolder by drawing it slightly offset
-    graphics.DrawText(71, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft);
-    graphics.DrawText(70, 226, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft);
+    // Draw large "B" in BLACK - position adjusted to center in the button
+    // Draw multiple times at slightly different positions to make it bolder
+    graphics.DrawText(68, 228, COLOR2D(0, 0, 0), "B", C2DGraphics::AlignLeft);
+    graphics.DrawText(69, 228, COLOR2D(0, 0, 0), "B", C2DGraphics::AlignLeft);
+    graphics.DrawText(68, 229, COLOR2D(0, 0, 0), "B", C2DGraphics::AlignLeft);
     
-    // Same arrow code as before
+    // Down arrow
     arrow_x = 95;
     arrow_y = 225;
     
@@ -939,30 +935,27 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawLine(arrow_x - 1, arrow_y, arrow_x - 1, arrow_y + 13, COLOR2D(255, 255, 255));
     graphics.DrawLine(arrow_x + 1, arrow_y, arrow_x + 1, arrow_y + 13, COLOR2D(255, 255, 255));
     
-    // Left side of arrowhead
+    // Arrow head
     graphics.DrawLine(arrow_x - 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x - 7, arrow_y + 5, arrow_x - 1, arrow_y + 12, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x - 6, arrow_y + 7, arrow_x + 1, arrow_y + 13, COLOR2D(255, 255, 255));
-    
-    // Right side of arrowhead
     graphics.DrawLine(arrow_x + 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x + 7, arrow_y + 5, arrow_x + 1, arrow_y + 12, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x + 6, arrow_y + 7, arrow_x - 1, arrow_y + 13, COLOR2D(255, 255, 255));
     
     if (strcmp(screenType, "main") == 0) {
         // --- X BUTTON ---
-        // Draw a red button
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(150, 0, 0));
+        // Draw a white button with dark border for better contrast
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
+        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
         
-        // Draw "X" in WHITE for maximum contrast
-        graphics.DrawText(130, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
-        // Make it bolder by drawing it slightly offset
-        graphics.DrawText(131, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
-        graphics.DrawText(130, 226, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
+        // Draw large "X" in BLACK - position adjusted to center in the button
+        // Draw multiple times at slightly different positions to make it bolder
+        graphics.DrawText(128, 228, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
+        graphics.DrawText(129, 228, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
+        graphics.DrawText(128, 229, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
         
         // Menu bars
         unsigned menu_x = 155;
         unsigned menu_y = 220;
+        
+        // Thicker menu bars (2px)
         graphics.DrawLine(menu_x, menu_y, menu_x + 15, menu_y, COLOR2D(255, 255, 255));
         graphics.DrawLine(menu_x, menu_y + 1, menu_x + 15, menu_y + 1, COLOR2D(255, 255, 255));
         
@@ -973,14 +966,15 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
         graphics.DrawLine(menu_x, menu_y + 11, menu_x + 15, menu_y + 11, COLOR2D(255, 255, 255));
         
         // --- Y BUTTON ---
-        // Draw a purple button
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(150, 0, 150));
+        // Draw a white button with dark border for better contrast
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
+        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
         
-        // Draw "Y" in WHITE for maximum contrast
-        graphics.DrawText(190, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
-        // Make it bolder by drawing it slightly offset
-        graphics.DrawText(191, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
-        graphics.DrawText(190, 226, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
+        // Draw large "Y" in BLACK - position adjusted to center in the button
+        // Draw multiple times at slightly different positions to make it bolder
+        graphics.DrawText(188, 228, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
+        graphics.DrawText(189, 228, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
+        graphics.DrawText(188, 229, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
         
         // Folder icon
         unsigned folder_x = 215;
@@ -990,44 +984,38 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     } 
     else if (strcmp(screenType, "selection") == 0 || strcmp(screenType, "advanced") == 0) {
         // --- X BUTTON ---
-        // Draw a red button
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(150, 0, 0));
+        // Draw a white button with dark border for better contrast
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
+        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
         
-        // Draw "X" in WHITE for maximum contrast
-        graphics.DrawText(130, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
-        // Make it bolder by drawing it slightly offset
-        graphics.DrawText(131, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
-        graphics.DrawText(130, 226, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
+        // Draw large "X" in BLACK - position adjusted to center in the button
+        // Draw multiple times at slightly different positions to make it bolder
+        graphics.DrawText(128, 228, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
+        graphics.DrawText(129, 228, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
+        graphics.DrawText(128, 229, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
         
         // Red X icon
         unsigned x_center = 155;
         unsigned y_center = 225;
-        graphics.DrawLine(x_center - 9, y_center - 9, x_center + 9, y_center + 9, COLOR2D(255, 100, 100));
-        graphics.DrawLine(x_center + 9, y_center - 9, x_center - 9, y_center + 9, COLOR2D(255, 100, 100));
-        graphics.DrawLine(x_center - 8, y_center - 9, x_center + 9, y_center + 8, COLOR2D(255, 100, 100));
-        graphics.DrawLine(x_center + 8, y_center - 9, x_center - 9, y_center + 8, COLOR2D(255, 100, 100));
-        graphics.DrawLine(x_center - 9, y_center - 8, x_center + 8, y_center + 9, COLOR2D(255, 100, 100));
-        graphics.DrawLine(x_center + 9, y_center - 8, x_center - 8, y_center + 9, COLOR2D(255, 100, 100));
+        graphics.DrawLine(x_center - 8, y_center - 8, x_center + 8, y_center + 8, COLOR2D(255, 0, 0));
+        graphics.DrawLine(x_center + 8, y_center - 8, x_center - 8, y_center + 8, COLOR2D(255, 0, 0));
         
         // --- Y BUTTON ---
-        // Draw a green button
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(0, 150, 0));
+        // Draw a white button with dark border for better contrast
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
+        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
         
-        // Draw "Y" in WHITE for maximum contrast
-        graphics.DrawText(190, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
-        // Make it bolder by drawing it slightly offset
-        graphics.DrawText(191, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
-        graphics.DrawText(190, 226, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
+        // Draw large "Y" in BLACK - position adjusted to center in the button
+        // Draw multiple times at slightly different positions to make it bolder
+        graphics.DrawText(188, 228, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
+        graphics.DrawText(189, 228, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
+        graphics.DrawText(188, 229, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
         
         // Green checkmark
         unsigned check_x = 215;
         unsigned check_y = 225;
-        graphics.DrawLine(check_x - 9, check_y, check_x - 3, check_y + 9, COLOR2D(100, 255, 100));
-        graphics.DrawLine(check_x - 3, check_y + 9, check_x + 9, check_y - 6, COLOR2D(100, 255, 100));
-        graphics.DrawLine(check_x - 9, check_y + 1, check_x - 3, check_y + 10, COLOR2D(100, 255, 100));
-        graphics.DrawLine(check_x - 3, check_y + 10, check_x + 9, check_y - 5, COLOR2D(100, 255, 100));
-        graphics.DrawLine(check_x - 8, check_y - 1, check_x - 2, check_y + 9, COLOR2D(100, 255, 100));
-        graphics.DrawLine(check_x - 2, check_y + 9, check_x + 9, check_y - 7, COLOR2D(100, 255, 100));
+        graphics.DrawLine(check_x - 8, check_y, check_x - 3, check_y + 8, COLOR2D(0, 255, 0));
+        graphics.DrawLine(check_x - 3, check_y + 8, check_x + 8, check_y - 5, COLOR2D(0, 255, 0));
     }
 }
 
