@@ -10,13 +10,12 @@ CFLAGS += -I ../include -I ../addon
 OBJS	= main.o kernel.o webserver.o util.o displaymanager.o gpiobuttonmanager.o
 
 # Add default target at the top
-.PHONY: all
+.PHONY: all clean
 all: kernel7.img
 
 gitinfo.h:
-	@echo "Generating $@..."
-	@./gitinfo.sh
-
+	@echo "Generating $@..."; \
+	./gitinfo.sh
 
 # Add gitinfo.h as a dependency for kernel.o and webserver.o
 kernel.o: gitinfo.h
@@ -51,3 +50,6 @@ include $(CIRCLEHOME)/Rules.mk
 webserver.o: $(CONTENT)
 
 -include $(DEPS)
+
+clean:
+	$(RM) gitinfo.h
