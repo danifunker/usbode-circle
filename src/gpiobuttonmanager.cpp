@@ -238,13 +238,15 @@ void CGPIOButtonManager::InitSH1106Buttons(void)
 
 void CGPIOButtonManager::InitST7789Buttons(void)
 {
-    // Use button configuration from ST7789Display
+    // Define the number of buttons first, before using it
     static const unsigned ST7789_NUM_BUTTONS = 4;
+    
+    // Then use it in the button pins array declaration
     static const unsigned ST7789_BUTTON_PINS[ST7789_NUM_BUTTONS] = {
-        CST7789Display::BUTTON_A_PIN,
-        CST7789Display::BUTTON_B_PIN,
-        CST7789Display::BUTTON_X_PIN,
-        CST7789Display::BUTTON_Y_PIN
+        5,  // Button A (Up)
+        6,  // Button B (Down)
+        16, // Button X (Cancel)
+        24  // Button Y (Select)
     };
     
     static const char* ST7789_BUTTON_LABELS[ST7789_NUM_BUTTONS] = {
