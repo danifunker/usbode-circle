@@ -548,9 +548,9 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
                 graphics.DrawText(35, 115, COLOR2D(0, 0, 0), third_line, C2DGraphics::AlignLeft);
             }
             
-            // Move the USB icon further down to accommodate 3 lines of text and make it larger
+            // Move the USB icon further down to accommodate 3 lines of text
             unsigned usb_x = 10;
-            unsigned usb_y = 170; // Moved down close to nav bar
+            unsigned usb_y = 145; // Moved down from original position
             
             // USB outline - rectangular shape (3x larger)
             // Using DrawRect for thicker lines instead of individual pixels
@@ -740,4 +740,38 @@ void CDisplayManager::ShowAdvancedScreen(void)
     default:
         break;
     }
+}
+
+void CDisplayManager::Refresh(void)
+{
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        if (m_pSH1106Display != nullptr)
+        {
+            m_pSH1106Display->Refresh();
+        }
+        break;
+        
+    case DisplayTypeST7789:
+        if (m_pST7789Display != nullptr)
+        {
+            // For ST7789, we need to refresh using the graphics object
+            C2DGraphics graphics(m_pST7789Display);
+            if (graphics.Initialize())
+            {
+                graphics.UpdateDisplay();
+            }
+        }
+        break;
+        
+    default:
+        break;
+    }
+}
+
+void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel)
+{
+    // Currently not implemented
+    // This would show a brief button press indicator on the screen
 }
