@@ -66,6 +66,7 @@ public:
     void ShowButtonTestScreen(void); // Added method for button test screen
     void Refresh(void); // Added method declaration for Refresh
     void ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel); // Added method declaration for button press display
+    void ShowAdvancedScreen(void); // Added method declaration for advanced screen
     
 private:
     // Initialize SH1106 display
