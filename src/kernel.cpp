@@ -531,9 +531,9 @@ void CKernel::InitializeDisplay(TDisplayType displayType)
         LOGNOTE("Initializing SPI for ST7789 display");
         // Use ST7789-specific SPI settings when they're defined
         m_pSPIMaster = new CSPIMaster(
-            SPI_CLOCK_SPEED,
-            SPI_CPOL, 
-            SPI_CPHA,
+            80000000,
+            0, 
+            0,
             SPI_MASTER_DEVICE
         );
     }
