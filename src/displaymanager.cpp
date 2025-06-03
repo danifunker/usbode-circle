@@ -192,12 +192,12 @@ boolean CDisplayManager::InitializeST7789(CSPIMaster *pSPIMaster)
         pSPIMaster,
         9,                  // DC_PIN from sample
         27,                 // RESET_PIN from sample
-        CST7789Display::None,  // BACKLIGHT_PIN (None is defined in ST7789Display)
+        CST7789Display::None,  // BACKLIGHT_PIN
         240,                // WIDTH from sample
         240,                // HEIGHT from sample
         0,                  // SPI_CPOL from sample
         0,                  // SPI_CPHA from sample
-        80000000,           // SPI_CLOCK_SPEED from sample (80MHz)
+        80000000,           // SPI_CLOCK_SPEED from sample (80MHz) - MUST match SPIMaster
         1);                 // SPI_CHIP_SELECT from sample
     
     if (m_pST7789Display == nullptr)
@@ -220,6 +220,9 @@ boolean CDisplayManager::InitializeST7789(CSPIMaster *pSPIMaster)
     
     // Initialize with WHITE background to match sample
     m_pST7789Display->Clear(ST7789_COLOR(255, 255, 255)); // WHITE background
+    
+    // Turn the display on to prevent sleep mode
+    m_pST7789Display->On();
     
     // Display initialized successfully
     m_pLogger->Write("dispman", LogNotice, "ST7789 display initialized successfully");
@@ -439,7 +442,11 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             
             // Create a 2D graphics instance for drawing
             C2DGraphics graphics(m_pST7789Display);
-            graphics.Initialize();
+            if (!graphics.Initialize())
+            {
+                m_pLogger->Write("dispman", LogError, "Failed to initialize 2D graphics");
+                return;
+            }
             
             // Draw header bar with blue background
             graphics.DrawRect(0, 0, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
@@ -447,9 +454,7 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             // Draw title text in white
             graphics.DrawText(10, 5, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
             
-            // For the main content, use BLACK text on WHITE background for better contrast
-            
-            // Draw WiFi icon - in BLACK for better contrast on white background
+            // Draw WiFi icon and information
             unsigned wifi_x = 10;
             unsigned wifi_y = 40;
             
@@ -463,8 +468,53 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             // Draw IP address text (BLACK)
             graphics.DrawText(35, 40, COLOR2D(0, 0, 0), pIPAddress, C2DGraphics::AlignLeft);
             
-            // Make sure to call UpdateDisplay at the end
+            // Draw CD icon
+            unsigned cd_x = 10;
+            unsigned cd_y = 70;
+            unsigned cd_radius = 10;
+            
+            // Draw outer circle of CD
+            graphics.DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, cd_radius, COLOR2D(0, 0, 0));
+            
+            // Draw inner hole of CD
+            graphics.DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 3, COLOR2D(255, 255, 255));
+            
+            // Draw ISO name
+            graphics.DrawText(35, 70, COLOR2D(0, 0, 0), pISOName, C2DGraphics::AlignLeft);
+            
+            // Draw USB icon
+            unsigned usb_x = 10;
+            unsigned usb_y = 155;
+            
+            // Draw USB icon - horizontal line (main stem)
+            graphics.DrawLine(usb_x, usb_y + 8, usb_x + 20, usb_y + 8, COLOR2D(0, 0, 0));
+            
+            // Draw circle at left of USB icon
+            graphics.DrawCircleOutline(usb_x - 2, usb_y + 8, 4, COLOR2D(0, 0, 0));
+            
+            // Draw USB icon - top arm
+            graphics.DrawLine(usb_x + 6, usb_y + 8, usb_x + 6, usb_y, COLOR2D(0, 0, 0));
+            graphics.DrawLine(usb_x + 6, usb_y, usb_x + 14, usb_y, COLOR2D(0, 0, 0));
+            
+            // Draw USB icon - bottom arm
+            graphics.DrawLine(usb_x + 14, usb_y + 8, usb_x + 14, usb_y + 16, COLOR2D(0, 0, 0));
+            graphics.DrawLine(usb_x + 14, usb_y + 16, usb_x + 22, usb_y + 16, COLOR2D(0, 0, 0));
+            
+            // Get USB speed information
+            boolean bUSBFullSpeed = CKernelOptions::Get()->GetUSBFullSpeed();
+            const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
+            
+            // Draw USB mode text
+            graphics.DrawText(40, 155, COLOR2D(0, 0, 0), pUSBSpeed, C2DGraphics::AlignLeft);
+            
+            // Draw button bar at bottom
+            graphics.DrawRect(0, 190, m_pST7789Display->GetWidth(), 50, COLOR2D(58, 124, 165));
+            
+            // Update the display with all the graphics we've drawn
             graphics.UpdateDisplay();
+            
+            // Turn display on explicitly to ensure it stays active
+            m_pST7789Display->On();
         }
         break;
     }
@@ -522,7 +572,7 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
                 }
             }
             
-            // First line has CD icon + space, so fewer characters per line
+            // First line has CD icon - use safe string handling
             const size_t first_line_chars = 18;
             // Second line and selection lines have no prefix, so can use more characters
             const size_t chars_per_line = 21;
@@ -852,7 +902,25 @@ void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButton
     // For ST7789 display
     else if (m_pST7789Display != nullptr)
     {
-        // Similar implementation for ST7789 display
-        // ...
+        // Create a 2D graphics instance for drawing
+        C2DGraphics graphics(m_pST7789Display);
+        if (graphics.Initialize())
+        {
+            // Clear the middle area of the screen
+            graphics.DrawRect(20, 100, 200, 50, COLOR2D(255, 255, 255));
+            
+            // Draw a message box
+            graphics.DrawRectOutline(20, 100, 200, 50, COLOR2D(0, 0, 0));
+            
+            // Format the message
+            CString Message;
+            Message.Format("Button %s pressed!", pButtonLabel);
+            
+            // Display the message
+            graphics.DrawText(120, 125, COLOR2D(0, 0, 0), Message, C2DGraphics::AlignCenter);
+            
+            // Update the display
+            graphics.UpdateDisplay();
+        }
     }
 }
