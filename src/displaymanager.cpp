@@ -218,8 +218,21 @@ boolean CDisplayManager::InitializeST7789(CSPIMaster *pSPIMaster)
     // Set rotation to 270 degrees for the Pirate Audio display
     m_pST7789Display->SetRotation(270);
     
-    // Initialize with WHITE background to match sample
-    m_pST7789Display->Clear(ST7789_COLOR(255, 255, 255)); // WHITE background
+    // Create a 2D graphics instance for drawing
+    C2DGraphics graphics(m_pST7789Display);
+    if (!graphics.Initialize())
+    {
+        m_pLogger->Write("dispman", LogError, "Failed to initialize 2D graphics");
+        delete m_pST7789Display;
+        m_pST7789Display = nullptr;
+        return FALSE;
+    }
+    
+    // Initialize with WHITE background
+    graphics.ClearScreen(COLOR2D(255, 255, 255));
+    
+    // Update display explicitly
+    graphics.UpdateDisplay();
     
     // Turn the display on to prevent sleep mode
     m_pST7789Display->On();
@@ -437,9 +450,6 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
     case DisplayTypeST7789:
         if (m_pST7789Display != nullptr)
         {
-            // Clear the display first with WHITE background to match sample
-            m_pST7789Display->Clear(ST7789_COLOR(255, 255, 255));
-            
             // Create a 2D graphics instance for drawing
             C2DGraphics graphics(m_pST7789Display);
             if (!graphics.Initialize())
@@ -447,6 +457,9 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
                 m_pLogger->Write("dispman", LogError, "Failed to initialize 2D graphics");
                 return;
             }
+            
+            // Clear the screen with WHITE background using the graphics object
+            graphics.ClearScreen(COLOR2D(255, 255, 255));
             
             // Draw header bar with blue background
             graphics.DrawRect(0, 0, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
@@ -484,7 +497,7 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             
             // Draw USB icon
             unsigned usb_x = 10;
-            unsigned usb_y = 155;
+            unsigned usb_y = 120;
             
             // Draw USB icon - horizontal line (main stem)
             graphics.DrawLine(usb_x, usb_y + 8, usb_x + 20, usb_y + 8, COLOR2D(0, 0, 0));
@@ -500,224 +513,137 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             graphics.DrawLine(usb_x + 14, usb_y + 8, usb_x + 14, usb_y + 16, COLOR2D(0, 0, 0));
             graphics.DrawLine(usb_x + 14, usb_y + 16, usb_x + 22, usb_y + 16, COLOR2D(0, 0, 0));
             
-            // Get USB speed information
-            boolean bUSBFullSpeed = CKernelOptions::Get()->GetUSBFullSpeed();
-            const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
-            
             // Draw USB mode text
-            graphics.DrawText(40, 155, COLOR2D(0, 0, 0), pUSBSpeed, C2DGraphics::AlignLeft);
+            graphics.DrawText(40, 120, COLOR2D(0, 0, 0), pUSBSpeed, C2DGraphics::AlignLeft);
             
             // Draw button bar at bottom
             graphics.DrawRect(0, 190, m_pST7789Display->GetWidth(), 50, COLOR2D(58, 124, 165));
             
+            // Draw button labels
+            graphics.DrawText(10, 200, COLOR2D(255, 255, 255), "A: Up", C2DGraphics::AlignLeft);
+            graphics.DrawText(70, 200, COLOR2D(255, 255, 255), "B: Down", C2DGraphics::AlignLeft);
+            graphics.DrawText(140, 200, COLOR2D(255, 255, 255), "X: Back", C2DGraphics::AlignLeft);
+            graphics.DrawText(200, 200, COLOR2D(255, 255, 255), "Y: Select", C2DGraphics::AlignLeft);
+            
             // Update the display with all the graphics we've drawn
             graphics.UpdateDisplay();
-            
-            // Turn display on explicitly to ensure it stays active
-            m_pST7789Display->On();
         }
+        break;
+    
+    default:
         break;
     }
 }
 
-void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const char *pSelectedFileName, 
-                                           unsigned int CurrentFileIndex, unsigned int TotalFiles)
+void CDisplayManager::Refresh(void)
 {
-    // OPTIMIZATION: Skip redundant updates for the same file
-    static CString LastSelectedFileName = "";
-    static unsigned int LastFileIndex = 0;
-    
-    // If nothing changed, skip the update completely
-    if (LastSelectedFileName == pSelectedFileName && LastFileIndex == CurrentFileIndex)
+    // Call the appropriate display's refresh method based on type
+    if (m_pSH1106Display != nullptr)
+    {
+        m_pSH1106Display->Refresh();
+    }
+    else if (m_pST7789Display != nullptr)
+    {
+        // For now, log that we tried to refresh ST7789 but it's not implemented
+        if (m_pLogger != nullptr)
+        {
+            m_pLogger->Write(FromDisplayManager, LogWarning, 
+                "ST7789 display refresh requested but not implemented");
+        }
+        
+        // When ST7789 is implemented, uncomment and use correct method:
+        // m_pST7789Display->Refresh();  // or whatever method is appropriate
+    }
+}
+
+void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel)
+{
+    // Early validation - only proceed if we have a valid display
+    if (m_pSH1106Display == nullptr && m_pST7789Display == nullptr)
     {
         return;
     }
     
-    // Remember current selection for next time
-    LastSelectedFileName = pSelectedFileName;
-    LastFileIndex = CurrentFileIndex;
+    // Skip if no button label is provided
+    if (pButtonLabel == nullptr)
+    {
+        return;
+    }
+    
+    // For SH1106 display
+    if (m_pSH1106Display != nullptr)
+    {
+        // Create a small notification at the bottom of the screen
+        char notification[32];
+        snprintf(notification, sizeof(notification), "Button: %s", pButtonLabel);
+        
+        // Draw at the bottom of the screen (clear that area first)
+        m_pSH1106Display->DrawFilledRect(0, 56, 128, 8, SH1106_BLACK_COLOR);
+        m_pSH1106Display->DrawText(0, 56, notification, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                 FALSE, FALSE, Font8x8);
+        
+        // Update the display immediately
+        m_pSH1106Display->Refresh();
+    }
+    
+    // For ST7789 display
+    else if (m_pST7789Display != nullptr)
+    {
+        // Create a 2D graphics instance for drawing
+        C2DGraphics graphics(m_pST7789Display);
+        if (!graphics.Initialize())
+        {
+            m_pLogger->Write("dispman", LogError, "Failed to initialize 2D graphics");
+            return;
+        }
+        
+        // Store current screen
+        // Not implemented: would require double buffering
+        
+        // Draw a message box with background preserving current screen as much as possible
+        graphics.DrawRect(20, 100, 200, 50, COLOR2D(0, 80, 120));
+        graphics.DrawRectOutline(20, 100, 200, 50, COLOR2D(255, 255, 255));
+        
+        // Format the message
+        CString Message;
+        Message.Format("Button %s pressed!", pButtonLabel);
+        
+        // Display the message in white on blue background
+        graphics.DrawText(120, 125, COLOR2D(255, 255, 255), Message, C2DGraphics::AlignCenter);
+        
+        // Update the display
+        graphics.UpdateDisplay();
+        
+        // In a real implementation, you would add a timer to restore the original screen
+        // after a short delay. For now, this will remain until another screen is drawn.
+    }
+}
+
+void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const char* pSelectedFileName, 
+                                            unsigned CurrentFileIndex, unsigned TotalFiles)
+{
+    assert(pCurrentISOName != nullptr);
+    assert(pSelectedFileName != nullptr);
     
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
-        if (m_pSH1106Display != nullptr)
-        {
-            // Clear display first
-            m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
-            
-            // Draw title at the top - moved down slightly
-            m_pSH1106Display->DrawText(0, 2, "Select an ISO:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                     FALSE, FALSE, Font6x7);
-            
-            // Use the current ISO passed as parameter
-            const char* currentImage = pCurrentISOName;
-            
-            // Draw CD icon (replacing "I: " text)
-            unsigned int cd_x = 0;
-            unsigned int cd_y = 12;
-            
-            // Draw CD as a ring
-            for (int y = -4; y <= 4; y++) {
-                for (int x = -4; x <= 4; x++) {
-                    int dist_squared = x*x + y*y;
-                    // Draw pixels between inner and outer radius
-                    if (dist_squared <= 16 && dist_squared > 4) {
-                        unsigned int px = cd_x+4+x;
-                        unsigned int py = cd_y+4+y;
-                        // Ensure coordinates are in valid range
-                        if (px < CSH1106Display::OLED_WIDTH && py < CSH1106Display::OLED_HEIGHT) {
-                            m_pSH1106Display->SetPixel(px, py, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
-                        }
-                    }
-                }
-            }
-            
-            // First line has CD icon - use safe string handling
-            const size_t first_line_chars = 18;
-            // Second line and selection lines have no prefix, so can use more characters
-            const size_t chars_per_line = 21;
-            
-            // Calculate line y position based on current ISO length
-            unsigned int line_y;
-            
-            // CURRENT ISO (Top of screen) =========================
-            if (strlen(currentImage) <= first_line_chars)
-            {
-                // Short name fits on one line - use direct text copy instead of format strings
-                m_pSH1106Display->DrawText(12, 12, currentImage, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
-                line_y = 22;
-            }
-            else
-            {
-                // First line with CD icon - use safe string handling
-                char first_line[32];
-                memset(first_line, 0, sizeof(first_line));
-                strncpy(first_line, currentImage, first_line_chars);
-                first_line[first_line_chars] = '\0';
-                
-                m_pSH1106Display->DrawText(12, 12, first_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
-                
-                // Second line handling for very long names
-                char second_line[32];
-                memset(second_line, 0, sizeof(second_line));
-                
-                if (strlen(currentImage) > first_line_chars + chars_per_line - 14)  // Changed from -12 to -14
-                {
-                    // Very long name, ensure last 11 chars are visible
-                    size_t remaining_chars = chars_per_line - 14;  // Changed from -12 to -14
-                    
-                    // Copy first part with explicit termination
-                    strncpy(second_line, currentImage + first_line_chars, remaining_chars);
-                    second_line[remaining_chars] = '\0';
-                    
-                    // Add three periods instead of ellipsis character and ensure the last 11 chars
-                    strcat(second_line, "...");
-                    strcat(second_line, currentImage + strlen(currentImage) - 11);  // Keep last 11 chars
-                }
-                else
-                {
-                    // Just copy the remaining part with explicit termination
-                    strncpy(second_line, currentImage + first_line_chars, chars_per_line);
-                    second_line[chars_per_line] = '\0';
-                }
-                
-                m_pSH1106Display->DrawText(0, 22, second_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
-                line_y = 32;
-            }
-            
-            // Draw divider line
-            for (unsigned int x = 0; x < 128; x++)
-            {
-                m_pSH1106Display->SetPixel(x, line_y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
-            }
-            
-            // SELECTED ISO (Bottom of screen) =========================
-            const char* selected_file = pSelectedFileName;
-            
-            // Position for new selection depends on line_y
-            unsigned int selection_y = line_y + 3;
-            
-            // === Support up to THREE lines for selected file ===
-            if (strlen(selected_file) <= chars_per_line)
-            {
-                // Short name fits on one line
-                m_pSH1106Display->DrawText(0, selection_y, selected_file, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
-            }
-            else if (strlen(selected_file) <= chars_per_line * 2)
-            {
-                // First line of selection
-                char sel_first_line[32];
-                strncpy(sel_first_line, selected_file, chars_per_line);
-                sel_first_line[chars_per_line] = '\0';
-                
-                m_pSH1106Display->DrawText(0, selection_y, sel_first_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
-                
-                // Second line - remaining text
-                char sel_second_line[32];
-                strncpy(sel_second_line, selected_file + chars_per_line, chars_per_line);
-                sel_second_line[chars_per_line] = '\0';
-                
-                m_pSH1106Display->DrawText(0, selection_y + 10, sel_second_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
-            }
-            else
-            {
-                // Very long filename needs three lines or ellipsis
-                // First line of selection
-                char sel_first_line[32];
-                strncpy(sel_first_line, selected_file, chars_per_line);
-                sel_first_line[chars_per_line] = '\0';
-                
-                m_pSH1106Display->DrawText(0, selection_y, sel_first_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
-                
-                // Second line 
-                char sel_second_line[32];
-                strncpy(sel_second_line, selected_file + chars_per_line, chars_per_line);
-                sel_second_line[chars_per_line] = '\0';
-                
-                m_pSH1106Display->DrawText(0, selection_y + 10, sel_second_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
-                
-                // Third line - always show last 11 chars with ellipsis
-                char sel_third_line[32] = "...";
-                strcat(sel_third_line, selected_file + strlen(selected_file) - 11);
-                
-                m_pSH1106Display->DrawText(0, selection_y + 20, sel_third_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                         FALSE, FALSE, Font6x7);
-            }
-            
-            // POSITION INDICATOR =========================
-            // Display file position indicator only ONCE at bottom (moved up)
-            char position[16];
-            snprintf(position, sizeof(position), "%u/%u", CurrentFileIndex, TotalFiles);
-            int posWidth = strlen(position) * 6; // Approximate width of text
-            
-            // Move position indicator up to avoid getting cut off
-            m_pSH1106Display->DrawText(128 - posWidth, 55, position, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                     FALSE, FALSE, Font6x7);
-            
-            // Ensure the display is updated
-            m_pSH1106Display->Refresh();
-            
-            m_pLogger->Write("display", LogNotice, "File selection screen updated");
-        }
+        // Implement SH1106 file selection screen
         break;
         
     case DisplayTypeST7789:
         if (m_pST7789Display != nullptr)
         {
-            // Clear display first
-            m_pST7789Display->Clear(ST7789_BLACK_COLOR);
-            
             // Create a 2D graphics instance for drawing
             C2DGraphics graphics(m_pST7789Display);
-            graphics.Initialize();
+            if (!graphics.Initialize())
+            {
+                m_pLogger->Write("dispman", LogError, "Failed to initialize 2D graphics");
+                return;
+            }
+            
+            // Clear the screen with WHITE background using the graphics object
+            graphics.ClearScreen(COLOR2D(255, 255, 255));
             
             // Draw header bar with blue background
             graphics.DrawRect(0, 0, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
@@ -726,7 +652,7 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
             graphics.DrawText(10, 5, COLOR2D(255, 255, 255), "Select an ISO:", C2DGraphics::AlignLeft);
             
             // Draw current ISO info
-            graphics.DrawText(10, 40, COLOR2D(255, 255, 255), "Current:", C2DGraphics::AlignLeft);
+            graphics.DrawText(10, 40, COLOR2D(0, 0, 0), "Current:", C2DGraphics::AlignLeft);
             
             // Handle current ISO name (could be long)
             const size_t max_iso_chars = 20;
@@ -744,13 +670,13 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
                 strcat(current_iso_line, pCurrentISOName + strlen(pCurrentISOName) - 10);
             }
             
-            graphics.DrawText(10, 60, COLOR2D(180, 180, 180), current_iso_line, C2DGraphics::AlignLeft);
+            graphics.DrawText(10, 60, COLOR2D(0, 0, 0), current_iso_line, C2DGraphics::AlignLeft);
             
             // Draw divider line
             graphics.DrawLine(0, 80, m_pST7789Display->GetWidth(), 80, COLOR2D(100, 100, 100));
             
             // Draw selected ISO info (with highlighting)
-            graphics.DrawText(10, 90, COLOR2D(255, 255, 255), "Selected:", C2DGraphics::AlignLeft);
+            graphics.DrawText(10, 90, COLOR2D(0, 0, 0), "Selected:", C2DGraphics::AlignLeft);
             
             // Draw the selected filename - may need multiple lines
             const char* selected_file = pSelectedFileName;
@@ -798,7 +724,7 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
             char position[16];
             snprintf(position, sizeof(position), "%u/%u", CurrentFileIndex, TotalFiles);
             
-            graphics.DrawText(m_pST7789Display->GetWidth() / 2, 170, COLOR2D(255, 255, 255), 
+            graphics.DrawText(m_pST7789Display->GetWidth() / 2, 170, COLOR2D(0, 0, 0), 
                             position, C2DGraphics::AlignCenter);
             
             // Draw button bar at bottom
@@ -835,92 +761,10 @@ void CDisplayManager::ShowFileSelectionScreen(const char *pCurrentISOName, const
             
             // Update the display
             graphics.UpdateDisplay();
-            
-            m_pLogger->Write("display", LogNotice, "File selection screen updated");
         }
         break;
         
     default:
         break;
-    }
-}
-
-void CDisplayManager::Refresh(void)
-{
-    // Call the appropriate display's refresh method based on type
-    if (m_pSH1106Display != nullptr)
-    {
-        m_pSH1106Display->Refresh();
-    }
-    else if (m_pST7789Display != nullptr)
-    {
-        // For now, log that we tried to refresh ST7789 but it's not implemented
-        if (m_pLogger != nullptr)
-        {
-            m_pLogger->Write(FromDisplayManager, LogWarning, 
-                "ST7789 display refresh requested but not implemented");
-        }
-        
-        // When ST7789 is implemented, uncomment and use correct method:
-        // m_pST7789Display->Refresh();  // or whatever method is appropriate
-    }
-}
-
-void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel)
-{
-    // Early validation - only proceed if we have a valid display
-    if (m_pSH1106Display == nullptr && m_pST7789Display == nullptr)
-    {
-        return;
-    }
-    
-    // Skip if no button label is provided
-    if (pButtonLabel == nullptr)
-    {
-        return;
-    }
-    
-    // For SH1106 display
-    if (m_pSH1106Display != nullptr)
-    {
-        // Save current screen content (if we want to restore it)
-        // NOTE: This is optional and depends on your display implementation
-        
-        // Create a small notification at the bottom of the screen
-        char notification[32];
-        snprintf(notification, sizeof(notification), "Button: %s", pButtonLabel);
-        
-        // Draw at the bottom of the screen (clear that area first)
-        m_pSH1106Display->DrawFilledRect(0, 56, 128, 8, SH1106_BLACK_COLOR);
-        m_pSH1106Display->DrawText(0, 56, notification, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                 FALSE, FALSE, Font8x8);
-        
-        // Update the display immediately
-        m_pSH1106Display->Refresh();
-    }
-    
-    // For ST7789 display
-    else if (m_pST7789Display != nullptr)
-    {
-        // Create a 2D graphics instance for drawing
-        C2DGraphics graphics(m_pST7789Display);
-        if (graphics.Initialize())
-        {
-            // Clear the middle area of the screen
-            graphics.DrawRect(20, 100, 200, 50, COLOR2D(255, 255, 255));
-            
-            // Draw a message box
-            graphics.DrawRectOutline(20, 100, 200, 50, COLOR2D(0, 0, 0));
-            
-            // Format the message
-            CString Message;
-            Message.Format("Button %s pressed!", pButtonLabel);
-            
-            // Display the message
-            graphics.DrawText(120, 125, COLOR2D(0, 0, 0), Message, C2DGraphics::AlignCenter);
-            
-            // Update the display
-            graphics.UpdateDisplay();
-        }
     }
 }
