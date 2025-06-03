@@ -177,25 +177,15 @@ const char* CGPIOButtonManager::GetButtonLabel(unsigned nButtonIndex) const
 
 void CGPIOButtonManager::Update(void)
 {
-    static unsigned lastDebugTime = 0;
-    unsigned currentTime = CTimer::Get()->GetTicks();
-    
-    // Only debug print every 10 seconds - reduce overhead from logging
-    if (currentTime - lastDebugTime > 10000)
-    {
-        DebugPrintPinStates();
-        lastDebugTime = currentTime;
-    }
-    
-    // Check each button
+    // Process all buttons
     for (unsigned i = 0; i < m_nButtonCount; i++)
     {
         if (m_ppButtonPins[i] != nullptr)
         {
-            // Buttons are active LOW (pressed when reading LOW)
+            // Read the raw button state (buttons are active LOW with pull-up)
             boolean bCurrentState = (m_ppButtonPins[i]->Read() == LOW);
             
-            // Process button state with debouncing
+            // Process the button state using the existing method
             ProcessButtonState(i, bCurrentState);
         }
     }
@@ -248,13 +238,15 @@ void CGPIOButtonManager::InitSH1106Buttons(void)
 
 void CGPIOButtonManager::InitST7789Buttons(void)
 {
-    // Use button configuration from ST7789Display
+    // Define the number of buttons first, before using it
     static const unsigned ST7789_NUM_BUTTONS = 4;
+    
+    // Then use it in the button pins array declaration
     static const unsigned ST7789_BUTTON_PINS[ST7789_NUM_BUTTONS] = {
-        CST7789Display::BUTTON_A_PIN,
-        CST7789Display::BUTTON_B_PIN,
-        CST7789Display::BUTTON_X_PIN,
-        CST7789Display::BUTTON_Y_PIN
+        5,  // Button A (Up)
+        6,  // Button B (Down)
+        16, // Button X (Cancel)
+        24  // Button Y (Select)
     };
     
     static const char* ST7789_BUTTON_LABELS[ST7789_NUM_BUTTONS] = {

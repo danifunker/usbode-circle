@@ -45,30 +45,6 @@ public:
 #define ST7789_WHITE_COLOR	0xFFFF
 
 public:
-   // Default SPI configuration
-    static const unsigned DEFAULT_SPI_MASTER_DEVICE = 0;     // 0, 4, 5, 6 on Raspberry Pi 4; 0 otherwise
-    static const unsigned DEFAULT_SPI_CLOCK_SPEED = 80000000; // Hz
-    static const unsigned DEFAULT_SPI_CPOL = 0;              // Clock polarity
-    static const unsigned DEFAULT_SPI_CPHA = 0;              // Clock phase
-    static const unsigned DEFAULT_SPI_CHIP_SELECT = 1;       // 0 or 1; don't care, if not connected
-
-    // Default pin configuration
-    static const unsigned DEFAULT_DC_PIN = 9;                // Data/Command pin
-    static const unsigned DEFAULT_RESET_PIN = 27;            // Reset pin
-    static const unsigned NONE = 0xFF;                       // Use for pins that are not connected
-
-    // Default display dimensions
-    static const unsigned DEFAULT_WIDTH = 240;               // display width in pixels
-    static const unsigned DEFAULT_HEIGHT = 240;              // display height in pixels
-    
-    // Button pins
-    static const unsigned BUTTON_A_PIN = 5;  // Up button
-    static const unsigned BUTTON_B_PIN = 6;  // Down button 
-    static const unsigned BUTTON_X_PIN = 19; // Cancel button
-    static const unsigned BUTTON_Y_PIN = 26; // Select button
-
-
-
 	/// \param pSPIMaster Pointer to SPI master object
 	/// \param nDCPin GPIO pin number for DC pin
 	/// \param nResetPin GPIO pin number for Reset pin (optional)

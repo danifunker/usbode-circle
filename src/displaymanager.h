@@ -25,6 +25,7 @@
 #include <circle/logger.h>
 #include <circle/types.h>
 #include <circle/gpiopin.h>
+#include <circle/2dgraphics.h>
 #include <usbode-display/sh1106display.h>
 #include <usbode-display/sh1106device.h>
 #include <usbode-display/st7789display.h>
@@ -60,12 +61,13 @@ public:
     
     // Utility methods
     void ClearDisplay(void);
-    void ShowStatusScreen(const char *pTitle, const char *pIPAddress, const char *pISOName);
+    void ShowStatusScreen(const char *pTitle, const char *pIPAddress, const char *pISOName, const char *pUSBSpeed);
     void ShowFileSelectionScreen(const char *pCurrentISOName, const char *pSelectedFileName, 
                              unsigned int CurrentFileIndex, unsigned int TotalFiles);
     void ShowButtonTestScreen(void); // Added method for button test screen
     void Refresh(void); // Added method declaration for Refresh
     void ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel); // Added method declaration for button press display
+    void ShowAdvancedScreen(void); // Added method declaration for advanced screen
     
 private:
     // Initialize SH1106 display
@@ -74,6 +76,8 @@ private:
     // Initialize ST7789 display
     boolean InitializeST7789(CSPIMaster *pSPIMaster);
     
+    void DrawNavigationBar(C2DGraphics& graphics, const char* screenType);
+
 private:
     CLogger *m_pLogger;
     TDisplayType m_DisplayType;

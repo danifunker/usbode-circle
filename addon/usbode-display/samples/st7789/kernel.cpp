@@ -20,10 +20,19 @@
 #include "kernel.h"
 #include <circle/string.h>
 #include <stdint.h>
-#include <usbode-display/st7789display.h>
 
-#define WIDTH			CST7789Display::DEFAULT_WIDTH		// display width in pixels
-#define HEIGHT			CST7789Display::DEFAULT_HEIGHT		// display height in pixels
+#define SPI_MASTER_DEVICE	0		// 0, 4, 5, 6 on Raspberry Pi 4; 0 otherwise
+#define SPI_CLOCK_SPEED		80000000	// Hz
+#define SPI_CPOL		0		// try 0, if it does not work
+#define SPI_CPHA		0		// try 1, if it does not work
+#define SPI_CHIP_SELECT		1		// 0 or 1; don't care, if not connected
+
+#define WIDTH			240		// display width in pixels
+#define HEIGHT			240		// display height in pixels
+#define DC_PIN			9
+#define RESET_PIN		27		// or: CST7789Display::None
+#define BACKLIGHT_PIN		CST7789Display::None
+
 #define MY_COLOR		ST7789_COLOR (31, 31, 15)	// any color
 
 static const char FromKernel[] = "kernel";
@@ -32,26 +41,15 @@ CKernel::CKernel (void)
 :	m_Screen (m_Options.GetWidth (), m_Options.GetHeight ()),
     m_Timer (&m_Interrupt),
     m_Logger (m_Options.GetLogLevel (), &m_Timer),
-    m_SPIMaster (CST7789Display::DEFAULT_SPI_CLOCK_SPEED, 
-                CST7789Display::DEFAULT_SPI_CPOL, 
-                CST7789Display::DEFAULT_SPI_CPHA, 
-                CST7789Display::DEFAULT_SPI_MASTER_DEVICE),
-    m_Display (&m_SPIMaster, 
-              CST7789Display::DEFAULT_DC_PIN, 
-              CST7789Display::DEFAULT_RESET_PIN, 
-              CST7789Display::NONE, 
-              CST7789Display::DEFAULT_WIDTH, 
-              CST7789Display::DEFAULT_HEIGHT,
-              CST7789Display::DEFAULT_SPI_CPOL, 
-              CST7789Display::DEFAULT_SPI_CPHA, 
-              CST7789Display::DEFAULT_SPI_CLOCK_SPEED, 
-              CST7789Display::DEFAULT_SPI_CHIP_SELECT),
+    m_SPIMaster (SPI_CLOCK_SPEED, SPI_CPOL, SPI_CPHA, SPI_MASTER_DEVICE),
+    m_Display (&m_SPIMaster, DC_PIN, RESET_PIN, BACKLIGHT_PIN, WIDTH, HEIGHT,
+           SPI_CPOL, SPI_CPHA, SPI_CLOCK_SPEED, SPI_CHIP_SELECT),
     m_Graphics (&m_Display),
     // Initialize GPIO pins as inputs with pull-up resistors
-    m_ButtonA(CST7789Display::BUTTON_A_PIN, GPIOModeInputPullUp),
-    m_ButtonB(CST7789Display::BUTTON_B_PIN, GPIOModeInputPullUp),
-    m_ButtonX(CST7789Display::BUTTON_X_PIN, GPIOModeInputPullUp),
-    m_ButtonY(CST7789Display::BUTTON_Y_PIN, GPIOModeInputPullUp),
+    m_ButtonA(BUTTON_A_PIN, GPIOModeInputPullUp),
+    m_ButtonB(BUTTON_B_PIN, GPIOModeInputPullUp),
+    m_ButtonX(BUTTON_X_PIN, GPIOModeInputPullUp),
+    m_ButtonY(BUTTON_Y_PIN, GPIOModeInputPullUp),
     // Initialize last button states to HIGH (not pressed)
     m_bLastButtonAState(TRUE),
     m_bLastButtonBState(TRUE),
