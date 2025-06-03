@@ -289,7 +289,8 @@ TShutdownMode CKernel::Run(void)
             m_pDisplayManager->ShowStatusScreen(
                 "USBODE v2.00-pre1",
                 (const char*)IPString,
-                imageName);
+                imageName,
+                m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
         }
         
         // Allow some time for USB to stabilize before initializing buttons
@@ -698,7 +699,8 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->m_pDisplayManager->ShowStatusScreen(
                             "Please Wait",
                             "Scanning for ISOs...",
-                            "This may take a moment");
+                            "This may take a moment",
+                            pKernel->m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
                     }
                     
                     // Immediate response to button in main screen
@@ -716,7 +718,8 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->m_pDisplayManager->ShowStatusScreen(
                             "Advanced Menu",
                             "Not implemented yet",
-                            "Coming soon");
+                            "Coming soon",
+                            pKernel->m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
                     }
                 }
                 break;
@@ -766,7 +769,8 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->m_pDisplayManager->ShowStatusScreen(
                             "Please Wait",
                             "Loading Image:",
-                            selectedFile);
+                            selectedFile,
+                            pKernel->m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
                         pKernel->m_pDisplayManager->Refresh();
                     }
                     
@@ -835,7 +839,8 @@ void CKernel::ScanForISOFiles(void)
         m_pDisplayManager->ShowStatusScreen(
             "Please Wait",
             "Scanning for ISOs...",
-            "This may take a moment");
+            "This may take a moment",
+            m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
         
         // Ensure the display is updated immediately
         m_pDisplayManager->Refresh();
@@ -969,7 +974,8 @@ void CKernel::ShowISOSelectionScreen(void)
         m_pDisplayManager->ShowStatusScreen(
             "Select Image",
             "No Images files found",
-            "Place files on SD card");
+            "Place files on SD card",
+            m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
     }
     else
     {
@@ -1019,7 +1025,8 @@ void CKernel::LoadSelectedISO(void)
             m_pDisplayManager->ShowStatusScreen(
                 "Error loading Image",
                 "Failed to load file",
-                currentImage);  // Show currently loaded ISO
+                currentImage,  // Show currently loaded ISO
+                m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
         }
         
         return;
