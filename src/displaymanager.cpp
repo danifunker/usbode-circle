@@ -187,18 +187,18 @@ boolean CDisplayManager::InitializeSH1106(CSPIMaster *pSPIMaster)
 
 boolean CDisplayManager::InitializeST7789(CSPIMaster *pSPIMaster)
 {
-    // Create ST7789 display with correct parameters for Pirate Audio
+    // Create ST7789 display with correct parameters based on the sample code
     m_pST7789Display = new CST7789Display(
         pSPIMaster,
-        CST7789Display::DEFAULT_DC_PIN,
-        CST7789Display::DEFAULT_RESET_PIN,
-        CST7789Display::NONE,  // No backlight pin
-        CST7789Display::DEFAULT_WIDTH,
-        CST7789Display::DEFAULT_HEIGHT,
-        CST7789Display::DEFAULT_SPI_CPOL,
-        CST7789Display::DEFAULT_SPI_CPHA,
-        CST7789Display::DEFAULT_SPI_CLOCK_SPEED,
-        CST7789Display::DEFAULT_SPI_CHIP_SELECT);
+        9,                  // DC_PIN from sample
+        27,                 // RESET_PIN from sample
+        CST7789Display::None,  // BACKLIGHT_PIN (None is defined in ST7789Display)
+        240,                // WIDTH from sample
+        240,                // HEIGHT from sample
+        0,                  // SPI_CPOL from sample
+        0,                  // SPI_CPHA from sample
+        80000000,           // SPI_CLOCK_SPEED from sample (80MHz)
+        1);                 // SPI_CHIP_SELECT from sample
     
     if (m_pST7789Display == nullptr)
     {
