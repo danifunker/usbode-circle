@@ -559,26 +559,26 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             // Draw button bar at bottom
             graphics.DrawRect(0, 190, m_pST7789Display->GetWidth(), 50, COLOR2D(58, 124, 165));
             
-            // UPDATED NAVIGATION BUTTONS with correct icons
-            // A button with UP arrow
+            // UPDATED NAVIGATION BUTTONS with LARGER arrows
+            // A button with UP arrow (2x larger)
             graphics.DrawText(12, 205, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
             
-            // Up arrow
+            // Larger Up arrow
             unsigned arrow_x = 30;
             unsigned arrow_y = 205;
-            graphics.DrawLine(arrow_x, arrow_y - 8, arrow_x, arrow_y, COLOR2D(255, 255, 255));
-            graphics.DrawLine(arrow_x - 4, arrow_y - 4, arrow_x, arrow_y - 8, COLOR2D(255, 255, 255));
-            graphics.DrawLine(arrow_x + 4, arrow_y - 4, arrow_x, arrow_y - 8, COLOR2D(255, 255, 255));
+            graphics.DrawLine(arrow_x, arrow_y - 12, arrow_x, arrow_y, COLOR2D(255, 255, 255)); // Longer stem
+            graphics.DrawLine(arrow_x - 6, arrow_y - 6, arrow_x, arrow_y - 12, COLOR2D(255, 255, 255)); // Wider head
+            graphics.DrawLine(arrow_x + 6, arrow_y - 6, arrow_x, arrow_y - 12, COLOR2D(255, 255, 255));
             
-            // B button with DOWN arrow
+            // B button with DOWN arrow (2x larger)
             graphics.DrawText(72, 205, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft);
             
-            // Down arrow
+            // Larger Down arrow
             arrow_x = 90;
             arrow_y = 205;
-            graphics.DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 8, COLOR2D(255, 255, 255));
-            graphics.DrawLine(arrow_x - 4, arrow_y + 4, arrow_x, arrow_y + 8, COLOR2D(255, 255, 255));
-            graphics.DrawLine(arrow_x + 4, arrow_y + 4, arrow_x, arrow_y + 8, COLOR2D(255, 255, 255));
+            graphics.DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 12, COLOR2D(255, 255, 255)); // Longer stem
+            graphics.DrawLine(arrow_x - 6, arrow_y + 6, arrow_x, arrow_y + 12, COLOR2D(255, 255, 255)); // Wider head
+            graphics.DrawLine(arrow_x + 6, arrow_y + 6, arrow_x, arrow_y + 12, COLOR2D(255, 255, 255));
             
             // X button with MENU BARS (3 horizontal lines)
             graphics.DrawText(132, 205, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
@@ -743,15 +743,14 @@ void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const
             // Draw header bar with blue background
             graphics.DrawRect(0, 0, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
             
-            // 1. Changed header text to "Select an Image"
+            // Don't change the text "Select Image:" as per request
             graphics.DrawText(10, 8, COLOR2D(255, 255, 255), "Select Image:", C2DGraphics::AlignLeft);
             
-            // 5. Moved counter to header area
+            // Move counter to header area
             char position[16];
             snprintf(position, sizeof(position), "%u/%u", CurrentFileIndex, TotalFiles);
             graphics.DrawText(200, 8, COLOR2D(255, 255, 255), position, C2DGraphics::AlignRight);
             
-            // 2. Replace "Current:" with CD icon and show current ISO name
             // Draw CD icon
             unsigned cd_x = 10;
             unsigned cd_y = 40;
@@ -767,117 +766,144 @@ void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const
             graphics.DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 2, COLOR2D(0, 0, 0));
             
             // Handle current ISO name (could be long)
-            const size_t first_line_chars = 22; // Adjust based on screen width
-            const size_t second_line_chars = 30; // For second line
-            
-            char first_line[32] = {0};
-            char second_line[32] = {0};
-            size_t iso_length = strlen(pCurrentISOName);
-            
-            if (iso_length <= first_line_chars)
-            {
-                // Short name fits on one line
-                graphics.DrawText(35, 45, COLOR2D(0, 0, 0), pCurrentISOName, C2DGraphics::AlignLeft);
-            }
-            else
-            {
-                // First line starting on same line as CD icon
-                strncpy(first_line, pCurrentISOName, first_line_chars);
-                first_line[first_line_chars] = '\0';
-                graphics.DrawText(35, 45, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
+            // Start with full string display and then truncate if needed
+            if (strlen(pCurrentISOName) == 0) {
+                // Handle empty current ISO name
+                graphics.DrawText(35, 45, COLOR2D(0, 0, 0), "No image loaded", C2DGraphics::AlignLeft);
+            } else {
+                // Improved current filename display
+                const size_t first_line_chars = 22;
+                const size_t second_line_chars = 30;
                 
-                // Second line (potentially with ellipsis for very long names)
-                if (iso_length > first_line_chars + second_line_chars - 4)
-                {
-                    // Very long name, use ellipsis and last portion
-                    strncpy(second_line, pCurrentISOName + first_line_chars, second_line_chars - 17);
-                    strcat(second_line, "...");
-                    strcat(second_line, pCurrentISOName + iso_length - 13);
-                }
-                else
-                {
-                    strncpy(second_line, pCurrentISOName + first_line_chars, second_line_chars);
-                    second_line[second_line_chars] = '\0';
-                }
+                char first_line[40] = {0};
+                char second_line[40] = {0};
+                size_t iso_length = strlen(pCurrentISOName);
                 
-                second_line[sizeof(second_line) - 1] = '\0';
-                graphics.DrawText(10, 65, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
+                if (iso_length <= first_line_chars) {
+                    // Short name fits on one line
+                    graphics.DrawText(35, 45, COLOR2D(0, 0, 0), pCurrentISOName, C2DGraphics::AlignLeft);
+                } else {
+                    // First line starting on same line as CD icon
+                    strncpy(first_line, pCurrentISOName, first_line_chars);
+                    first_line[first_line_chars] = '\0';
+                    graphics.DrawText(35, 45, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
+                    
+                    // Second line - show remainder of text
+                    if (iso_length > first_line_chars + second_line_chars) {
+                        // Very long filename, truncate middle
+                        // First part (12 chars)
+                        strncpy(second_line, pCurrentISOName + first_line_chars, 12);
+                        second_line[12] = '\0';
+                        // Add ellipsis
+                        strcat(second_line, "...");
+                        // Last part (12 chars)
+                        strncat(second_line, 
+                                pCurrentISOName + iso_length - 12,
+                                12);
+                    } else {
+                        // Just display remainder
+                        strncpy(second_line, pCurrentISOName + first_line_chars, second_line_chars);
+                        second_line[second_line_chars] = '\0';
+                    }
+                    
+                    second_line[sizeof(second_line) - 1] = '\0';
+                    graphics.DrawText(10, 65, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
+                }
             }
             
-            // 3. Replace "Selected:" with a thick line across screen
             // Draw a thicker horizontal line (3 pixels thick)
-            for (int i = 0; i < 3; i++)
-            {
+            for (int i = 0; i < 3; i++) {
                 graphics.DrawLine(0, 85 + i, m_pST7789Display->GetWidth(), 85 + i, COLOR2D(80, 80, 80));
             }
             
-            // Draw the selected filename - allowing 3 lines in selection area
-            const char* selected_file = pSelectedFileName;
-            const size_t sel_max_chars = 30; // Increased character limit per line
-            
             // Draw selection background
-            graphics.DrawRect(5, 95, m_pST7789Display->GetWidth() - 10, 80, COLOR2D(0, 80, 120)); // Taller for 3 lines
+            graphics.DrawRect(5, 95, m_pST7789Display->GetWidth() - 10, 80, COLOR2D(0, 80, 120));
             graphics.DrawRectOutline(5, 95, m_pST7789Display->GetWidth() - 10, 80, COLOR2D(255, 255, 255));
             
-            // Fit selected filename across up to 3 lines
-            if (strlen(selected_file) <= sel_max_chars)
-            {
-                // Short name fits on one line
-                graphics.DrawText(10, 115, COLOR2D(255, 255, 255), selected_file, C2DGraphics::AlignLeft);
-            }
-            else if (strlen(selected_file) <= sel_max_chars * 2)
-            {
-                // Two lines needed
-                char sel_line1[40], sel_line2[40];
-                strncpy(sel_line1, selected_file, sel_max_chars);
-                sel_line1[sel_max_chars] = '\0';
+            // FIX: Complete rewrite of the selected filename display logic
+            if (strlen(pSelectedFileName) == 0) {
+                // Handle empty selection
+                graphics.DrawText(10, 135, COLOR2D(255, 255, 255), "No files found", C2DGraphics::AlignCenter);
+            } else {
+                // Get actual filename length
+                size_t filename_len = strlen(pSelectedFileName);
                 
-                strncpy(sel_line2, selected_file + sel_max_chars, sel_max_chars);
-                sel_line2[sel_max_chars] = '\0';
+                // Split filename into three lines if needed
+                // Use smaller chunks to ensure more of the filename is visible
+                size_t chars_per_line = 28;
                 
-                graphics.DrawText(10, 105, COLOR2D(255, 255, 255), sel_line1, C2DGraphics::AlignLeft);
-                graphics.DrawText(10, 135, COLOR2D(255, 255, 255), sel_line2, C2DGraphics::AlignLeft);
-            }
-            else if (strlen(selected_file) <= sel_max_chars * 3)
-            {
-                // Three lines needed
-                char sel_line1[40], sel_line2[40], sel_line3[40];
-                strncpy(sel_line1, selected_file, sel_max_chars);
-                sel_line1[sel_max_chars] = '\0';
-                
-                strncpy(sel_line2, selected_file + sel_max_chars, sel_max_chars);
-                sel_line2[sel_max_chars] = '\0';
-                
-                strncpy(sel_line3, selected_file + (sel_max_chars * 2), sel_max_chars);
-                sel_line3[sel_max_chars] = '\0';
-                
-                graphics.DrawText(10, 105, COLOR2D(255, 255, 255), sel_line1, C2DGraphics::AlignLeft);
-                graphics.DrawText(10, 130, COLOR2D(255, 255, 255), sel_line2, C2DGraphics::AlignLeft);
-                graphics.DrawText(10, 155, COLOR2D(255, 255, 255), sel_line3, C2DGraphics::AlignLeft);
-            }
-            else
-            {
-                // More than three lines, show first two lines and then ellipsis + end
-                char sel_line1[40], sel_line2[40], sel_line3[40];
-                strncpy(sel_line1, selected_file, sel_max_chars);
-                sel_line1[sel_max_chars] = '\0';
-                
-                strncpy(sel_line2, selected_file + sel_max_chars, sel_max_chars);
-                sel_line2[sel_max_chars] = '\0';
-                
-                // For third line, show "..." and the end part
-                strcpy(sel_line3, "...");
-                strcat(sel_line3, selected_file + strlen(selected_file) - (sel_max_chars - 5));
-                
-                graphics.DrawText(10, 105, COLOR2D(255, 255, 255), sel_line1, C2DGraphics::AlignLeft);
-                graphics.DrawText(10, 130, COLOR2D(255, 255, 255), sel_line2, C2DGraphics::AlignLeft);
-                graphics.DrawText(10, 155, COLOR2D(255, 255, 255), sel_line3, C2DGraphics::AlignLeft);
+                if (filename_len <= chars_per_line) {
+                    // Short filename fits on one line
+                    graphics.DrawText(10, 135, COLOR2D(255, 255, 255), pSelectedFileName, C2DGraphics::AlignLeft);
+                } 
+                else if (filename_len <= chars_per_line * 2) {
+                    // Medium filename fits on two lines
+                    char line1[40] = {0};
+                    char line2[40] = {0};
+                    
+                    // First line
+                    strncpy(line1, pSelectedFileName, chars_per_line);
+                    line1[chars_per_line] = '\0';
+                    
+                    // Second line
+                    strncpy(line2, pSelectedFileName + chars_per_line, chars_per_line);
+                    line2[chars_per_line] = '\0';
+                    
+                    graphics.DrawText(10, 120, COLOR2D(255, 255, 255), line1, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 145, COLOR2D(255, 255, 255), line2, C2DGraphics::AlignLeft);
+                }
+                else if (filename_len <= chars_per_line * 3) {
+                    // Long filename fits on three lines
+                    char line1[40] = {0};
+                    char line2[40] = {0};
+                    char line3[40] = {0};
+                    
+                    // First line
+                    strncpy(line1, pSelectedFileName, chars_per_line);
+                    line1[chars_per_line] = '\0';
+                    
+                    // Second line
+                    strncpy(line2, pSelectedFileName + chars_per_line, chars_per_line);
+                    line2[chars_per_line] = '\0';
+                    
+                    // Third line
+                    strncpy(line3, pSelectedFileName + (chars_per_line * 2), chars_per_line);
+                    line3[chars_per_line] = '\0';
+                    
+                    graphics.DrawText(10, 110, COLOR2D(255, 255, 255), line1, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 135, COLOR2D(255, 255, 255), line2, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 160, COLOR2D(255, 255, 255), line3, C2DGraphics::AlignLeft);
+                }
+                else {
+                    // Very long filename - show first two lines and last part
+                    char line1[40] = {0};
+                    char line2[40] = {0};
+                    char line3[40] = {0};
+                    
+                    // First line
+                    strncpy(line1, pSelectedFileName, chars_per_line);
+                    line1[chars_per_line] = '\0';
+                    
+                    // Second line
+                    strncpy(line2, pSelectedFileName + chars_per_line, chars_per_line);
+                    line2[chars_per_line] = '\0';
+                    
+                    // Third line - show last part with ellipsis
+                    strcpy(line3, "...");
+                    strncat(line3, 
+                           pSelectedFileName + (filename_len - (chars_per_line - 3)),
+                           chars_per_line - 3);
+                    
+                    graphics.DrawText(10, 110, COLOR2D(255, 255, 255), line1, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 135, COLOR2D(255, 255, 255), line2, C2DGraphics::AlignLeft);
+                    graphics.DrawText(10, 160, COLOR2D(255, 255, 255), line3, C2DGraphics::AlignLeft);
+                }
             }
             
             // Draw button bar at bottom
             graphics.DrawRect(0, 190, m_pST7789Display->GetWidth(), 50, COLOR2D(58, 124, 165));
             
-            // 4 & 5. Updated navigation buttons with bigger arrows and icons
+            // Button controls - using same style as file selection screen
             
             // A button with LARGER UP arrow
             graphics.DrawText(12, 205, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
