@@ -75,6 +75,8 @@ private:
     // Initialize ST7789 display
     boolean InitializeST7789(CSPIMaster *pSPIMaster);
     
+    void DrawNavigationBar(C2DGraphics& graphics, const char* screenType);
+
 private:
     CLogger *m_pLogger;
     TDisplayType m_DisplayType;
