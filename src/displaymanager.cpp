@@ -885,17 +885,17 @@ void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButton
     // This would show a brief button press indicator on the screen
 }
 
-// Update the helper function to take a string argument instead of boolean
+// Update the helper function to clearly show button labels next to icons
 void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* screenType)
 {
     // Draw button bar at bottom
     graphics.DrawRect(0, 210, graphics.GetWidth(), 30, COLOR2D(58, 124, 165));
     
-    // A button with UP arrow (2x larger)
-    graphics.DrawText(12, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
+    // A button with UP arrow
+    graphics.DrawText(5, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
     
     // Thicker Up arrow
-    unsigned arrow_x = 30;
+    unsigned arrow_x = 20;
     unsigned arrow_y = 225;
     // Stem (2px thick)
     graphics.DrawLine(arrow_x, arrow_y - 12, arrow_x, arrow_y, COLOR2D(255, 255, 255));
@@ -907,11 +907,11 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawLine(arrow_x + 6, arrow_y - 6, arrow_x, arrow_y - 12, COLOR2D(255, 255, 255));
     graphics.DrawLine(arrow_x + 6, arrow_y - 5, arrow_x + 1, arrow_y - 11, COLOR2D(255, 255, 255));
     
-    // B button with DOWN arrow (2x larger)
-    graphics.DrawText(72, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft);
+    // B button with DOWN arrow
+    graphics.DrawText(65, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft);
     
     // Thicker Down arrow
-    arrow_x = 90;
+    arrow_x = 80;
     arrow_y = 225;
     // Stem (2px thick)
     graphics.DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 12, COLOR2D(255, 255, 255));
@@ -926,20 +926,20 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     // Compare strings to determine which screen type we're displaying
     if (strcmp(screenType, "main") == 0) {
         // X button with MENU BARS (3 horizontal lines) for main screen
-        graphics.DrawText(132, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
+        graphics.DrawText(125, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
         
         // Draw 3 horizontal bars for menu
-        unsigned menu_x = 150;
+        unsigned menu_x = 140;
         unsigned menu_y = 220;
         graphics.DrawLine(menu_x, menu_y, menu_x + 15, menu_y, COLOR2D(255, 255, 255));
         graphics.DrawLine(menu_x, menu_y + 5, menu_x + 15, menu_y + 5, COLOR2D(255, 255, 255));
         graphics.DrawLine(menu_x, menu_y + 10, menu_x + 15, menu_y + 10, COLOR2D(255, 255, 255));
         
         // Y button with FOLDER icon
-        graphics.DrawText(192, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
+        graphics.DrawText(185, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
         
         // Draw folder icon
-        unsigned folder_x = 210;
+        unsigned folder_x = 200;
         unsigned folder_y = 220;
         
         // Folder base
@@ -949,10 +949,10 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     } 
     else if (strcmp(screenType, "selection") == 0 || strcmp(screenType, "advanced") == 0) {
         // X button with RED X (Cancel) for selection/advanced screens
-        graphics.DrawText(132, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
+        graphics.DrawText(125, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
         
         // Draw RED X
-        unsigned x_center = 150;
+        unsigned x_center = 140;
         unsigned y_center = 225;
         // Red X (drawn with white on blue background)
         graphics.DrawLine(x_center - 8, y_center - 8, x_center + 8, y_center + 8, COLOR2D(255, 100, 100));
@@ -962,10 +962,10 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
         graphics.DrawLine(x_center + 7, y_center - 8, x_center - 9, y_center + 8, COLOR2D(255, 100, 100));
         
         // Y button with GREEN CHECKMARK (OK)
-        graphics.DrawText(192, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
+        graphics.DrawText(185, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
         
         // Draw GREEN CHECKMARK
-        unsigned check_x = 210;
+        unsigned check_x = 200;
         unsigned check_y = 225;
         // Green checkmark (drawn with white on blue background)
         graphics.DrawLine(check_x - 8, check_y, check_x - 3, check_y + 8, COLOR2D(100, 255, 100));
