@@ -885,21 +885,22 @@ void CDisplayManager::ShowButtonPress(unsigned nButtonIndex, const char* pButton
     // This would show a brief button press indicator on the screen
 }
 
-// Update the helper function to make button labels more visible
+// Update the button label drawing in DrawNavigationBar
 void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* screenType)
 {
     // Draw button bar at bottom
     graphics.DrawRect(0, 210, graphics.GetWidth(), 30, COLOR2D(58, 124, 165));
     
     // --- A BUTTON ---
-    // Draw a more visible button with border - use a lighter gray for better contrast
-    graphics.DrawRect(5, 215, 18, 20, COLOR2D(150, 150, 150));
+    // Draw a more visible button with border - use a DARKER gray for better contrast with white text
+    graphics.DrawRect(5, 215, 18, 20, COLOR2D(80, 80, 80));
     graphics.DrawRectOutline(5, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
     
-    // A button label - make it larger and thicker by drawing it multiple times with slight offsets
-    graphics.DrawText(14, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft);
-    graphics.DrawText(15, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft); // Thicker
-    graphics.DrawText(14, 226, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignLeft); // Thicker
+    // Draw "A" in BLACK instead of white for better visibility
+    graphics.DrawText(10, 225, COLOR2D(0, 0, 0), "A", C2DGraphics::AlignLeft);
+    // Make it bolder by drawing it slightly offset
+    graphics.DrawText(11, 225, COLOR2D(0, 0, 0), "A", C2DGraphics::AlignLeft);
+    graphics.DrawText(10, 226, COLOR2D(0, 0, 0), "A", C2DGraphics::AlignLeft);
     
     // Thicker Up arrow - positioned after the button - make larger by 1px
     unsigned arrow_x = 35;
@@ -921,14 +922,15 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawLine(arrow_x + 6, arrow_y - 7, arrow_x - 1, arrow_y - 13, COLOR2D(255, 255, 255));
     
     // --- B BUTTON ---
-    // Draw a more visible button with border - use a lighter gray for better contrast
-    graphics.DrawRect(65, 215, 18, 20, COLOR2D(150, 150, 150));
+    // Draw a more visible button with border - use a DARKER gray for better contrast
+    graphics.DrawRect(65, 215, 18, 20, COLOR2D(80, 80, 80));
     graphics.DrawRectOutline(65, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
     
-    // B button label - make it larger and thicker by drawing it multiple times with slight offsets
-    graphics.DrawText(74, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft);
-    graphics.DrawText(75, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft); // Thicker
-    graphics.DrawText(74, 226, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignLeft); // Thicker
+    // Draw "B" in BLACK for better visibility
+    graphics.DrawText(70, 225, COLOR2D(0, 0, 0), "B", C2DGraphics::AlignLeft);
+    // Make it bolder by drawing it slightly offset
+    graphics.DrawText(71, 225, COLOR2D(0, 0, 0), "B", C2DGraphics::AlignLeft);
+    graphics.DrawText(70, 226, COLOR2D(0, 0, 0), "B", C2DGraphics::AlignLeft);
     
     // Thicker Down arrow - positioned after the button - make larger by 1px
     arrow_x = 95;
@@ -952,14 +954,14 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     // Compare strings to determine which screen type we're displaying
     if (strcmp(screenType, "main") == 0) {
         // --- X BUTTON ---
-        // Draw a more visible button with border - use a lighter gray for better contrast
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(150, 150, 150));
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(80, 80, 80));
         graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
         
-        // X button label - make it larger and thicker by drawing it multiple times with slight offsets
-        graphics.DrawText(134, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
-        graphics.DrawText(135, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft); // Thicker
-        graphics.DrawText(134, 226, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft); // Thicker
+        // Draw "X" in BLACK for better visibility
+        graphics.DrawText(130, 225, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
+        // Make it bolder by drawing it slightly offset
+        graphics.DrawText(131, 225, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
+        graphics.DrawText(130, 226, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
         
         // Draw 3 horizontal bars for menu - positioned after the button
         unsigned menu_x = 155;
@@ -975,14 +977,14 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
         graphics.DrawLine(menu_x, menu_y + 11, menu_x + 15, menu_y + 11, COLOR2D(255, 255, 255));
         
         // --- Y BUTTON ---
-        // Draw a more visible button with border - use a lighter gray for better contrast
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(150, 150, 150));
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(80, 80, 80));
         graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
         
-        // Y button label - make it larger and thicker by drawing it multiple times with slight offsets
-        graphics.DrawText(194, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
-        graphics.DrawText(195, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft); // Thicker
-        graphics.DrawText(194, 226, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft); // Thicker
+        // Draw "Y" in BLACK for better visibility
+        graphics.DrawText(190, 225, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
+        // Make it bolder by drawing it slightly offset
+        graphics.DrawText(191, 225, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
+        graphics.DrawText(190, 226, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
         
         // Draw folder icon - positioned after the button
         unsigned folder_x = 215;
@@ -996,14 +998,14 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     } 
     else if (strcmp(screenType, "selection") == 0 || strcmp(screenType, "advanced") == 0) {
         // --- X BUTTON ---
-        // Draw a more visible button with border - use a lighter gray for better contrast
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(150, 150, 150));
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(80, 80, 80));
         graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
         
-        // X button label - make it larger and thicker by drawing it multiple times with slight offsets
-        graphics.DrawText(134, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft);
-        graphics.DrawText(135, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft); // Thicker
-        graphics.DrawText(134, 226, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignLeft); // Thicker
+        // Draw "X" in BLACK for better visibility
+        graphics.DrawText(130, 225, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
+        // Make it bolder by drawing it slightly offset
+        graphics.DrawText(131, 225, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
+        graphics.DrawText(130, 226, COLOR2D(0, 0, 0), "X", C2DGraphics::AlignLeft);
         
         // Draw RED X - positioned after the button - 1px larger
         unsigned x_center = 155;
@@ -1020,14 +1022,14 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
         graphics.DrawLine(x_center + 9, y_center - 8, x_center - 8, y_center + 9, COLOR2D(255, 100, 100));
         
         // --- Y BUTTON ---
-        // Draw a more visible button with border - use a lighter gray for better contrast
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(150, 150, 150));
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(80, 80, 80));
         graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
         
-        // Y button label - make it larger and thicker by drawing it multiple times with slight offsets
-        graphics.DrawText(194, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft);
-        graphics.DrawText(195, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft); // Thicker
-        graphics.DrawText(194, 226, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignLeft); // Thicker
+        // Draw "Y" in BLACK for better visibility
+        graphics.DrawText(190, 225, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
+        // Make it bolder by drawing it slightly offset
+        graphics.DrawText(191, 225, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
+        graphics.DrawText(190, 226, COLOR2D(0, 0, 0), "Y", C2DGraphics::AlignLeft);
         
         // Draw GREEN CHECKMARK - positioned after the button - 1px larger
         unsigned check_x = 215;
