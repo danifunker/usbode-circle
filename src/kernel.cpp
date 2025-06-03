@@ -633,15 +633,20 @@ void CKernel::UpdateDisplayStatus(const char* imageName)
     // Only update if something has changed or force update requested
     if (forceUpdate || IPString != LastDisplayedIP || CString(currentImage) != LastDisplayedImage)
     {
+        // Get USB speed information for display
+        boolean bUSBFullSpeed = m_Options.GetUSBFullSpeed();
+        const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
+        
         // Update the status screen
         m_pDisplayManager->ShowStatusScreen(
             "USBODE v2.00-pre1",
             (const char*)IPString,
-            currentImage);  // Use the image from properties file
+            currentImage,
+            pUSBSpeed);  // Pass USB speed to display manager
             
         // Only log when the display actually changes
-        LOGNOTE("Display updated: IP=%s, Image=%s", 
-                (const char*)IPString, currentImage);
+        LOGNOTE("Display updated: IP=%s, Image=%s, USB=%s", 
+                (const char*)IPString, currentImage, pUSBSpeed);
                 
         // Store current values
         LastDisplayedIP = IPString;

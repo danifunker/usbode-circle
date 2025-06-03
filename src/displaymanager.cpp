@@ -297,15 +297,12 @@ void CDisplayManager::ClearDisplay(void)
 
 // Update ShowStatusScreen to support ST7789 displays
 
-void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddress, const char *pISOName)
+void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddress, const char *pISOName, const char *pUSBSpeed)
 {
     assert(pTitle != nullptr);
     assert(pIPAddress != nullptr);
     assert(pISOName != nullptr);
-    
-    // Get USB speed information
-    boolean bUSBFullSpeed = CKernelOptions::Get()->GetUSBFullSpeed();
-    const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
+    assert(pUSBSpeed != nullptr);
     
     switch (m_DisplayType)
     {
@@ -527,6 +524,301 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             
             // Update the display with all the graphics we've drawn
             graphics.UpdateDisplay();
+            
+            // Ensure display stays on
+            m_pST7789Display->On();
+        }
+        break;
+    
+    default:
+        break;
+    }
+}
+
+CDevice *CDisplayManager::GetDisplayDevice(void) const
+{
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        return m_pSH1106Device;
+        
+    case DisplayTypeST7789:
+        // return m_pST7789Device;
+        return nullptr;  // Not implemented yet
+        
+    default:
+        return nullptr;
+    }
+}
+
+CDisplay *CDisplayManager::GetDisplay(void) const
+{
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        return m_pSH1106Display;
+        
+    case DisplayTypeST7789:
+        // return m_pST7789Display;
+        return nullptr;  // Not implemented yet
+        
+    default:
+        return nullptr;
+    }
+}
+
+void CDisplayManager::ClearDisplay(void)
+{
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        if (m_pSH1106Display != nullptr)
+        {
+            m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
+        }
+        break;
+        
+    case DisplayTypeST7789:
+        // Clear ST7789 display when implemented
+        break;
+        
+    default:
+        break;
+    }
+}
+
+// Update ShowStatusScreen to support ST7789 displays
+
+void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddress, const char *pISOName, const char *pUSBSpeed)
+{
+    assert(pTitle != nullptr);
+    assert(pIPAddress != nullptr);
+    assert(pISOName != nullptr);
+    assert(pUSBSpeed != nullptr);
+    
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        if (m_pSH1106Display != nullptr)
+        {
+            // Clear display first
+            m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
+            
+            // Draw title at the top
+            m_pSH1106Display->DrawText(0, 2, pTitle, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font8x8);
+            
+            // Draw WiFi icon using pixel operations
+            unsigned int wifi_x = 0;
+            unsigned int wifi_y = 14;
+            
+            // WiFi base dot (center)
+            m_pSH1106Display->SetPixel(wifi_x+4, wifi_y+6, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            m_pSH1106Display->SetPixel(wifi_x+4, wifi_y+5, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            
+            // Inner arc
+            for (unsigned int x = wifi_x+2; x <= wifi_x+6; x++) {
+                m_pSH1106Display->SetPixel(x, wifi_y+4, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+                m_pSH1106Display->SetPixel(x, wifi_y+3, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            // Middle arc
+            for (unsigned int x = wifi_x+1; x <= wifi_x+7; x++) {
+                m_pSH1106Display->SetPixel(x, wifi_y+2, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            for (unsigned int x = wifi_x; x <= wifi_x+8; x++) {
+                m_pSH1106Display->SetPixel(x, wifi_y+1, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            // Outer arc
+            for (unsigned int x = wifi_x; x <= wifi_x+8; x++) {
+                m_pSH1106Display->SetPixel(x, wifi_y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+                                     
+            // Draw IP address
+            m_pSH1106Display->DrawText(10, 14, pIPAddress, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Draw CD icon
+            unsigned int cd_x = 0;
+            unsigned int cd_y = 27;
+            
+            // Draw CD as a ring
+            for (int y = -4; y <= 4; y++) {
+                for (int x = -4; x <= 4; x++) {
+                    int dist_squared = x*x + y*y;
+                    // Draw pixels between inner and outer radius
+                    if (dist_squared <= 16 && dist_squared > 4) {
+                        unsigned int px = cd_x+4+x;
+                        unsigned int py = cd_y+4+y;
+                        // Ensure coordinates are in valid range
+                        if (px < CSH1106Display::OLED_WIDTH && py < CSH1106Display::OLED_HEIGHT) {
+                            m_pSH1106Display->SetPixel(px, py, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+                        }
+                    }
+                }
+            }
+            
+            // ISO name (with two-line support)
+            size_t first_line_chars = 19;  // Increased from 16 to 19
+            size_t second_line_chars = 21; // Increased from 18 to 21
+            
+            char first_line[32] = {0};
+            char second_line[32] = {0};
+            size_t iso_length = strlen(pISOName);
+            
+            if (iso_length <= first_line_chars)
+            {
+                // Short name fits on one line
+                m_pSH1106Display->DrawText(12, 27, pISOName, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                         FALSE, FALSE, Font6x7);
+            }
+            else
+            {
+                // First line (with CD icon offset)
+                strncpy(first_line, pISOName, first_line_chars);
+                first_line[first_line_chars] = '\0';
+                m_pSH1106Display->DrawText(12, 27, first_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                         FALSE, FALSE, Font6x7);
+                
+                // Second line (potentially with ellipsis for very long names)
+                if (iso_length > first_line_chars + second_line_chars - 4)
+                {
+                    // Very long name, use ellipsis and last 13 chars (increased from 9)
+                    strncpy(second_line, pISOName + first_line_chars, second_line_chars - 17); // Adjust for "..." + 13 chars
+                    strcat(second_line, "...");
+                    strcat(second_line, pISOName + iso_length - 13); // Show last 13 chars instead of 9
+                }
+                else
+                {
+                    strncpy(second_line, pISOName + first_line_chars, second_line_chars);
+                    second_line[second_line_chars] = '\0';
+                }
+                
+                m_pSH1106Display->DrawText(0, 37, second_line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                         FALSE, FALSE, Font6x7);
+            }
+            
+            // Draw USB icon - pixel by pixel for better control
+            unsigned int usb_x = 0;
+            unsigned int usb_y = 49;
+            
+            // USB outline - rectangular shape
+            for (unsigned int x = usb_x; x <= usb_x+8; x++) {
+                // Top and bottom lines
+                m_pSH1106Display->SetPixel(x, usb_y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+                m_pSH1106Display->SetPixel(x, usb_y+7, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            for (unsigned int y = usb_y; y <= usb_y+7; y++) {
+                // Left and right sides
+                m_pSH1106Display->SetPixel(usb_x, y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+                m_pSH1106Display->SetPixel(usb_x+8, y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            // USB pins
+            for (unsigned int y = usb_y+2; y <= usb_y+5; y++) {
+                // Left pin
+                m_pSH1106Display->SetPixel(usb_x+2, y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+                m_pSH1106Display->SetPixel(usb_x+3, y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+                
+                // Right pin
+                m_pSH1106Display->SetPixel(usb_x+5, y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+                m_pSH1106Display->SetPixel(usb_x+6, y, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            // Draw USB speed info next to the USB icon
+            m_pSH1106Display->DrawText(10, 49, pUSBSpeed, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                     FALSE, FALSE, Font6x7);
+            
+            // Ensure the display is updated with all changes
+            m_pSH1106Display->Refresh();
+        }
+        break;
+        
+    case DisplayTypeST7789:
+        if (m_pST7789Display != nullptr)
+        {
+            // Create a 2D graphics instance for drawing
+            C2DGraphics graphics(m_pST7789Display);
+            if (!graphics.Initialize())
+            {
+                m_pLogger->Write("dispman", LogError, "Failed to initialize 2D graphics");
+                return;
+            }
+            
+            // Clear the screen with WHITE background using the graphics object
+            graphics.ClearScreen(COLOR2D(255, 255, 255));
+            
+            // Draw header bar with blue background
+            graphics.DrawRect(0, 0, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
+            
+            // Draw title text in white
+            graphics.DrawText(10, 5, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
+            
+            // Draw WiFi icon and information
+            unsigned wifi_x = 10;
+            unsigned wifi_y = 40;
+            
+            // Draw WiFi icon - outer arc (BLACK)
+            graphics.DrawCircleOutline(wifi_x + 10, wifi_y + 10, 10, COLOR2D(0, 0, 0));
+            // Draw WiFi icon - inner arc (BLACK)
+            graphics.DrawCircleOutline(wifi_x + 10, wifi_y + 10, 5, COLOR2D(0, 0, 0));
+            // Center dot (BLACK)
+            graphics.DrawCircle(wifi_x + 10, wifi_y + 10, 2, COLOR2D(0, 0, 0));
+            
+            // Draw IP address text (BLACK)
+            graphics.DrawText(35, 40, COLOR2D(0, 0, 0), pIPAddress, C2DGraphics::AlignLeft);
+            
+            // Draw CD icon
+            unsigned cd_x = 10;
+            unsigned cd_y = 70;
+            unsigned cd_radius = 10;
+            
+            // Draw outer circle of CD
+            graphics.DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, cd_radius, COLOR2D(0, 0, 0));
+            
+            // Draw inner hole of CD
+            graphics.DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 3, COLOR2D(255, 255, 255));
+            
+            // Draw ISO name
+            graphics.DrawText(35, 70, COLOR2D(0, 0, 0), pISOName, C2DGraphics::AlignLeft);
+            
+            // Draw USB icon
+            unsigned usb_x = 10;
+            unsigned usb_y = 120;
+            
+            // Draw USB icon - horizontal line (main stem)
+            graphics.DrawLine(usb_x, usb_y + 8, usb_x + 20, usb_y + 8, COLOR2D(0, 0, 0));
+            
+            // Draw circle at left of USB icon
+            graphics.DrawCircleOutline(usb_x - 2, usb_y + 8, 4, COLOR2D(0, 0, 0));
+            
+            // Draw USB icon - top arm
+            graphics.DrawLine(usb_x + 6, usb_y + 8, usb_x + 6, usb_y, COLOR2D(0, 0, 0));
+            graphics.DrawLine(usb_x + 6, usb_y, usb_x + 14, usb_y, COLOR2D(0, 0, 0));
+            
+            // Draw USB icon - bottom arm
+            graphics.DrawLine(usb_x + 14, usb_y + 8, usb_x + 14, usb_y + 16, COLOR2D(0, 0, 0));
+            graphics.DrawLine(usb_x + 14, usb_y + 16, usb_x + 22, usb_y + 16, COLOR2D(0, 0, 0));
+            
+            // Draw USB mode text
+            graphics.DrawText(40, 120, COLOR2D(0, 0, 0), pUSBSpeed, C2DGraphics::AlignLeft);
+            
+            // Draw button bar at bottom
+            graphics.DrawRect(0, 190, m_pST7789Display->GetWidth(), 50, COLOR2D(58, 124, 165));
+            
+            // Draw button labels
+            graphics.DrawText(10, 200, COLOR2D(255, 255, 255), "A: Up", C2DGraphics::AlignLeft);
+            graphics.DrawText(70, 200, COLOR2D(255, 255, 255), "B: Down", C2DGraphics::AlignLeft);
+            graphics.DrawText(140, 200, COLOR2D(255, 255, 255), "X: Back", C2DGraphics::AlignLeft);
+            graphics.DrawText(200, 200, COLOR2D(255, 255, 255), "Y: Select", C2DGraphics::AlignLeft);
+            
+            // Update the display with all the graphics we've drawn
+            graphics.UpdateDisplay();
+            
+            // Ensure display stays on
+            m_pST7789Display->On();
         }
         break;
     
