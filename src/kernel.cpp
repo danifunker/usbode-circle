@@ -778,6 +778,35 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     }
                     else if (nButtonIndex == 6) { // KEY2 button - cancel and return to main
                         pKernel->m_ScreenState = ScreenStateMain;
+                        
+                        // Get the current image that's still loaded to properly refresh the main screen
+                        CPropertiesFatFsFile Properties(CONFIG_FILE, &pKernel->m_FileSystem);
+                        Properties.Load();
+                        Properties.SelectSection("usbode");
+                        const char* currentImage = Properties.GetString("current_image", "image.iso");
+                        
+                        // Force a display update to ensure the main screen refreshes
+                        pKernel->UpdateDisplayStatus(currentImage);
+                    }
+                    // Add handling for center joystick button (usually button 4 or 8) to select an ISO:
+                    else if (nButtonIndex == 4 || nButtonIndex == 8) { // JOYSTICK_PRESS button - load selected ISO
+                        // Show loading message
+                        if (pKernel->m_pDisplayManager != nullptr) {
+                            const char* selectedFile = 
+                                (pKernel->m_nTotalISOCount > 0 && pKernel->m_pISOList != nullptr) ?
+                                (const char*)pKernel->m_pISOList[pKernel->m_nCurrentISOIndex] : "Unknown";
+                                
+                            pKernel->m_pDisplayManager->ShowStatusScreen(
+                                "Please Wait",
+                                "Loading Image:",
+                                selectedFile,
+                                pKernel->m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");
+                            pKernel->m_pDisplayManager->Refresh();
+                        }
+                        
+                        pKernel->LoadSelectedISO();
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        // Update main screen after loading ISO
                         pKernel->UpdateDisplayStatus(nullptr);
                     }
                     break;

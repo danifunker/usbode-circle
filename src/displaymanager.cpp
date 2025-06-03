@@ -597,7 +597,7 @@ void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const
             m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
             
             // Draw title at the top - moved down slightly
-            m_pSH1106Display->DrawText(0, 2, "Select an ISO:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+            m_pSH1106Display->DrawText(0, 2, "Select Image:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
                                      FALSE, FALSE, Font6x7);
             
             // Use the current ISO passed as parameter
