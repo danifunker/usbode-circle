@@ -21,7 +21,6 @@
 #include <circle/timer.h>
 #include <circle/chargenerator.h>
 #include <assert.h>
-#include <circle/2dgraphics.h>
 
 CST7789Device::CST7789Device (CSPIMaster *pSPIMaster, CST7789Display *pST7789Display,
 			      unsigned nColumns, unsigned nRows,
