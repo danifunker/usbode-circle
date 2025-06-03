@@ -892,117 +892,156 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawRect(0, 210, graphics.GetWidth(), 30, COLOR2D(58, 124, 165));
     
     // --- A BUTTON ---
-    // Draw a more visible button with border
-    graphics.DrawRect(5, 215, 18, 20, COLOR2D(100, 100, 100));
-    graphics.DrawRectOutline(5, 215, 18, 20, COLOR2D(200, 200, 200));
+    // Draw a more visible button with border - use a lighter gray for better contrast
+    graphics.DrawRect(5, 215, 18, 20, COLOR2D(150, 150, 150));
+    graphics.DrawRectOutline(5, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
     
-    // A button label - make it larger and centered in the button
+    // A button label - make it larger and thicker by drawing it multiple times with slight offsets
     graphics.DrawText(11, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignCenter);
+    graphics.DrawText(12, 225, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignCenter); // Thicker
+    graphics.DrawText(11, 226, COLOR2D(255, 255, 255), "A", C2DGraphics::AlignCenter); // Thicker
     
-    // Thicker Up arrow - positioned after the button
+    // Thicker Up arrow - positioned after the button - make larger by 1px
     unsigned arrow_x = 35;
     unsigned arrow_y = 225;
-    // Stem (2px thick)
-    graphics.DrawLine(arrow_x, arrow_y - 12, arrow_x, arrow_y, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x - 1, arrow_y - 12, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));
-    // Left side of arrowhead (2px thick)
-    graphics.DrawLine(arrow_x - 6, arrow_y - 6, arrow_x, arrow_y - 12, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x - 6, arrow_y - 5, arrow_x - 1, arrow_y - 11, COLOR2D(255, 255, 255));
-    // Right side of arrowhead (2px thick)
-    graphics.DrawLine(arrow_x + 6, arrow_y - 6, arrow_x, arrow_y - 12, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x + 6, arrow_y - 5, arrow_x + 1, arrow_y - 11, COLOR2D(255, 255, 255));
+    
+    // Stem (3px thick)
+    graphics.DrawLine(arrow_x, arrow_y - 13, arrow_x, arrow_y, COLOR2D(255, 255, 255)); // 1px longer
+    graphics.DrawLine(arrow_x - 1, arrow_y - 13, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));
+    graphics.DrawLine(arrow_x + 1, arrow_y - 13, arrow_x + 1, arrow_y, COLOR2D(255, 255, 255)); // Added 3rd line
+    
+    // Left side of arrowhead (3px thick) - 1px larger
+    graphics.DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255)); 
+    graphics.DrawLine(arrow_x - 7, arrow_y - 5, arrow_x - 1, arrow_y - 12, COLOR2D(255, 255, 255));
+    graphics.DrawLine(arrow_x - 6, arrow_y - 7, arrow_x + 1, arrow_y - 13, COLOR2D(255, 255, 255));
+    
+    // Right side of arrowhead (3px thick) - 1px larger
+    graphics.DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
+    graphics.DrawLine(arrow_x + 7, arrow_y - 5, arrow_x + 1, arrow_y - 12, COLOR2D(255, 255, 255));
+    graphics.DrawLine(arrow_x + 6, arrow_y - 7, arrow_x - 1, arrow_y - 13, COLOR2D(255, 255, 255));
     
     // --- B BUTTON ---
-    // Draw a more visible button with border
-    graphics.DrawRect(65, 215, 18, 20, COLOR2D(100, 100, 100));
-    graphics.DrawRectOutline(65, 215, 18, 20, COLOR2D(200, 200, 200));
+    // Draw a more visible button with border - use a lighter gray for better contrast
+    graphics.DrawRect(65, 215, 18, 20, COLOR2D(150, 150, 150));
+    graphics.DrawRectOutline(65, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
     
-    // B button label - make it larger and centered in the button
+    // B button label - make it larger and thicker by drawing it multiple times with slight offsets
     graphics.DrawText(71, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignCenter);
+    graphics.DrawText(72, 225, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignCenter); // Thicker
+    graphics.DrawText(71, 226, COLOR2D(255, 255, 255), "B", C2DGraphics::AlignCenter); // Thicker
     
-    // Thicker Down arrow - positioned after the button
+    // Thicker Down arrow - positioned after the button - make larger by 1px
     arrow_x = 95;
     arrow_y = 225;
-    // Stem (2px thick)
-    graphics.DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 12, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x - 1, arrow_y, arrow_x - 1, arrow_y + 12, COLOR2D(255, 255, 255));
-    // Left side of arrowhead (2px thick)
-    graphics.DrawLine(arrow_x - 6, arrow_y + 6, arrow_x, arrow_y + 12, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x - 6, arrow_y + 5, arrow_x - 1, arrow_y + 11, COLOR2D(255, 255, 255));
-    // Right side of arrowhead (2px thick)
-    graphics.DrawLine(arrow_x + 6, arrow_y + 6, arrow_x, arrow_y + 12, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x + 6, arrow_y + 5, arrow_x + 1, arrow_y + 11, COLOR2D(255, 255, 255));
+    
+    // Stem (3px thick)
+    graphics.DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255)); // 1px longer
+    graphics.DrawLine(arrow_x - 1, arrow_y, arrow_x - 1, arrow_y + 13, COLOR2D(255, 255, 255));
+    graphics.DrawLine(arrow_x + 1, arrow_y, arrow_x + 1, arrow_y + 13, COLOR2D(255, 255, 255)); // Added 3rd line
+    
+    // Left side of arrowhead (3px thick) - 1px larger
+    graphics.DrawLine(arrow_x - 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
+    graphics.DrawLine(arrow_x - 7, arrow_y + 5, arrow_x - 1, arrow_y + 12, COLOR2D(255, 255, 255));
+    graphics.DrawLine(arrow_x - 6, arrow_y + 7, arrow_x + 1, arrow_y + 13, COLOR2D(255, 255, 255));
+    
+    // Right side of arrowhead (3px thick) - 1px larger
+    graphics.DrawLine(arrow_x + 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
+    graphics.DrawLine(arrow_x + 7, arrow_y + 5, arrow_x + 1, arrow_y + 12, COLOR2D(255, 255, 255));
+    graphics.DrawLine(arrow_x + 6, arrow_y + 7, arrow_x - 1, arrow_y + 13, COLOR2D(255, 255, 255));
     
     // Compare strings to determine which screen type we're displaying
     if (strcmp(screenType, "main") == 0) {
         // --- X BUTTON ---
-        // Draw a more visible button with border
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(100, 100, 100));
-        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(200, 200, 200));
+        // Draw a more visible button with border - use a lighter gray for better contrast
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(150, 150, 150));
+        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
         
-        // X button label - make it larger and centered in the button
+        // X button label - make it larger and thicker by drawing it multiple times with slight offsets
         graphics.DrawText(131, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignCenter);
+        graphics.DrawText(132, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignCenter); // Thicker
+        graphics.DrawText(131, 226, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignCenter); // Thicker
         
         // Draw 3 horizontal bars for menu - positioned after the button
         unsigned menu_x = 155;
         unsigned menu_y = 220;
+        // Make bars thicker (2px)
         graphics.DrawLine(menu_x, menu_y, menu_x + 15, menu_y, COLOR2D(255, 255, 255));
+        graphics.DrawLine(menu_x, menu_y + 1, menu_x + 15, menu_y + 1, COLOR2D(255, 255, 255));
+        
         graphics.DrawLine(menu_x, menu_y + 5, menu_x + 15, menu_y + 5, COLOR2D(255, 255, 255));
+        graphics.DrawLine(menu_x, menu_y + 6, menu_x + 15, menu_y + 6, COLOR2D(255, 255, 255));
+        
         graphics.DrawLine(menu_x, menu_y + 10, menu_x + 15, menu_y + 10, COLOR2D(255, 255, 255));
+        graphics.DrawLine(menu_x, menu_y + 11, menu_x + 15, menu_y + 11, COLOR2D(255, 255, 255));
         
         // --- Y BUTTON ---
-        // Draw a more visible button with border
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(100, 100, 100));
-        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(200, 200, 200));
+        // Draw a more visible button with border - use a lighter gray for better contrast
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(150, 150, 150));
+        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
         
-        // Y button label - make it larger and centered in the button
+        // Y button label - make it larger and thicker by drawing it multiple times with slight offsets
         graphics.DrawText(191, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignCenter);
+        graphics.DrawText(192, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignCenter); // Thicker
+        graphics.DrawText(191, 226, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignCenter); // Thicker
         
         // Draw folder icon - positioned after the button
         unsigned folder_x = 215;
         unsigned folder_y = 220;
         
-        // Folder base
-        graphics.DrawRect(folder_x, folder_y + 3, 16, 10, COLOR2D(255, 255, 255));
-        // Folder tab
-        graphics.DrawRect(folder_x + 2, folder_y, 8, 3, COLOR2D(255, 255, 255));
+        // Folder base - make thicker
+        graphics.DrawRect(folder_x, folder_y + 3, 16, 11, COLOR2D(255, 255, 255)); // 1px taller
+        
+        // Folder tab - make thicker
+        graphics.DrawRect(folder_x + 2, folder_y, 8, 4, COLOR2D(255, 255, 255)); // 1px taller
     } 
     else if (strcmp(screenType, "selection") == 0 || strcmp(screenType, "advanced") == 0) {
         // --- X BUTTON ---
-        // Draw a more visible button with border
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(100, 100, 100));
-        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(200, 200, 200));
+        // Draw a more visible button with border - use a lighter gray for better contrast
+        graphics.DrawRect(125, 215, 18, 20, COLOR2D(150, 150, 150));
+        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
         
-        // X button label - make it larger and centered in the button
+        // X button label - make it larger and thicker by drawing it multiple times with slight offsets
         graphics.DrawText(131, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignCenter);
+        graphics.DrawText(132, 225, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignCenter); // Thicker
+        graphics.DrawText(131, 226, COLOR2D(255, 255, 255), "X", C2DGraphics::AlignCenter); // Thicker
         
-        // Draw RED X - positioned after the button
+        // Draw RED X - positioned after the button - 1px larger
         unsigned x_center = 155;
         unsigned y_center = 225;
-        // Red X (drawn with white on blue background)
-        graphics.DrawLine(x_center - 8, y_center - 8, x_center + 8, y_center + 8, COLOR2D(255, 100, 100));
-        graphics.DrawLine(x_center + 8, y_center - 8, x_center - 8, y_center + 8, COLOR2D(255, 100, 100));
-        // Thicker lines
-        graphics.DrawLine(x_center - 7, y_center - 8, x_center + 9, y_center + 8, COLOR2D(255, 100, 100));
-        graphics.DrawLine(x_center + 7, y_center - 8, x_center - 9, y_center + 8, COLOR2D(255, 100, 100));
+        
+        // Red X (drawn with red on blue background) - make it thicker
+        graphics.DrawLine(x_center - 9, y_center - 9, x_center + 9, y_center + 9, COLOR2D(255, 100, 100)); // 1px larger
+        graphics.DrawLine(x_center + 9, y_center - 9, x_center - 9, y_center + 9, COLOR2D(255, 100, 100)); // 1px larger
+        
+        // Thicker lines - add more lines for thickness
+        graphics.DrawLine(x_center - 8, y_center - 9, x_center + 9, y_center + 8, COLOR2D(255, 100, 100));
+        graphics.DrawLine(x_center + 8, y_center - 9, x_center - 9, y_center + 8, COLOR2D(255, 100, 100));
+        graphics.DrawLine(x_center - 9, y_center - 8, x_center + 8, y_center + 9, COLOR2D(255, 100, 100));
+        graphics.DrawLine(x_center + 9, y_center - 8, x_center - 8, y_center + 9, COLOR2D(255, 100, 100));
         
         // --- Y BUTTON ---
-        // Draw a more visible button with border
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(100, 100, 100));
-        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(200, 200, 200));
+        // Draw a more visible button with border - use a lighter gray for better contrast
+        graphics.DrawRect(185, 215, 18, 20, COLOR2D(150, 150, 150));
+        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(255, 255, 255)); // White border
         
-        // Y button label - make it larger and centered in the button
+        // Y button label - make it larger and thicker by drawing it multiple times with slight offsets
         graphics.DrawText(191, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignCenter);
+        graphics.DrawText(192, 225, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignCenter); // Thicker
+        graphics.DrawText(191, 226, COLOR2D(255, 255, 255), "Y", C2DGraphics::AlignCenter); // Thicker
         
-        // Draw GREEN CHECKMARK - positioned after the button
+        // Draw GREEN CHECKMARK - positioned after the button - 1px larger
         unsigned check_x = 215;
         unsigned check_y = 225;
-        // Green checkmark (drawn with white on blue background)
-        graphics.DrawLine(check_x - 8, check_y, check_x - 3, check_y + 8, COLOR2D(100, 255, 100));
-        graphics.DrawLine(check_x - 3, check_y + 8, check_x + 8, check_y - 5, COLOR2D(100, 255, 100));
-        // Thicker checkmark
-        graphics.DrawLine(check_x - 8, check_y + 1, check_x - 3, check_y + 9, COLOR2D(100, 255, 100));
-        graphics.DrawLine(check_x - 3, check_y + 9, check_x + 8, check_y - 4, COLOR2D(100, 255, 100));
+        
+        // Green checkmark (drawn with green on blue background) - make it thicker and 1px larger
+        graphics.DrawLine(check_x - 9, check_y, check_x - 3, check_y + 9, COLOR2D(100, 255, 100)); // 1px larger
+        graphics.DrawLine(check_x - 3, check_y + 9, check_x + 9, check_y - 6, COLOR2D(100, 255, 100)); // 1px larger
+        
+        // Thicker checkmark - add more lines
+        graphics.DrawLine(check_x - 9, check_y + 1, check_x - 3, check_y + 10, COLOR2D(100, 255, 100));
+        graphics.DrawLine(check_x - 3, check_y + 10, check_x + 9, check_y - 5, COLOR2D(100, 255, 100));
+        graphics.DrawLine(check_x - 8, check_y - 1, check_x - 2, check_y + 9, COLOR2D(100, 255, 100));
+        graphics.DrawLine(check_x - 2, check_y + 9, check_x + 9, check_y - 7, COLOR2D(100, 255, 100));
     }
     // You can add more screen types here with else if statements
 }
