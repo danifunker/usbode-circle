@@ -661,37 +661,68 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
     // For button presses - handle actions IMMEDIATELY for responsiveness
     if (bPressed)
     {
+        // Get button label for display feedback
+        const char* buttonLabel = "";
+        switch (nButtonIndex)
+        {
+            case 0: buttonLabel = "A (Up)"; break;
+            case 1: buttonLabel = "B (Down)"; break;
+            case 2: buttonLabel = "X (Cancel/Menu)"; break;
+            case 3: buttonLabel = "Y (Select)"; break;
+            default: buttonLabel = "Unknown"; break;
+        }
+        
+        // Show button press on display if we have a display manager
+        if (pKernel->m_pDisplayManager != nullptr)
+        {
+            pKernel->m_pDisplayManager->ShowButtonPress(nButtonIndex, buttonLabel);
+        }
+        
         // Handle specific actions based on current screen state
         switch (pKernel->m_ScreenState)
         {
             case ScreenStateMain:
-                // On main screen, only KEY1 (button 5) should work to open ISO selection
-                if (nButtonIndex == 5) { // KEY1 button
+                // Main screen button handling
+                if (nButtonIndex == 0 || nButtonIndex == 1 || nButtonIndex == 3) {
+                    // Button A (Up), B (Down) or Y (Select) - Open ISO selection
+                    LOGNOTE("Button %s pressed - Opening ISO selection", buttonLabel);
+                    
                     // Show a loading message before scanning for files
                     if (pKernel->m_pDisplayManager != nullptr)
                     {
                         pKernel->m_pDisplayManager->ShowStatusScreen(
                             "Please Wait",
-                            "Opening Image Browser",
-                            "Scanning files...");
-                        pKernel->m_pDisplayManager->Refresh();
+                            "Scanning for ISOs...",
+                            "This may take a moment");
                     }
                     
-                    // Immediate response to KEY1 button in main screen
+                    // Immediate response to button in main screen
                     pKernel->m_ScreenState = ScreenStateLoadISO;
                     pKernel->ScanForISOFiles();
                     pKernel->ShowISOSelectionScreen();
                 }
+                else if (nButtonIndex == 2) {
+                    // Button X - Advanced menu (not implemented yet)
+                    LOGNOTE("Button X pressed - Advanced menu (not implemented)");
+                    
+                    // TODO: Implement advanced menu
+                    if (pKernel->m_pDisplayManager != nullptr)
+                    {
+                        pKernel->m_pDisplayManager->ShowStatusScreen(
+                            "Advanced Menu",
+                            "Not implemented yet",
+                            "Coming soon");
+                    }
+                }
                 break;
                 
             case ScreenStateLoadISO:
-                // OPTIMIZATION: For ISO selection screen, skip intermediary "Navigating..." screens
-                // to make button presses feel much more responsive
-                
-                if (nButtonIndex == 0) { // UP button - previous ISO (single step) with wrapping
+                // ISO selection screen button handling
+                if (nButtonIndex == 0) {
+                    // Button A (Up) - previous ISO with wrapping
                     if (pKernel->m_nTotalISOCount > 0) {
-                        // Handle wrapping from first to last file
                         if (pKernel->m_nCurrentISOIndex == 0) {
+                            // Wrap to the end
                             pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
                         } else {
                             pKernel->m_nCurrentISOIndex--;
@@ -699,50 +730,28 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->ShowISOSelectionScreen();
                     }
                 }
-                else if (nButtonIndex == 1) { // DOWN button - next ISO (single step) with wrapping
+                else if (nButtonIndex == 1) {
+                    // Button B (Down) - next ISO with wrapping
                     if (pKernel->m_nTotalISOCount > 0) {
-                        // Handle wrapping from last to first file
-                        if (pKernel->m_nCurrentISOIndex >= pKernel->m_nTotalISOCount - 1) {
-                            pKernel->m_nCurrentISOIndex = 0;
-                        } else {
-                            pKernel->m_nCurrentISOIndex++;
-                        }
+                        pKernel->m_nCurrentISOIndex = (pKernel->m_nCurrentISOIndex + 1) % pKernel->m_nTotalISOCount;
                         pKernel->ShowISOSelectionScreen();
                     }
                 }
-                else if (nButtonIndex == 2) { // LEFT button - skip back 5 files with wrapping
-                    if (pKernel->m_nTotalISOCount > 0)
-                    {
-                        // Skip back 5 files with wrapping
-                        if (pKernel->m_nCurrentISOIndex < 5) {
-                            // Wrap around to the end
-                            pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 
-                                (5 - pKernel->m_nCurrentISOIndex);
-                            
-                            // Make sure we don't go out of bounds
-                            if (pKernel->m_nCurrentISOIndex >= pKernel->m_nTotalISOCount) {
-                                pKernel->m_nCurrentISOIndex = pKernel->m_nTotalISOCount - 1;
-                            }
-                        } else {
-                            pKernel->m_nCurrentISOIndex -= 5;
-                        }
-                        pKernel->ShowISOSelectionScreen();
-                    }
+                else if (nButtonIndex == 2) {
+                    // Button X (Cancel) - return to main screen
+                    pKernel->m_ScreenState = ScreenStateMain;
+                    
+                    // Get the current image that's still loaded
+                    CPropertiesFatFsFile Properties(CONFIG_FILE, &pKernel->m_FileSystem);
+                    Properties.Load();
+                    Properties.SelectSection("usbode");
+                    const char* currentImage = Properties.GetString("current_image", "image.iso");
+                    
+                    // Update main screen
+                    pKernel->UpdateDisplayStatus(currentImage);
                 }
-                else if (nButtonIndex == 3) { // RIGHT button - skip forward 5 files with wrapping
-                    if (pKernel->m_nTotalISOCount > 0) {
-                        // Skip forward 5 files with wrapping
-                        if (pKernel->m_nCurrentISOIndex + 5 >= pKernel->m_nTotalISOCount) {
-                            // Wrap around to the beginning
-                            pKernel->m_nCurrentISOIndex = 
-                                (pKernel->m_nCurrentISOIndex + 5) % pKernel->m_nTotalISOCount;
-                        } else {
-                            pKernel->m_nCurrentISOIndex += 5;
-                        }
-                        pKernel->ShowISOSelectionScreen();
-                    }
-                }
-                else if (nButtonIndex == 5) { // KEY1 button - load selected ISO
+                else if (nButtonIndex == 3) {
+                    // Button Y (Select) - load selected ISO
                     // Show loading message
                     if (pKernel->m_pDisplayManager != nullptr) {
                         const char* selectedFile = 
@@ -761,10 +770,9 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     // Update main screen after loading ISO
                     pKernel->UpdateDisplayStatus(nullptr);
                 }
-                else if (nButtonIndex == 6) { // KEY2 button - cancel and return to main
-                    pKernel->m_ScreenState = ScreenStateMain;
-                    pKernel->UpdateDisplayStatus(nullptr);
-                }
+                break;
+                
+            default:
                 break;
         }
     }

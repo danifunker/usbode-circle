@@ -177,25 +177,15 @@ const char* CGPIOButtonManager::GetButtonLabel(unsigned nButtonIndex) const
 
 void CGPIOButtonManager::Update(void)
 {
-    static unsigned lastDebugTime = 0;
-    unsigned currentTime = CTimer::Get()->GetTicks();
-    
-    // Only debug print every 10 seconds - reduce overhead from logging
-    if (currentTime - lastDebugTime > 10000)
-    {
-        DebugPrintPinStates();
-        lastDebugTime = currentTime;
-    }
-    
-    // Check each button
+    // Process all buttons
     for (unsigned i = 0; i < m_nButtonCount; i++)
     {
         if (m_ppButtonPins[i] != nullptr)
         {
-            // Buttons are active LOW (pressed when reading LOW)
+            // Read the raw button state (buttons are active LOW with pull-up)
             boolean bCurrentState = (m_ppButtonPins[i]->Read() == LOW);
             
-            // Process button state with debouncing
+            // Process the button state using the existing method
             ProcessButtonState(i, bCurrentState);
         }
     }
