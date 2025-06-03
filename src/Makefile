@@ -13,6 +13,11 @@ OBJS	= main.o kernel.o webserver.o util.o displaymanager.o gpiobuttonmanager.o
 .PHONY: all
 all: kernel7.img
 
+gitinfo.h:
+	@echo "Generating $@..."
+	@./gitinfo.sh
+
+
 # Add gitinfo.h as a dependency for kernel.o and webserver.o
 kernel.o: gitinfo.h
 webserver.o: gitinfo.h
