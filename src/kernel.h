@@ -38,9 +38,11 @@
 #include <circle/timer.h>
 #include <circle/types.h>
 #include <circle/usb/gadget/usbcdgadget.h>
+#include <circle/sound/soundbasedevice.h>
 #include <discimage/cuebinfile.h>
 #include <fatfs/ff.h>
 #include <filelogdaemon/filelogdaemon.h>
+#include <cdplayer/cdplayer.h>
 #include <wlan/bcm4343.h>
 #include <wlan/hostap/wpa_supplicant/wpasupplicant.h>
 #include <circle/spimaster.h>
@@ -88,7 +90,8 @@ private:
 	// SPI and display components
 	CSPIMaster* m_pSPIMaster;
 	CDisplayManager* m_pDisplayManager;
-
+	//CI2CMaster m_I2CMaster;
+	//CSoundBaseDevice *m_pSound;
 	// GPIO button manager
 	CGPIOButtonManager* m_pButtonManager;
 
