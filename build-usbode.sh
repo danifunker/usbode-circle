@@ -66,7 +66,7 @@ cp ${projectRoot}/sdcard/cmdline.txt ${destDir}
 mkdir -p ${destDir}/images
 cp ${projectRoot}/sdcard/image.iso.gz ${destDir}/images
 gunzip ${destDir}/images/image.iso.gz
-cp ${projectRoot}/sdcard/test.pcm ${destDir}/images
+cp ${projectRoot}/sdcard/test.pcm.gz ${destDir}/images
 gunzip ${destDir}/images/test.pcm
 mkdir -p ${destDir}/firmware
 cp ${projectRoot}/circle/addon/wlan/firmware/* ${destDir}/firmware
