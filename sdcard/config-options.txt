@@ -1,0 +1,21 @@
+All USBODE specific options go under the [usbode] section of the config.txt
+
+Also be aware that some options are configured through cmdline.txt. 
+
+cirlce only reads the first line of cmdline.txt, so any additional lines are ignored. There should be a space between each option in this file.
+For a full list of cmdline.txt options, please check here - https://github.com/rsta2/circle/blob/master/doc/cmdline.txt
+In addition to the options listed in the official circle documentation, 
+
+USBODE custom cmdline.txt options:
+
+sounddev=sndi2s                 sets the CDROM audio output to i2s mode, this is used for pirateaudio hats and any custom PCM 5102 
+For additional details, please consult this site - https://www.instructables.com/Raspberry-Pi-HQ-Audio-PCM5102-and-MPD/
+
+usbspeed=full                   Overrides the USB speed to match 1.1 specifications (useful for retro computers). If this option is not set, the USB port will operate in High-Speed (USB 2.0)
+
+config.txt options
+[usbode]
+current_image=image.iso         Filename of the current image. If an image is incompabile with USBOE, it's possible to update this file from a different computer to force a known-good image to load. This option is also updated by USBODE. All images should exist in the /images folder
+logfile=SD:/usbode-logs.txt     Sets the filename for the logs. If this option is removed no logfile is created. This is important for debugging and troubleshooting
+displayhat=pirateaudiolineout   This sets the display HAT and GPIO buttons to work with the pirate audio line out device model PIM 483. The other options that are valid here is waveshare and none. I have not seen any issues by setting this option to pirateaudiolineout and not having the pirateaudio connected. However if the option is set incorrectly (i.e. the waveshare is connected by the pirateaudio is setup in the options) then the display will not work correctly.
+

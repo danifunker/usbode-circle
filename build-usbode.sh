@@ -71,6 +71,7 @@ cp ${projectRoot}/circle/boot/start.elf ${destDir}
 arch=$(cat ${projectRoot}/circle/Config.mk  | grep AARCH | awk '{print $3}')
 cp ${projectRoot}/circle/boot/config${arch}.txt ${destDir}/config.txt
 cat ${projectRoot}/sdcard/config-usbode.txt >> ${destDir}/config.txt
+cp ${projectRoot}/sdcard/config-options.txt ${destDir}
 cp ${projectRoot}/sdcard/cmdline.txt ${destDir}
 
 echo "Build Completed successfully. Copy the contents of ${destDir} to a freshly formatted SDCard (FAT32 or EXFAT) and try the build!"
