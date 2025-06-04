@@ -1,2 +1,4 @@
 [usbode]
 current_image=image.iso
+logfile=SD:/usbode-logs.txt
+displayhat=pirateaudiolineout

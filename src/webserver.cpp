@@ -18,7 +18,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "webserver.h"
-#include "gitinfo.h"
+#include "gitinfo.d"
 
 #include <assert.h>
 #include <circle/logger.h>

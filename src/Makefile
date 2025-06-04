@@ -9,17 +9,11 @@ CFLAGS += -I ../include -I ../addon
 
 OBJS	= main.o kernel.o webserver.o util.o displaymanager.o gpiobuttonmanager.o
 
-# Add default target at the top
-.PHONY: all clean
-all: kernel7.img
+include $(CIRCLEHOME)/Rules.mk
 
-gitinfo.h:
+gitinfo.d:
 	@echo "Generating $@..."; \
 	./gitinfo.sh
-
-# Add gitinfo.h as a dependency for kernel.o and webserver.o
-kernel.o: gitinfo.h
-webserver.o: gitinfo.h
 
 LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/usb/gadget/libusbgadget.a \
@@ -41,8 +35,6 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(USBODEHOME)/addon/ftpserver/libftpserver.a \
 	  $(USBODEHOME)/addon/usbode-display/lib-usbodedisp.a
 
-include $(CIRCLEHOME)/Rules.mk
-
 %.h: %.html
 	@echo "  GEN   $@"
 	@$(CIRCLEHOME)/tools/converttool $< > $@
@@ -51,5 +43,3 @@ webserver.o: $(CONTENT)
 
 -include $(DEPS)
 
-clean:
-	$(RM) gitinfo.h

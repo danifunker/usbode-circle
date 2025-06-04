@@ -6,7 +6,7 @@ COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DIRTY=$(git diff --quiet 2>/dev/null || echo "-dirty")
 
 # Create header file with git info
-cat > ./gitinfo.h << EOF
+cat > ./gitinfo.d << EOF
 // Auto-generated file - Do not edit
 #ifndef _gitinfo_h
 #define _gitinfo_h
@@ -17,4 +17,4 @@ cat > ./gitinfo.h << EOF
 #endif
 EOF
 
-echo "Generated gitinfo.h with branch ${BRANCH} and commit ${COMMIT}${DIRTY}"
+echo "Generated gitinfo.d with branch ${BRANCH} and commit ${COMMIT}${DIRTY}"

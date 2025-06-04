@@ -1,2 +1,3 @@
-logdev=ttyS1
-loglevel=4
+logdev=ttyS1 loglevel=4 usbboost=true 
+sounddev=sndi2s
+usbspeed=full

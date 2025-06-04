@@ -25,7 +25,7 @@
 #include "util.h"
 #include "webserver.h"
 #include <string.h>
-#include "gitinfo.h"
+#include "gitinfo.d"
 
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
