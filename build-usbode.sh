@@ -51,6 +51,9 @@ make
 cd ${projectRoot}/addon/usbode-display
 make clean
 make
+cd ${projectRoot}/addon/cdplayer
+make clean
+make
 cd ${projectRoot}/src
 make clean
 make
