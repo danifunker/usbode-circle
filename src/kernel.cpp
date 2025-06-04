@@ -80,6 +80,10 @@ CKernel::CKernel(void)
   m_nCurrentISOIndex(0),
   m_nTotalISOCount(0),
   m_pISOList(nullptr)
+  /*
+      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), TRUE),
+      m_pSound(0) {
+*/
 {
     //m_ActLED.Blink(5);  // show we are alive
 }
@@ -152,6 +156,12 @@ boolean CKernel::Initialize (void)
 		bOK = m_Timer.Initialize ();
 		LOGNOTE("Initialized timer");
 	}
+
+    /*
+    if (bOK) {
+        bOK = m_I2CMaster.Initialize();
+    }
+    */
 
 	if (bOK)
 	{
@@ -239,6 +249,17 @@ TShutdownMode CKernel::Run(void)
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
     LOGNOTE("=====================================");
+
+    // Initialize sound
+    const char *pSoundDevice = m_Options.GetSoundDevice ();
+    if (strcmp (pSoundDevice, "sndi2s") == 0) { 
+	LOGNOTE("Enabling i2s sound device");
+	//m_pSound = new CI2SSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, CHUNK_SIZE, FALSE, &m_I2CMaster, DAC_I2C_ADDRESS);
+    	//new CCDPlayer(m_pSound);
+    	CCDPlayer *player = new CCDPlayer(pSoundDevice);
+	LOGNOTE("Enabled i2s sound device");
+	//player->SoundTest();
+    }
 
     // Load our current disc image
     const char *imageName = Properties.GetString("current_image", "image.iso");

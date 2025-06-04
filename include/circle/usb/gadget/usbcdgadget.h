@@ -103,6 +103,57 @@ struct TUSBCDRequestSenseReply  // 14 bytes
 } PACKED;
 #define SIZE_RSR 14
 
+// SCSI Mode Sense(10) Response Structures
+struct ModeSense10Header {
+    u16 modeDataLength;
+    u8  mediumType;
+    u8  deviceSpecificParameter;
+    u32 blockDescriptorLength;
+} PACKED;
+#define SIZE_MODE_SENSE10_HEADER 8
+
+// Mode Page 0x01 (Read/Write Error Recovery Parameters Mode Page)
+struct ModePage0x01Data {
+    u8  pageCodeAndPS;
+    u8  pageLength;
+    u8  errorRecoveryBehaviour;
+    u8  readRetryCount;
+    u8  reserved[3];
+    u8  writeRetryCount;
+    u8  reserved2[3];
+} PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X01 12
+
+// Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
+struct ModePage0x2AData {
+    u8  pageCodeAndPS;
+    u8  pageLength;
+    u8  capabilityBits[6];
+    u16 maxSpeed;
+    u16 numVolumeLevels;
+    u16 bufferSize;
+    u16 currentSpeed;
+    u8  reserved1[4];
+} PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X2A 20
+
+// Mode Page 0x0E (CD Audio Control Page)
+struct ModePage0x0EData {
+    u8  pageCodeAndPS;
+    u8  pageLength;
+    u8  IMMEDAndSOTC;
+    u8  reserved[5];
+    u8  CDDAOutput0Select;
+    u8  Output0Volume;
+    u8  CDDAOutput1Select;
+    u8  Output1Volume;
+    u8  CDDAOutput2Select;
+    u8  Output2Volume;
+    u8  CDDAOutput3Select;
+    u8  Output3Volume;
+} PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X0E 16
+
 // reply to SCSI Inquiry Command 0x12
 struct TUSBCDInquiryReply  // 36 bytes
 {
@@ -216,19 +267,6 @@ struct TUSBDiscInfoReply {
 } PACKED;
 #define SIZE_DISC_INFO_REPLY 34
 
-struct TUSBCDModeSense10Reply {
-    u16 modeDataLength;
-    u8 mediumType;
-    u8 deviceSpecific;
-    u8 reserved0;
-    u16 blockDescriptorLength;
-    u8 longLBA;
-    u8 page;
-    u8 pageLength;
-    u8 capabilities[66];
-} PACKED;
-#define SIZE_MODE_SENSE10_REPLY 76
-
 struct TUSBCDGetConfigurationReply {
     u32 dataLength;  // Number of bytes following this field
     u16 reserved;
@@ -242,6 +280,26 @@ struct TUSBCDGetConfigurationReply {
 } PACKED;
 // #define SIZE_GET_CONFIGURATION_REPLY 18
 #define SIZE_GET_CONFIGURATION_REPLY 4
+
+struct TUSBCDSubChannelHeaderReply {
+	u8 reserved;
+	u8 audioStatus;
+	u16 dataLength;
+	//u8 dataLength1;
+	//u8 dataLength2;
+} PACKED;
+#define SIZE_SUBCHANNEL_HEADER_REPLY 4
+
+struct TUSBCDSubChannel01CurrentPositionReply {
+	u8 dataFormatCode; // this should be 0x01
+	u8 adrControl; // 0x00 = Q Sub-channel mode information not supplied / 2 audio channels without pre-emphasis
+	u8 trackNumber;
+	u8 indexNumber;
+	u32 absoluteAddress;
+	u32 relativeAddress;
+} PACKED;
+#define SIZE_SUBCHANNEL_01_DATA_REPLY 12
+
 
 class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 {
@@ -298,6 +356,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     void OnActivate();  // called from OUT ep
 
+    void ProcessOut(size_t nLength);
+
    private:
     void HandleSCSICommand();
 
@@ -306,6 +366,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int GetSkipbytesForTrack(const CUETrackInfo *trackInfo);
     int GetSkipbytes();
     int GetMediumType();
+    u32 msf_to_lba(u8 minutes, u8 seconds, u8 frames);
 
     int GetBlocksize();
     int GetBlocksizeForTrack(const CUETrackInfo *trackInfo);
@@ -420,17 +481,6 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         0x00,           // Reserved
         htonl(0x00)     // Track start LBA (big-endian 0)
     };
-
-    TUSBCDModeSense10Reply m_ModeSense10Reply{
-        htons(0x4a),  // Length
-        0x00,         // MediumType (0x00 = unknown)
-        0x00,         // Device Specific Parameter
-        0x00,         // Long LBA
-        0x00,
-        0x0000,  // blockDescriptorLength
-        0x2a,    // Page
-        0x42,    // Page Length
-        {0x3, 0x0, 0x1, 0x03, 0x29, 0x3, 0xd, 0xc8, 0x1, 0x0, 0x2, 0xc0, 0xd, 0xc8, 0x0, 0x10, 0x10, 0x8a, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}};
 
     TUSBCDGetConfigurationReply m_GetConfigurationReply{
         htonl(0x0C),  // Number of bytes following this field
