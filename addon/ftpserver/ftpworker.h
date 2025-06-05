@@ -27,6 +27,12 @@
 #include <circle/net/socket.h>
 #include <circle/sched/task.h>
 #include <circle/string.h>
+#include <circle/new.h>
+#include <linux/kernel.h>
+#include <fatfs/ff.h>
+
+#define WRITE_BUFFER_SIZE (64 * 1024)
+#define NETWORK_BUFFER_SIZE (8 * 1024)
 
 // TODO: These may be incomplete/inaccurate
 enum TFTPStatus {
@@ -129,7 +135,8 @@ class CFTPWorker : protected CTask {
     // Command/data buffers
     char m_CommandBuffer[FRAME_BUFFER_SIZE];
     // u8 m_DataBuffer[FRAME_BUFFER_SIZE];
-    u8 m_DataBuffer[2048];
+    //u8 m_DataBuffer[2048];
+    BYTE* m_DataBuffer = new (HEAP_LOW) BYTE[NETWORK_BUFFER_SIZE];
 
     // Session state
     CString m_User;
