@@ -374,8 +374,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     void InitDeviceSize(u64 blocks);
     u32 GetLeadoutLBA();
     int GetLastTrackNumber();
-    u32 GetAddress(u32 lba, int msf);
-    u32 lba_to_msf(u32 lba);
+    u32 GetAddress(u32 lba, int msf, boolean relative=false);
+    u32 lba_to_msf(u32 lba, boolean relative=false);
 
    private:
     CCueBinFileDevice *m_pDevice;
