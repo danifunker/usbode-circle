@@ -27,18 +27,12 @@
 #include <circle/net/netsubsystem.h>
 #include <circle/sched/scheduler.h>
 #include <circle/timer.h>
-#include <fatfs/ff.h>
-#include <circle/new.h>
-
-// #include <cstdio>
-#include <linux/kernel.h>
 
 #include "ftpworker.h"
 #include "utility.h"
 
 // Use a per-instance name for the log macros
 #define From m_LogName
-#define WRITE_BUFFER_SIZE (64 * 1024)
 
 constexpr u16 PassivePortBase = 9000;
 constexpr size_t TextBufferSize = 512;
@@ -128,7 +122,6 @@ CFTPWorker::CFTPWorker(CSocket* pControlSocket, const char* pExpectedUser, const
       m_nDataSocketPort(0),
       m_DataSocketIPAddress(),
       m_CommandBuffer{'\0'},
-      m_DataBuffer{0},
       m_User(),
       m_Password(),
       m_DataType(TDataType::ASCII),
@@ -145,6 +138,8 @@ CFTPWorker::~CFTPWorker() {
 
     if (m_pDataSocket)
         delete m_pDataSocket;
+
+    delete[] m_DataBuffer;
 
     --s_nInstanceCount;
 
@@ -572,7 +567,7 @@ bool CFTPWorker::Retrieve(const char* pArgs) {
 #ifdef FTPDAEMON_DEBUG
         LOGDBG("Sending data");
 #endif
-        if (f_read(&File, m_DataBuffer, sizeof(m_DataBuffer), &nBytesRead) != FR_OK || pDataSocket->Send(m_DataBuffer, nBytesRead, 0) < 0) {
+        if (f_read(&File, m_DataBuffer, NETWORK_BUFFER_SIZE, &nBytesRead) != FR_OK || pDataSocket->Send(m_DataBuffer, nBytesRead, 0) < 0) {
             delete pDataSocket;
             f_close(&File);
             SendStatus(TFTPStatus::ActionAborted, "File action aborted, local error.");
@@ -624,7 +619,7 @@ bool CFTPWorker::Store(const char* pArgs) {
         LOGDBG("Waiting to receive");
 #endif
 
-        int nReceiveResult = pDataSocket->Receive(m_DataBuffer, sizeof(m_DataBuffer), MSG_DONTWAIT);
+        int nReceiveResult = pDataSocket->Receive(m_DataBuffer, NETWORK_BUFFER_SIZE, MSG_DONTWAIT);
         FRESULT nWriteResult;
         UINT nWritten;
 
@@ -688,6 +683,7 @@ bool CFTPWorker::Store(const char* pArgs) {
     }
 
     f_sync(&File);
+    delete[] WriteBuffer;
 
     if (bSuccess)
         SendStatus(TFTPStatus::TransferComplete, "Transfer complete.");
