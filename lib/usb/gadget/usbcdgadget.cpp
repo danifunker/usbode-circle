@@ -1024,20 +1024,19 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x43:  // READ TOC/PMA/ATIP
         {
-            int msf = m_CBW.CBWCB[1] & 0x02;
+            int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
             int format = m_CBW.CBWCB[2] & 0x0f;
-            int startingTrack = m_CBW.CBWCB[5];
+            int startingTrack = m_CBW.CBWCB[6];
             int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
 
-            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read TOC with msf = %02x, starting track = %d, allocation length = %d, m_CDReady = %d", msf, startingTrack, allocationLength, m_CDReady);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read TOC with msf = %02x, starting track = %d, allocation length = %d, m_CDReady = %d", msf, startingTrack, allocationLength, m_CDReady);
 
             TUSBTOCData m_TOCData;
             TUSBTOCEntry* tocEntries;
             int numtracks = 0;
             int datalen = 0;
 
-            if (startingTrack == 0 && allocationLength > 12) {
-                // Host wants a full TOC
+	    	// FIXME, implement formats. Currently we assume it's always 0x00
 
                 const CUETrackInfo* trackInfo = nullptr;
                 int lastTrackNumber = GetLastTrackNumber();
@@ -1050,75 +1049,35 @@ void CUSBCDGadget::HandleSCSICommand() {
                 // Populate the track entries
                 tocEntries = new TUSBTOCEntry[lastTrackNumber + 1];
 
-                int index = 0;
-                cueParser.restart();
-                while ((trackInfo = cueParser.next_track()) != nullptr) {
-                    // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, data_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->data_start, GetAddress(trackInfo->data_start, msf));
-                    tocEntries[index].ADR_Control = 0x04;
-                    if (trackInfo->track_mode == CUETrack_AUDIO)
-                        tocEntries[index].ADR_Control = 0x00;
-                    tocEntries[index].reserved = 0x00;
-                    tocEntries[index].TrackNumber = trackInfo->track_number;
-                    tocEntries[index].reserved2 = 0x00;
-                    tocEntries[index].address = GetAddress(trackInfo->data_start, msf);
-                    datalen += SIZE_TOC_ENTRY;
-                    ++index;
-                }
+		int index = 0;
+		if (startingTrack != 0xAA) { // Do we only want the leadout?
+			cueParser.restart();
+			while ((trackInfo = cueParser.next_track()) != nullptr) {
+				if (trackInfo->track_number < startingTrack)
+					continue;
+			    //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, data_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->data_start, GetAddress(trackInfo->data_start, msf));
+			    tocEntries[index].ADR_Control = 0x04;
+			    if (trackInfo->track_mode == CUETrack_AUDIO)
+				tocEntries[index].ADR_Control = 0x00;
+			    tocEntries[index].reserved = 0x00;
+			    tocEntries[index].TrackNumber = trackInfo->track_number;
+			    tocEntries[index].reserved2 = 0x00;
+			    tocEntries[index].address = GetAddress(trackInfo->data_start, msf);
+			    datalen += SIZE_TOC_ENTRY;
+			    numtracks++;
+			    index++;
+			}
+		}
 
                 // Lead-Out LBA
                 u32 leadOutLBA = GetLeadoutLBA();
                 tocEntries[index].ADR_Control = 0x16;
-                tocEntries[lastTrackNumber].reserved = 0x00;
-                tocEntries[lastTrackNumber].TrackNumber = 0xAA;
-                tocEntries[lastTrackNumber].reserved2 = 0x00;
-                tocEntries[lastTrackNumber].address = GetAddress(leadOutLBA, msf);
+                tocEntries[index].reserved = 0x00;
+                tocEntries[index].TrackNumber = 0xAA;
+                tocEntries[index].reserved2 = 0x00;
+                tocEntries[index].address = GetAddress(leadOutLBA, msf);
                 datalen += SIZE_TOC_ENTRY;
-
-                numtracks = lastTrackNumber + 1;
-
-            } else {
-                // Host wants a specific track
-
-                // Header
-                datalen = SIZE_TOC_DATA;
-                m_TOCData.FirstTrack = 0x01;
-                m_TOCData.LastTrack = 0x01;
-                numtracks = 1;
-
-                // TOC Entries
-                tocEntries = new TUSBTOCEntry[1];
-
-                if (startingTrack == 0xAA) {
-                    // Host wants a Lead Out Track
-
-                    // Check number of tracks
-                    u32 leadOutLBA = GetLeadoutLBA();
-                    tocEntries[0].ADR_Control = 0x16;
-                    tocEntries[0].reserved = 0x00;
-                    tocEntries[0].TrackNumber = 0xAA;
-                    tocEntries[0].reserved2 = 0x00;
-                    tocEntries[0].address = GetAddress(leadOutLBA, msf);
-                    datalen += SIZE_TOC_ENTRY;
-                } else {
-                    // Host wants a specific track
-
-                    const CUETrackInfo* trackInfo = nullptr;
-                    cueParser.restart();
-                    while ((trackInfo = cueParser.next_track()) != nullptr) {
-                        // MLOGDEBUG ("CUSBCDGadget::HandleSCSICommand", "Single TOC - Found track count = %d, data_start = %d, data_start = %d, sector_length = %d", trackInfo->track_number, trackInfo->data_start, trackInfo->data_start, trackInfo->sector_length);
-                        if (trackInfo->track_number - 1 == startingTrack) {
-                            break;
-                        }
-                    }
-
-                    tocEntries[0].ADR_Control = 0x14;
-                    tocEntries[0].reserved = 0x00;
-                    tocEntries[0].TrackNumber = startingTrack;
-                    tocEntries[0].reserved2 = 0x00;
-                    tocEntries[0].address = GetAddress(trackInfo->data_start, msf);
-                    datalen += SIZE_TOC_ENTRY;
-                }
-            }
+                numtracks++;
 
             // Copy the TOC header
             m_TOCData.DataLength = htons(datalen - 2);
@@ -1390,6 +1349,24 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
+        case 0x4B:  // PAUSE/RESUME
+        {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PAUSE/RESUME");
+            int resume = m_CBW.CBWCB[8] & 0x01;
+
+            CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+            if (cdplayer) {
+		if (resume)
+                	cdplayer->Resume();
+		else
+                	cdplayer->Pause();
+            }
+
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            SendCSW();
+            break;
+        }
+
         case 0x2B:  // SEEK
         {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SEEK");
@@ -1493,16 +1470,6 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x48:  // PLAY AUDIO TRACK/INDEX
         {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO TRACK/INDEX");
-
-            // FIXME: implement
-
-            m_CSW.bmCSWStatus = bmCSWStatus;
-            break;
-        }
-
-        case 0x4B:  // PAUSE/RESUME
-        {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PAUSE/RESUME");
 
             // FIXME: implement
 
