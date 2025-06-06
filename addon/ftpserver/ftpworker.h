@@ -32,7 +32,7 @@
 #include <fatfs/ff.h>
 
 #define WRITE_BUFFER_SIZE (64 * 1024)
-#define NETWORK_BUFFER_SIZE (8 * 1024)
+#define NETWORK_BUFFER_SIZE (8192)
 
 // TODO: These may be incomplete/inaccurate
 enum TFTPStatus {
@@ -136,6 +136,7 @@ class CFTPWorker : protected CTask {
     char m_CommandBuffer[FRAME_BUFFER_SIZE];
     // u8 m_DataBuffer[FRAME_BUFFER_SIZE];
     //u8 m_DataBuffer[2048];
+    alignas(512) BYTE* WriteBuffer = new (HEAP_LOW) BYTE[WRITE_BUFFER_SIZE];
     BYTE* m_DataBuffer = new (HEAP_LOW) BYTE[NETWORK_BUFFER_SIZE];
 
     // Session state
