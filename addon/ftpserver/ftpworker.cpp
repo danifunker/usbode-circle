@@ -140,9 +140,9 @@ CFTPWorker::~CFTPWorker() {
         delete m_pDataSocket;
 
     delete[] m_DataBuffer;
+    delete[] WriteBuffer;
 
     --s_nInstanceCount;
-
     LOGNOTE("Instance count is now %d", s_nInstanceCount);
 }
 
@@ -212,12 +212,14 @@ void CFTPWorker::Run() {
             SendStatus(TFTPStatus::CommandNotImplemented, "Command not implemented.");
 
         nTimeout = pTimer->GetTicks();
+        pScheduler->Yield();
     }
 
     LOGNOTE("Worker task %d shutting down", nWorkerNumber);
 
     delete m_pControlSocket;
     m_pControlSocket = nullptr;
+    
 }
 
 CSocket* CFTPWorker::OpenDataConnection() {
@@ -611,7 +613,7 @@ bool CFTPWorker::Store(const char* pArgs) {
     CTimer* const pTimer = CTimer::Get();
     unsigned int nTimeout = pTimer->GetTicks();
 
-    alignas(512) BYTE* WriteBuffer = new (HEAP_LOW) BYTE[WRITE_BUFFER_SIZE];
+    //alignas(512) BYTE* WriteBuffer = new (HEAP_LOW) BYTE[WRITE_BUFFER_SIZE];
     unsigned int WriteBufferUsed = 0;
 
     while (true) {
@@ -683,7 +685,6 @@ bool CFTPWorker::Store(const char* pArgs) {
     }
 
     f_sync(&File);
-    delete[] WriteBuffer;
 
     if (bSuccess)
         SendStatus(TFTPStatus::TransferComplete, "Transfer complete.");
@@ -706,8 +707,10 @@ bool CFTPWorker::Delete(const char* pArgs) {
 
     CString Path = RealPath(pArgs);
 
-    if (f_unlink(Path) != FR_OK)
+    if (f_unlink(Path) != FR_OK) {
         SendStatus(TFTPStatus::FileActionNotTaken, "File was not deleted.");
+	LOGERR("Couldn't delete %s", pArgs);
+    }
     else
         SendStatus(TFTPStatus::FileActionOk, "File deleted.");
 

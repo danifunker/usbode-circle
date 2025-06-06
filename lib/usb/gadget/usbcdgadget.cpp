@@ -833,8 +833,16 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x1B:  // Start/stop unit
         {
-            m_CDReady = (m_CBW.CBWCB[4] >> 1) == 0;
-            MLOGNOTE("HandleSCSI", "start/stop, %s", m_CDReady ? "ready" : "not ready");
+		int start = m_CBW.CBWCB[4] & 1;
+		int loej = (m_CBW.CBWCB[4] >> 1) & 1;
+		// TODO: Emulate a disk eject/load
+		// loej Start Action
+		// 0    0     Stop the disc - no action for us
+		// 0    1     Start the disc - no action for us
+		// 1    0     Eject the disc - perhaps we need to throw a check condition?
+		// 1    1     Load the disc - perhaps we need to throw a check condition?
+	
+            MLOGNOTE("HandleSCSI", "start/stop, start = %d, loej = %d", start, loej);
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
             break;
