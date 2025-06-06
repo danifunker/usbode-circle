@@ -118,7 +118,7 @@ CCueBinFileDevice* loadCueBinFileDevice(const char* imageName) {
         if (!ReadFileToString(fullPath, &cue_str)) {
             return nullptr;
         }
-        //LOGNOTE("Loaded cue %s", cue_str);
+        LOGNOTE("Loaded cue %s", cue_str);
 
         // Load a bin file with the same name
         change_extension_to_bin(fullPath);
@@ -133,8 +133,7 @@ CCueBinFileDevice* loadCueBinFileDevice(const char* imageName) {
         delete imageFile;
         return nullptr;
     }
-
-    //LOGNOTE("Opened image file %s", fullPath);
+    LOGNOTE("Opened image file %s", fullPath);
 
     // Create our device
     CCueBinFileDevice* ccueBinFileDevice = new CCueBinFileDevice(imageFile, cue_str);
