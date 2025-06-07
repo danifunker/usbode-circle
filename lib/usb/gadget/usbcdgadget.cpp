@@ -113,12 +113,12 @@ CUSBCDGadget::~CUSBCDGadget(void) {
     assert(0);
 }
 
-void hexdump(const void *data, size_t size) {
-    const unsigned char *p = (const unsigned char *)data;
+void hexdump(const void* data, size_t size) {
+    const unsigned char* p = (const unsigned char*)data;
     char line[80];
 
     for (size_t i = 0; i < size; i += 16) {
-        char *ptr = line;
+        char* ptr = line;
 
         // Offset
         ptr += sprintf(ptr, "%08x  ", i);
@@ -701,8 +701,8 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x3:  // Request sense CMD
         {
             // This command is the host asking why the last command generated a check condition
-	    // We'll clear the reason after we've communicated it. If it's still an issue, we'll
-	    // throw another Check Condition afterwards
+            // We'll clear the reason after we've communicated it. If it's still an issue, we'll
+            // throw another Check Condition afterwards
             bool desc = m_CBW.CBWCB[1] & 0x01;
             u8 blocks = (u8)(m_CBW.CBWCB[4]);
 
@@ -867,7 +867,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x1E:  // PREVENT ALLOW MEDIUM REMOVAL
         {
-		// Lie to the host
+            // Lie to the host
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
             break;
@@ -1322,7 +1322,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             switch (rt) {
                 case 0x00:  // All features supported
                 case 0x01:  // All current features supported
-		{
+                {
                     // offset to make space for the header
                     dataLength += sizeof(header);
 
@@ -1352,12 +1352,12 @@ void CUSBCDGadget::HandleSCSICommand() {
                     header.dataLength = htonl(dataLength - 4);
                     memcpy(m_InBuffer, &header, sizeof(header));
 
-		    //hexdump(m_InBuffer, dataLength);
+                    // hexdump(m_InBuffer, dataLength);
                     break;
-		}
+                }
 
                 case 0x02:  // Only the features requested
-		{
+                {
                     // Offset for header
                     dataLength += sizeof(header);
 
@@ -1403,7 +1403,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     header.dataLength = htonl(dataLength - 4);
                     memcpy(m_InBuffer, &header, sizeof(header));
                     break;
-		}
+                }
             }
 
             // Set response length
@@ -1494,16 +1494,16 @@ void CUSBCDGadget::HandleSCSICommand() {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
 
             // Play the audio, but only if length > 0
-	    if (m_nnumber_blocks > 0) {
-		    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-		    if (cdplayer) {
-			MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
-			if (m_nblock_address == 0xffffffff)
-				cdplayer->Resume();
-			else
-				cdplayer->Play(m_nblock_address, m_nnumber_blocks);
-		    }
-	    }
+            if (m_nnumber_blocks > 0) {
+                CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+                if (cdplayer) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
+                    if (m_nblock_address == 0xffffffff)
+                        cdplayer->Resume();
+                    else
+                        cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+                }
+            }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
@@ -1523,16 +1523,16 @@ void CUSBCDGadget::HandleSCSICommand() {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
 
             // Play the audio, but only if length > 0
-	    if (m_nnumber_blocks > 0) {
-		    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-		    if (cdplayer) {
-			MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
-			if (m_nblock_address == 0xffffffff)
-				cdplayer->Resume();
-			else
-				cdplayer->Play(m_nblock_address, m_nnumber_blocks);
-		    }
-	    }
+            if (m_nnumber_blocks > 0) {
+                CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+                if (cdplayer) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
+                    if (m_nblock_address == 0xffffffff)
+                        cdplayer->Resume();
+                    else
+                        cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+                }
+            }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();

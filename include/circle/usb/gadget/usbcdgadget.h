@@ -573,75 +573,75 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     */
 
     TUSBCDFeatureHeaderReply header = {
-    	htons(0x0000),	//datalength
-    	0x00,		// reserved;
-    	htons(PROFILE_CDROM)	// currentProfile;
-};
+        htons(0x0000),        // datalength
+        0x00,                 // reserved;
+        htons(PROFILE_CDROM)  // currentProfile;
+    };
 
     // Feature 0000h - Profile List - A list of all profile supported by the drive
     TUSBCDProfileListFeatureReply profile_list = {
-	    htons(0x0000),	// featureCode
-	    0x03,		// VersionPersistentCurrent
-	    0x04		// AdditionalLength
+        htons(0x0000),  // featureCode
+        0x03,           // VersionPersistentCurrent
+        0x04            // AdditionalLength
     };
 
     // Profiles 0008h CD-ROM
-    TUSBCProfileDescriptorReply cdrom_profile = { 
-	    htons(PROFILE_CDROM),	// profileNumber
-	    0x01,			// currentP
-	    0x00			// reserved
+    TUSBCProfileDescriptorReply cdrom_profile = {
+        htons(PROFILE_CDROM),  // profileNumber
+        0x01,                  // currentP
+        0x00                   // reserved
     };
 
     // Feature 0001h - Core
     TUSBCDCoreFeatureReply core = {
-	  htons(0x0001),	// featureCode
-          0x0b,			// VersionPersistentCurrent
-	  0x08,			// AdditionalLength
-	  0x08,			// physicalInterfaceStandard
-	  0x03,			// INQ2DBE
-	  0x00,			// reserved
-	  0x00,			// reserved
-	  0x00			// reserved
+        htons(0x0001),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x08,           // AdditionalLength
+        0x08,           // physicalInterfaceStandard
+        0x03,           // INQ2DBE
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
     };
 
     // Feature 0002h - Morphing Feature. The Drive is able to report operational changes
     TUSBCDMorphingFeatureReply morphing = {
-	  htons(0x0002),	// featureCode
-	  0x0b,			// VersionPersistentCurrent
-	  0x04,			// AdditionalLength
-	  0x02,			// OCEventASYNC
-	  0x00,			// reserved
-	  0x00,			// reserved
-	  0x00			// reserved
+        htons(0x0002),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x04,           // AdditionalLength
+        0x02,           // OCEventASYNC
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
     };
 
     // Feature 0003h - Removable Medium. The medium may be removed from the device
     TUSBCDRemovableMediumFeatureReply mechanism = {
-	  htons(0x0003),	// featureCode
-	  0x0b,			// VersionPersistentCurrent
-	  0x04,			// AdditionalLength
-	  0x15,			// Mechanism
-	  0x00,			// reserved
-	  0x00,			// reserved
-	  0x00			// reserved
+        htons(0x0003),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x04,           // AdditionalLength
+        0x15,           // Mechanism
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
     };
 
     // Feature 001dh - Multi-Read - The ability to read all CD media types
     TUSBCDMultiReadFeatureReply multiread = {
-	  htons(0x001d),	// featureCode
-	  0x0b,			// VersionPersistentCurrent
-	  0x00,			// AdditionalLength
+        htons(0x001d),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x00,           // AdditionalLength
     };
 
     // Feature 001eh - CD Read - The ability to read CD specific structures
     TUSBCDCDReadFeatureReply cdread = {
-	  htons(0x001e),	// featureCode
-	  0x0b,			// VersionPersistentCurrent
-	  0x04,			// AdditionalLength
-	  0x00,			// DAPC2FlagsCDText
-	  0x00,			// reserved
-	  0x00,			// reserved
-	  0x00			// reserved
+        htons(0x001e),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x04,           // AdditionalLength
+        0x00,           // DAPC2FlagsCDText
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
     };
 
     TUSBDiscInfoReply m_DiscInfoReply{
