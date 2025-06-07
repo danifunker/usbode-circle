@@ -113,6 +113,42 @@ CUSBCDGadget::~CUSBCDGadget(void) {
     assert(0);
 }
 
+void hexdump(const void* data, size_t size) {
+    const unsigned char* p = (const unsigned char*)data;
+    char line[80];
+
+    for (size_t i = 0; i < size; i += 16) {
+        char* ptr = line;
+
+        // Offset
+        ptr += sprintf(ptr, "%08x  ", i);
+
+        // Hex bytes
+        for (size_t j = 0; j < 16; ++j) {
+            if (i + j < size)
+                ptr += sprintf(ptr, "%02x ", p[i + j]);
+            else
+                ptr += sprintf(ptr, "   ");
+        }
+
+        // Space before ASCII
+        ptr += sprintf(ptr, " ");
+
+        // ASCII representation
+        for (size_t j = 0; j < 16; ++j) {
+            if (i + j < size) {
+                unsigned char c = p[i + j];
+                ptr += sprintf(ptr, "%c", (c >= 32 && c <= 126) ? c : '.');
+            }
+        }
+
+        // Final null terminator
+        *ptr = '\0';
+
+        MLOGNOTE("hexdump", "%s", line);
+    }
+}
+
 const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength) {
     MLOGNOTE("CUSBCDGadget::GetDescriptor", "entered");
     assert(pLength);
@@ -185,8 +221,8 @@ void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
         // Tell the host the disc has changed
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         bSenseKey = 0x06;           // Unit Attention
-        bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE, MEDIUM MAY HAVE CHANGED
-        bAddlSenseCodeQual = 0x00;  // NOT READY TO READY CHANGE, MEDIUM MAY HAVE CHANGED
+        bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE
+        bAddlSenseCodeQual = 0x00;  // MEDIUM MAY HAVE CHANGED
     }
 
     m_pDevice = dev;
@@ -292,14 +328,14 @@ const CUETrackInfo* CUSBCDGadget::GetTrackInfoForLBA(u32 lba) {
 
     // Iterate to find our track
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-        // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Iterating: Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
+        // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Iterating: Current Track %d data_start is %lu", trackInfo->track_number, trackInfo->data_start);
         //  Shortcut for when our LBA is the start address of this track
-        if (trackInfo->track_start == lba) {
-            // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut track_start == lba, returning track %d", trackInfo->track_number);
+        if (trackInfo->data_start == lba) {
+            // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut data_start == lba, returning track %d", trackInfo->track_number);
             return trackInfo;
         }
 
-        if (lba < trackInfo->track_start) {
+        if (lba < trackInfo->data_start) {
             // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Found LBA %lu in track %d", lba, lastTrackNum);
             found = true;
             break;
@@ -331,15 +367,33 @@ const CUETrackInfo* CUSBCDGadget::GetTrackInfoForLBA(u32 lba) {
 
 u32 CUSBCDGadget::GetLeadoutLBA() {
     const CUETrackInfo* trackInfo = nullptr;
-    const CUETrackInfo* lastTrackInfo = nullptr;
+    u32 file_offset = 0;
+    u32 sector_length = 0;
+    u32 data_start = 0;
+
+    // Find the last track
     cueParser.restart();
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-        lastTrackInfo = trackInfo;
+        file_offset = trackInfo->file_offset;
+        sector_length = trackInfo->sector_length;
+        data_start = trackInfo->data_start;
     }
 
-    u64 lastTrackBlocks = (m_pDevice->GetSize() - lastTrackInfo->file_offset) / lastTrackInfo->sector_length;
-    u32 ret = lastTrackInfo->data_start + lastTrackBlocks;
-    // MLOGNOTE ("CUSBCDGadget::GetLeadoutLBA", "device size is %llu, last track file offset is %llu, last track sector_length is %lu, last track data_start is %lu, lastTrackBlocks = %lu, returning = %lu", m_pDevice->GetSize(), lastTrackInfo->file_offset, lastTrackInfo->sector_length, lastTrackInfo->data_start, lastTrackBlocks, ret);
+    u32 deviceSize = (u32)m_pDevice->GetSize();
+
+    // We know the start position of the last track, and we know its sector length
+    // and we know the file size, so we can work out the LBA of the end of the last track
+    // We can't just divide the file size by sector size because sectors lengths might
+    // not be consistent (e.g. multi-mode cd where track 1 is 2048
+    u32 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
+    u32 ret = data_start + lastTrackBlocks;
+    MLOGNOTE("CUSBCDGadget::GetLeadoutLBA", "device size is %lu, last track file offset is %lu, last track sector_length is %lu, last track data_start is %lu, lastTrackBlocks = %lu, returning = %lu", deviceSize, file_offset, sector_length, data_start, lastTrackBlocks, ret);
+
+    // Some corrupted cd images might have a cue that references track that are
+    // outside the bin.
+    if (deviceSize < file_offset)
+        return data_start;
+
     return ret;
 }
 
@@ -424,9 +478,9 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                         MLOGERR("onXferCmplt DataIn", "failed, %s",
                                 m_CDReady ? "ready" : "not ready");
                         m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-                        m_ReqSenseReply.bSenseKey = 0x02;
-                        m_ReqSenseReply.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                        m_ReqSenseReply.bAddlSenseCodeQual = 0x00;  // FIXME CAUSE NOT REPORTABLE
+                        bSenseKey = 0x02;
+                        bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
+                        bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                         SendCSW();
                     }
                 } else  // done sending data to host
@@ -506,8 +560,8 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
 }
 
 void CUSBCDGadget::ProcessOut(size_t nLength) {
-    // This code is assuming that the payload is a Mode Select payload. I think
-    // at the moment, this is the only thing likely to appear here.
+    // This code is assuming that the payload is a Mode Select payload.
+    // At the moment, this is the only thing likely to appear here.
     // TODO: somehow validate what this data is
 
     MLOGNOTE("ProcessOut",
@@ -530,9 +584,11 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
             if (cdplayer) {
-                // This is disabled because it needs more testing
-                // Perhaps there's something I'm missing here
+                // Perhaps there's something I'm missing here?
                 // Quake, for example, always sends 00 as the volume level :O
+                // Tombraider works initially then starts always sending 00
+                // as the volume level. I suspect this has something to do with
+                // the mode sense command. Perhaps we're feeding back the wrong thing?
                 // cdplayer->SetVolume(modePage->Output0Volume);
             }
             break;
@@ -566,8 +622,9 @@ u32 CUSBCDGadget::msf_to_lba(u8 minutes, u8 seconds, u8 frames) {
     return lba;
 }
 
-u32 CUSBCDGadget::lba_to_msf(u32 lba) {
-    lba = lba + 150;  // MSF values are offset by 2mins. Weird
+u32 CUSBCDGadget::lba_to_msf(u32 lba, boolean relative) {
+    if (!relative)
+        lba = lba + 150;  // MSF values are offset by 2mins. Weird
 
     u8 minutes = lba / (75 * 60);
     u8 seconds = (lba / 75) % 60;
@@ -577,10 +634,10 @@ u32 CUSBCDGadget::lba_to_msf(u32 lba) {
     return (frames << 24) | (seconds << 16) | (minutes << 8) | reserved;
 }
 
-u32 CUSBCDGadget::GetAddress(u32 lba, int msf) {
+u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
     u32 address = lba;
     if (msf)
-        return lba_to_msf(lba);
+        return lba_to_msf(lba, relative);
     return htonl(address);
 }
 
@@ -632,7 +689,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                 bSenseKey = 2;
                 bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // FIXME CAUSE NOT REPORTABLE
+                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
             } else {
                 // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
                 m_CSW.bmCSWStatus = bmCSWStatus;
@@ -644,9 +701,8 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x3:  // Request sense CMD
         {
             // This command is the host asking why the last command generated a check condition
-            // TODO: Add some code to store the reason why we threw an error previously
-            // TODO: For now, we'll assume this is always because we changed CD image
-
+            // We'll clear the reason after we've communicated it. If it's still an issue, we'll
+            // throw another Check Condition afterwards
             bool desc = m_CBW.CBWCB[1] & 0x01;
             u8 blocks = (u8)(m_CBW.CBWCB[4]);
 
@@ -678,17 +734,17 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x12:  // Inquiry
         {
             int allocationLength = (m_CBW.CBWCB[3] << 8) | m_CBW.CBWCB[4];
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry %0x, allocation length %d", m_CBW.CBWCB[1], allocationLength);
+            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry %0x, allocation length %d", m_CBW.CBWCB[1], allocationLength);
 
             if ((m_CBW.CBWCB[1] & 0x01) == 0) {  // EVPD bit is 0: Standard Inquiry
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
+                // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
                 memcpy(&m_InBuffer, &m_InqReply, SIZE_INQR);
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, SIZE_INQR);
                 m_nState = TCDState::DataIn;
                 m_nnumber_blocks = 0;  // nothing more after this send
                 m_CSW.bmCSWStatus = bmCSWStatus;
             } else {  // EVPD bit is 1: VPD Inquiry
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (VPD Inquiry)");
+                // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (VPD Inquiry)");
                 u8 vpdPageCode = m_CBW.CBWCB[2];
                 switch (vpdPageCode) {
                     case 0x00:  // Supported VPD Pages
@@ -718,9 +774,10 @@ void CUSBCDGadget::HandleSCSICommand() {
                         m_CSW.bmCSWStatus = bmCSWStatus;
                         break;
                     }
+
                     case 0x80:  // Unit Serial Number Page
                     {
-                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unit Serial number Page)");
+                        // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unit Serial number Page)");
 
                         u8 UnitSerialNumberReply[] = {
                             0x05,  // Byte 0: Peripheral Device Type (Optical Memory Device)
@@ -743,6 +800,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                         m_CSW.bmCSWStatus = bmCSWStatus;
                         break;
                     }
+
                     case 0x83: {
                         u8 DeviceIdentificationReply[] = {
                             0x05,  // Byte 0: Peripheral Device Type (Optical Memory Device)
@@ -771,13 +829,15 @@ void CUSBCDGadget::HandleSCSICommand() {
                         m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
                         m_CSW.bmCSWStatus = bmCSWStatus;
-                    } break;
+                        break;
+                    }
+
                     default:  // Unsupported VPD Page
-                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unsupported Page)");
-                        // m_nState = TCDState::DataIn;
+                        // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unsupported Page)");
+                        //  m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
 
-                        m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;  // FIXME throw CD_CSW_STATUS_FAIL but implement sense response
+                        m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
                         bSenseKey = 0x05;
                         bAddlSenseCode = 0x24;      // Invalid Field
                         bAddlSenseCodeQual = 0x00;  // In CDB
@@ -788,22 +848,18 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
-        case 0x1A:  // Mode sense (6)
-        {
-            // FIXME
-            memcpy(&m_InBuffer, &m_ModeSenseReply, SIZE_MODEREP);
-            m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       m_InBuffer, SIZE_MODEREP);
-            m_nState = TCDState::DataIn;
-            m_CSW.bmCSWStatus = bmCSWStatus;
-            break;
-        }
-
         case 0x1B:  // Start/stop unit
         {
-            m_CDReady = (m_CBW.CBWCB[4] >> 1) == 0;
-            MLOGNOTE("HandleSCSI", "start/stop, %s", m_CDReady ? "ready" : "not ready");
+            int start = m_CBW.CBWCB[4] & 1;
+            int loej = (m_CBW.CBWCB[4] >> 1) & 1;
+            // TODO: Emulate a disk eject/load
+            // loej Start Action
+            // 0    0     Stop the disc - no action for us
+            // 0    1     Start the disc - no action for us
+            // 1    0     Eject the disc - perhaps we need to throw a check condition?
+            // 1    1     Load the disc - perhaps we need to throw a check condition?
+
+            MLOGNOTE("HandleSCSI", "start/stop, start = %d, loej = %d", start, loej);
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
             break;
@@ -811,6 +867,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x1E:  // PREVENT ALLOW MEDIUM REMOVAL
         {
+            // Lie to the host
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
             break;
@@ -843,7 +900,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                 // Transfer Block Size is the size of data to return to host
                 // Block Size and Skip Bytes is worked out from cue sheet
-                // Assume the data being requested is in track 1
+                // For a CDROM, this is always 2048
                 transfer_block_size = 2048;
                 block_size = data_block_size;  // set at SetDevice
                 skip_bytes = data_skip_bytes;  // set at SetDevice;
@@ -860,7 +917,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                 bSenseKey = 0x02;
                 bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // FIXME CAUSE NOT REPORTABLE
+                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                 SendCSW();
             }
             break;
@@ -970,7 +1027,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                 bSenseKey = 0x02;
                 bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // FIXME CAUSE NOT REPORTABLE
+                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                 SendCSW();
             }
             break;
@@ -985,9 +1042,9 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x43:  // READ TOC/PMA/ATIP
         {
-            int msf = m_CBW.CBWCB[1] & 0x02;
+            int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
             int format = m_CBW.CBWCB[2] & 0x0f;
-            int startingTrack = m_CBW.CBWCB[5];
+            int startingTrack = m_CBW.CBWCB[6];
             int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
 
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read TOC with msf = %02x, starting track = %d, allocation length = %d, m_CDReady = %d", msf, startingTrack, allocationLength, m_CDReady);
@@ -997,23 +1054,25 @@ void CUSBCDGadget::HandleSCSICommand() {
             int numtracks = 0;
             int datalen = 0;
 
-            if (startingTrack == 0 && allocationLength > 12) {
-                // Host wants a full TOC
+            // TODO implement formats. Currently we assume it's always 0x00
 
-                const CUETrackInfo* trackInfo = nullptr;
-                int lastTrackNumber = GetLastTrackNumber();
+            const CUETrackInfo* trackInfo = nullptr;
+            int lastTrackNumber = GetLastTrackNumber();
 
-                // Header
-                m_TOCData.FirstTrack = 0x01;
-                m_TOCData.LastTrack = lastTrackNumber;
-                datalen = SIZE_TOC_DATA;
+            // Header
+            m_TOCData.FirstTrack = 0x01;
+            m_TOCData.LastTrack = lastTrackNumber;
+            datalen = SIZE_TOC_DATA;
 
-                // Populate the track entries
-                tocEntries = new TUSBTOCEntry[lastTrackNumber + 1];
+            // Populate the track entries
+            tocEntries = new TUSBTOCEntry[lastTrackNumber + 1];
 
-                int index = 0;
+            int index = 0;
+            if (startingTrack != 0xAA) {  // Do we only want the leadout?
                 cueParser.restart();
                 while ((trackInfo = cueParser.next_track()) != nullptr) {
+                    if (trackInfo->track_number < startingTrack)
+                        continue;
                     // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, data_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->data_start, GetAddress(trackInfo->data_start, msf));
                     tocEntries[index].ADR_Control = 0x04;
                     if (trackInfo->track_mode == CUETrack_AUDIO)
@@ -1023,63 +1082,20 @@ void CUSBCDGadget::HandleSCSICommand() {
                     tocEntries[index].reserved2 = 0x00;
                     tocEntries[index].address = GetAddress(trackInfo->data_start, msf);
                     datalen += SIZE_TOC_ENTRY;
-                    ++index;
-                }
-
-                // Lead-Out LBA
-                u32 leadOutLBA = GetLeadoutLBA();
-                tocEntries[index].ADR_Control = 0x16;
-                tocEntries[lastTrackNumber].reserved = 0x00;
-                tocEntries[lastTrackNumber].TrackNumber = 0xAA;
-                tocEntries[lastTrackNumber].reserved2 = 0x00;
-                tocEntries[lastTrackNumber].address = GetAddress(leadOutLBA, msf);
-                datalen += SIZE_TOC_ENTRY;
-
-                numtracks = lastTrackNumber + 1;
-
-            } else {
-                // Host wants a specific track
-
-                // Header
-                datalen = SIZE_TOC_DATA;
-                m_TOCData.FirstTrack = 0x01;
-                m_TOCData.LastTrack = 0x01;
-                numtracks = 1;
-
-                // TOC Entries
-                tocEntries = new TUSBTOCEntry[1];
-
-                if (startingTrack == 0xAA) {
-                    // Host wants a Lead Out Track
-
-                    // Check number of tracks
-                    u32 leadOutLBA = GetLeadoutLBA();
-                    tocEntries[0].ADR_Control = 0x16;
-                    tocEntries[0].reserved = 0x00;
-                    tocEntries[0].TrackNumber = 0xAA;
-                    tocEntries[0].reserved2 = 0x00;
-                    tocEntries[0].address = GetAddress(leadOutLBA, msf);
-                    datalen += SIZE_TOC_ENTRY;
-                } else {
-                    // Host wants a specific track
-
-                    const CUETrackInfo* trackInfo = nullptr;
-                    cueParser.restart();
-                    while ((trackInfo = cueParser.next_track()) != nullptr) {
-                        // MLOGDEBUG ("CUSBCDGadget::HandleSCSICommand", "Single TOC - Found track count = %d, data_start = %d, track_start = %d, sector_length = %d", trackInfo->track_number, trackInfo->data_start, trackInfo->track_start, trackInfo->sector_length);
-                        if (trackInfo->track_number - 1 == startingTrack) {
-                            break;
-                        }
-                    }
-
-                    tocEntries[0].ADR_Control = 0x14;
-                    tocEntries[0].reserved = 0x00;
-                    tocEntries[0].TrackNumber = startingTrack;
-                    tocEntries[0].reserved2 = 0x00;
-                    tocEntries[0].address = GetAddress(trackInfo->data_start, msf);
-                    datalen += SIZE_TOC_ENTRY;
+                    numtracks++;
+                    index++;
                 }
             }
+
+            // Lead-Out LBA
+            u32 leadOutLBA = GetLeadoutLBA();
+            tocEntries[index].ADR_Control = 0x16;
+            tocEntries[index].reserved = 0x00;
+            tocEntries[index].TrackNumber = 0xAA;
+            tocEntries[index].reserved2 = 0x00;
+            tocEntries[index].address = GetAddress(leadOutLBA, msf);
+            datalen += SIZE_TOC_ENTRY;
+            numtracks++;
 
             // Copy the TOC header
             m_TOCData.DataLength = htons(datalen - 2);
@@ -1159,7 +1175,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                         if (trackInfo) {
                             data.trackNumber = trackInfo->track_number;
                             data.indexNumber = 0x01;  // Assume no pregap. Perhaps we need to handle pregap?
-                            data.relativeAddress = GetAddress(address - trackInfo->track_start, msf);
+                            data.relativeAddress = GetAddress(address - trackInfo->data_start, msf, true);
                         }
                     }
 
@@ -1195,6 +1211,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                        m_InBuffer, length);
 
+            m_nnumber_blocks = 0;  // nothing more after this send
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
 
@@ -1297,56 +1314,124 @@ void CUSBCDGadget::HandleSCSICommand() {
         {
             int rt = m_CBW.CBWCB[1] & 0x03;
             int feature = (m_CBW.CBWCB[2] << 8) | m_CBW.CBWCB[3];
-            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Configuration with rt = %d and feature %lu", rt, feature);
+            u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Configuration with rt = %d and feature %lu", rt, feature);
+
+            int dataLength = 0;
 
             switch (rt) {
-                case 0x00:
-                    memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
+                case 0x00:  // All features supported
+                case 0x01:  // All current features supported
+                {
+                    // offset to make space for the header
+                    dataLength += sizeof(header);
+
+                    // Copy all features
+                    memcpy(m_InBuffer + dataLength, &profile_list, sizeof(profile_list));
+                    dataLength += sizeof(profile_list);
+
+                    memcpy(m_InBuffer + dataLength, &cdrom_profile, sizeof(cdrom_profile));
+                    dataLength += sizeof(cdrom_profile);
+
+                    memcpy(m_InBuffer + dataLength, &core, sizeof(core));
+                    dataLength += sizeof(core);
+
+                    memcpy(m_InBuffer + dataLength, &morphing, sizeof(morphing));
+                    dataLength += sizeof(morphing);
+
+                    memcpy(m_InBuffer + dataLength, &mechanism, sizeof(mechanism));
+                    dataLength += sizeof(mechanism);
+
+                    memcpy(m_InBuffer + dataLength, &multiread, sizeof(multiread));
+                    dataLength += sizeof(multiread);
+
+                    memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
+                    dataLength += sizeof(cdread);
+
+                    // Finally copy the header
+                    header.dataLength = htonl(dataLength - 4);
+                    memcpy(m_InBuffer, &header, sizeof(header));
+
+                    // hexdump(m_InBuffer, dataLength);
                     break;
-                case 0x01:
-                    memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
-                    break;
-                case 0x02:
+                }
+
+                case 0x02:  // Only the features requested
+                {
+                    // Offset for header
+                    dataLength += sizeof(header);
+
                     switch (feature) {
-                        case 0x02: {
-                            // Profile list
-                            memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
+                        case 0x00: {  // Profile list
+                            memcpy(m_InBuffer + dataLength, &profile_list, sizeof(profile_list));
+                            dataLength += sizeof(profile_list);
+
+                            // and its associated profile
+                            memcpy(m_InBuffer + dataLength, &cdrom_profile, sizeof(cdrom_profile));
+                            dataLength += sizeof(cdrom_profile);
                             break;
                         }
-                        case 0x1e: {
-                            // CD Read
-                            u8 bytes[] = {0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x8, 0x0, 0x1e, 0x9, 0x4, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-                            memcpy(m_InBuffer, bytes, sizeof(bytes));
+                        case 0x01: {  // Core
+                            memcpy(m_InBuffer + dataLength, &core, sizeof(core));
+                            dataLength += sizeof(core);
                             break;
                         }
-                        default: {
-                            u8 bytes[] = {0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x8, 0x0, 0x1e, 0x9, 0x4, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-                            memcpy(m_InBuffer, bytes, sizeof(bytes));
+
+                        case 0x02: {  // Morphing
+                            memcpy(m_InBuffer + dataLength, &morphing, sizeof(morphing));
+                            dataLength += sizeof(morphing);
+                            break;
+                        }
+                        case 0x03: {  // Removable Medium
+                            memcpy(m_InBuffer + dataLength, &mechanism, sizeof(mechanism));
+                            dataLength += sizeof(mechanism);
+                            break;
+                        }
+                        case 0x1d: {  // Multiread
+                            memcpy(m_InBuffer + dataLength, &multiread, sizeof(multiread));
+                            dataLength += sizeof(multiread);
+                            break;
+                        }
+                        case 0x1e: {  // CD-Read
+                            memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
+                            dataLength += sizeof(cdread);
                             break;
                         }
                     }
+
+                    // Finally copy the header
+                    header.dataLength = htonl(dataLength - 4);
+                    memcpy(m_InBuffer, &header, sizeof(header));
                     break;
-                case 0x10:
-                    // The Feature Header and the Feature Descriptor identified by Starting Feature Number shall be returned.
-                    // If the Drive does not support the specified feature, only the Feature Header shall be returned.
-                    memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
-                    break;
-                default:
-                    memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
-                    break;
+                }
             }
 
             // Set response length
-            u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-            int length = sizeof(TUSBCDGetConfigurationReply);
-            if (allocationLength < length)
-                length = allocationLength;
+            if (allocationLength < dataLength)
+                dataLength = allocationLength;
 
-            memcpy(m_InBuffer, &m_GetConfigurationReply, length);
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, dataLength);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
+            break;
+        }
+
+        case 0x4B:  // PAUSE/RESUME
+        {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PAUSE/RESUME");
+            int resume = m_CBW.CBWCB[8] & 0x01;
+
+            CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+            if (cdplayer) {
+                if (resume)
+                    cdplayer->Resume();
+                else
+                    cdplayer->Pause();
+            }
+
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            SendCSW();
             break;
         }
 
@@ -1363,8 +1448,6 @@ void CUSBCDGadget::HandleSCSICommand() {
             }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
-            m_ReqSenseReply.bSenseKey = bSenseKey;
-            m_ReqSenseReply.bAddlSenseCode = bAddlSenseCode;
             SendCSW();
             break;
         }
@@ -1394,8 +1477,6 @@ void CUSBCDGadget::HandleSCSICommand() {
             }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
-            m_ReqSenseReply.bSenseKey = bSenseKey;
-            m_ReqSenseReply.bAddlSenseCode = bAddlSenseCode;
             SendCSW();
             break;
         }
@@ -1412,47 +1493,59 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
 
-            // TODO startLBA == endLBA = STOP
-            // TODO start bytes are 0xff = RESUME
-
-            // Play the audio
-            CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-            if (cdplayer) {
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
-                cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+            // Play the audio, but only if length > 0
+            if (m_nnumber_blocks > 0) {
+                CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+                if (cdplayer) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
+                    if (m_nblock_address == 0xffffffff)
+                        cdplayer->Resume();
+                    else
+                        cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+                }
             }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
-            m_ReqSenseReply.bSenseKey = bSenseKey;
-            m_ReqSenseReply.bAddlSenseCode = bAddlSenseCode;
             SendCSW();
             break;
         }
 
-        case 0x48:  // PLAY AUDIO TRACK/INDEX
+        case 0xA5:  // PLAY AUDIO (12)
         {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO TRACK/INDEX");
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12)");
 
-            // FIXME: implement
+            // Where to start reading (LBA)
+            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+
+            // Number of blocks to read (LBA)
+            m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) | (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
+
+            // Play the audio, but only if length > 0
+            if (m_nnumber_blocks > 0) {
+                CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+                if (cdplayer) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
+                    if (m_nblock_address == 0xffffffff)
+                        cdplayer->Resume();
+                    else
+                        cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+                }
+            }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
+            SendCSW();
             break;
         }
 
-        case 0x4B:  // PAUSE/RESUME
-        {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PAUSE/RESUME");
 
-            // FIXME: implement
-
-            m_CSW.bmCSWStatus = bmCSWStatus;
-            break;
-        }
+	//TODO Implement 0x52 READ TRACK INFORMATION
 
         case 0x55:  // Mode Select (10)
         {
             u16 transferLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), transferLength is %u", transferLength);
+            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), transferLength is %u", transferLength);
 
             // Read the data from the host but don't do anything with it (yet!)
             m_nState = TCDState::DataOut;
@@ -1468,14 +1561,14 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x5a:  // Mode Sense (10)
         {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
+            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
 
             int LLBAA = (m_CBW.CBWCB[1] >> 7) & 0x01;
             int DBD = (m_CBW.CBWCB[1] >> 6) & 0x01;
             int page = m_CBW.CBWCB[2] & 0x3F;
             int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;  // We'll ignore this for now
             u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = %02x, allocationLength = %lu", LLBAA, DBD, page, allocationLength);
+            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = %02x, allocationLength = %lu", LLBAA, DBD, page, allocationLength);
 
             int length = SIZE_MODE_SENSE10_HEADER;
 
@@ -1491,7 +1584,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     reply_header.deviceSpecificParameter = 0xC0;
                     reply_header.blockDescriptorLength = htonl(0x00000000);
 
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x01 response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
+                    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x01 response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
 
                     // Define our Code Page
                     ModePage0x01Data codepage;
@@ -1515,7 +1608,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     reply_header.deviceSpecificParameter = 0xC0;
                     reply_header.blockDescriptorLength = htonl(0x00000000);
 
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
+                    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
 
                     // Define our Code Page
                     ModePage0x2AData codepage;
@@ -1558,7 +1651,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     reply_header.deviceSpecificParameter = 0xC0;
                     reply_header.blockDescriptorLength = htonl(0x00000000);
 
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x0e response - modDataLength = %d, mediumType = 0x%02x, volume = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType(), volume);
+                    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x0e response - modDataLength = %d, mediumType = 0x%02x, volume = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType(), volume);
 
                     // Define our Code Page
                     ModePage0x0EData codepage;
@@ -1588,7 +1681,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             if (allocationLength < length)
                 length = allocationLength;
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10), Sending response with length %d", length);
+            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10), Sending response with length %d", length);
 
             m_nnumber_blocks = 0;  // nothing more after this send
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
@@ -1705,8 +1798,6 @@ void CUSBCDGadget::Update() {
             if (!m_CDReady || offset == (u64)(-1)) {
                 MLOGERR("UpdateRead", "failed, %s, offset=%llu",
                         m_CDReady ? "ready" : "not ready", offset);
-                m_ReqSenseReply.bSenseKey = 2;
-                m_ReqSenseReply.bAddlSenseCode = 1;
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_PHASE_ERR;
                 bSenseKey = 0x02;           // Not Ready
                 bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY

@@ -107,14 +107,14 @@ CCueBinFileDevice* loadCueBinFileDevice(const char* imageName) {
 
     // Is this a bin?
     if (hasBinExtension(fullPath)) {
-        LOGNOTE("This is a bin file, changing to cue");
+        //LOGNOTE("This is a bin file, changing to cue");
         change_extension_to_cue(fullPath);
     }
 
     // Is this a cue?
     if (hasCueExtension(fullPath)) {
         // Load the cue
-        LOGNOTE("This is a cue file, loading cue");
+        //LOGNOTE("This is a cue file, loading cue");
         if (!ReadFileToString(fullPath, &cue_str)) {
             return nullptr;
         }
@@ -122,18 +122,17 @@ CCueBinFileDevice* loadCueBinFileDevice(const char* imageName) {
 
         // Load a bin file with the same name
         change_extension_to_bin(fullPath);
-        LOGNOTE("Changed to bin %s", fullPath);
+        //LOGNOTE("Changed to bin %s", fullPath);
     }
 
     // Load the image
-    LOGNOTE("Opening image file %s", fullPath);
+    //LOGNOTE("Opening image file %s", fullPath);
     FRESULT Result = f_open(imageFile, fullPath, FA_READ);
     if (Result != FR_OK) {
         LOGERR("Cannot open image file for reading");
         delete imageFile;
         return nullptr;
     }
-
     LOGNOTE("Opened image file %s", fullPath);
 
     // Create our device

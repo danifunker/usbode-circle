@@ -36,7 +36,7 @@
 #include <discimage/cuebinfile.h>
 
 #ifndef USB_GADGET_DEVICE_ID_CD
-#define USB_GADGET_DEVICE_ID_CD        0x1d6b
+#define USB_GADGET_DEVICE_ID_CD 0x1d6b
 #endif
 
 // If system htonl is not available, define our own
@@ -106,51 +106,51 @@ struct TUSBCDRequestSenseReply  // 14 bytes
 // SCSI Mode Sense(10) Response Structures
 struct ModeSense10Header {
     u16 modeDataLength;
-    u8  mediumType;
-    u8  deviceSpecificParameter;
+    u8 mediumType;
+    u8 deviceSpecificParameter;
     u32 blockDescriptorLength;
 } PACKED;
 #define SIZE_MODE_SENSE10_HEADER 8
 
 // Mode Page 0x01 (Read/Write Error Recovery Parameters Mode Page)
 struct ModePage0x01Data {
-    u8  pageCodeAndPS;
-    u8  pageLength;
-    u8  errorRecoveryBehaviour;
-    u8  readRetryCount;
-    u8  reserved[3];
-    u8  writeRetryCount;
-    u8  reserved2[3];
+    u8 pageCodeAndPS;
+    u8 pageLength;
+    u8 errorRecoveryBehaviour;
+    u8 readRetryCount;
+    u8 reserved[3];
+    u8 writeRetryCount;
+    u8 reserved2[3];
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X01 12
 
 // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
 struct ModePage0x2AData {
-    u8  pageCodeAndPS;
-    u8  pageLength;
-    u8  capabilityBits[6];
+    u8 pageCodeAndPS;
+    u8 pageLength;
+    u8 capabilityBits[6];
     u16 maxSpeed;
     u16 numVolumeLevels;
     u16 bufferSize;
     u16 currentSpeed;
-    u8  reserved1[4];
+    u8 reserved1[4];
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X2A 20
 
 // Mode Page 0x0E (CD Audio Control Page)
 struct ModePage0x0EData {
-    u8  pageCodeAndPS;
-    u8  pageLength;
-    u8  IMMEDAndSOTC;
-    u8  reserved[5];
-    u8  CDDAOutput0Select;
-    u8  Output0Volume;
-    u8  CDDAOutput1Select;
-    u8  Output1Volume;
-    u8  CDDAOutput2Select;
-    u8  Output2Volume;
-    u8  CDDAOutput3Select;
-    u8  Output3Volume;
+    u8 pageCodeAndPS;
+    u8 pageLength;
+    u8 IMMEDAndSOTC;
+    u8 reserved[5];
+    u8 CDDAOutput0Select;
+    u8 Output0Volume;
+    u8 CDDAOutput1Select;
+    u8 Output1Volume;
+    u8 CDDAOutput2Select;
+    u8 Output2Volume;
+    u8 CDDAOutput3Select;
+    u8 Output3Volume;
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X0E 16
 
@@ -267,6 +267,7 @@ struct TUSBDiscInfoReply {
 } PACKED;
 #define SIZE_DISC_INFO_REPLY 34
 
+/*
 struct TUSBCDGetConfigurationReply {
     u32 dataLength;  // Number of bytes following this field
     u16 reserved;
@@ -280,26 +281,101 @@ struct TUSBCDGetConfigurationReply {
 } PACKED;
 // #define SIZE_GET_CONFIGURATION_REPLY 18
 #define SIZE_GET_CONFIGURATION_REPLY 4
+*/
+
+struct TUSBCDFeatureHeaderReply {
+    u32 dataLength;  // Number of bytes following this field
+    u16 reserved;
+    u16 currentProfile;  // e.g., 0x0008 for CD-ROM
+} PACKED;
+#define SIZE_FEATURE_HEADER_REPLY 8
+
+struct TUSBCDProfileListFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+} PACKED;
+#define SIZE_PROFILE_LIST_HEADER_REPLY 4
+
+struct TUSBCProfileDescriptorReply {
+    u16 profileNumber;
+    u8 currentP;
+    u8 reserved;
+} PACKED;
+#define SIZE_PROFILE_DESCRIPTOR_REPLY 4
+
+#define PROFILE_CDROM 0x0008
+
+struct TUSBCDCoreFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+    u32 physicalInterfaceStandard;
+    u8 INQ2DBE;
+    u8 reserved1;
+    u8 reserved2;
+    u8 reserved3;
+} PACKED;
+#define SIZE_CORE_HEADER_REPLY 12
+
+struct TUSBCDMorphingFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+    u8 OCEventASYNC;
+    u8 reserved1;
+    u8 reserved2;
+    u8 reserved3;
+} PACKED;
+#define SIZE_MORPHING_HEADER_REPLY 8
+
+struct TUSBCDRemovableMediumFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+    u8 Mechanism;
+    u8 reserved1;
+    u8 reserved2;
+    u8 reserved3;
+} PACKED;
+#define SIZE_REMOVABLE_MEDIUM_HEADER_REPLY 8
+
+struct TUSBCDMultiReadFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+} PACKED;
+#define SIZE_MULTI_READ_HEADER_REPLY 4
+
+struct TUSBCDCDReadFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+    u8 DAPC2FlagsCDText;
+    u8 reserved1;
+    u8 reserved2;
+    u8 reserved3;
+} PACKED;
+#define SIZE_CD_READ_HEADER_REPLY 4
 
 struct TUSBCDSubChannelHeaderReply {
-	u8 reserved;
-	u8 audioStatus;
-	u16 dataLength;
-	//u8 dataLength1;
-	//u8 dataLength2;
+    u8 reserved;
+    u8 audioStatus;
+    u16 dataLength;
+    // u8 dataLength1;
+    // u8 dataLength2;
 } PACKED;
 #define SIZE_SUBCHANNEL_HEADER_REPLY 4
 
 struct TUSBCDSubChannel01CurrentPositionReply {
-	u8 dataFormatCode; // this should be 0x01
-	u8 adrControl; // 0x00 = Q Sub-channel mode information not supplied / 2 audio channels without pre-emphasis
-	u8 trackNumber;
-	u8 indexNumber;
-	u32 absoluteAddress;
-	u32 relativeAddress;
+    u8 dataFormatCode;  // this should be 0x01
+    u8 adrControl;      // 0x00 = Q Sub-channel mode information not supplied / 2 audio channels without pre-emphasis
+    u8 trackNumber;
+    u8 indexNumber;
+    u32 absoluteAddress;
+    u32 relativeAddress;
 } PACKED;
 #define SIZE_SUBCHANNEL_01_DATA_REPLY 12
-
 
 class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 {
@@ -374,8 +450,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     void InitDeviceSize(u64 blocks);
     u32 GetLeadoutLBA();
     int GetLastTrackNumber();
-    u32 GetAddress(u32 lba, int msf);
-    u32 lba_to_msf(u32 lba);
+    u32 GetAddress(u32 lba, int msf, boolean relative = false);
+    u32 lba_to_msf(u32 lba, boolean relative = false);
 
    private:
     CCueBinFileDevice *m_pDevice;
@@ -482,6 +558,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         htonl(0x00)     // Track start LBA (big-endian 0)
     };
 
+    /*
     TUSBCDGetConfigurationReply m_GetConfigurationReply{
         htonl(0x0C),  // Number of bytes following this field
         htons(0x00),  // Reserved
@@ -492,6 +569,79 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         htons(0x08),  // Profile 0x08 = CDROM
         0x01,         // Current = true
         0x00          // Reserved
+    };
+    */
+
+    TUSBCDFeatureHeaderReply header = {
+        htons(0x0000),        // datalength
+        0x00,                 // reserved;
+        htons(PROFILE_CDROM)  // currentProfile;
+    };
+
+    // Feature 0000h - Profile List - A list of all profile supported by the drive
+    TUSBCDProfileListFeatureReply profile_list = {
+        htons(0x0000),  // featureCode
+        0x03,           // VersionPersistentCurrent
+        0x04            // AdditionalLength
+    };
+
+    // Profiles 0008h CD-ROM
+    TUSBCProfileDescriptorReply cdrom_profile = {
+        htons(PROFILE_CDROM),  // profileNumber
+        0x01,                  // currentP
+        0x00                   // reserved
+    };
+
+    // Feature 0001h - Core
+    TUSBCDCoreFeatureReply core = {
+        htons(0x0001),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x08,           // AdditionalLength
+        0x08,           // physicalInterfaceStandard
+        0x03,           // INQ2DBE
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
+    };
+
+    // Feature 0002h - Morphing Feature. The Drive is able to report operational changes
+    TUSBCDMorphingFeatureReply morphing = {
+        htons(0x0002),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x04,           // AdditionalLength
+        0x02,           // OCEventASYNC
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
+    };
+
+    // Feature 0003h - Removable Medium. The medium may be removed from the device
+    TUSBCDRemovableMediumFeatureReply mechanism = {
+        htons(0x0003),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x04,           // AdditionalLength
+        0x15,           // Mechanism
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
+    };
+
+    // Feature 001dh - Multi-Read - The ability to read all CD media types
+    TUSBCDMultiReadFeatureReply multiread = {
+        htons(0x001d),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x00,           // AdditionalLength
+    };
+
+    // Feature 001eh - CD Read - The ability to read CD specific structures
+    TUSBCDCDReadFeatureReply cdread = {
+        htons(0x001e),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x04,           // AdditionalLength
+        0x00,           // DAPC2FlagsCDText
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
     };
 
     TUSBDiscInfoReply m_DiscInfoReply{
