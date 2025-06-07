@@ -221,8 +221,8 @@ void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
         // Tell the host the disc has changed
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         bSenseKey = 0x06;           // Unit Attention
-        bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE, MEDIUM MAY HAVE CHANGED
-        bAddlSenseCodeQual = 0x00;  // NOT READY TO READY CHANGE, MEDIUM MAY HAVE CHANGED
+        bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE
+        bAddlSenseCodeQual = 0x00;  // MEDIUM MAY HAVE CHANGED
     }
 
     m_pDevice = dev;
@@ -480,7 +480,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                         m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                         bSenseKey = 0x02;
                         bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                        bAddlSenseCodeQual = 0x00;  // FIXME CAUSE NOT REPORTABLE
+                        bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                         SendCSW();
                     }
                 } else  // done sending data to host
@@ -560,8 +560,8 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
 }
 
 void CUSBCDGadget::ProcessOut(size_t nLength) {
-    // This code is assuming that the payload is a Mode Select payload. I think
-    // at the moment, this is the only thing likely to appear here.
+    // This code is assuming that the payload is a Mode Select payload.
+    // At the moment, this is the only thing likely to appear here.
     // TODO: somehow validate what this data is
 
     MLOGNOTE("ProcessOut",
@@ -689,7 +689,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                 bSenseKey = 2;
                 bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // FIXME CAUSE NOT REPORTABLE
+                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
             } else {
                 // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
                 m_CSW.bmCSWStatus = bmCSWStatus;
@@ -701,9 +701,8 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x3:  // Request sense CMD
         {
             // This command is the host asking why the last command generated a check condition
-            // TODO: Add some code to store the reason why we threw an error previously
-            // TODO: For now, we'll assume this is always because we changed CD image
-
+	    // We'll clear the reason after we've communicated it. If it's still an issue, we'll
+	    // throw another Check Condition afterwards
             bool desc = m_CBW.CBWCB[1] & 0x01;
             u8 blocks = (u8)(m_CBW.CBWCB[4]);
 
@@ -838,7 +837,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                         //  m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
 
-                        m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;  // FIXME throw CD_CSW_STATUS_FAIL but implement sense response
+                        m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
                         bSenseKey = 0x05;
                         bAddlSenseCode = 0x24;      // Invalid Field
                         bAddlSenseCodeQual = 0x00;  // In CDB
@@ -846,18 +845,6 @@ void CUSBCDGadget::HandleSCSICommand() {
                         break;
                 }
             }
-            break;
-        }
-
-        case 0x1A:  // Mode sense (6)
-        {
-            // FIXME
-            memcpy(&m_InBuffer, &m_ModeSenseReply, SIZE_MODEREP);
-            m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       m_InBuffer, SIZE_MODEREP);
-            m_nState = TCDState::DataIn;
-            m_CSW.bmCSWStatus = bmCSWStatus;
             break;
         }
 
@@ -880,6 +867,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x1E:  // PREVENT ALLOW MEDIUM REMOVAL
         {
+		// Lie to the host
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
             break;
@@ -912,7 +900,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                 // Transfer Block Size is the size of data to return to host
                 // Block Size and Skip Bytes is worked out from cue sheet
-                // Assume the data being requested is in track 1
+                // For a CDROM, this is always 2048
                 transfer_block_size = 2048;
                 block_size = data_block_size;  // set at SetDevice
                 skip_bytes = data_skip_bytes;  // set at SetDevice;
@@ -929,7 +917,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                 bSenseKey = 0x02;
                 bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // FIXME CAUSE NOT REPORTABLE
+                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                 SendCSW();
             }
             break;
@@ -1039,7 +1027,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                 bSenseKey = 0x02;
                 bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // FIXME CAUSE NOT REPORTABLE
+                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                 SendCSW();
             }
             break;
@@ -1066,7 +1054,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             int numtracks = 0;
             int datalen = 0;
 
-            // FIXME, implement formats. Currently we assume it's always 0x00
+            // TODO implement formats. Currently we assume it's always 0x00
 
             const CUETrackInfo* trackInfo = nullptr;
             int lastTrackNumber = GetLastTrackNumber();
@@ -1505,15 +1493,17 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
 
-            // TODO startLBA == endLBA = STOP
-            // TODO start bytes are 0xff = RESUME
-
-            // Play the audio
-            CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-            if (cdplayer) {
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
-                cdplayer->Play(m_nblock_address, m_nnumber_blocks);
-            }
+            // Play the audio, but only if length > 0
+	    if (m_nnumber_blocks > 0) {
+		    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+		    if (cdplayer) {
+			MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
+			if (m_nblock_address == 0xffffffff)
+				cdplayer->Resume();
+			else
+				cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+		    }
+	    }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
@@ -1532,28 +1522,20 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
 
-            // TODO startLBA == endLBA = STOP
-            // TODO start bytes are 0xff = RESUME
-
-            // Play the audio
-            CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-            if (cdplayer) {
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12) Play command sent");
-                cdplayer->Play(m_nblock_address, m_nnumber_blocks);
-            }
+            // Play the audio, but only if length > 0
+	    if (m_nnumber_blocks > 0) {
+		    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+		    if (cdplayer) {
+			MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
+			if (m_nblock_address == 0xffffffff)
+				cdplayer->Resume();
+			else
+				cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+		    }
+	    }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
-            break;
-        }
-
-        case 0x48:  // PLAY AUDIO TRACK/INDEX
-        {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO TRACK/INDEX");
-
-            // FIXME: implement
-
-            m_CSW.bmCSWStatus = bmCSWStatus;
             break;
         }
 
