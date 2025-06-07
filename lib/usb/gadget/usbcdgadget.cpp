@@ -113,6 +113,42 @@ CUSBCDGadget::~CUSBCDGadget(void) {
     assert(0);
 }
 
+void hexdump(const void *data, size_t size) {
+    const unsigned char *p = (const unsigned char *)data;
+    char line[80];
+
+    for (size_t i = 0; i < size; i += 16) {
+        char *ptr = line;
+
+        // Offset
+        ptr += sprintf(ptr, "%08x  ", i);
+
+        // Hex bytes
+        for (size_t j = 0; j < 16; ++j) {
+            if (i + j < size)
+                ptr += sprintf(ptr, "%02x ", p[i + j]);
+            else
+                ptr += sprintf(ptr, "   ");
+        }
+
+        // Space before ASCII
+        ptr += sprintf(ptr, " ");
+
+        // ASCII representation
+        for (size_t j = 0; j < 16; ++j) {
+            if (i + j < size) {
+                unsigned char c = p[i + j];
+                ptr += sprintf(ptr, "%c", (c >= 32 && c <= 126) ? c : '.');
+            }
+        }
+
+        // Final null terminator
+        *ptr = '\0';
+
+        MLOGNOTE("hexdump", "%s", line);
+    }
+}
+
 const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength) {
     MLOGNOTE("CUSBCDGadget::GetDescriptor", "entered");
     assert(pLength);
@@ -331,7 +367,6 @@ const CUETrackInfo* CUSBCDGadget::GetTrackInfoForLBA(u32 lba) {
 
 u32 CUSBCDGadget::GetLeadoutLBA() {
     const CUETrackInfo* trackInfo = nullptr;
-    u32 my_file_offset = 0;
     u32 file_offset = 0;
     u32 sector_length = 0;
     u32 data_start = 0;
@@ -339,16 +374,12 @@ u32 CUSBCDGadget::GetLeadoutLBA() {
     // Find the last track
     cueParser.restart();
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-	    //my_file_offset += trackInfo->sector_length * (trackInfo->data_start - data_start);
-	    file_offset = trackInfo->file_offset;
-	    sector_length = trackInfo->sector_length;
-	    data_start = trackInfo->data_start;
-    	    //MLOGNOTE ("CUSBCDGadget::GetLeadoutLBA", "my file offset is %lu, last track file offset is %lu, last track sector_length is %lu, last track data_start is %lu", my_file_offset, file_offset, sector_length, data_start);
+        file_offset = trackInfo->file_offset;
+        sector_length = trackInfo->sector_length;
+        data_start = trackInfo->data_start;
     }
 
-   //MLOGNOTE ("CUSBCDGadget::GetLeadoutLBA", "OUTSIDE last track my_file_offset is %lu, file offset is %lu, last track sector_length is %lu, last track data_start is %lu", my_file_offset, file_offset, sector_length, data_start);
     u32 deviceSize = (u32)m_pDevice->GetSize();
-
 
     // We know the start position of the last track, and we know its sector length
     // and we know the file size, so we can work out the LBA of the end of the last track
@@ -356,12 +387,12 @@ u32 CUSBCDGadget::GetLeadoutLBA() {
     // not be consistent (e.g. multi-mode cd where track 1 is 2048
     u32 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
     u32 ret = data_start + lastTrackBlocks;
-    MLOGNOTE ("CUSBCDGadget::GetLeadoutLBA", "device size is %lu, last track file offset is %lu, last track sector_length is %lu, last track data_start is %lu, lastTrackBlocks = %lu, returning = %lu", deviceSize, file_offset, sector_length, data_start, lastTrackBlocks, ret);
-    
+    MLOGNOTE("CUSBCDGadget::GetLeadoutLBA", "device size is %lu, last track file offset is %lu, last track sector_length is %lu, last track data_start is %lu, lastTrackBlocks = %lu, returning = %lu", deviceSize, file_offset, sector_length, data_start, lastTrackBlocks, ret);
+
     // Some corrupted cd images might have a cue that references track that are
     // outside the bin.
     if (deviceSize < file_offset)
-	    return data_start;
+        return data_start;
 
     return ret;
 }
@@ -428,7 +459,7 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData* pSetupData, u8* pData
 }
 
 void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
-    //MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
+    // MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
     assert(m_nState != TCDState::Init);
     if (bIn)  // packet to host has been transferred
     {
@@ -533,15 +564,15 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
     // at the moment, this is the only thing likely to appear here.
     // TODO: somehow validate what this data is
 
-MLOGNOTE("ProcessOut",
-         "nLength is %d, payload is %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
-         nLength,
-         m_OutBuffer[0], m_OutBuffer[1], m_OutBuffer[2], m_OutBuffer[3],
-         m_OutBuffer[4], m_OutBuffer[5], m_OutBuffer[6], m_OutBuffer[7],
-         m_OutBuffer[8], m_OutBuffer[9], m_OutBuffer[10], m_OutBuffer[11],
-         m_OutBuffer[12], m_OutBuffer[13], m_OutBuffer[14], m_OutBuffer[15],
-         m_OutBuffer[16], m_OutBuffer[17], m_OutBuffer[18], m_OutBuffer[19],
-         m_OutBuffer[20], m_OutBuffer[21], m_OutBuffer[22], m_OutBuffer[23]);
+    MLOGNOTE("ProcessOut",
+             "nLength is %d, payload is %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
+             nLength,
+             m_OutBuffer[0], m_OutBuffer[1], m_OutBuffer[2], m_OutBuffer[3],
+             m_OutBuffer[4], m_OutBuffer[5], m_OutBuffer[6], m_OutBuffer[7],
+             m_OutBuffer[8], m_OutBuffer[9], m_OutBuffer[10], m_OutBuffer[11],
+             m_OutBuffer[12], m_OutBuffer[13], m_OutBuffer[14], m_OutBuffer[15],
+             m_OutBuffer[16], m_OutBuffer[17], m_OutBuffer[18], m_OutBuffer[19],
+             m_OutBuffer[20], m_OutBuffer[21], m_OutBuffer[22], m_OutBuffer[23]);
 
     // Process our Parameter List
     u8 modePage = m_OutBuffer[9];
@@ -555,10 +586,10 @@ MLOGNOTE("ProcessOut",
             if (cdplayer) {
                 // Perhaps there's something I'm missing here?
                 // Quake, for example, always sends 00 as the volume level :O
-		// Tombraider works initially then starts always sending 00
-		// as the volume level. I suspect this has something to do with
-		// the mode sense command. Perhaps we're feeding back the wrong thing?
-                //cdplayer->SetVolume(modePage->Output0Volume);
+                // Tombraider works initially then starts always sending 00
+                // as the volume level. I suspect this has something to do with
+                // the mode sense command. Perhaps we're feeding back the wrong thing?
+                // cdplayer->SetVolume(modePage->Output0Volume);
             }
             break;
         }
@@ -609,7 +640,6 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
         return lba_to_msf(lba, relative);
     return htonl(address);
 }
-
 
 // TODO: This entire method is a monster. Break up into a Function table of static methods
 //
@@ -833,15 +863,15 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x1B:  // Start/stop unit
         {
-		int start = m_CBW.CBWCB[4] & 1;
-		int loej = (m_CBW.CBWCB[4] >> 1) & 1;
-		// TODO: Emulate a disk eject/load
-		// loej Start Action
-		// 0    0     Stop the disc - no action for us
-		// 0    1     Start the disc - no action for us
-		// 1    0     Eject the disc - perhaps we need to throw a check condition?
-		// 1    1     Load the disc - perhaps we need to throw a check condition?
-	
+            int start = m_CBW.CBWCB[4] & 1;
+            int loej = (m_CBW.CBWCB[4] >> 1) & 1;
+            // TODO: Emulate a disk eject/load
+            // loej Start Action
+            // 0    0     Stop the disc - no action for us
+            // 0    1     Start the disc - no action for us
+            // 1    0     Eject the disc - perhaps we need to throw a check condition?
+            // 1    1     Load the disc - perhaps we need to throw a check condition?
+
             MLOGNOTE("HandleSCSI", "start/stop, start = %d, loej = %d", start, loej);
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
@@ -1036,48 +1066,48 @@ void CUSBCDGadget::HandleSCSICommand() {
             int numtracks = 0;
             int datalen = 0;
 
-	    	// FIXME, implement formats. Currently we assume it's always 0x00
+            // FIXME, implement formats. Currently we assume it's always 0x00
 
-                const CUETrackInfo* trackInfo = nullptr;
-                int lastTrackNumber = GetLastTrackNumber();
+            const CUETrackInfo* trackInfo = nullptr;
+            int lastTrackNumber = GetLastTrackNumber();
 
-                // Header
-                m_TOCData.FirstTrack = 0x01;
-                m_TOCData.LastTrack = lastTrackNumber;
-                datalen = SIZE_TOC_DATA;
+            // Header
+            m_TOCData.FirstTrack = 0x01;
+            m_TOCData.LastTrack = lastTrackNumber;
+            datalen = SIZE_TOC_DATA;
 
-                // Populate the track entries
-                tocEntries = new TUSBTOCEntry[lastTrackNumber + 1];
+            // Populate the track entries
+            tocEntries = new TUSBTOCEntry[lastTrackNumber + 1];
 
-		int index = 0;
-		if (startingTrack != 0xAA) { // Do we only want the leadout?
-			cueParser.restart();
-			while ((trackInfo = cueParser.next_track()) != nullptr) {
-				if (trackInfo->track_number < startingTrack)
-					continue;
-			    //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, data_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->data_start, GetAddress(trackInfo->data_start, msf));
-			    tocEntries[index].ADR_Control = 0x04;
-			    if (trackInfo->track_mode == CUETrack_AUDIO)
-				tocEntries[index].ADR_Control = 0x00;
-			    tocEntries[index].reserved = 0x00;
-			    tocEntries[index].TrackNumber = trackInfo->track_number;
-			    tocEntries[index].reserved2 = 0x00;
-			    tocEntries[index].address = GetAddress(trackInfo->data_start, msf);
-			    datalen += SIZE_TOC_ENTRY;
-			    numtracks++;
-			    index++;
-			}
-		}
+            int index = 0;
+            if (startingTrack != 0xAA) {  // Do we only want the leadout?
+                cueParser.restart();
+                while ((trackInfo = cueParser.next_track()) != nullptr) {
+                    if (trackInfo->track_number < startingTrack)
+                        continue;
+                    // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, data_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->data_start, GetAddress(trackInfo->data_start, msf));
+                    tocEntries[index].ADR_Control = 0x04;
+                    if (trackInfo->track_mode == CUETrack_AUDIO)
+                        tocEntries[index].ADR_Control = 0x00;
+                    tocEntries[index].reserved = 0x00;
+                    tocEntries[index].TrackNumber = trackInfo->track_number;
+                    tocEntries[index].reserved2 = 0x00;
+                    tocEntries[index].address = GetAddress(trackInfo->data_start, msf);
+                    datalen += SIZE_TOC_ENTRY;
+                    numtracks++;
+                    index++;
+                }
+            }
 
-                // Lead-Out LBA
-                u32 leadOutLBA = GetLeadoutLBA();
-                tocEntries[index].ADR_Control = 0x16;
-                tocEntries[index].reserved = 0x00;
-                tocEntries[index].TrackNumber = 0xAA;
-                tocEntries[index].reserved2 = 0x00;
-                tocEntries[index].address = GetAddress(leadOutLBA, msf);
-                datalen += SIZE_TOC_ENTRY;
-                numtracks++;
+            // Lead-Out LBA
+            u32 leadOutLBA = GetLeadoutLBA();
+            tocEntries[index].ADR_Control = 0x16;
+            tocEntries[index].reserved = 0x00;
+            tocEntries[index].TrackNumber = 0xAA;
+            tocEntries[index].reserved2 = 0x00;
+            tocEntries[index].address = GetAddress(leadOutLBA, msf);
+            datalen += SIZE_TOC_ENTRY;
+            numtracks++;
 
             // Copy the TOC header
             m_TOCData.DataLength = htons(datalen - 2);
@@ -1109,7 +1139,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
             int length = 0;
 
-            //MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d, msf = %u, subq = %u, parameter_list = 0x%02x, track_number = %u", allocationLength, msf, subq, parameter_list, track_number);
+            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d, msf = %u, subq = %u, parameter_list = 0x%02x, track_number = %u", allocationLength, msf, subq, parameter_list, track_number);
 
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 
@@ -1161,7 +1191,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                         }
                     }
 
-                    //MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42, 0x01) audio_status %02x, trackNumber %d, address %d, absoluteAddress %08x, relativeAddress %08x", header.audioStatus, data.trackNumber, address, data.absoluteAddress, data.relativeAddress);
+                    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42, 0x01) audio_status %02x, trackNumber %d, address %d, absoluteAddress %08x, relativeAddress %08x", header.audioStatus, data.trackNumber, address, data.absoluteAddress, data.relativeAddress);
 
                     // Determine data lengths
                     length = SIZE_SUBCHANNEL_HEADER_REPLY + SIZE_SUBCHANNEL_01_DATA_REPLY;
@@ -1296,54 +1326,104 @@ void CUSBCDGadget::HandleSCSICommand() {
         {
             int rt = m_CBW.CBWCB[1] & 0x03;
             int feature = (m_CBW.CBWCB[2] << 8) | m_CBW.CBWCB[3];
-            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Configuration with rt = %d and feature %lu", rt, feature);
+            u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Configuration with rt = %d and feature %lu", rt, feature);
+
+            int dataLength = 0;
 
             switch (rt) {
-                case 0x00:
-                    memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
+                case 0x00:  // All features supported
+                case 0x01:  // All current features supported
+		{
+                    // offset to make space for the header
+                    dataLength += sizeof(header);
+
+                    // Copy all features
+                    memcpy(m_InBuffer + dataLength, &profile_list, sizeof(profile_list));
+                    dataLength += sizeof(profile_list);
+
+                    memcpy(m_InBuffer + dataLength, &cdrom_profile, sizeof(cdrom_profile));
+                    dataLength += sizeof(cdrom_profile);
+
+                    memcpy(m_InBuffer + dataLength, &core, sizeof(core));
+                    dataLength += sizeof(core);
+
+                    memcpy(m_InBuffer + dataLength, &morphing, sizeof(morphing));
+                    dataLength += sizeof(morphing);
+
+                    memcpy(m_InBuffer + dataLength, &mechanism, sizeof(mechanism));
+                    dataLength += sizeof(mechanism);
+
+                    memcpy(m_InBuffer + dataLength, &multiread, sizeof(multiread));
+                    dataLength += sizeof(multiread);
+
+                    memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
+                    dataLength += sizeof(cdread);
+
+                    // Finally copy the header
+                    header.dataLength = htonl(dataLength - 4);
+                    memcpy(m_InBuffer, &header, sizeof(header));
+
+		    //hexdump(m_InBuffer, dataLength);
                     break;
-                case 0x01:
-                    memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
-                    break;
-                case 0x02:
+		}
+
+                case 0x02:  // Only the features requested
+		{
+                    // Offset for header
+                    dataLength += sizeof(header);
+
                     switch (feature) {
-                        case 0x02: {
-                            // Profile list
-                            memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
+                        case 0x00: {  // Profile list
+                            memcpy(m_InBuffer + dataLength, &profile_list, sizeof(profile_list));
+                            dataLength += sizeof(profile_list);
+
+                            // and its associated profile
+                            memcpy(m_InBuffer + dataLength, &cdrom_profile, sizeof(cdrom_profile));
+                            dataLength += sizeof(cdrom_profile);
                             break;
                         }
-                        case 0x1e: {
-                            // CD Read
-                            u8 bytes[] = {0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x8, 0x0, 0x1e, 0x9, 0x4, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-                            memcpy(m_InBuffer, bytes, sizeof(bytes));
+                        case 0x01: {  // Core
+                            memcpy(m_InBuffer + dataLength, &core, sizeof(core));
+                            dataLength += sizeof(core);
                             break;
                         }
-                        default: {
-                            u8 bytes[] = {0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x8, 0x0, 0x1e, 0x9, 0x4, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
-                            memcpy(m_InBuffer, bytes, sizeof(bytes));
+
+                        case 0x02: {  // Morphing
+                            memcpy(m_InBuffer + dataLength, &morphing, sizeof(morphing));
+                            dataLength += sizeof(morphing);
+                            break;
+                        }
+                        case 0x03: {  // Removable Medium
+                            memcpy(m_InBuffer + dataLength, &mechanism, sizeof(mechanism));
+                            dataLength += sizeof(mechanism);
+                            break;
+                        }
+                        case 0x1d: {  // Multiread
+                            memcpy(m_InBuffer + dataLength, &multiread, sizeof(multiread));
+                            dataLength += sizeof(multiread);
+                            break;
+                        }
+                        case 0x1e: {  // CD-Read
+                            memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
+                            dataLength += sizeof(cdread);
                             break;
                         }
                     }
+
+                    // Finally copy the header
+                    header.dataLength = htonl(dataLength - 4);
+                    memcpy(m_InBuffer, &header, sizeof(header));
                     break;
-                case 0x10:
-                    // The Feature Header and the Feature Descriptor identified by Starting Feature Number shall be returned.
-                    // If the Drive does not support the specified feature, only the Feature Header shall be returned.
-                    memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
-                    break;
-                default:
-                    memcpy(m_InBuffer, &m_GetConfigurationReply, SIZE_GET_CONFIGURATION_REPLY);
-                    break;
+		}
             }
 
             // Set response length
-            u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-            int length = sizeof(TUSBCDGetConfigurationReply);
-            if (allocationLength < length)
-                length = allocationLength;
+            if (allocationLength < dataLength)
+                dataLength = allocationLength;
 
-            memcpy(m_InBuffer, &m_GetConfigurationReply, length);
             m_nnumber_blocks = 0;  // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, dataLength);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
             break;
@@ -1356,10 +1436,10 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
             if (cdplayer) {
-		if (resume)
-                	cdplayer->Resume();
-		else
-                	cdplayer->Pause();
+                if (resume)
+                    cdplayer->Resume();
+                else
+                    cdplayer->Pause();
             }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
