@@ -33,7 +33,7 @@
 #define SUPPLICANT_CONFIG_FILE DRIVE "/wpa_supplicant.conf"
 #define CONFIG_FILE DRIVE "/config.txt"
 #define LOG_FILE DRIVE "/logfile.txt"
-#define HOSTNAME "CDROM"
+#define HOSTNAME "usbode"
 #define SPI_MASTER_DEVICE 0
 
 // Define the images directory
@@ -362,7 +362,7 @@ TShutdownMode CKernel::Run(void) {
         // Publish mDNS
         if (m_Net.IsRunning() && pmDNSPublisher == nullptr) {
             pmDNSPublisher = new CmDNSPublisher(&m_Net);
-            if (!pmDNSPublisher->PublishService(ServiceName, "_http._tcp", 5004, ppText)) {
+            if (!pmDNSPublisher->PublishService(ServiceName, "_http._tcp", 80, ppText)) {
                 LOGNOTE("Cannot publish service");
             }
             LOGNOTE("Started mDNS service");

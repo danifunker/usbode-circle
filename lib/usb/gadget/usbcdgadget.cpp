@@ -1539,6 +1539,9 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
+
+	//TODO Implement 0x52 READ TRACK INFORMATION
+
         case 0x55:  // Mode Select (10)
         {
             u16 transferLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
