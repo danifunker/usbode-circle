@@ -234,16 +234,28 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("Loaded cue/bin file %s", imageName);
 
 
-    // Initialize USB CD gadget
-    // TODO get USB speed from Properties
-    // TODO allow UI to set USB speed
-    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), cueBinFileDevice);
-    //m_CDGadget->SetDevice(cueBinFileDevice);
-    if (!m_CDGadget->Initialize()) {
-        LOGERR("Failed to initialize USB CD gadget");
-        return ShutdownHalt;
+    int mode = Properties.GetNumber("mode", 0);
+    LOGNOTE("Got mode = %d", mode);
+
+    if (mode == 0) {
+	    // Initialize USB CD gadget
+	    // TODO get USB speed from Properties
+	    // TODO allow UI to set USB speed
+	    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), cueBinFileDevice);
+	    //m_CDGadget->SetDevice(cueBinFileDevice);
+	    if (!m_CDGadget->Initialize()) {
+		LOGERR("Failed to initialize USB CD gadget");
+		return ShutdownHalt;
+	    }
+	    LOGNOTE("Started USB CD gadget");
+    } else {
+	    m_MSDGadget = new CUSBMSDGadget(&m_Interrupt, &m_EMMC);
+	    if (!m_MSDGadget->Initialize()) {
+		LOGERR("Failed to initialize USB MSD gadget");
+		return ShutdownHalt;
+	    }
+	    LOGNOTE("Started USB MSD gadget");
     }
-    LOGNOTE("Started USB CD gadget");
 
     // Display configuration
     const char* displayType = Properties.GetString("displayhat", "none");
@@ -309,8 +321,15 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Then handle USB and network
-        m_CDGadget->UpdatePlugAndPlay();
-        m_CDGadget->Update();
+	if (m_CDGadget) {
+        	m_CDGadget->UpdatePlugAndPlay();
+       		m_CDGadget->Update();
+    	}
+
+	if (m_MSDGadget) {
+	       m_MSDGadget->UpdatePlugAndPlay ();
+               m_MSDGadget->Update ();
+	}
 
         // CRITICAL: Process network tasks even in ISO selection mode
         if (m_Net.IsRunning()) {
