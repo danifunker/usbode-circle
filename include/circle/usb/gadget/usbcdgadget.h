@@ -384,7 +384,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
     /// \note pDevice must be initialized yet, when it is specified here.
     /// \note SetDevice() has to be called later, when pDevice is not specified here.
-    CUSBCDGadget(CInterruptSystem *pInterruptSystem, CCueBinFileDevice *pDevice = nullptr);
+    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, CCueBinFileDevice *pDevice = nullptr);
 
     ~CUSBCDGadget(void);
 
@@ -476,7 +476,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         TUSBEndpointDescriptor EndpointOut;
     } PACKED;
 
-    static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptor;
+    static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
+    static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
 
     static const char *const s_StringDescriptor[];
 
@@ -690,6 +691,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int block_size = 2048;
     int transfer_block_size = 2048;
     int file_mode = 1;
+    boolean m_IsFullSpeed = 0;
 };
 
 #endif

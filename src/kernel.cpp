@@ -71,7 +71,6 @@ CKernel::CKernel(void)
       m_WLAN(FIRMWARE_PATH),
       m_Net(0, 0, 0, 0, HOSTNAME, NetDeviceTypeWLAN),
       m_WPASupplicant(SUPPLICANT_CONFIG_FILE),
-      m_CDGadget(&m_Interrupt),
       m_pSPIMaster(nullptr),
       m_pDisplayManager(nullptr),
       m_pButtonManager(nullptr),
@@ -80,6 +79,7 @@ CKernel::CKernel(void)
       m_nTotalISOCount(0),
       m_pISOList(nullptr) {
     // m_ActLED.Blink(5);  // show we are alive
+    //  m_CDGadget(&m_Interrupt),
 }
 
 CKernel::~CKernel(void) {
@@ -233,9 +233,13 @@ TShutdownMode CKernel::Run(void) {
     }
     LOGNOTE("Loaded cue/bin file %s", imageName);
 
+
     // Initialize USB CD gadget
-    m_CDGadget.SetDevice(cueBinFileDevice);
-    if (!m_CDGadget.Initialize()) {
+    // TODO get USB speed from Properties
+    // TODO allow UI to set USB speed
+    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), cueBinFileDevice);
+    //m_CDGadget->SetDevice(cueBinFileDevice);
+    if (!m_CDGadget->Initialize()) {
         LOGERR("Failed to initialize USB CD gadget");
         return ShutdownHalt;
     }
@@ -305,8 +309,8 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Then handle USB and network
-        m_CDGadget.UpdatePlugAndPlay();
-        m_CDGadget.Update();
+        m_CDGadget->UpdatePlugAndPlay();
+        m_CDGadget->Update();
 
         // CRITICAL: Process network tasks even in ISO selection mode
         if (m_Net.IsRunning()) {
@@ -316,7 +320,7 @@ TShutdownMode CKernel::Run(void) {
         // Start the Web Server
         if (m_Net.IsRunning() && pCWebServer == nullptr) {
             // Create the web server
-            pCWebServer = new CWebServer(&m_Net, &m_CDGadget, &m_ActLED, &Properties);
+            pCWebServer = new CWebServer(&m_Net, m_CDGadget, &m_ActLED, &Properties);
 
             LOGNOTE("Started Webserver service");
         }
@@ -1084,7 +1088,7 @@ void CKernel::LoadSelectedISO(void) {
     LOGNOTE("Selected new Image: %s", SelectedISO);
 
     // Set the new device in the CD gadget
-    m_CDGadget.SetDevice(CueBinFileDevice);
+    m_CDGadget->SetDevice(CueBinFileDevice);
 
     // Return to main screen state first
     m_ScreenState = ScreenStateMain;

@@ -85,7 +85,9 @@ private:
 	CBcm4343Device          m_WLAN;
         CNetSubSystem           m_Net;
         CWPASupplicant          m_WPASupplicant;
-	CUSBCDGadget		m_CDGadget;
+
+	// CD Gadget
+	CUSBCDGadget*		m_CDGadget;
 
 	// SPI and display components
 	CSPIMaster* m_pSPIMaster;
