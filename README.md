@@ -3,8 +3,8 @@
 By emulating a CD-ROM drive with USBODE, you can:
 - Store a collection of image files (ISO and BIN/CUE format) on the SD card and quickly switch between them.
 - Install and run CD-based games without the need for physical media. This includes multi-disc titles.
-- Additionally, the USBODE can use the [Waveshare OLED HAT]([url](https://www.waveshare.com/wiki/1.3inch_OLED_HAT)), which provides a way to directly control the device without the need for a web interface.
-- It can also use the [Pirate Audio Line Out/LCD HAT]([url](https://shop.pimoroni.com/products/pirate-audio-line-out)), which has all of the advantages of the Waveshare hat _and_ has a Line Out for CD Audio playback.
+- Additionally, the USBODE can use the [Waveshare OLED HAT](https://www.waveshare.com/wiki/1.3inch_OLED_HAT), which provides a way to directly control the device without the need for a web interface.
+- It can also use the [Pirate Audio Line Out/LCD HAT](https://shop.pimoroni.com/products/pirate-audio-line-out), which has all of the advantages of the Waveshare hat _and_ has a Line Out for CD Audio playback.
 Note: Some forms of CD-ROM copy protection won’t work on the ODE.
 
 ## Requirements:
@@ -18,7 +18,7 @@ Note: Some forms of CD-ROM copy protection won’t work on the ODE.
 If you’re using USB-ODE 1.9 or before, you’ll also need the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) application. That project and its instructions are located [here](https://github.com/danifunker/usbode/releases).
 
 # Recommendations
-Version 2.0 and above support CD Audio. To take advantage of this, you’ll need a DAC. We suggest using the [Pirate Audio Line Out/LCD HAT]([url](https://shop.pimoroni.com/products/pirate-audio-line-out)), because it provides both a DAC and an LCD, making it easy to switch between different images.
+Version 2.0 and above support CD Audio. To take advantage of this, you’ll need a DAC. We suggest using the [Pirate Audio Line Out/LCD HAT](https://shop.pimoroni.com/products/pirate-audio-line-out), because it provides both a DAC and an LCD, making it easy to switch between different images.
 
 ## USBODE Initial Setup
 1. Plug the Micro SD card into the setup computer, and format it using FAT32. All defaults should be fine, but keep in mind Windows 10 and below’s arbitrary limitation on FAT32 partition sizes addressed in the Requirements section above.
@@ -35,7 +35,7 @@ Setup is now complete. See the instructions below to learn how to use the USBODE
 
 ## Using USBODE on the target computer
 1. Connect the Pi Zero to the target computer. The USB cable needs to be plugged into the Pi’s inner USB port, labeled “USB”, not the one labeled “PWR” or “PWR IN”.
-2. The Pi should immediately turn on. It will then boot into the Circle environment, which takes about 7 seconds on a Pi Zero W 2 and an A1-class card. If the target computer is set up to use USB devices, it should quickly see the Pi as an optical drive. Drivers may need to be installed under Windows 98, such as [nUSB]([url](https://www.philscomputerlab.com/windows-98-usb-storage-driver.html)). DOS requires a driver as well, such as [SHSUCDX]([url](http://adoxa.altervista.org/shsucdx/)). If the “wpa_supplicant.conf” file is configured correctly, it should connect to your wifi network automatically, within 10 to 15 seconds of startup.
+2. The Pi should immediately turn on. It will then boot into the Circle environment, which takes about 7 seconds on a Pi Zero W 2 and an A1-class card. If the target computer is set up to use USB devices, it should quickly see the Pi as an optical drive. Drivers may need to be installed under Windows 98, such as [nUSB](https://www.philscomputerlab.com/windows-98-usb-storage-driver.html). DOS requires a driver as well, such as [SHSUCDX](http://adoxa.altervista.org/shsucdx/). If the “wpa_supplicant.conf” file is configured correctly, it should connect to your wifi network automatically, within 10 to 15 seconds of startup.
 
 ## Using USBODE with a hat
 1. Plug the hat onto the Pi.
@@ -47,7 +47,7 @@ Setup is now complete. See the instructions below to learn how to use the USBODE
 ## Copying Images onto USBODE
 USBODE stores images on the MicroSD card in a folder labeled Images. You'll need to put .ISO and .BIN/.CUE files directly into this folder. This can be done by connecting the SD card to the setup computer and copying files, or by connecting to the Pi via FTP. Mounting the card to the setup computer is the fastest method by a significant margin.
 
-Note: .BIN/.CUE images with multiple .BIN files do not yet work correctly. There is a workaround, however: [CDFix]([url](https://web.archive.org/web/20240112090553/https://krikzz.com/pub/support/mega-everdrive/pro-series/cdfix/)) will merge all of the .BIN files into one. Remember to make a backup of the image files before running this utility.
+Note: .BIN/.CUE images with multiple .BIN files do not yet work correctly. There is a workaround, however: [CDFix](https://web.archive.org/web/20240112090553/https://krikzz.com/pub/support/mega-everdrive/pro-series/cdfix/) will merge all of the .BIN files into one. Remember to make a backup of the image files before running this utility.
 
 ## Using the USBODE Browser Interface
 The browser interface is used to load images and shut down the device. To access the interface, you’ll need the IP address of the Pi. Once it can connect to your WiFi network, this address can be viewed from your router’s configuration page. It should appear as “CDROM” in the list of connected devices. If you use a display HAT, the display will also show the IP address. Use that IP address preceded by “http://” (not “https://”). For example, if your Pi’s IP address is 192.168.0.4, you would enter “http://192.168.0.4” into your browser’s address bar.
