@@ -103,7 +103,7 @@ for arch in "${supported_rasppi[@]}"; do
     cp ${projectRoot}/src/kernel*.img ${destDir}
 done
 
-Echo "Platform Specific Builds Completes Sucessfully, copying general files to ${destDir}"
+echo "Platform Specific Builds Completes Sucessfully, copying general files to ${destDir}"
 cp ${projectRoot}/sdcard/wpa_supplicant.conf ${destDir}
 cp ${projectRoot}/sdcard/cmdline.txt ${destDir}
 mkdir -p ${destDir}/images
