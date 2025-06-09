@@ -126,5 +126,5 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 zipFileName="usbode-${BRANCH}-${COMMIT}.zip"
-zip -r ${destDir}/${zipFileName} ${destDir}/* 
+zip -r ${projectRoot}/${zipFileName} ${destDir}/* 
 echo "Built ${zipFileName}  . Copy the contents of the zip file to a freshly formatted SDCard (FAT32 or EXFAT) and try the build!"
