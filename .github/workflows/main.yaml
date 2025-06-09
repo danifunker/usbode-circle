@@ -25,7 +25,7 @@ jobs:
       with:
         # Using the extracted filename as the artifact name
         name: ${{ steps.get-filename.outputs.filename }}
-        path: usbode*.zip
+        path: dist/*
         if-no-files-found: error
         retention-days: 90
         compression-level: 0
