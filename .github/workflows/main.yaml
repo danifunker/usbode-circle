@@ -17,7 +17,7 @@ jobs:
     - name: Get filename
       id: get-filename
       run: |
-        FILENAME=$(ls dist/usbode*.zip | xargs basename)
+        FILENAME=$(ls usbode*.zip | xargs basename)
         echo "Found file: $FILENAME"
         echo "filename=$FILENAME" >> $GITHUB_OUTPUT
 
