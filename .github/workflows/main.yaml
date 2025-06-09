@@ -17,7 +17,8 @@ jobs:
     - name: Get filename
       id: get-filename
       run: |
-        FILENAME=$(ls usbode*.zip | xargs basename)
+        FILENAME_FULL=$(ls usbode*.zip | xargs basename)
+        FILENAME=${FILENAME_FULL%.zip}
         echo "Found file: $FILENAME"
         echo "filename=$FILENAME" >> $GITHUB_OUTPUT
 
@@ -28,6 +29,6 @@ jobs:
         path: dist/*
         if-no-files-found: error
         retention-days: 90
-        compression-level: 0
+        compression-level: 6
         overwrite: true
         include-hidden-files: false

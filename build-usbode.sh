@@ -7,7 +7,7 @@ git submodule update --init --recursive
 circleDir="${projectRoot}/circle"
 buildConfPath="${HOME}/build-usbode.conf"
 configMkPath="${circleDir}/Config.mk"
-
+rm ${projectRoot}/usbode*.zip
 export MAKEFLAGS="-j4"
 
 # Check if build.conf exists
