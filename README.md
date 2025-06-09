@@ -9,7 +9,7 @@ Note: Some forms of CD-ROM copy protection won’t work on the ODE.
 
 ## Requirements:
 1. A Raspberry Pi Zero W or Zero 2 W (USBODE is optimized for the Pi Zero 2 W).
-2. A MicroSD card. Cards up to 32 GB have been tested and work, larger cards might work as well. The system files take up less than 20 MB, but CD images can be 650 MB each. We suggest using a card marked A1 or A2 for best performance.
+2. A MicroSD card. Cards up to 128 GB have been tested and work, larger cards might work as well. The system files take up less than 20 MB, but CD images can be 650 MB each. We suggest using a card marked A1 or A2 for best performance.
 3. A setup computer with the ability to mount and format the MicroSD card. No special software is required, but Windows 10 and below have an arbitrary 32 GB limitation on FAT32 partitions. For larger cards, use the command line DISKPART utility, the [Raspberry Pi Imager](https://www.raspberrypi.com/software/), or [FAT32FormatterGUI](https://www.softpedia.com/get/System/Hard-Disk-Utils/FAT32format-GUI.shtml).
 4. A USB cable with male Type A on one side, and male [Micro B](https://en.wikipedia.org/wiki/USB_hardware#/media/File:MicroB_USB_Plug.jpg) on the other. Micro B is what most people think of as an ordinary Micro USB cable (as opposed to [Mini](https://en.wikipedia.org/wiki/USB_hardware#/media/File:Cable_Mini_USB.jpg)). This cable needs to be capable of data transfer, not just power.
 5. The latest [USB-ODE Circle Release]([url](https://github.com/danifunker/usbode-circle/releases)).
