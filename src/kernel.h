@@ -49,7 +49,7 @@
 #include <circle/spimaster.h>
 #include <circle/gpiopin.h>
 #include <display/displaymanager.h>
-#include "gpiobuttonmanager.h"
+#include <gpiobuttonmanager/gpiobuttonmanager.h>
 
 #ifndef TSHUTDOWNMODE
 #define TSHUTDOWNMODE

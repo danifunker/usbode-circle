@@ -7,7 +7,7 @@ USBODEHOME = ..
 
 CFLAGS += -I ../include -I ../addon
 
-OBJS	= main.o kernel.o gpiobuttonmanager.o
+OBJS	= main.o kernel.o
 
 include $(CIRCLEHOME)/Rules.mk
 
@@ -33,6 +33,7 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(USBODEHOME)/addon/cueparser/libcueparser.a \
 	  $(USBODEHOME)/addon/ftpserver/libftpserver.a \
 	  $(USBODEHOME)/addon/cdplayer/libcdplayer.a \
+	  $(USBODEHOME)/addon/gpiobuttonmanager/libgpiobuttonmanager.a \
 	  $(USBODEHOME)/addon/display/libdisplay.a
 
 %.h: %.html

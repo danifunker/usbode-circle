@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-export MAKEFLAGS="-j4"
+export MAKEFLAGS="-j8"
 
 projectRoot=$(git rev-parse --show-toplevel)
 echo "This script requires a successful ./configure -r X --prefix=/path/to/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi- run in ${projectRoot}"
@@ -33,6 +33,9 @@ make
 cd ${projectRoot}/addon/usbcdgadget
 make clean
 make 
+cd ${projectRoot}/addon/usbmsdgadget
+make clean
+make 
 cd ${projectRoot}/addon/discimage
 make clean
 make 
@@ -40,6 +43,9 @@ cd ${projectRoot}/addon/cueparser
 make clean
 make
 cd ${projectRoot}/addon/filelogdaemon
+make clean
+make
+cd ${projectRoot}/addon/webserver
 make clean
 make
 cd ${projectRoot}/addon/ftpserver
@@ -51,10 +57,10 @@ make
 cd ${projectRoot}/circle/addon/Properties
 make clean
 make
-cd ${projectRoot}/lib/usb/gadget
+cd ${projectRoot}/addon/display
 make clean
 make
-cd ${projectRoot}/addon/display
+cd ${projectRoot}/addon/gpiobuttonmanager
 make clean
 make
 cd ${projectRoot}/addon/cdplayer

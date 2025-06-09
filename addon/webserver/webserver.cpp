@@ -84,7 +84,7 @@ static const char HTML_LAYOUT[] =
 
 static const u8 s_Index[] =
 #include "index.h"
-    ;
+;
 
 LOGMODULE("webserver");
 
