@@ -20,8 +20,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-#include <circle/usb/gadget/usbcdgadgetendpoint.h>
-#include <circle/usb/gadget/usbcdgadget.h>
+#include <usbcdgadget/usbcdgadgetendpoint.h>
+#include <usbcdgadget/usbcdgadget.h>
 #include <circle/logger.h>
 #include <assert.h>
 #include <circle/sysconfig.h>

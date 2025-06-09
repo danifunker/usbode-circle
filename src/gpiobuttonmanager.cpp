@@ -18,8 +18,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "gpiobuttonmanager.h"
-#include <usbode-display/sh1106device.h>
-#include <usbode-display/st7789display.h>
+#include <display/sh1106device.h>
+#include <display/st7789display.h>
 #include <assert.h>
 
 LOGMODULE ("gpiobutton");

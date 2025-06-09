@@ -23,7 +23,7 @@
 #include <Properties/propertiesfatfsfile.h>
 #include <circle/actled.h>
 #include <circle/net/httpdaemon.h>
-#include <circle/usb/gadget/usbcdgadget.h>
+#include <usbcdgadget/usbcdgadget.h>
 #include <discimage/cuebinfile.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>

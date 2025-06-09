@@ -26,8 +26,8 @@
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sysconfig.h>
-#include <circle/usb/gadget/usbcdgadget.h>
-#include <circle/usb/gadget/usbcdgadgetendpoint.h>
+#include <usbcdgadget/usbcdgadget.h>
+#include <usbcdgadget/usbcdgadgetendpoint.h>
 #include <circle/util.h>
 #include <math.h>
 #include <stddef.h>

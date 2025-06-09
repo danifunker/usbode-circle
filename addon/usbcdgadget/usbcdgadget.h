@@ -30,7 +30,7 @@
 #include <circle/synchronize.h>
 #include <circle/types.h>
 #include <circle/usb/gadget/dwusbgadget.h>
-#include <circle/usb/gadget/usbcdgadgetendpoint.h>
+#include <usbcdgadget/usbcdgadgetendpoint.h>
 #include <circle/usb/usb.h>
 #include <cueparser/cueparser.h>
 #include <discimage/cuebinfile.h>

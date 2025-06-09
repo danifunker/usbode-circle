@@ -37,8 +37,8 @@
 #include <circle/serial.h>
 #include <circle/timer.h>
 #include <circle/types.h>
-#include <circle/usb/gadget/usbcdgadget.h>
-#include <circle/usb/gadget/usbmsdgadget.h>
+#include <usbcdgadget/usbcdgadget.h>
+#include <usbmsdgadget/usbmsdgadget.h>
 #include <circle/sound/soundbasedevice.h>
 #include <discimage/cuebinfile.h>
 #include <fatfs/ff.h>

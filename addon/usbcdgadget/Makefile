@@ -18,13 +18,13 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-CIRCLEHOME = ../../../circle
+CIRCLEHOME = ../../circle
 
-all: libusbgadget.a
+all: libusbcdgadget.a
 
 CPPFLAGS += -DUSB_GADGET_VENDOR_ID=0x04da
 CPPFLAGS += -DUSB_GADGET_DEVICE_ID_CD=0x0d01
-CFLAGS += -I ../../../include -I ../../../addon
+CFLAGS += -I ../../addon
 
 include $(CIRCLEHOME)/Rules.mk
 
@@ -33,7 +33,7 @@ OBJS    = usbcdgadget.o usbcdgadgetendpoint.o
 
 endif
 
-libusbgadget.a: $(OBJS)
+libusbcdgadget.a: $(OBJS)
 	@echo "  AR    $@"
 	@rm -f $@
 	@$(AR) cr $@ $(OBJS)

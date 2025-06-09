@@ -27,6 +27,9 @@ if [ ! -f "${projectRoot}/circle/boot/LICENCE.broadcom" ]; then
 cd ${projectRoot}/circle/boot
 make -j2
 fi
+cd ${projectRoot}/addon/usbcdgadget
+make clean
+make 
 cd ${projectRoot}/addon/discimage
 make clean
 make 
@@ -48,7 +51,7 @@ make
 cd ${projectRoot}/lib/usb/gadget
 make clean
 make
-cd ${projectRoot}/addon/usbode-display
+cd ${projectRoot}/addon/display
 make clean
 make
 cd ${projectRoot}/addon/cdplayer
