@@ -1,3 +1,5 @@
+# USBODE: the USB Optical Drive Emulator
+Ever wanted a GoTek for CDs? The USBODE is an optical drive emulator that uses a Raspberry Pi Zero W to read image files from a Micro SD card, and acts as an optical drive through a USB cable. By default, it can load .ISO and .BIN/CUE images, and can be controlled over a web interface.
 
 ## What can it do?
 By emulating a CD-ROM drive with USBODE, you can:
@@ -15,7 +17,9 @@ Note: Some forms of CD-ROM copy protection won’t work on the ODE.
 5. The latest [USB-ODE Circle Release]([url](https://github.com/danifunker/usbode-circle/releases)).
 6. A target computer with a USB port that will be utilizing USBODE.
 
-If you’re using USB-ODE 1.9 or before, you’ll also need the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) application. That project and its instructions are located [here](https://github.com/danifunker/usbode/releases).
+## Notes about versions
+- The Stable version of this project is available under the [Main branch](https://github.com/danifunker/usbode-circle/tree/main). This project also has a [pipeline](https://github.com/danifunker/usbode-circle/actions) set up to facilitate rapid deployment of new features. The pipeline builds are cutting edge and are not guaranteed to be stable.
+- If you’re using USB-ODE 1.99 or before, you’ll also need the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) application. That project and its instructions are located [here](https://github.com/danifunker/usbode/releases).
 
 # Recommendations
 Version 2.0 and above support CD Audio. To take advantage of this, you’ll need a DAC. We suggest using the [Pirate Audio Line Out/LCD HAT](https://shop.pimoroni.com/products/pirate-audio-line-out), because it provides both a DAC and an LCD, making it easy to switch between different images.
@@ -24,9 +28,9 @@ Version 2.0 and above support CD Audio. To take advantage of this, you’ll need
 1. Plug the Micro SD card into the setup computer, and format it using FAT32. All defaults should be fine, but keep in mind Windows 10 and below’s arbitrary limitation on FAT32 partition sizes addressed in the Requirements section above.
 2. Open the USBODE ZIP file that was downloaded previously. Inside that ZIP file is a folder named after the USBODE release version; navigate into that folder, and extract the files within to the root of the Micro SD card.
 3. On the Micro SD card, open the file labeled “wpa_supplicant.conf”.
-4. Under country=GB, replace “GB” with the two digit code for your country if needed. Different countries use different WiFi frequencies; if you are in the US, the device will not connect to US wifi unless you change this line to “country=US”..
-5. Under ssid=”MySSID”, type in the name of your WiFi network between the quotes. Keep in mind that the Pi supports only 2.4 GHz wifi signals.
-6. Under psk=”WirelessPassword”, type in your WiFi’s password between the quotes.
+4. Under `country=GB`, replace “GB” with the two digit code for your country if needed. Different countries use different WiFi frequencies; if you are in the US, the device will not connect to US wifi unless you change this line to “country=US”.
+5. Under `ssid=”MySSID”`, type in the name of your WiFi network between the quotes. Keep in mind that the Pi supports only 2.4 GHz wifi signals.
+6. Under `psk=”WirelessPassword”`, type in your WiFi’s password between the quotes.
 7. The other lines in this file likely don’t need to be changed. However, if your network uses different key management or other security configurations, this file can be modified to comply with those settings.
 8. If desired, image files can now be copied into the Images folder on the root of the SD card.
 9. Eject the Micro SD card from the setup computer and put it into the Pi.
@@ -39,7 +43,7 @@ Setup is now complete. See the instructions below to learn how to use the USBODE
 
 ## Using USBODE with a hat
 1. Plug the hat onto the Pi.
-2. If you’re using the Pirate Audio hat, there is no further configuration needed. If you’re using the Waveshare OLED hat, plug the Pi’s Micro SD card into the setup computer. Open config.txt. Under [usbode], note the line reading “displayhat=pirateaudiolineout”. Change this to “displayhat=waveshareoled”.
+2. If you’re using the Pirate Audio hat, there is no further configuration needed. If you’re using the Waveshare OLED hat, plug the Pi’s Micro SD card into the setup computer. Open config.txt. Under `[usbode]`, note the line reading `“displayhat=pirateaudiolineout”`. Change this to `“displayhat=waveshare”`.
 3. Plug the SD card into the Pi, and the Pi into the target computer. The screen on the hat should turn on.
 4. For the Pirate Audio HATt: The display will turn on a second or two after plugging in the Pi. The display will say “Not connected yet” until it connects to your wifi network, then that line will display the device’s IP address. The bottom of the display denotes what the buttons do.
 5. For the Waveshare HAT: A description is coming soon.
