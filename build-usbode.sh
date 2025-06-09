@@ -27,6 +27,9 @@ if [ ! -f "${projectRoot}/circle/boot/LICENCE.broadcom" ]; then
 cd ${projectRoot}/circle/boot
 make -j2
 fi
+cd ${projectRoot}/addon/gitinfo
+make clean
+make 
 cd ${projectRoot}/addon/usbcdgadget
 make clean
 make 

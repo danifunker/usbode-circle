@@ -23,7 +23,7 @@
 #include <circle/util.h>
 #include <circle/timer.h>
 #include <circle/2dgraphics.h>
-#include "kernel.h"
+#include <linux/kernel.h>
 
 #include <assert.h>
 

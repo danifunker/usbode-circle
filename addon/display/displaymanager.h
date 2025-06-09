@@ -26,10 +26,10 @@
 #include <circle/types.h>
 #include <circle/gpiopin.h>
 #include <circle/2dgraphics.h>
-#include <display/sh1106display.h>
-#include <display/sh1106device.h>
-#include <display/st7789display.h>
-#include <display/st7789device.h>
+#include "sh1106display.h"
+#include "sh1106device.h"
+#include "st7789display.h"
+#include "st7789device.h"
 
 enum TDisplayType
 {

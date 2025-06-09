@@ -27,8 +27,18 @@
 #include <discimage/cuebinfile.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
+#include <circle/koptions.h>
+#include <discimage/util.h>
+#include "urldecoder.h"
 
-#include "kernel.h"  // Include kernel.h to have access to TShutdownMode
+#ifndef TSHUTDOWNMODE
+#define TSHUTDOWNMODE
+enum TShutdownMode {
+    ShutdownNone,
+    ShutdownHalt,
+    ShutdownReboot
+};
+#endif
 
 class CWebServer : public CHTTPDaemon {
    public:

@@ -7,13 +7,9 @@ USBODEHOME = ..
 
 CFLAGS += -I ../include -I ../addon
 
-OBJS	= main.o kernel.o webserver.o util.o displaymanager.o gpiobuttonmanager.o
+OBJS	= main.o kernel.o gpiobuttonmanager.o
 
 include $(CIRCLEHOME)/Rules.mk
-
-gitinfo.d:
-	@echo "Generating $@..."; \
-	./gitinfo.sh
 
 LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/usb/gadget/libusbgadget.a \
@@ -29,6 +25,7 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(CIRCLEHOME)/lib/sound/libsound.a \
 	  $(CIRCLEHOME)/addon/SDCard/libsdcard.a \
 	  $(CIRCLEHOME)/addon/Properties/libproperties.a \
+	  $(USBODEHOME)/addon/webserver/libwebserver.a \
 	  $(USBODEHOME)/addon/usbcdgadget/libusbcdgadget.a \
 	  $(USBODEHOME)/addon/usbmsdgadget/libusbmsdgadget.a \
 	  $(USBODEHOME)/addon/discimage/libdiscimage.a \
@@ -36,12 +33,10 @@ LIBS	= $(CIRCLEHOME)/lib/usb/libusb.a \
 	  $(USBODEHOME)/addon/cueparser/libcueparser.a \
 	  $(USBODEHOME)/addon/ftpserver/libftpserver.a \
 	  $(USBODEHOME)/addon/cdplayer/libcdplayer.a \
-	  $(USBODEHOME)/addon/display/lib-display.a
+	  $(USBODEHOME)/addon/display/libdisplay.a
 
 %.h: %.html
 	@echo "  GEN   $@"
 	@$(CIRCLEHOME)/tools/converttool $< > $@
-
-webserver.o: $(CONTENT)
 
 -include $(DEPS)

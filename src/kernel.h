@@ -48,14 +48,17 @@
 #include <wlan/hostap/wpa_supplicant/wpasupplicant.h>
 #include <circle/spimaster.h>
 #include <circle/gpiopin.h>
-#include "displaymanager.h"
+#include <display/displaymanager.h>
 #include "gpiobuttonmanager.h"
 
+#ifndef TSHUTDOWNMODE
+#define TSHUTDOWNMODE
 enum TShutdownMode {
     ShutdownNone,
     ShutdownHalt,
     ShutdownReboot
 };
+#endif
 
 class CKernel 
 {

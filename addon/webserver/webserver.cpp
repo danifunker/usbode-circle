@@ -18,14 +18,12 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "webserver.h"
-#include "gitinfo.d"
+#include <gitinfo/gitinfo.h>
 
 #include <assert.h>
 #include <circle/logger.h>
 #include <circle/new.h>
 #include <circle/string.h>
-
-#include "util.h"
 
 #define MAX_CONTENT_SIZE 16384
 #define MAX_FILES 1024

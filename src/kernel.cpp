@@ -24,9 +24,9 @@
 #include <ftpserver/ftpdaemon.h>
 #include <string.h>
 
-#include "gitinfo.d"
-#include "util.h"
-#include "webserver.h"
+#include <gitinfo/gitinfo.h>
+#include <discimage/util.h>
+#include <webserver/webserver.h>
 
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
@@ -167,27 +167,6 @@ boolean CKernel::Initialize(void) {
         LOGNOTE("Initialized WAP supplicant");
     }
 
-    // If network initialization succeeded, read timezone from config.txt
-    // Commented because Network definately won't be running yet and
-    // we start this later in the run loop anyway
-    /*
-    if (bOK && m_Net.IsRunning()) {
-        // Read timezone from config.txt
-        CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
-        if (Properties.Load()) {
-            Properties.SelectSection("usbode");
-            CString Value;
-            const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
-
-            // Initialize NTP with the timezone
-            InitializeNTP(timezone);
-        } else {
-            // Use default timezone if config file not available
-            InitializeNTP("UTC");
-        }
-    }
-    */
-
     return bOK;
 }
 
@@ -211,33 +190,37 @@ TShutdownMode CKernel::Run(void) {
         LOGNOTE("Started the Log File service");
     }
 
+    // Announce ourselves
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
     LOGNOTE("=====================================");
 
-    // Initialize the CD Player service
-    const char* pSoundDevice = m_Options.GetSoundDevice();
-    if (strcmp(pSoundDevice, "sndi2s") == 0) {
-        new CCDPlayer(pSoundDevice);
-        LOGNOTE("Started the CD Player service");
-    }
-
-    // Load our current disc image
-    const char* imageName = Properties.GetString("current_image", "image.iso");
-    CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
-    if (!cueBinFileDevice) {
-        LOGERR("Failed to load cueBinFileDevice %s", imageName);
-        return ShutdownHalt;
-    }
-    LOGNOTE("Loaded cue/bin file %s", imageName);
-
-
     int mode = Properties.GetNumber("mode", 0);
     LOGNOTE("Got mode = %d", mode);
 
-    if (mode == 0) {
+    // TODO improve this to encompass the GUI
+    const char* imageName = Properties.GetString("current_image", "image.iso");
+    if (mode == 0) { // CDROM Mode
+
+	    // Initialize the CD Player service
+	    const char* pSoundDevice = m_Options.GetSoundDevice();
+	    
+	    //TODO support other sound options
+	    if (strcmp(pSoundDevice, "sndi2s") == 0) {
+		new CCDPlayer(pSoundDevice);
+		LOGNOTE("Started the CD Player service");
+	    }
+
+	    // Load our current disc image
+	    CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
+	    if (!cueBinFileDevice) {
+		LOGERR("Failed to load cueBinFileDevice %s", imageName);
+		return ShutdownHalt;
+	    }
+	    LOGNOTE("Loaded cue/bin file %s", imageName);
+
 	    // Initialize USB CD gadget
 	    // TODO get USB speed from Properties
 	    // TODO allow UI to set USB speed
@@ -248,7 +231,9 @@ TShutdownMode CKernel::Run(void) {
 		return ShutdownHalt;
 	    }
 	    LOGNOTE("Started USB CD gadget");
-    } else {
+
+    } else { // Mass Storage Device Mode
+	     
 	    m_MSDGadget = new CUSBMSDGadget(&m_Interrupt, &m_EMMC);
 	    if (!m_MSDGadget->Initialize()) {
 		LOGERR("Failed to initialize USB MSD gadget");
@@ -345,7 +330,7 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Show details of the network connection
-        if (m_Net.IsRunning()) {
+	if (m_Net.IsRunning()) {
             CString CurrentIPString;
             m_Net.GetConfig()->GetIPAddress()->Format(&CurrentIPString);
 
@@ -359,7 +344,7 @@ TShutdownMode CKernel::Run(void) {
 
                 // If network is newly up and running with a valid IP address
                 // and NTP hasn't been initialized yet, do it now
-                if (!ntpInitialized && CurrentIPString != "0.0.0.0") {
+                if (!ntpInitialized && strcmp((const char*)CurrentIPString, "0.0.0.0") != 0) {
                     // Read timezone from config.txt
                     Properties.SelectSection("usbode");
                     const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");

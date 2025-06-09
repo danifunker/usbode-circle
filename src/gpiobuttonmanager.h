@@ -25,7 +25,7 @@
 #include <circle/gpiopin.h>
 #include <circle/timer.h>
 #include <circle/spinlock.h>
-#include "displaymanager.h"
+#include <display/displaymanager.h>
 
 // Button event handler callback type
 typedef void (*TButtonEventHandler)(unsigned nButtonIndex, boolean bPressed, void* pParam);
