@@ -7,7 +7,10 @@ git submodule update --init --recursive
 circleDir="${projectRoot}/circle"
 buildConfPath="${HOME}/build-usbode.conf"
 configMkPath="${circleDir}/Config.mk"
-rm ${projectRoot}/usbode*.zip
+if ls ${projectRoot}/usbode*.zip 1> /dev/null 2>&1; then
+    echo "Removing existing zip files..."
+    rm ${projectRoot}/usbode*.zip
+fi
 export MAKEFLAGS="-j4"
 
 # Check if build.conf exists
