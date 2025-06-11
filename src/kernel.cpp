@@ -590,7 +590,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
 
         // Update the status screen
         m_pDisplayManager->ShowStatusScreen(
-            "USBODE v2.00-pre1",
+            (const char*)versionString,
             (const char*)IPString,
             currentImage,
             pUSBSpeed);  // Pass USB speed to display manager
