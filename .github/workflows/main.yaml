@@ -1,0 +1,34 @@
+name: USBODE CI Build
+
+on:
+  push:
+    branches: [ "*" ]
+
+jobs:
+  build:
+
+    runs-on: [self-hosted]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: ./build-usbode.sh
+
+    - name: Get filename
+      id: get-filename
+      run: |
+        FILENAME_FULL=$(ls usbode*.zip | xargs basename)
+        FILENAME=${FILENAME_FULL%.zip}
+        echo "Found file: $FILENAME"
+        echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+
+    - uses: actions/upload-artifact@v4
+      with:
+        # Using the extracted filename as the artifact name
+        name: ${{ steps.get-filename.outputs.filename }}
+        path: dist/*
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false

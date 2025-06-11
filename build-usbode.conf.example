@@ -1,0 +1,3 @@
+#Copy this file to ${HOME}/build-usbode.conf
+supported_rasppi=(1 2)
+PathPrefix=arm-none-eabi-
