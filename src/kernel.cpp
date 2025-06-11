@@ -577,6 +577,17 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
         boolean bUSBFullSpeed = m_Options.GetUSBFullSpeed();
         const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
 
+        // Create version string based on git info
+        CString versionString;
+        
+        // Format based on branch (hide branch name if it's 'main')
+        if (strcmp(GIT_BRANCH, "main") == 0) {
+            versionString.Format("USBODE v2.00-%s", GIT_COMMIT);
+        } else {
+            versionString.Format("USBODE v2.00-%s-%s", GIT_BRANCH, GIT_COMMIT);
+        }
+
+
         // Update the status screen
         m_pDisplayManager->ShowStatusScreen(
             "USBODE v2.00-pre1",
