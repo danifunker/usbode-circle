@@ -155,42 +155,6 @@ CUSBCDGadget::~CUSBCDGadget(void) {
     assert(0);
 }
 
-void hexdump(const void* data, size_t size) {
-    const unsigned char* p = (const unsigned char*)data;
-    char line[80];
-
-    for (size_t i = 0; i < size; i += 16) {
-        char* ptr = line;
-
-        // Offset
-        ptr += sprintf(ptr, "%08x  ", i);
-
-        // Hex bytes
-        for (size_t j = 0; j < 16; ++j) {
-            if (i + j < size)
-                ptr += sprintf(ptr, "%02x ", p[i + j]);
-            else
-                ptr += sprintf(ptr, "   ");
-        }
-
-        // Space before ASCII
-        ptr += sprintf(ptr, " ");
-
-        // ASCII representation
-        for (size_t j = 0; j < 16; ++j) {
-            if (i + j < size) {
-                unsigned char c = p[i + j];
-                ptr += sprintf(ptr, "%c", (c >= 32 && c <= 126) ? c : '.');
-            }
-        }
-
-        // Final null terminator
-        *ptr = '\0';
-
-        MLOGNOTE("hexdump", "%s", line);
-    }
-}
-
 const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength) {
     MLOGNOTE("CUSBCDGadget::GetDescriptor", "entered");
     assert(pLength);
@@ -265,6 +229,7 @@ void CUSBCDGadget::AddEndpoints(void) {
 // must set device before usb activation
 void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
     MLOGNOTE("CUSBCDGadget::SetDevice", "entered");
+ 
     // Are we changing the device?
     if (m_pDevice && m_pDevice != dev) {
         MLOGNOTE("CUSBCDGadget::SetDevice", "Changing device");
@@ -274,9 +239,9 @@ void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
 
         // Tell the host the disc has changed
         bmCSWStatus = CD_CSW_STATUS_FAIL;
-        bSenseKey = 0x06;           // Unit Attention
-        bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE
-        bAddlSenseCodeQual = 0x00;  // MEDIUM MAY HAVE CHANGED
+        m_SenseParams.bSenseKey = 0x06;           // Unit Attention
+        m_SenseParams.bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE
+        m_SenseParams.bAddlSenseCodeQual = 0x00;  // MEDIUM MAY HAVE CHANGED
     }
 
     m_pDevice = dev;
@@ -532,9 +497,9 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                         MLOGERR("onXferCmplt DataIn", "failed, %s",
                                 m_CDReady ? "ready" : "not ready");
                         m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-                        bSenseKey = 0x02;
-                        bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                        bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+                        m_SenseParams.bSenseKey = 0x02;
+                        m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
+                        m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                         SendCSW();
                     }
                 } else  // done sending data to host
@@ -741,9 +706,9 @@ void CUSBCDGadget::HandleSCSICommand() {
             if (!m_CDReady) {
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-                bSenseKey = 2;
-                bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+                m_SenseParams.bSenseKey = 2;
+                m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
+                m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
             } else {
                 // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
                 m_CSW.bmCSWStatus = bmCSWStatus;
@@ -766,9 +731,9 @@ void CUSBCDGadget::HandleSCSICommand() {
             if (blocks < length)
                 length = blocks;
 
-            m_ReqSenseReply.bSenseKey = bSenseKey;
-            m_ReqSenseReply.bAddlSenseCode = bAddlSenseCode;
-            m_ReqSenseReply.bAddlSenseCodeQual = bAddlSenseCodeQual;
+            m_ReqSenseReply.bSenseKey = m_SenseParams.bSenseKey;
+            m_ReqSenseReply.bAddlSenseCode = m_SenseParams.bAddlSenseCode;
+            m_ReqSenseReply.bAddlSenseCodeQual = m_SenseParams.bAddlSenseCodeQual;
 
             memcpy(&m_InBuffer, &m_ReqSenseReply, length);
 
@@ -779,9 +744,9 @@ void CUSBCDGadget::HandleSCSICommand() {
             m_nState = TCDState::SendReqSenseReply;
 
             // Reset response params after send
-            bSenseKey = 0;
-            bAddlSenseCode = 0;
-            bAddlSenseCodeQual = 0;
+            m_SenseParams.bSenseKey = 0;
+            m_SenseParams.bAddlSenseCode = 0;
+            m_SenseParams.bAddlSenseCodeQual = 0;
             break;
         }
 
@@ -892,9 +857,9 @@ void CUSBCDGadget::HandleSCSICommand() {
                         m_nnumber_blocks = 0;  // nothing more after this send
 
                         m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
-                        bSenseKey = 0x05;
-                        bAddlSenseCode = 0x24;      // Invalid Field
-                        bAddlSenseCodeQual = 0x00;  // In CDB
+                        m_SenseParams.bSenseKey = 0x05;
+                        m_SenseParams.bAddlSenseCode = 0x24;      // Invalid Field
+                        m_SenseParams.bAddlSenseCodeQual = 0x00;  // In CDB
                         SendCSW();
                         break;
                 }
@@ -969,9 +934,9 @@ void CUSBCDGadget::HandleSCSICommand() {
             } else {
                 MLOGNOTE("handleSCSI Read(10)", "failed, %s", m_CDReady ? "ready" : "not ready");
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-                bSenseKey = 0x02;
-                bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+                m_SenseParams.bSenseKey = 0x02;
+                m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
+                m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                 SendCSW();
             }
             break;
@@ -1079,9 +1044,9 @@ void CUSBCDGadget::HandleSCSICommand() {
             } else {
                 MLOGNOTE("handleSCSI READ CD", "failed, %s", m_CDReady ? "ready" : "not ready");
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-                bSenseKey = 0x02;
-                bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+                m_SenseParams.bSenseKey = 0x02;
+                m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
+                m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                 SendCSW();
             }
             break;
@@ -1406,7 +1371,6 @@ void CUSBCDGadget::HandleSCSICommand() {
                     header.dataLength = htonl(dataLength - 4);
                     memcpy(m_InBuffer, &header, sizeof(header));
 
-                    // hexdump(m_InBuffer, dataLength);
                     break;
                 }
 
@@ -1768,9 +1732,9 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         default: {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Unknown SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
-            bSenseKey = 0x5;  // Illegal/not supported
-            bAddlSenseCode = 0x20;
-            bAddlSenseCodeQual = 0x00;
+            m_SenseParams.bSenseKey = 0x5;  // Illegal/not supported
+            m_SenseParams.bAddlSenseCode = 0x20;
+            m_SenseParams.bAddlSenseCodeQual = 0x00;
             m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
             SendCSW();
             break;
@@ -1790,7 +1754,6 @@ void CUSBCDGadget::Update() {
             u64 offset = 0;
             int readCount = 0;
             if (m_CDReady) {
-                // Google Gemini suggested this optimization. I don't think it's bad!
                 offset = m_pDevice->Seek(block_size * m_nblock_address);
                 if (offset != (u64)(-1)) {
                     // Cap at max 16 blocks. This is what a READ CD request will required
@@ -1815,9 +1778,9 @@ void CUSBCDGadget::Update() {
                     if (readCount < static_cast<int>(total_batch_size)) {
                         // Handle error: partial read
                         m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-                        bSenseKey = 0x04;       // hardware error
-                        bAddlSenseCode = 0x11;  // UNRECOVERED READ ERROR
-                        bAddlSenseCodeQual = 0x00;
+                        m_SenseParams.bSenseKey = 0x04;       // hardware error
+                        m_SenseParams.bAddlSenseCode = 0x11;  // UNRECOVERED READ ERROR
+                        m_SenseParams.bAddlSenseCodeQual = 0x00;
                         SendCSW();
                         return;  // Exit if read failed
                     }
@@ -1853,9 +1816,9 @@ void CUSBCDGadget::Update() {
                 MLOGERR("UpdateRead", "failed, %s, offset=%llu",
                         m_CDReady ? "ready" : "not ready", offset);
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_PHASE_ERR;
-                bSenseKey = 0x02;           // Not Ready
-                bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+                m_SenseParams.bSenseKey = 0x02;           // Not Ready
+                m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
+                m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
                 SendCSW();
             }
             break;

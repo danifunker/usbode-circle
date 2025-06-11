@@ -94,7 +94,7 @@ private:
 	CUSBCDGadget*		m_CDGadget = nullptr;
 	
 	// MSD Gadget
-	CUSBMSDGadget*		m_MSDGadget = nullptr;
+	CUSBMMSDGadget*		m_MMSDGadget = nullptr;
 
 	// SPI and display components
 	CSPIMaster* m_pSPIMaster;

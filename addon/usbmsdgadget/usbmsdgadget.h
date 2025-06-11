@@ -33,7 +33,7 @@
 
 #define BLOCK_SIZE 512
 
-struct TUSBMSDCBW   //31 bytes
+struct TUSBMMSDCBW   //31 bytes
 {
 	u32 dCBWSignature;
 	u32 dCBWTag;
@@ -50,7 +50,7 @@ PACKED;
 #define VALID_CBW_SIG 0x43425355
 #define CSW_SIG 0x53425355
 
-struct TUSBMSDCSW   //13 bytes
+struct TUSBMMSDCSW   //13 bytes
 {
 	u32 dCSWSignature=CSW_SIG;
 	u32 dCSWTag;
@@ -61,12 +61,12 @@ PACKED;
 
 #define SIZE_CSW 13
 
-#define MSD_CSW_STATUS_OK 0
-#define MSD_CSW_STATUS_FAIL 1
-#define MSD_CSW_STATUS_PHASE_ERR 2
+#define MMSD_CSW_STATUS_OK 0
+#define MMSD_CSW_STATUS_FAIL 1
+#define MMSD_CSW_STATUS_PHASE_ERR 2
 
 //reply to SCSI Request Sense Command 0x3
-struct TUSBMSDRequestSenseReply   //14 bytes
+struct TUSBMMSDRequestSenseReply   //14 bytes
 {
 	unsigned char bErrCode;
 	unsigned char bSegNum;
@@ -85,7 +85,7 @@ PACKED;
 #define SIZE_RSR 14
 
 //reply to SCSI Inquiry Command 0x12
-struct TUSBMSDInquiryReply   //36 bytes
+struct TUSBMMSDInquiryReply   //36 bytes
 {
 	unsigned char bPeriphQualDevType;
 	unsigned char bRMB;
@@ -103,7 +103,7 @@ PACKED;
 #define SIZE_INQR 36
 
 //reply to SCSI Mode Sense(6) 0x1A
-struct TUSBMSDModeSenseReply   //4 bytes
+struct TUSBMMSDModeSenseReply   //4 bytes
 {
 	unsigned char bModeDataLen;
 	unsigned char bMedType;
@@ -114,7 +114,7 @@ PACKED;
 #define SIZE_MODEREP 4
 
 //reply to SCSI Read Capacity 0x25
-struct TUSBMSDReadCapacityReply   //8 bytes
+struct TUSBMMSDReadCapacityReply   //8 bytes
 {
 	u32 nLastBlockAddr=0x7F3E0000; //15999
 	u8 nSectorSize[4];
@@ -122,7 +122,7 @@ struct TUSBMSDReadCapacityReply   //8 bytes
 PACKED;
 #define SIZE_READCAPREP 8
 
-struct TUSBMSDFormatCapacityReply   //10 bytes
+struct TUSBMMSDFormatCapacityReply   //10 bytes
 {
 	u8 reserved[3] {0,0,0};
 	u8 capListLength = 8;
@@ -136,16 +136,16 @@ PACKED;
 
 
 
-class CUSBMSDGadget : public CDWUSBGadget	/// USB mass storage device gadget
+class CUSBMMSDGadget : public CDWUSBGadget	/// USB mass storage device gadget
 {
 public:
 	/// \param pInterruptSystem Pointer to the interrupt system object
 	/// \param pDevice Pointer to the block device, to be controlled by this gadget
 	/// \note pDevice must be initialized yet, when it is specified here.
 	/// \note SetDevice() has to be called later, when pDevice is not specified here.
-	CUSBMSDGadget (CInterruptSystem *pInterruptSystem, CDevice *pDevice = nullptr);
+	CUSBMMSDGadget (CInterruptSystem *pInterruptSystem, CDevice *pDevice = nullptr);
 
-	~CUSBMSDGadget (void);
+	~CUSBMMSDGadget (void);
 
 	/// \param pDevice Pointer to the block device, to be controlled by this gadget
 	/// \note Call this, if pDevice has not been specified in the constructor.
@@ -185,7 +185,7 @@ private:
 	int OnClassOrVendorRequest (const TSetupData *pSetupData, u8 *pData) override;
 
 private:
-	friend class CUSBMSDGadgetEndpoint;
+	friend class CUSBMMSDGadgetEndpoint;
 
 	void OnTransferComplete (boolean bIn, size_t nLength);
 
@@ -208,7 +208,7 @@ private:
 		NumEPs
 	};
 
-	CUSBMSDGadgetEndpoint *m_pEP[NumEPs];
+	CUSBMMSDGadgetEndpoint *m_pEP[NumEPs];
 
 	u8 m_StringDescriptorBuffer[80];
 
@@ -228,7 +228,7 @@ private:
 
 	static const char *const s_StringDescriptor[];
 
-	enum TMSDState
+	enum TMMSDState
 	{
 		Init,
 		ReceiveCBW,
@@ -241,30 +241,32 @@ private:
 		DataOutWrite
 	};
 
-	TMSDState m_nState=Init;
+	TMMSDState m_nState=Init;
 
-	TUSBMSDCBW m_CBW;
-	TUSBMSDCSW m_CSW;
+	TUSBMMSDCBW m_CBW;
+	TUSBMMSDCSW m_CSW;
 
-	TUSBMSDInquiryReply m_InqReply {0,0x80,0x04,0x02,0x1F,0,0,0,{'C','i','r','c','l','e',0,0},
+	TUSBMMSDInquiryReply m_InqReply {0,0x80,0x04,0x02,0x1F,0,0,0,{'C','i','r','c','l','e',0,0},
 					{'M','a','s','s',' ','S','t','o','r','a','g','e',0,0,0,0},
 					{'0','0','0',0}};
-	TUSBMSDModeSenseReply m_ModeSenseReply {3,0,0,0};
-	TUSBMSDReadCapacityReply m_ReadCapReply {0x7F3E0000,{0,0,2,0}};	// last block =15999,
+	TUSBMMSDModeSenseReply m_ModeSenseReply {3,0,0,0};
+	TUSBMMSDReadCapacityReply m_ReadCapReply {0x7F3E0000,{0,0,2,0}};	// last block =15999,
 									// each block is 512 bytes
-	TUSBMSDRequestSenseReply m_ReqSenseReply;
-	TUSBMSDFormatCapacityReply m_FormatCapReply {{0,0,0},8,0x803E0000,2,0,{2,0}};
+	TUSBMMSDRequestSenseReply m_ReqSenseReply;
+	TUSBMMSDFormatCapacityReply m_FormatCapReply {{0,0,0},8,0x803E0000,2,0,{2,0}};
 
-	static const size_t MaxOutMessageSize = 512;
-	static const size_t MaxInMessageSize = 512;
+	static const size_t MaxOutMessageSize = 16 * 512;
+	static const size_t MaxInMessageSize = 16 * 512;
 	DMA_BUFFER (u8, m_OutBuffer, MaxOutMessageSize);
 	DMA_BUFFER (u8, m_InBuffer, MaxInMessageSize);
 
 	u32 m_nblock_address;
 	u32 m_nnumber_blocks;
+	u32 m_nnumber_blocks_chunk;
 	u64 m_nDeviceBlocks=0;
+	u32 m_currentDevicePointer = 0;
 	u32 m_nbyteCount;
-	boolean m_MSDReady=false;
+	boolean m_MMSDReady=false;
 };
 
 #endif

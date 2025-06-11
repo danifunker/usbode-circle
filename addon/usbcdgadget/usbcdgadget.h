@@ -86,6 +86,12 @@ struct TUSBCDCSW  // 13 bytes
 #define CD_CSW_STATUS_FAIL 1
 #define CD_CSW_STATUS_PHASE_ERR 2
 
+struct SenseParameters {
+    u8 bSenseKey = 0;
+    u8 bAddlSenseCode = 0;
+    u8 bAddlSenseCodeQual = 0;
+};
+
 // reply to SCSI Request Sense Command 0x3
 struct TUSBCDRequestSenseReply  // 14 bytes
 {
@@ -682,9 +688,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     CUEParser cueParser;
 
     u8 bmCSWStatus = 0;
-    u8 bSenseKey = 0;
-    u8 bAddlSenseCode = 0;
-    u8 bAddlSenseCodeQual = 0;
+    SenseParameters m_SenseParams;
+    //u8 bSenseKey = 0;
+    //u8 bAddlSenseCode = 0;
+    //u8 bAddlSenseCodeQual = 0;
     int data_skip_bytes = 0;
     int data_block_size = 2048;
     int skip_bytes = 0;

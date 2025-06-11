@@ -26,23 +26,23 @@
 #include <circle/usb/usb.h>
 #include <circle/types.h>
 
-class CUSBMSDGadget;
+class CUSBMMSDGadget;
 
 
-class CUSBMSDGadgetEndpoint : public CDWUSBGadgetEndpoint /// Endpoint of the USB mass storage gadget
+class CUSBMMSDGadgetEndpoint : public CDWUSBGadgetEndpoint /// Endpoint of the USB mass storage gadget
 {
 public:
-	CUSBMSDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc, CUSBMSDGadget *pGadget);
-	~CUSBMSDGadgetEndpoint (void);
+	CUSBMMSDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc, CUSBMMSDGadget *pGadget);
+	~CUSBMMSDGadgetEndpoint (void);
 
 	void OnActivate (void) override;
 
 	void OnTransferComplete (boolean bIn, size_t nLength) override;
 
 private:
-	friend class CUSBMSDGadget;
+	friend class CUSBMMSDGadget;
 
-	enum TMSDTransferMode
+	enum TMMSDTransferMode
 	{
 		TransferCBWOut,
 		TransferDataOut,
@@ -50,12 +50,12 @@ private:
 		TransferCSWIn
 	};
 
-	void BeginTransfer (TMSDTransferMode Mode, void *pBuffer, size_t nLength);
+	void BeginTransfer (TMMSDTransferMode Mode, void *pBuffer, size_t nLength);
 
 	void StallRequest(boolean bIn);
 
 private:
-	CUSBMSDGadget *m_pGadget;
+	CUSBMMSDGadget *m_pGadget;
 };
 
 #endif

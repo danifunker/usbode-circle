@@ -26,15 +26,15 @@
 
 #define MLOGNOTE(From,...)		//CLogger::Get ()->Write (From, LogNotice, __VA_ARGS__)
 
-CUSBMSDGadgetEndpoint::CUSBMSDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc,
-					      CUSBMSDGadget *pGadget)
+CUSBMMSDGadgetEndpoint::CUSBMMSDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc,
+					      CUSBMMSDGadget *pGadget)
 :	CDWUSBGadgetEndpoint (pDesc, pGadget),
 	m_pGadget (pGadget)
 {
 
 }
 
-CUSBMSDGadgetEndpoint::~CUSBMSDGadgetEndpoint (void)
+CUSBMMSDGadgetEndpoint::~CUSBMMSDGadgetEndpoint (void)
 {
 
 }
@@ -42,7 +42,7 @@ CUSBMSDGadgetEndpoint::~CUSBMSDGadgetEndpoint (void)
 //the following methods forward to the gadget class to facilitate
 //unified state management of the device
 
-void CUSBMSDGadgetEndpoint::OnActivate (void)
+void CUSBMMSDGadgetEndpoint::OnActivate (void)
 {
 	if (GetDirection () == DirectionOut)
 	{
@@ -50,25 +50,25 @@ void CUSBMSDGadgetEndpoint::OnActivate (void)
 	}
 }
 
-void CUSBMSDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
+void CUSBMMSDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 {
-	MLOGNOTE("MSDEndpoint","Transfer complete nlen= %i",nLength);
+	MLOGNOTE("MMSDEndpoint","Transfer complete nlen= %i",nLength);
 	m_pGadget->OnTransferComplete(bIn, nLength);
 }
 
 
-void CUSBMSDGadgetEndpoint::BeginTransfer (TMSDTransferMode Mode, void *pBuffer, size_t nLength)
+void CUSBMMSDGadgetEndpoint::BeginTransfer (TMMSDTransferMode Mode, void *pBuffer, size_t nLength)
 {
 	switch (Mode)
 	{
-	case TMSDTransferMode::TransferCBWOut:
-	case TMSDTransferMode::TransferDataOut:
-		MLOGNOTE("MSDEndpoint","Begin Transfer Out  nlen= %i",nLength);
+	case TMMSDTransferMode::TransferCBWOut:
+	case TMMSDTransferMode::TransferDataOut:
+		MLOGNOTE("MMSDEndpoint","Begin Transfer Out  nlen= %i",nLength);
 		CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode::TransferDataOut, pBuffer, nLength);
 		break;
-	case TMSDTransferMode::TransferDataIn:
-	case TMSDTransferMode::TransferCSWIn:
-		MLOGNOTE("MSDEndpoint","Begin Transfer In  nlen= %i",nLength);
+	case TMMSDTransferMode::TransferDataIn:
+	case TMMSDTransferMode::TransferCSWIn:
+		MLOGNOTE("MMSDEndpoint","Begin Transfer In  nlen= %i",nLength);
 		CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode::TransferDataIn, pBuffer, nLength);
 		break;
 	default:
@@ -77,7 +77,7 @@ void CUSBMSDGadgetEndpoint::BeginTransfer (TMSDTransferMode Mode, void *pBuffer,
 	}
 }
 
-void CUSBMSDGadgetEndpoint::StallRequest(boolean bIn)
+void CUSBMMSDGadgetEndpoint::StallRequest(boolean bIn)
 {
 	CDWUSBGadgetEndpoint::Stall(bIn);
 
