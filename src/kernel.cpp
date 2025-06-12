@@ -235,7 +235,7 @@ TShutdownMode CKernel::Run(void) {
 
     } else { // Mass Storage Device Mode
 	     
-	    m_MMSDGadget = new CUSBMMSDGadget(&m_Interrupt, &m_EMMC);
+	    m_MMSDGadget = new CUSBMMSDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), &m_EMMC);
 	    if (!m_MMSDGadget->Initialize()) {
 		LOGERR("Failed to initialize USB MSD gadget");
 		return ShutdownHalt;

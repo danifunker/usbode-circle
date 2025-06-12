@@ -140,8 +140,7 @@ const char* const CUSBCDGadget::s_StringDescriptor[] =
         "USB Optical Disk Emulator"};
 
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpeed, CCueBinFileDevice* pDevice)
-    : CDWUSBGadget(pInterruptSystem,
-                   isFullSpeed ? FullSpeed : HighSpeed),
+    : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_pDevice(pDevice),
       m_pEP{nullptr, nullptr, nullptr}
 {

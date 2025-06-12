@@ -143,7 +143,7 @@ public:
 	/// \param pDevice Pointer to the block device, to be controlled by this gadget
 	/// \note pDevice must be initialized yet, when it is specified here.
 	/// \note SetDevice() has to be called later, when pDevice is not specified here.
-	CUSBMMSDGadget (CInterruptSystem *pInterruptSystem, CDevice *pDevice = nullptr);
+	CUSBMMSDGadget (CInterruptSystem *pInterruptSystem, boolean isFullSpeed, CDevice *pDevice = nullptr);
 
 	~CUSBMMSDGadget (void);
 
@@ -224,7 +224,8 @@ private:
 	}
 	PACKED;
 
-	static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptor;
+	static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
+	static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
 
 	static const char *const s_StringDescriptor[];
 
@@ -267,6 +268,7 @@ private:
 	u32 m_currentDevicePointer = 0;
 	u32 m_nbyteCount;
 	boolean m_MMSDReady=false;
+	boolean m_IsFullSpeed = 0;
 };
 
 #endif

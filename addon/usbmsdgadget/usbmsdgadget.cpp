@@ -46,12 +46,51 @@ const TUSBDeviceDescriptor CUSBMMSDGadget::s_DeviceDescriptor =
 	1                   //num configurations
 };
 
-const CUSBMMSDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBMMSDGadget::s_ConfigurationDescriptor =
+const CUSBMMSDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBMMSDGadget::s_ConfigurationDescriptorFullSpeed =
 {
 	{
 		sizeof (TUSBConfigurationDescriptor),
 		DESCRIPTOR_CONFIGURATION,
-		sizeof s_ConfigurationDescriptor,
+		sizeof(TUSBMSTGadgetConfigurationDescriptor),
+		1,			// bNumInterfaces
+		1,
+		0,
+		0x80,			// bmAttributes (bus-powered)
+		500 / 2			// bMaxPower (500mA)
+	},
+	{
+		sizeof (TUSBInterfaceDescriptor),
+		DESCRIPTOR_INTERFACE,
+		0,			// bInterfaceNumber
+		0,			// bAlternateSetting
+		2,			// bNumEndpoints
+		0x08, 0x06, 0x50,	// bInterfaceClass, SubClass, Protocol
+		0			// iInterface
+	},
+	{
+		sizeof (TUSBEndpointDescriptor),
+		DESCRIPTOR_ENDPOINT,
+		0x81, 			//IN number 1
+		2,			// bmAttributes (Bulk)
+		64,			// wMaxPacketSize
+		0			// bInterval
+	},
+	{
+		sizeof (TUSBEndpointDescriptor),
+		DESCRIPTOR_ENDPOINT,
+		0x02, 			//OUT number 2
+		2,			// bmAttributes (Bulk)
+		64,			// wMaxPacketSize
+		0   			// bInterval
+	}
+};
+
+const CUSBMMSDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBMMSDGadget::s_ConfigurationDescriptorHighSpeed =
+{
+	{
+		sizeof (TUSBConfigurationDescriptor),
+		DESCRIPTOR_CONFIGURATION,
+		sizeof(TUSBMSTGadgetConfigurationDescriptor),
 		1,			// bNumInterfaces
 		1,
 		0,
@@ -92,11 +131,13 @@ const char *const CUSBMMSDGadget::s_StringDescriptor[] =
 	"Mass Storage Gadget"
 };
 
-CUSBMMSDGadget::CUSBMMSDGadget (CInterruptSystem *pInterruptSystem, CDevice *pDevice)
-:	CDWUSBGadget (pInterruptSystem, HighSpeed),
+CUSBMMSDGadget::CUSBMMSDGadget (CInterruptSystem *pInterruptSystem, boolean isFullSpeed, CDevice *pDevice)
+:	CDWUSBGadget (pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
 	m_pDevice (pDevice),
 	m_pEP {nullptr, nullptr, nullptr}
 {
+	MLOGNOTE("CUSBMMSDGadget::CUSBMMSDGadget", "entered %d", isFullSpeed);
+        m_IsFullSpeed = isFullSpeed;
 	if(pDevice)SetDevice(pDevice);
 }
 
@@ -124,8 +165,8 @@ const void *CUSBMMSDGadget::GetDescriptor (u16 wValue, u16 wIndex, size_t *pLeng
 	case DESCRIPTOR_CONFIGURATION:
 		if (!uchDescIndex)
 		{
-			*pLength = sizeof s_ConfigurationDescriptor;
-			return &s_ConfigurationDescriptor;
+			*pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
+			return m_IsFullSpeed?&s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
 		}
 		break;
 
@@ -152,15 +193,30 @@ void CUSBMMSDGadget::AddEndpoints (void)
 {
 
 	assert (!m_pEP[EPOut]);
-	m_pEP[EPOut] = new CUSBMMSDGadgetEndpoint (
-				reinterpret_cast<const TUSBEndpointDescriptor *> (
-					&s_ConfigurationDescriptor.EndpointOut), this);
+	if (m_IsFullSpeed)
+            m_pEP[EPOut] = new CUSBMMSDGadgetEndpoint(
+                reinterpret_cast<const TUSBEndpointDescriptor*>(
+                    &s_ConfigurationDescriptorFullSpeed.EndpointOut),
+                this);
+        else
+            m_pEP[EPOut] = new CUSBMMSDGadgetEndpoint(
+                reinterpret_cast<const TUSBEndpointDescriptor*>(
+                    &s_ConfigurationDescriptorHighSpeed.EndpointOut),
+                this);
+
 	assert (m_pEP[EPOut]);
 
 	assert (!m_pEP[EPIn]);
-	m_pEP[EPIn] = new CUSBMMSDGadgetEndpoint (
-				reinterpret_cast<const TUSBEndpointDescriptor *> (
-					&s_ConfigurationDescriptor.EndpointIn), this);
+        if (m_IsFullSpeed)
+            m_pEP[EPIn] = new CUSBMMSDGadgetEndpoint(
+                reinterpret_cast<const TUSBEndpointDescriptor*>(
+                    &s_ConfigurationDescriptorFullSpeed.EndpointIn),
+                this);
+        else
+            m_pEP[EPIn] = new CUSBMMSDGadgetEndpoint(
+                reinterpret_cast<const TUSBEndpointDescriptor*>(
+                    &s_ConfigurationDescriptorHighSpeed.EndpointIn),
+                this);
 	assert (m_pEP[EPIn]);
 
 	m_nState=TMMSDState::Init;
