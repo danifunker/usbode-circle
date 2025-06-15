@@ -8,11 +8,12 @@ NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
 OBJS    = webserver.o \
-	urldecoder.o \
+	util.o \
 	pagehandlerregistry.o \
 	handlers/notfound.o \
 	handlers/mountpage.o \
-	handlers/homepage.o
+	handlers/homepage.o \
+	handlers/asset.o
 
 
 libwebserver.a: $(OBJS)
@@ -23,15 +24,20 @@ libwebserver.a: $(OBJS)
 include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
 
-CFLAGS += -I ../../addon -I ./pages
+CFLAGS += -I ../../addon -I ./pages -I ./assets -I .
 CFLAGS += -D_TIME_T_DECLARED
 
 handlers/mountpage.o: pages/mount.h
 handlers/homepage.o: pages/index.h
+handlers/asset.o: assets/logo.h
 
 pages/%.h: pages/%.html
-	@echo "  GEN   $@"
+	@echo "  CONVERTTOOL   $@"
 	@$(CIRCLEHOME)/tools/converttool $< > $@
+
+assets/%.h: assets/%.jpg
+	@echo "  XXD   $@"
+	@xxd $< $@
 
 .PHONY: clean
 

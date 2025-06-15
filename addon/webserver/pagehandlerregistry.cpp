@@ -3,6 +3,7 @@
 #include "handlers/notfound.h"
 #include "handlers/homepage.h"
 #include "handlers/mountpage.h"
+#include "handlers/asset.h"
 
 // ----------------------------------------------------------------------
 // Define and initialize the static array of PageHandlerEntry structs.
@@ -10,10 +11,12 @@
 static HomePageHandler s_homePageHandler;
 static NotFoundPageHandler s_notFoundPageHandler;
 static MountPageHandler s_mountPageHandler;
+static AssetHandler s_assetHandler;
 
 const PageHandlerEntry PageHandlerRegistry::s_pathHandlers[] = {
     {"/",        &s_homePageHandler},
-    {"/mount",        &s_mountPageHandler}
+    {"/mount",        &s_mountPageHandler},
+    {"/asset",        &s_assetHandler}
 };
 
 // Define the size of the static array.

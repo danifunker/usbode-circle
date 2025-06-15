@@ -29,7 +29,6 @@
 #include <linux/kernel.h>
 #include <circle/koptions.h>
 #include <discimage/util.h>
-#include "urldecoder.h"
 
 #ifndef TSHUTDOWNMODE
 #define TSHUTDOWNMODE
