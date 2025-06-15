@@ -369,8 +369,8 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Check if we should shutdown or halt
-	if (DeviceState.getShutdownMode() != ShutdownNone) {
-		return DeviceState.getShutdownMode();
+	if (DeviceState::getInstance().getShutdownMode() != ShutdownNone) {
+		return DeviceState::getInstance().getShutdownMode();
 	}
 
         // Use shorter yielding for more responsive button checks
