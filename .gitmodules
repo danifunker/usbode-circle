@@ -1,3 +1,12 @@
 [submodule "circle"]
 	path = circle
 	url = https://github.com/rsta2/circle.git
+[submodule "addon/jinjac/jinjac"]
+	path = addon/jinjac/jinjac
+	url = https://github.com/miko53/jinjac.git
+[submodule "circle-stdlib"]
+	path = circle-stdlib
+	url = https://github.com/smuehlst/circle-stdlib.git
+[submodule "addon/webserver/Jinja2Cpp"]
+	path = addon/webserver/Jinja2Cpp
+	url = https://github.com/jinja2cpp/Jinja2Cpp.git

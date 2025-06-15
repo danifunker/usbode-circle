@@ -369,6 +369,8 @@ TShutdownMode CKernel::Run(void) {
 
         // Check for shutdown/reboot request from the web interface
         if (pCWebServer != nullptr) {
+		//FIXME!!!!
+		/*
             TShutdownMode mode = pCWebServer->GetShutdownMode();
             if (mode != ShutdownNone) {
                 LOGNOTE("Shutdown requested via web interface: %s",
@@ -383,6 +385,7 @@ TShutdownMode CKernel::Run(void) {
 
                 return mode;
             }
+	    */
         }
 
         // Use shorter yielding for more responsive button checks
@@ -443,6 +446,7 @@ TShutdownMode CKernel::Run(void) {
 		// Process display updates if needed - after network processing but before yielding
 		// Do we really need to do this on EVERY iteration of the main loop?
 		// TODO move this stuff to the display manager on its own run loop
+		/* FIXME!!
 		if (CWebServer::IsDisplayUpdateNeeded() && m_pDisplayManager != nullptr && m_ScreenState != ScreenStateLoadISO) {
 		    const char* imageName = CWebServer::GetLastMountedImage();
 		    LOGNOTE("Processing pending display update for: %s", imageName);
@@ -456,6 +460,7 @@ TShutdownMode CKernel::Run(void) {
 		    // Clear the flag
 		    CWebServer::ClearDisplayUpdateFlag();
 		}
+		*/
         }
 
 	// Give tasks a chance to run

@@ -48,21 +48,6 @@ class CWebServer : public CHTTPDaemon {
     // from CHTTPDaemon
     CHTTPDaemon *CreateWorker(CNetSubSystem *pNetSubSystem, CSocket *pSocket);
 
-    // Get the shutdown mode (if any)
-    TShutdownMode GetShutdownMode(void) const;
-
-    // Static method and variable for global shutdown state
-    static void SetGlobalShutdownMode(TShutdownMode mode);
-
-    // Callback function type for display updates
-    typedef void (*TDisplayUpdateHandler)(const char*);
-    
-    // Sets the display update handler callback
-    void SetDisplayUpdateHandler(TDisplayUpdateHandler pHandler);
-    
-    // Other methods to trigger the callback when needed
-    void NotifyDisplayUpdate(const char* imageName);
-
    private:
     // from CHTTPDaemon
     THTTPStatus GetContent (const char  *pPath,
@@ -71,30 +56,13 @@ class CWebServer : public CHTTPDaemon {
                           u8          *pBuffer,
                           unsigned    *pLength,
                           const char **ppContentType);
-    THTTPStatus list_files_as_table(char *output_buffer, size_t max_len, const char *params, const char *pUSBSpeed);
-    THTTPStatus list_files_as_json(char *json_output, size_t max_len);
-    THTTPStatus generate_mount_success_page(char *output_buffer, size_t max_len, const char *filename, const char *pUSBSpeed);
-    THTTPStatus handle_system_operation(char *content, size_t max_len, const char *action, TShutdownMode *pShutdownMode, const char *pUSBSpeed);
-    
 private:
     CActLED *m_pActLED;
     CUSBCDGadget *m_pCDGadget;
     u8 *m_pContentBuffer;  // Added content buffer as class member
     CPropertiesFatFsFile *m_pProperties;
-    TShutdownMode m_ShutdownMode;
-
-    // Static shutdown mode that is shared across all instances
-    static TShutdownMode s_GlobalShutdownMode;
-
-    // Remove the display update handler callback and use a simple flag
-    static bool s_DisplayUpdateNeeded;
-    static CString s_LastMountedImage;
 
 public:
-    // Add these static methods for the kernel to use
-    static bool IsDisplayUpdateNeeded(void);
-    static const char* GetLastMountedImage(void);
-    static void ClearDisplayUpdateFlag(void);
 };
 
 #endif
