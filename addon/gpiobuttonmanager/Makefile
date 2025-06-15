@@ -2,18 +2,21 @@
 # Makefile
 #
 
-CIRCLEHOME = ../../circle
+USBODEHOME = ../..
+STDLIBHOME = $(USBODEHOME)/circle-stdlib
+NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
+CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
-CFLAGS += -I ../../addon
-OBJS	= gpiobuttonmanager.o
-
-DEPS	= $(OBJS:.o=.d)
+OBJS    = gpiobuttonmanager.o
 
 libgpiobuttonmanager.a: $(OBJS)
 	@echo "  AR    $@"
 	@rm -f $@
 	@$(AR) cr $@ $(OBJS)
 
+include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
+
+CFLAGS += -I ../../addon
 
 -include $(DEPS)
