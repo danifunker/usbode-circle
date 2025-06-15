@@ -18,22 +18,24 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-CIRCLEHOME = ../../circle
+USBODEHOME = ../..
+STDLIBHOME = $(USBODEHOME)/circle-stdlib
+CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
-all: libusbmsdgadget.a
+all: libusbcdgadget.a
+
+include $(CIRCLEHOME)/Rules.mk
 
 CPPFLAGS += -DUSB_GADGET_VENDOR_ID=0x04da
 CPPFLAGS += -DUSB_GADGET_DEVICE_ID_MMSD=0x1d01
-CFLAGS += -I ../../addon
-
-include $(CIRCLEHOME)/Rules.mk
+CFLAGS += -I $(USBODEHOME)/addon
 
 ifneq ($(strip $(RASPPI)),5)
 OBJS    = usbmsdgadget.o usbmsdgadgetendpoint.o
 
 endif
 
-libusbmsdgadget.a: $(OBJS)
+libusbcdgadget.a: $(OBJS)
 	@echo "  AR    $@"
 	@rm -f $@
 	@$(AR) cr $@ $(OBJS)
