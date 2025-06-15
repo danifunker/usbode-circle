@@ -2,17 +2,19 @@
 # Makefile
 #
 
-CIRCLEHOME = ../../circle
+USBODEHOME = ../..
+STDLIBHOME = $(USBODEHOME)/circle-stdlib
+NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
+CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
 OBJS	= displaymanager.o st7789display.o chardevice.o st7789device.o sh1106device.o sh1106display.o
-
-DEPS	= $(OBJS:.o=.d)
 
 libdisplay.a: $(OBJS)
 	@echo "  AR    $@"
 	@rm -f $@
 	@$(AR) cr $@ $(OBJS)
 
+include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
 
 -include $(DEPS)
