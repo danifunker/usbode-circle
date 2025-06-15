@@ -1,34 +1,25 @@
 #!/bin/bash
 set -e
 
+# Circle Raspberry Pi model number (1, 2, 3, 4, 5, default: 1)
+export RPI_MODEL=1
 export MAKEFLAGS="-j8"
 
 projectRoot=$(git rev-parse --show-toplevel)
-echo "This script requires a successful ./configure -r X --prefix=/path/to/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi- run in ${projectRoot}"
 destDir=${projectRoot}/dist
 git submodule update --init --recursive
-cd ${projectRoot}/circle
-./makeall clean
-./makeall
-cd ${projectRoot}/circle/addon/fatfs
-make clean
-make
-cd ${projectRoot}/circle/addon/SDCard
-make clean
-make
-cd ${projectRoot}/circle/addon/wlan
-./makeall clean
-./makeall
-if [ ! -f "${projectRoot}/circle/addon/wlan/firmware/LICENCE.broadcom_bcm43xx" ]; then
-    cd ${projectRoot}/circle/addon/wlan/firmware
+cd ${projectRoot}/circle-stdlib/
+./configure -r ${RPI_MODEL}
+make all
+if [ ! -f "${projectRoot}/circle-stdlib/libs/circle/addon/wlan/firmware/LICENCE.broadcom_bcm43xx" ]; then
+    cd ${projectRoot}/circle-stdlib/libs/circle/addon/wlan/firmware
     make -j2
 fi
-if [ ! -f "${projectRoot}/circle/boot/LICENCE.broadcom" ]; then
-cd ${projectRoot}/circle/boot
+if [ ! -f "${projectRoot}/circle-stdlib/libs/circle/boot/LICENCE.broadcom" ]; then
+cd ${projectRoot}/circle-stdlib/libs/circle/boot
 make -j2
 fi
 cd ${projectRoot}/addon/gitinfo
-make clean
 make 
 cd ${projectRoot}/addon/usbcdgadget
 make clean
@@ -51,10 +42,10 @@ make
 cd ${projectRoot}/addon/ftpserver
 make clean
 make
-cd ${projectRoot}/circle/addon/linux
+cd ${projectRoot}/circle-stdlib/libs/circle/addon/linux
 make clean
 make
-cd ${projectRoot}/circle/addon/Properties
+cd ${projectRoot}/circle-stdlib/libs/circle/addon/Properties
 make clean
 make
 cd ${projectRoot}/addon/display
@@ -76,17 +67,19 @@ cp ${projectRoot}/src/kernel*.img ${destDir}
 cp ${projectRoot}/sdcard/wpa_supplicant.conf ${destDir}
 cp ${projectRoot}/sdcard/cmdline.txt ${destDir}
 mkdir -p ${destDir}/images
-cp ${projectRoot}/sdcard/image.iso.gz ${destDir}/images
-gunzip ${destDir}/images/image.iso.gz
-cp ${projectRoot}/sdcard/test.pcm.gz ${destDir}
-gunzip ${destDir}/test.pcm.gz
+mkdir -p ${destDir}/system
+cp ${projectRoot}/sdcard/image.iso.gz ${destDir}/system
+gunzip ${destDir}/system/image.iso.gz
+cp ${projectRoot}/sdcard/test.pcm.gz ${destDir}/system
+gunzip ${destDir}/system/test.pcm.gz
 mkdir -p ${destDir}/firmware
-cp ${projectRoot}/circle/addon/wlan/firmware/* ${destDir}/firmware
+cp ${projectRoot}/circle-stdlib/libs/circle/addon/wlan/firmware/* ${destDir}/firmware
 rm ${destDir}/firmware/Makefile
-cp ${projectRoot}/circle/boot/bootcode.bin ${destDir}
-cp ${projectRoot}/circle/boot/start.elf ${destDir}
-arch=$(cat ${projectRoot}/circle/Config.mk  | grep AARCH | awk '{print $3}')
-cp ${projectRoot}/circle/boot/config${arch}.txt ${destDir}/config.txt
+cp ${projectRoot}/circle-stdlib/libs/circle/boot/bootcode.bin ${destDir}
+cp ${projectRoot}/circle-stdlib/libs/circle/boot/start.elf ${destDir}
+#arch=$(cat ${projectRoot}/circle-stdlib/libs/circle/Config.mk  | grep AARCH | awk '{print $3}')
+arch=32
+cp ${projectRoot}/circle-stdlib/libs/circle/boot/config${arch}.txt ${destDir}/config.txt
 cat ${projectRoot}/sdcard/config-usbode.txt >> ${destDir}/config.txt
 cp ${projectRoot}/sdcard/config-options.txt ${destDir}
 cp ${projectRoot}/sdcard/cmdline.txt ${destDir}

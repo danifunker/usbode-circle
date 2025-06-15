@@ -9,5 +9,8 @@ destDir=${projectRoot}/dist
 
 rm -rf ${destDir}
 
+cd ${projectRoot}/circle-stdlib
+make clean
+
 cd ${projectRoot}
-find . -name Makefile -exec bash -c 'make -C "${1%/*}" clean' -- {} \;
+find . -path ./circle-stdlib -prune -o -name Makefile -exec bash -c 'make -C "${1%/*}" clean' -- {} \;
