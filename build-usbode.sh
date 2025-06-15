@@ -6,7 +6,6 @@ echo "This script requires a successful ./configure -r X --prefix=/path/to/arm-g
 git submodule update --init --recursive
 circleDir="${projectRoot}/circle-stdlib"
 buildConfPath="${HOME}/build-usbode.conf"
-configMkPath="${circleDir}/Config.mk"
 if ls ${projectRoot}/usbode*.zip 1> /dev/null 2>&1; then
     echo "Removing existing zip files..."
     rm ${projectRoot}/usbode*.zip
@@ -46,7 +45,7 @@ for arch in "${supported_rasppi[@]}"; do
     # Configure for this architecture
     echo "Configuring for RASPPI=$arch"
     cd "$circleDir"
-    #./configure -r $arch
+    ./configure -r $arch --prefix="$PathPrefix"
     
     echo "Running make for RASPPI=$arch"
     make all
