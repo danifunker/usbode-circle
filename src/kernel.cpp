@@ -27,6 +27,7 @@
 #include <gitinfo/gitinfo.h>
 #include <discimage/util.h>
 #include <webserver/webserver.h>
+#include <devicestate/devicestate.h>
 
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
@@ -367,26 +368,10 @@ TShutdownMode CKernel::Run(void) {
                 LOGNOTE("Started FTP service");
         }
 
-        // Check for shutdown/reboot request from the web interface
-        if (pCWebServer != nullptr) {
-		//FIXME!!!!
-		/*
-            TShutdownMode mode = pCWebServer->GetShutdownMode();
-            if (mode != ShutdownNone) {
-                LOGNOTE("Shutdown requested via web interface: %s",
-                        (mode == ShutdownReboot) ? "Reboot" : "Halt");
-
-                // Clean up resources
-                delete pmDNSPublisher;
-                delete pCWebServer;
-                if (m_pFTPDaemon) {
-                    delete m_pFTPDaemon;
-                }
-
-                return mode;
-            }
-	    */
-        }
+        // Check if we should shutdown or halt
+	if (DeviceState.getShutdownMode() != ShutdownNone) {
+		return DeviceState.getShutdownMode();
+	}
 
         // Use shorter yielding for more responsive button checks
         // OPTIMIZATION: Yield less frequently when in file selection mode
@@ -399,7 +384,7 @@ TShutdownMode CKernel::Run(void) {
 
         // Status updates less frequently
 	// TODO move to a display manager run loop
-        if (nCount % 1000 == 0)  // Only update status occasionally
+        if (nCount % 100 == 0)  // Only update status occasionally
         {
             // Periodic status update
             unsigned currentTime = m_Timer.GetTicks();

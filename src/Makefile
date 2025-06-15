@@ -40,6 +40,7 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(USBODEHOME)/addon/ftpserver/libftpserver.a \
 	$(USBODEHOME)/addon/cdplayer/libcdplayer.a \
 	$(USBODEHOME)/addon/gpiobuttonmanager/libgpiobuttonmanager.a \
+	$(USBODEHOME)/addon/devicestate/libdevicestate.a \
 	$(USBODEHOME)/addon/display/libdisplay.a
 
 %.h: %.html
