@@ -24,9 +24,10 @@
 #include <ftpserver/ftpdaemon.h>
 #include <string.h>
 
-#include "gitinfo.d"
-#include "util.h"
-#include "webserver.h"
+#include <gitinfo/gitinfo.h>
+#include <discimage/util.h>
+#include <webserver/webserver.h>
+#include <devicestate/devicestate.h>
 
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
@@ -71,7 +72,6 @@ CKernel::CKernel(void)
       m_WLAN(FIRMWARE_PATH),
       m_Net(0, 0, 0, 0, HOSTNAME, NetDeviceTypeWLAN),
       m_WPASupplicant(SUPPLICANT_CONFIG_FILE),
-      m_CDGadget(&m_Interrupt),
       m_pSPIMaster(nullptr),
       m_pDisplayManager(nullptr),
       m_pButtonManager(nullptr),
@@ -80,6 +80,7 @@ CKernel::CKernel(void)
       m_nTotalISOCount(0),
       m_pISOList(nullptr) {
     // m_ActLED.Blink(5);  // show we are alive
+    //  m_CDGadget(&m_Interrupt),
 }
 
 CKernel::~CKernel(void) {
@@ -167,31 +168,11 @@ boolean CKernel::Initialize(void) {
         LOGNOTE("Initialized WAP supplicant");
     }
 
-    // If network initialization succeeded, read timezone from config.txt
-    // Commented because Network definately won't be running yet and
-    // we start this later in the run loop anyway
-    /*
-    if (bOK && m_Net.IsRunning()) {
-        // Read timezone from config.txt
-        CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
-        if (Properties.Load()) {
-            Properties.SelectSection("usbode");
-            CString Value;
-            const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
-
-            // Initialize NTP with the timezone
-            InitializeNTP(timezone);
-        } else {
-            // Use default timezone if config file not available
-            InitializeNTP("UTC");
-        }
-    }
-    */
-
     return bOK;
 }
 
 TShutdownMode CKernel::Run(void) {
+	//
     // Initialize the global kernel pointer
     g_pKernel = this;
 
@@ -211,35 +192,57 @@ TShutdownMode CKernel::Run(void) {
         LOGNOTE("Started the Log File service");
     }
 
+    // Announce ourselves
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
     LOGNOTE("=====================================");
 
-    // Initialize the CD Player service
-    const char* pSoundDevice = m_Options.GetSoundDevice();
-    if (strcmp(pSoundDevice, "sndi2s") == 0) {
-        new CCDPlayer(pSoundDevice);
-        LOGNOTE("Started the CD Player service");
-    }
+    int mode = Properties.GetNumber("mode", 0);
+    LOGNOTE("Got mode = %d", mode);
 
-    // Load our current disc image
+    // TODO improve this to encompass the GUI
     const char* imageName = Properties.GetString("current_image", "image.iso");
-    CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
-    if (!cueBinFileDevice) {
-        LOGERR("Failed to load cueBinFileDevice %s", imageName);
-        return ShutdownHalt;
-    }
-    LOGNOTE("Loaded cue/bin file %s", imageName);
+    if (mode == 0) { // CDROM Mode
 
-    // Initialize USB CD gadget
-    m_CDGadget.SetDevice(cueBinFileDevice);
-    if (!m_CDGadget.Initialize()) {
-        LOGERR("Failed to initialize USB CD gadget");
-        return ShutdownHalt;
+	    // Initialize the CD Player service
+	    const char* pSoundDevice = m_Options.GetSoundDevice();
+	    
+	    //TODO support other sound options
+	    if (strcmp(pSoundDevice, "sndi2s") == 0) {
+		new CCDPlayer(pSoundDevice);
+		LOGNOTE("Started the CD Player service");
+	    }
+
+	    // Load our current disc image
+	    CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
+	    if (!cueBinFileDevice) {
+		LOGERR("Failed to load cueBinFileDevice %s", imageName);
+		return ShutdownHalt;
+	    }
+	    LOGNOTE("Loaded cue/bin file %s", imageName);
+
+	    // Initialize USB CD gadget
+	    // TODO get USB speed from Properties
+	    // TODO allow UI to set USB speed
+	    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), cueBinFileDevice);
+	    //m_CDGadget->SetDevice(cueBinFileDevice);
+	    if (!m_CDGadget->Initialize()) {
+		LOGERR("Failed to initialize USB CD gadget");
+		return ShutdownHalt;
+	    }
+	    LOGNOTE("Started USB CD gadget");
+
+    } else { // Mass Storage Device Mode
+	     
+	    m_MMSDGadget = new CUSBMMSDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), &m_EMMC);
+	    if (!m_MMSDGadget->Initialize()) {
+		LOGERR("Failed to initialize USB MSD gadget");
+		return ShutdownHalt;
+	    }
+	    LOGNOTE("Started USB MSD gadget");
     }
-    LOGNOTE("Started USB CD gadget");
 
     // Display configuration
     const char* displayType = Properties.GetString("displayhat", "none");
@@ -252,6 +255,7 @@ TShutdownMode CKernel::Run(void) {
 
         // If display was initialized successfully
         if (m_pDisplayManager != nullptr) {
+	    // TODO: Refactor
             // Show status screen with current information
             CString IPString;
             if (m_Net.IsRunning()) {
@@ -267,6 +271,7 @@ TShutdownMode CKernel::Run(void) {
                 m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
         }
 
+	// TODO refactor
         // Allow some time for USB to stabilize before initializing buttons
         LOGNOTE("Waiting for USB to stabilize before initializing buttons");
         m_Scheduler.MsSleep(2000);
@@ -277,7 +282,6 @@ TShutdownMode CKernel::Run(void) {
     }
 
     static const char ServiceName[] = HOSTNAME;
-    static const char* ppText[] = {"path=/index.html", nullptr};
     CmDNSPublisher* pmDNSPublisher = nullptr;
     CWebServer* pCWebServer = nullptr;
     CFTPDaemon* m_pFTPDaemon = nullptr;
@@ -293,74 +297,59 @@ TShutdownMode CKernel::Run(void) {
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
         // Process button updates FIRST for best responsiveness
-        if (m_pButtonManager != nullptr) {
+        if (m_pButtonManager) {
             m_pButtonManager->Update();
 
             // OPTIMIZATION: Check for button updates more frequently during file selection
             // This makes the UI feel much more responsive when navigating file lists
             if (m_ScreenState == ScreenStateLoadISO) {
                 // If we're in the file selection screen, check buttons again immediately
+		// TODO does this really do anything? Did anything happen since the last call to Update()?
                 m_pButtonManager->Update();
             }
         }
 
-        // Then handle USB and network
-        m_CDGadget.UpdatePlugAndPlay();
-        m_CDGadget.Update();
+        // Update USB transfers
+	if (m_CDGadget) {
+        	m_CDGadget->UpdatePlugAndPlay();
+       		m_CDGadget->Update();
+    	}
 
+	if (m_MMSDGadget) {
+	       m_MMSDGadget->UpdatePlugAndPlay ();
+               m_MMSDGadget->Update ();
+	}
+
+	/*
         // CRITICAL: Process network tasks even in ISO selection mode
         if (m_Net.IsRunning()) {
             m_Net.Process();
         }
+	*/
 
         // Start the Web Server
-        if (m_Net.IsRunning() && pCWebServer == nullptr) {
+        if (m_Net.IsRunning() && !pCWebServer) {
             // Create the web server
-            pCWebServer = new CWebServer(&m_Net, &m_CDGadget, &m_ActLED, &Properties);
+            pCWebServer = new CWebServer(&m_Net, m_CDGadget, &m_ActLED, &Properties);
 
             LOGNOTE("Started Webserver service");
         }
 
-        // Show details of the network connection
-        if (m_Net.IsRunning()) {
-            CString CurrentIPString;
-            m_Net.GetConfig()->GetIPAddress()->Format(&CurrentIPString);
+	// Run NTP
+	if (m_Net.IsRunning() && !ntpInitialized) {
+            // Read timezone from config.txt
+            Properties.SelectSection("usbode");
+            const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
 
-            // If IP changed (including from not connected to connected)
-            if (strcmp((const char*)CurrentIPString, (const char*)PreviousIPString) != 0) {
-                // Log the new IP address
-                LOGNOTE("IP address: %s", (const char*)CurrentIPString);
+            // Initialize NTP with the timezone
+            InitializeNTP(timezone);
+            ntpInitialized = true;
+	}
 
-                // Store for next time - make sure to use deep copy
-                PreviousIPString = CurrentIPString;
-
-                // If network is newly up and running with a valid IP address
-                // and NTP hasn't been initialized yet, do it now
-                if (!ntpInitialized && CurrentIPString != "0.0.0.0") {
-                    // Read timezone from config.txt
-                    Properties.SelectSection("usbode");
-                    const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
-
-                    // Initialize NTP with the timezone
-                    InitializeNTP(timezone);
-                    ntpInitialized = true;
-                }
-
-                // Update the display with the new IP address
-                // but only if we're not in the ISO selection screen
-                if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr) {
-                    // Get the current ISO name
-                    Properties.SelectSection("usbode");
-                    const char* currentImage = Properties.GetString("current_image", "image.iso");
-
-                    // Force an update of the display
-                    UpdateDisplayStatus(currentImage);
-                }
-            }
-        }
 
         // Publish mDNS
-        if (m_Net.IsRunning() && pmDNSPublisher == nullptr) {
+        if (m_Net.IsRunning() && !pmDNSPublisher) {
+            static const char* ppText[] = {"path=/index.html", nullptr};
             pmDNSPublisher = new CmDNSPublisher(&m_Net);
             if (!pmDNSPublisher->PublishService(ServiceName, "_http._tcp", 80, ppText)) {
                 LOGNOTE("Cannot publish service");
@@ -369,7 +358,7 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Start the FTP Server
-        if (m_Net.IsRunning() && !m_pFTPDaemon) {
+        if (mode == 0 && m_Net.IsRunning() && !m_pFTPDaemon) {
             m_pFTPDaemon = new CFTPDaemon("cdrom", "cdrom");
             if (!m_pFTPDaemon->Initialize()) {
                 LOGERR("Failed to init FTP daemon");
@@ -379,31 +368,22 @@ TShutdownMode CKernel::Run(void) {
                 LOGNOTE("Started FTP service");
         }
 
-        // Check for shutdown/reboot request from the web interface
-        if (pCWebServer != nullptr) {
-            TShutdownMode mode = pCWebServer->GetShutdownMode();
-            if (mode != ShutdownNone) {
-                LOGNOTE("Shutdown requested via web interface: %s",
-                        (mode == ShutdownReboot) ? "Reboot" : "Halt");
-
-                // Clean up resources
-                delete pmDNSPublisher;
-                delete pCWebServer;
-                if (m_pFTPDaemon) {
-                    delete m_pFTPDaemon;
-                }
-
-                return mode;
-            }
-        }
+        // Check if we should shutdown or halt
+	if (DeviceState::getInstance().getShutdownMode() != ShutdownNone) {
+		return DeviceState::getInstance().getShutdownMode();
+	}
 
         // Use shorter yielding for more responsive button checks
         // OPTIMIZATION: Yield less frequently when in file selection mode
+	// We don't want to do this or it will slow down our core use-case of being a CDROM drive
+	// TODO implement interrupt driven gpio
+	/*
         if (m_ScreenState != ScreenStateLoadISO || nCount % 10 == 0) {
             m_Scheduler.Yield();
-        }
+        }*/
 
         // Status updates less frequently
+	// TODO move to a display manager run loop
         if (nCount % 100 == 0)  // Only update status occasionally
         {
             // Periodic status update
@@ -420,21 +400,52 @@ TShutdownMode CKernel::Run(void) {
                     lastStatusUpdate = currentTime;
                 }
             }
-        }
 
-        // Process display updates if needed - after network processing but before yielding
-        if (CWebServer::IsDisplayUpdateNeeded() && m_pDisplayManager != nullptr && m_ScreenState != ScreenStateLoadISO) {
-            const char* imageName = CWebServer::GetLastMountedImage();
-            LOGNOTE("Processing pending display update for: %s", imageName);
+		// Show details of the network connection
+		// TODO We *really* don't want to do this on every iteration of this loop!
+		if (m_Net.IsRunning()) {
+		    CString CurrentIPString;
+		    m_Net.GetConfig()->GetIPAddress()->Format(&CurrentIPString);
 
-            // Make sure we're not in ISO selection mode
-            m_ScreenState = ScreenStateMain;
+		    // If IP changed (including from not connected to connected)
+		    if (strcmp((const char*)CurrentIPString, (const char*)PreviousIPString) != 0) {
+			// Log the new IP address
+			LOGNOTE("IP address: %s", (const char*)CurrentIPString);
 
-            // Update the display with the image name
-            UpdateDisplayStatus(imageName);
+			// Store for next time - make sure to use deep copy
+			PreviousIPString = CurrentIPString;
 
-            // Clear the flag
-            CWebServer::ClearDisplayUpdateFlag();
+			// Update the display with the new IP address
+			// but only if we're not in the ISO selection screen
+			if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr) {
+			    // Get the current ISO name
+			    Properties.SelectSection("usbode");
+			    const char* currentImage = Properties.GetString("current_image", "image.iso");
+
+			    // Force an update of the display
+			    UpdateDisplayStatus(currentImage);
+			}
+		    }
+		}
+
+		// Process display updates if needed - after network processing but before yielding
+		// Do we really need to do this on EVERY iteration of the main loop?
+		// TODO move this stuff to the display manager on its own run loop
+		/* FIXME!!
+		if (CWebServer::IsDisplayUpdateNeeded() && m_pDisplayManager != nullptr && m_ScreenState != ScreenStateLoadISO) {
+		    const char* imageName = CWebServer::GetLastMountedImage();
+		    LOGNOTE("Processing pending display update for: %s", imageName);
+
+		    // Make sure we're not in ISO selection mode
+		    m_ScreenState = ScreenStateMain;
+
+		    // Update the display with the image name
+		    UpdateDisplayStatus(imageName);
+
+		    // Clear the flag
+		    CWebServer::ClearDisplayUpdateFlag();
+		}
+		*/
         }
 
 	// Give tasks a chance to run
@@ -1084,7 +1095,7 @@ void CKernel::LoadSelectedISO(void) {
     LOGNOTE("Selected new Image: %s", SelectedISO);
 
     // Set the new device in the CD gadget
-    m_CDGadget.SetDevice(CueBinFileDevice);
+    m_CDGadget->SetDevice(CueBinFileDevice);
 
     // Return to main screen state first
     m_ScreenState = ScreenStateMain;
