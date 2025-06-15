@@ -50,6 +50,7 @@ for arch in "${supported_rasppi[@]}"; do
     echo "Running make for RASPPI=$arch"
     make clean
     rm -rf ${circleDir}/build
+    mkdir -p ${circleDir}/build
     make all
     if [ ! -f "${projectRoot}/circle-stdlib/libs/circle/addon/wlan/firmware/LICENCE.broadcom_bcm43xx" ]; then
         cd ${projectRoot}/circle-stdlib/libs/circle/addon/wlan/firmware
