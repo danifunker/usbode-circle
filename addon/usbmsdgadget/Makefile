@@ -22,7 +22,7 @@ USBODEHOME = ../..
 STDLIBHOME = $(USBODEHOME)/circle-stdlib
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
-all: libusbcdgadget.a
+all: libusbmsdgadget.a
 
 include $(CIRCLEHOME)/Rules.mk
 
@@ -35,7 +35,7 @@ OBJS    = usbmsdgadget.o usbmsdgadgetendpoint.o
 
 endif
 
-libusbcdgadget.a: $(OBJS)
+libusbmsdgadget.a: $(OBJS)
 	@echo "  AR    $@"
 	@rm -f $@
 	@$(AR) cr $@ $(OBJS)
