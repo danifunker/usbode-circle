@@ -45,12 +45,12 @@ for arch in "${supported_rasppi[@]}"; do
     # Configure for this architecture
     echo "Configuring for RASPPI=$arch"
     cd "$circleDir"
+    rm -rf ${circleDir}/build
+    mkdir -p ${circleDir}/build/circle-newlib
     ./configure -r $arch --prefix "$PathPrefix"
     
     echo "Running make for RASPPI=$arch"
     make clean
-    rm -rf ${circleDir}/build
-    mkdir -p ${circleDir}/build/circle-newlib
     make all
     if [ ! -f "${projectRoot}/circle-stdlib/libs/circle/addon/wlan/firmware/LICENCE.broadcom_bcm43xx" ]; then
         cd ${projectRoot}/circle-stdlib/libs/circle/addon/wlan/firmware
