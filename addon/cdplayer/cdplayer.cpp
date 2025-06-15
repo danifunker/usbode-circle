@@ -149,7 +149,7 @@ u32 CCDPlayer::GetCurrentAddress() {
     return address;
 }
 
-// Loads a sample from "test.pcm" and plays it
+// Loads a sample from "system/test.pcm" and plays it
 // Returns false if there was any problem
 boolean CCDPlayer::SoundTest() {
     if (!m_pSound->IsActive()) {
@@ -158,7 +158,7 @@ boolean CCDPlayer::SoundTest() {
     }
 
     FIL file;
-    FRESULT Result = f_open(&file, "test.pcm", FA_READ);
+    FRESULT Result = f_open(&file, "system/test.pcm", FA_READ);
     if (Result != FR_OK) {
         LOGERR("Sound Test: Can't open test.pcm");
         return false;
