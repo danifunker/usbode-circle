@@ -37,7 +37,7 @@ pages/%.h: pages/%.html
 
 assets/%.h: assets/%.jpg
 	@echo "  XXD   $@"
-	@xxd $< $@
+	@xxd -i $< $@
 
 .PHONY: clean
 

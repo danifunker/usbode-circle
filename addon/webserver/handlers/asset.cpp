@@ -38,12 +38,12 @@ THTTPStatus AssetHandler::GetContent (const char  *pPath,
 
 	// Add known files here
 	if (file_name == "logo.jpg") {
-    		if (!pBuffer || *pLength < logo_jpg_len)
+    		if (!pBuffer || *pLength < assets_logo_jpg_len)
       		  return HTTPInternalServerError;
 
-		std::memcpy(pBuffer, logo_jpg, logo_jpg_len);
+		std::memcpy(pBuffer, assets_logo_jpg, assets_logo_jpg_len);
 		*ppContentType = "image/jpg";
-		*pLength = logo_jpg_len;
+		*pLength = assets_logo_jpg_len;
 		return HTTPOK;
 	}
 	else
