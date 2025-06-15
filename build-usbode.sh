@@ -45,7 +45,7 @@ for arch in "${supported_rasppi[@]}"; do
     # Configure for this architecture
     echo "Configuring for RASPPI=$arch"
     cd "$circleDir"
-    ./configure -r $arch --prefix="$PathPrefix"
+    ./configure -r $arch --prefix "$PathPrefix"
     
     echo "Running make for RASPPI=$arch"
     make all
