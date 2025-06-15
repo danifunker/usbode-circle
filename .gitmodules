@@ -1,6 +1,3 @@
-[submodule "circle"]
-	path = circle
-	url = https://github.com/rsta2/circle.git
 [submodule "addon/jinjac/jinjac"]
 	path = addon/jinjac/jinjac
 	url = https://github.com/miko53/jinjac.git
