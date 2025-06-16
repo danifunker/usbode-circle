@@ -5,10 +5,33 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 #DIRTY=$(git diff --quiet 2>/dev/null || echo "-dirty")
 
-# Version information - could be passed as parameters or stored in a version file
-MAJOR_VERSION="2"
-MINOR_VERSION="1"
+# Path to version.txt file (relative to repository root)
+VERSION_FILE="../../version.txt"
+
+# Default version values in case the file doesn't exist or can't be read
+MAJOR_VERSION="0"
+MINOR_VERSION="0"
 PATCH_VERSION="0"
+
+# Check if version.txt exists and read from it
+if [ -f "$VERSION_FILE" ]; then
+    echo "Reading version from $VERSION_FILE"
+    
+    # Read the version string from the file (expected format: X.Y.Z)
+    VERSION_STRING=$(cat "$VERSION_FILE" | tr -d '\r\n')
+    
+    # Parse the version components
+    if [[ $VERSION_STRING =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        MAJOR_VERSION="${BASH_REMATCH[1]}"
+        MINOR_VERSION="${BASH_REMATCH[2]}"
+        PATCH_VERSION="${BASH_REMATCH[3]}"
+        echo "Parsed version: $MAJOR_VERSION.$MINOR_VERSION.$PATCH_VERSION"
+    else
+        echo "Warning: Invalid version format in $VERSION_FILE. Using defaults."
+    fi
+else
+    echo "Warning: $VERSION_FILE not found. Using default version."
+fi
 
 # Create header file with git and version info
 cat > ./gitinfo.h << EOF
