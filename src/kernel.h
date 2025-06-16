@@ -154,6 +154,9 @@ private:
 	void ScanForISOFiles(void);
 	void ShowISOSelectionScreen(void);
 	void LoadSelectedISO(void);
+
+	// Add this near other constant definitions
+	static const char ConfigOptionScreenSleep[];
 };
 
 #endif
