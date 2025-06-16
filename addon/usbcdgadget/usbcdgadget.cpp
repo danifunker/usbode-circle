@@ -607,8 +607,11 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
                 // Tombraider works initially then starts always sending 00
                 // as the volume level. I suspect this has something to do with
                 // the mode sense command. Perhaps we're feeding back the wrong thing?
-                // cdplayer->SetVolume(modePage->Output0Volume);
-            }
+            	MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume"); 
+                cdplayer->SetVolume(modePage->Output0Volume);
+            } else {
+            	MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Couldn't get CDPlayer");
+	    }
             break;
         }
     }
@@ -1098,9 +1101,9 @@ void CUSBCDGadget::HandleSCSICommand() {
                     if (trackInfo->track_number < startingTrack)
                         continue;
                     // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, data_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->data_start, GetAddress(trackInfo->data_start, msf));
-                    tocEntries[index].ADR_Control = 0x04;
+                    tocEntries[index].ADR_Control = 0x14;
                     if (trackInfo->track_mode == CUETrack_AUDIO)
-                        tocEntries[index].ADR_Control = 0x00;
+                        tocEntries[index].ADR_Control = 0x10;
                     tocEntries[index].reserved = 0x00;
                     tocEntries[index].TrackNumber = trackInfo->track_number;
                     tocEntries[index].reserved2 = 0x00;
@@ -1113,7 +1116,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             // Lead-Out LBA
             u32 leadOutLBA = GetLeadoutLBA();
-            tocEntries[index].ADR_Control = 0x16;
+            tocEntries[index].ADR_Control = 0x10;
             tocEntries[index].reserved = 0x00;
             tocEntries[index].TrackNumber = 0xAA;
             tocEntries[index].reserved2 = 0x00;
@@ -1155,6 +1158,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 
+	    // TODO We're ignoring subq for now
+
+	    if (parameter_list == 0x00 )
+		    parameter_list = 0x01; // 0x00 is "reserved" so let's assume they want cd info
+	    
             switch (parameter_list) {
                 // Current Position Data request
                 case 0x01: {
@@ -1221,6 +1229,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                 case 0x03: {
                     // International Standard Recording Code (ISRC)
+	    	    // TODO We're ignoring track number because that's only valid here
                     break;
                 }
 
@@ -1460,10 +1469,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x2B:  // SEEK
         {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SEEK");
 
             // Where to start reading (LBA)
             m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SEEK to LBA %lu", m_nblock_address);
 
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
             if (cdplayer) {
@@ -1496,7 +1506,12 @@ void CUSBCDGadget::HandleSCSICommand() {
             // Play the audio
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
             if (cdplayer) {
-                cdplayer->Play(start_lba, num_blocks);
+		if (start_lba == 0xFFFFFFFF)
+                	cdplayer->Resume();
+		else if (start_lba == end_lba)
+                	cdplayer->Pause();
+		else
+                	cdplayer->Play(start_lba, num_blocks);
             }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
@@ -1504,6 +1519,19 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
+        case 0x4E:  // STOP / SCAN
+        {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "STOP / SCAN");
+
+                CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+                if (cdplayer) {
+                        cdplayer->Pause();
+                }
+
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            SendCSW();
+            break;
+        }
         case 0x45:  // PLAY AUDIO (10)
         {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10)");
@@ -1596,7 +1624,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             int length = SIZE_MODE_SENSE10_HEADER;
 
 	    // We don't support saved values
-	    if (page_control != 0x03) {
+	    if (page_control == 0x03) {
                         m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
                         m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
                         m_SenseParams.bAddlSenseCode = 0x39;      // Saving parameters not supported
@@ -1692,9 +1720,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    codepage.pageLength = 16;
 		    codepage.IMMEDAndSOTC = 0x04;
 		    codepage.CDDAOutput0Select = 0x01;  // audio channel 0
-		    codepage.Output0Volume = volume;
+		    //codepage.Output0Volume = volume;  // When we return real volume, games that allow volume control screw up
+		    codepage.Output0Volume = 0xff;
 		    codepage.CDDAOutput1Select = 0x02;  // audio channel 1
-		    codepage.Output1Volume = volume;
+		    //codepage.Output1Volume = volume;
+		    codepage.Output1Volume = 0xff;
 		    codepage.CDDAOutput2Select = 0x00;  // none
 		    codepage.Output2Volume = 0x00;      // muted
 		    codepage.CDDAOutput3Select = 0x00;  // none

@@ -264,8 +264,9 @@ TShutdownMode CKernel::Run(void) {
                 IPString = "Not connected";
             }
 
+            // CHANGED: Use short version string for display
             m_pDisplayManager->ShowStatusScreen(
-                "USBODE v2.00-pre1",
+                CGitInfo::Get()->GetShortVersionString(), // Use short version
                 (const char*)IPString,
                 imageName,
                 m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
@@ -533,7 +534,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
     }
 
     // CRITICAL: Skip updates completely while in ISO selection screen
-    if (m_ScreenState == ScreenStateLoadISO) {
+    if (m_ScreenState != ScreenStateMain) {
         return;
     }
 
@@ -580,16 +581,17 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
         boolean bUSBFullSpeed = m_Options.GetUSBFullSpeed();
         const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
 
-        // Update the status screen
+        // CHANGED: Use the short version string for display
         m_pDisplayManager->ShowStatusScreen(
-            "USBODE v2.00-pre1",
+            CGitInfo::Get()->GetShortVersionString(),  // Use short version for display
             (const char*)IPString,
             currentImage,
-            pUSBSpeed);  // Pass USB speed to display manager
+            pUSBSpeed);
 
         // Only log when the display actually changes
-        LOGNOTE("Display updated: IP=%s, Image=%s, USB=%s",
-                (const char*)IPString, currentImage, pUSBSpeed);
+        LOGNOTE("Display updated: IP=%s, Image=%s, USB=%s, Version=%s",
+                (const char*)IPString, currentImage, pUSBSpeed, 
+                CGitInfo::Get()->GetShortVersionString());  // Log short version
 
         // Store current values
         LastDisplayedIP = IPString;
@@ -615,7 +617,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
             // Handle specific actions based on current screen state
             switch (pKernel->m_ScreenState) {
                 case ScreenStateMain:
-                    // On main screen, only KEY1 (button 5) should work to open ISO selection
+                    // On main screen, KEY1 (button 5) opens ISO selection
                     if (nButtonIndex == 5) {  // KEY1 button
                         // Show a loading message before scanning for files
                         if (pKernel->m_pDisplayManager != nullptr) {
@@ -631,6 +633,13 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->m_ScreenState = ScreenStateLoadISO;
                         pKernel->ScanForISOFiles();
                         pKernel->ShowISOSelectionScreen();
+                    }
+                    // KEY2 (button 6) opens advanced screen
+                    else if (nButtonIndex == 6) {  // KEY2 button
+                        pKernel->m_ScreenState = ScreenStateAdvanced;
+                        if (pKernel->m_pDisplayManager != nullptr) {
+                            pKernel->m_pDisplayManager->ShowAdvancedScreen();
+                        }
                     }
                     break;
 
@@ -739,6 +748,41 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     }
                     break;
 
+                case ScreenStateAdvanced:
+                    // In advanced screen, handle menu navigation
+                    if (nButtonIndex == 0) {  // UP button - move selection up
+                        // Not implemented yet - would need to track current selection
+                    } 
+                    else if (nButtonIndex == 1) {  // DOWN button - move selection down
+                        // Not implemented yet - would need to track current selection
+                    }
+                    else if (nButtonIndex == 5 || nButtonIndex == 4) {  // KEY1 or JOYSTICK_PRESS - select item
+                        // For now, always select the first option (Build Info)
+                        pKernel->m_ScreenState = ScreenStateBuildInfo;
+                        
+                        // Show build info screen
+                        if (pKernel->m_pDisplayManager != nullptr) {
+                            pKernel->m_pDisplayManager->ShowBuildInfoScreen(
+                                CGitInfo::Get()->GetVersionString(),
+                                __DATE__ " " __TIME__,
+                                GIT_BRANCH,
+                                GIT_COMMIT);
+                        }
+                    }
+                    else if (nButtonIndex == 6) {  // KEY2 button - back to main
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->UpdateDisplayStatus(nullptr);
+                    }
+                    break;
+
+                case ScreenStateBuildInfo:
+                    // Any button press in build info returns to advanced menu
+                    pKernel->m_ScreenState = ScreenStateAdvanced;
+                    if (pKernel->m_pDisplayManager != nullptr) {
+                        pKernel->m_pDisplayManager->ShowAdvancedScreen();
+                    }
+                    break;
+
                 default:
                     break;
             }
@@ -789,14 +833,10 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->ScanForISOFiles();
                         pKernel->ShowISOSelectionScreen();
                     } else if (nButtonIndex == 2) {
-                        // Button X - Advanced menu (not implemented yet)
-                        LOGNOTE("Button X pressed - Advanced menu (not implemented)");
-
-                        pKernel->m_pDisplayManager->ShowStatusScreen(
-                            "Advanced Menu",
-                            "Not implemented yet",
-                            "Coming soon",
-                            pKernel->m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");
+                        // Button X - Advanced menu
+                        LOGNOTE("Button X pressed - Opening Advanced Menu");
+                        pKernel->m_ScreenState = ScreenStateAdvanced;
+                        pKernel->m_pDisplayManager->ShowAdvancedScreen();
                     }
                     break;
 
@@ -851,15 +891,48 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     }
                     break;
 
+                case ScreenStateAdvanced:
+                    // Advanced menu screen handling
+                    if (nButtonIndex == 0) {  // Button A (Up) - move selection up
+                        // Not implemented yet - would need to track current selection
+                    } 
+                    else if (nButtonIndex == 1) {  // Button B (Down) - move selection down
+                        // Not implemented yet - would need to track current selection
+                    }
+                    else if (nButtonIndex == 3) {  // Button Y (Select) - select highlighted option
+                        // For now, always select the first option (Build Info)
+                        pKernel->m_ScreenState = ScreenStateBuildInfo;
+                        
+                        // Show build info screen
+                        pKernel->m_pDisplayManager->ShowBuildInfoScreen(
+                            CGitInfo::Get()->GetVersionString(),
+                            __DATE__ " " __TIME__,
+                            GIT_BRANCH,
+                            GIT_COMMIT);
+                    }
+                    else if (nButtonIndex == 2) {  // Button X (Cancel/Back) - return to main
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->UpdateDisplayStatus(nullptr);
+                    }
+                    break;
+
+                case ScreenStateBuildInfo:
+                    // Any button press in build info returns to advanced menu
+                    if (nButtonIndex == 2) {  // Button X (Cancel/Back)
+                        pKernel->m_ScreenState = ScreenStateAdvanced;
+                        pKernel->m_pDisplayManager->ShowAdvancedScreen();
+                    }
+                    else if (nButtonIndex == 3) {  // Button Y (OK/Select)
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->UpdateDisplayStatus(nullptr);
+                    }
+                    break;
+
                 default:
                     break;
             }
         } else {
-            // Unknown display type - use PirateAudio (ST7789) default mapping
-            // This ensures backward compatibility
-            LOGWARN("Unknown display type, using default button mapping");
-
-            // Default to ST7789 handling code if needed
+            // Unknown display type - default handling
         }
     }
 }

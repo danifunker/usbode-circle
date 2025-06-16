@@ -41,7 +41,6 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
 
     LOGNOTE("CD Player starting");
     SetName("cdplayer");
-    has_error = false;
     Initialize();
 }
 
@@ -109,6 +108,7 @@ u8 CCDPlayer::GetVolume() {
 }
 
 boolean CCDPlayer::SetVolume(u8 vol) {
+	LOGNOTE("Setting volume to 0x%02x", vol);
     volumeByte = vol;
     return true;
 }
@@ -201,47 +201,24 @@ boolean CCDPlayer::SoundTest() {
 
 boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
     LOGNOTE("CD Player playing from %u for %u blocks", lba, num_blocks);
-    // The PlayAudio SCSI command has some weird exceptions
-    // for LBA addresses:-
-    //
-    // 00000000 do nothing. It's preferable that this method
-    //          will not be called if an LBA of zero is
-    //          encountered
-    //
-    // FFFFFFFF resume playing. It's preferable that the Resume
-    //          method will be called instead of passing this
-    //          value to this method
 
-    if (lba == 0x00000000) {
-        // do nothing
-    } else if (lba == 0xFFFFFFFF) {
-        // resume
-        return this->Resume();
-    } else {
-        // play from new lba
-        address = lba;
-        end_address = address + num_blocks;
-        state = SEEKING_PLAYING;
-    }
+    address = lba;
+    end_address = address + num_blocks;
+    state = SEEKING_PLAYING;
     return true;
 }
 
 // DACs don't support volume control, so we scale the data
 // accordingly instead
 void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
-    // Clamp and quantize volume to VOLUME_STEPS
-    u32 index = (volumeByte * (VOLUME_STEPS - 1)) >> 8;  // 0–15
-    u16 scale = s_VolumeTable[index];                    // fixed-point Q12
+    // Compute fixed-point Q12 scale dynamically (0–4096)
+    u16 scale = volumeByte << 4;
 
-    // Scale each 16bit sample
     for (u32 i = 0; i < byteCount; i += 2) {
-        // Load 16-bit signed little-endian sample
         short sample = (short)((buffer[i + 1] << 8) | buffer[i]);
 
-        // Apply volume scaling
-        int scaled = (sample * scale) >> VOLUME_SCALE_BITS;
+        int scaled = (sample * scale) >> 12;  // Q12 shift
 
-        // Store back (little-endian)
         buffer[i] = (u8)(scaled & 0xFF);
         buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
     }
@@ -265,8 +242,7 @@ void CCDPlayer::Run(void) {
                     state = STOPPED_OK;
                 }
             } else {
-                LOGERR("Error seeking to byte position %u", address * SECTOR_SIZE);
-                has_error = true;
+                LOGNOTE("Error seeking to byte position %u", address * SECTOR_SIZE);
                 state = STOPPED_ERROR;
                 break;
             }
@@ -288,7 +264,6 @@ void CCDPlayer::Run(void) {
                 // Partial read
                 if (readCount < bytes_to_read) {
                     LOGERR("Partial read");
-                    has_error = true;
                     state = STOPPED_ERROR;
                     break;
                 }
@@ -301,7 +276,6 @@ void CCDPlayer::Run(void) {
                 int writeCount = m_pSound->Write(m_FileChunk, readCount);
                 if (writeCount != readCount) {
                     LOGERR("Truncated write, audio dropped");
-                    has_error = true;
                     state = STOPPED_ERROR;
                     break;
                 }
