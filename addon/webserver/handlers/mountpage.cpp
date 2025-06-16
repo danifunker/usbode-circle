@@ -60,7 +60,7 @@ THTTPStatus MountPageHandler::GetContent (const char  *pPath,
 
 	// Set the new device in the CD gadget
         m_pCDGadget->SetDevice(cueBinFileDevice);
-        LOGNOTE("CD gadget updated with new image: %s", file_name);
+        LOGNOTE("CD gadget updated with new image: %s", file_name.c_str());
 
 	// Set up Mustache Template Engine
 	mustache::mustache tmpl{s_Mount};
