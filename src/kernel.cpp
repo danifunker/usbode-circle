@@ -29,6 +29,8 @@
 #include <webserver/webserver.h>
 #include <devicestate/devicestate.h>
 
+#include <circle/time.h>
+
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
 #define SUPPLICANT_CONFIG_FILE DRIVE "/wpa_supplicant.conf"
@@ -63,6 +65,9 @@ static const char* FindLastOccurrence(const char* str, int ch) {
 
 // Add this near other constant definitions at the top of the file
 const char CKernel::ConfigOptionTimeZone[] = "timezone";
+
+// Define the constant for screen_sleep config option
+const char CKernel::ConfigOptionScreenSleep[] = "screen_sleep";
 
 CKernel::CKernel(void)
     : m_Screen(m_Options.GetWidth(), m_Options.GetHeight()),
@@ -398,6 +403,8 @@ TShutdownMode CKernel::Run(void) {
 	// TODO move to a display manager run loop
         if (nCount % 100 == 0)  // Only update status occasionally
         {
+            // Check display timeouts
+                m_pDisplayManager->UpdateScreenTimeout();
             // Periodic status update
             unsigned currentTime = m_Timer.GetTicks();
             if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL &&
@@ -441,8 +448,8 @@ TShutdownMode CKernel::Run(void) {
 		    }
 		}
 
-		// Process display updates if needed - after network processing but before yielding
-		// Do we really need to do this on EVERY iteration of the main loop?
+		// Process display timeouts
+        // Do we really need to do this on EVERY iteration of the main loop?
 		// TODO move this stuff to the display manager on its own run loop
 		/* FIXME!!
 		if (CWebServer::IsDisplayUpdateNeeded() && m_pDisplayManager != nullptr && m_ScreenState != ScreenStateLoadISO) {
@@ -517,8 +524,20 @@ void CKernel::InitializeDisplay(TDisplayType displayType) {
         return;
     }
 
-    // Create and initialize the display manager
-    m_pDisplayManager = new CDisplayManager(&m_Logger, displayType);
+    // Get screen timeout from config.txt
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    Properties.Load();
+    Properties.SelectSection("usbode");
+    unsigned nScreenTimeout = Properties.GetNumber(ConfigOptionScreenSleep, 5); // Default 5 seconds
+    
+    CTime Time;
+    CString TimeString;
+    TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
+    
+    LOGNOTE("[%s] Screen timeout set to %u seconds (from config)", (const char *)TimeString, nScreenTimeout);
+
+    // Create and initialize the display manager with timeout
+    m_pDisplayManager = new CDisplayManager(&m_Logger, displayType, nScreenTimeout);
     if (m_pDisplayManager == nullptr) {
         LOGERR("Failed to create display manager");
         delete m_pSPIMaster;
@@ -622,6 +641,11 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
 
     // Get display type to handle buttons differently
     TDisplayType displayType = pKernel->m_pDisplayManager->GetDisplayType();
+
+    // Wake the screen on any button press (before handling the button)
+    if (bPressed) {
+        pKernel->m_pDisplayManager->WakeScreen();
+    }
 
     // Only handle button presses (not releases) for responsiveness
     if (bPressed) {
@@ -785,6 +809,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     }
                     else if (nButtonIndex == 6) {  // KEY2 button - back to main
                         pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->m_pDisplayManager->SetMainScreenActive(TRUE); // Tell display we're on main screen
                         pKernel->UpdateDisplayStatus(nullptr);
                     }
                     break;
