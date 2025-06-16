@@ -21,32 +21,59 @@
         .header-bar {background-color: #2C5F7C; color: #FFFFFF; padding: 5px;}
         .usb-info {background-color: #E3F2FD; border-top: 1px solid #BBDEFB; padding: 5px; text-align: center; margin-top: 20px;}
         .build-info {font-size: 9px; text-align: left; color: #CCCCCC; padding: 5px 0 0 5px; margin-top: 2px;}
+        .pagination {display: flex; justify-content: center; margin: 15px 0; background-color: #F5F5F5; padding: 8px; border-radius: 3px;}
+        .pagination a, .pagination span {margin: 0 3px; padding: 4px 8px; text-decoration: none; color: #0066CC; border: 1px solid #BBDEFB; background-color: #E3F2FD;}
+        .pagination .current {background-color: #3A7CA5; color: #FFFFFF; border-color: #2C5F7C;}
+        .pagination a:hover {background-color: #BBDEFB;}
+        .page-info {text-align: center; margin: 5px 0; font-size: 14px; color: #666;}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-	    <img src="/logo.jpg" alt="Logo" align="left" height="100%" style="margin-right:10px;">
+        <img src="/logo.jpg" alt="Logo" align="left" height="100%" style="margin-right:10px;">
             <h1>USBODE</h1>
             <h2>USB Optical Drive Emulator</h2>
         </div>
         <div class="content">
-		<h3>File Selection</h3>
-		<div class="info-box">
-			<p>Current File Loaded: <strong>{{current_image}}</strong></p>
-		</div>
-		<h4>Available Files</h4>
-		{{#links}}
-		<div class="file-link file-link-even"{{{style}}}><a href="/mount?file={{file_name}}">{{display_name}}{{current}}</a></div>
-		{{/links}}
+        <h3>File Selection</h3>
+        <div class="info-box">
+            <p>Current File Loaded: <strong>{{current_image}}</strong></p>
+        </div>
+        <h4>Available Files</h4>
+        {{#links}}
+        <div class="file-link file-link-even"{{{style}}}><a href="/mount?file={{file_name}}">{{display_name}}{{current}}</a></div>
+        {{/links}}
+        
+        {{#pagination}}
+        <div class="pagination">
+            {{#has_first}}
+            <a href="/?page=1">1</a>
+            {{/has_first}}
+            
+            {{#has_prev}}
+            <a href="/?page={{prev_page}}">{{prev_page}}</a>
+            {{/has_prev}}
+            
+            <span class="current">{{current_page_str}}</span>
+            
+            {{#has_next}}
+            <a href="/?page={{next_page}}">{{next_page}}</a>
+            {{/has_next}}
+            
+            {{#has_last}}
+            <a href="/?page={{last_page}}">{{last_page}}</a>
+            {{/has_last}}
+        </div>
+        {{/pagination}}
         </div>
         <div class="usb-info">
-		<p>USB Mode: {{ usb_mode }}</p>
+        <p>USB Mode: {{ usb_mode }}</p>
         </div>
         <div class="footer">
-		<p>Version {{ version }}</p>
+        <p>Version {{ version }}</p>
             <div class="build-info">
-		    Build: {{ build_info}}
+            Build: {{ build_info}}
             </div>
         </div>
     </div>
