@@ -534,7 +534,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
     }
 
     // CRITICAL: Skip updates completely while in ISO selection screen
-    if (m_ScreenState == ScreenStateLoadISO) {
+    if (m_ScreenState != ScreenStateMain) {
         return;
     }
 

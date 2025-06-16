@@ -96,3 +96,4 @@ tmp/
 dist/
 gitinfo.h
 /usbode*.zip
+.vscode/
