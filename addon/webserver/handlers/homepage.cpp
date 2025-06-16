@@ -62,16 +62,6 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
     std::string current_image = m_pProperties->GetString("current_image", "image.iso");
     context.set("current_image", current_image);
 
-    // Get the requested page number from parameters
-    int page = 1;
-    if (pParams && strstr(pParams, "page=") != nullptr) {
-        const char* pageParam = strstr(pParams, "page=");
-        if (pageParam) {
-            page = atoi(pageParam + 5);
-            if (page < 1) page = 1;
-        }
-    }
-
     // Open directory
     DIR dir;
     FILINFO fno;
@@ -122,14 +112,24 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
 
     // Sort the links
     sort_links_by_display_name(all_links_vec);
-
+    
+    // Get the requested page number from parameters
+    int page = 1;
+    if (pParams && strstr(pParams, "page=") != nullptr) {
+        const char* pageParam = strstr(pParams, "page=");
+        if (pageParam) {
+            page = atoi(pageParam + 5);
+            if (page < 1) page = 1;
+        }
+    }
+    
     // Calculate total pages and ensure page is valid
     int total_items = all_links_vec.size();
     int total_pages = (total_items + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
     
     if (total_pages == 0) total_pages = 1;
     if (page > total_pages) page = total_pages;
-
+    
     // Find page with current image
     int current_image_page = 0;
     for (size_t i = 0; i < all_links_vec.size(); i++) {
@@ -140,79 +140,68 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
             break;
         }
     }
-
+    
     // If no page specified and we found current image, go to that page
     if (pParams == nullptr || strstr(pParams, "page=") == nullptr) {
         if (current_image_page > 0) {
             page = current_image_page;
         }
     }
-
+    
     // Get subset of links for current page
     int start_idx = (page - 1) * ITEMS_PER_PAGE;
     int end_idx = start_idx + ITEMS_PER_PAGE;
     if (end_idx > total_items) end_idx = total_items;
-
+    
     // Create list of current page links
     mustache::data links{mustache::data::type::list};
     for (int i = start_idx; i < end_idx; i++) {
         links.push_back(all_links_vec[i]);
     }
     context.set("links", links);
-
-    // Create pagination data
-    mustache::data pagination;
-
+    
     // Only add pagination if we have more than one page
     if (total_pages > 1) {
-        // Convert integers to strings for proper display and avoid duplicates
-        char current_page_str[16], total_pages_str[16];
-        snprintf(current_page_str, sizeof(current_page_str), "%d", page);
+        mustache::data pagination;
+        
+        // Add page numbers as strings
+        char page_str[16], total_pages_str[16];
+        snprintf(page_str, sizeof(page_str), "%d", page);
         snprintf(total_pages_str, sizeof(total_pages_str), "%d", total_pages);
         
-        pagination.set("current_page_str", current_page_str);
-        pagination.set("total_pages_str", total_pages_str);
+        pagination.set("current_page", page_str);
+        pagination.set("total_pages", total_pages_str);
         
-        // First page (always shown if not on first page)
-        bool show_first = (page > 1);
-        pagination.set("has_first", show_first);
-        if (show_first) {
-            pagination.set("first_page", "1"); // Use string for consistency
-        }
+        // First page link
+        pagination.set("has_first", page > 1);
         
-        // Previous page (only if not first page and not same as first)
-        bool show_prev = (page > 2);
-        pagination.set("has_prev", show_prev);
-        if (show_prev) {
+        // Previous page link (only if not first page and not same as first)
+        pagination.set("has_prev", page > 2);
+        if (page > 2) {
             char prev_str[16];
             snprintf(prev_str, sizeof(prev_str), "%d", page - 1);
             pagination.set("prev_page", prev_str);
         }
         
-        // Next page (only if not last page and not same as last)
-        bool show_next = (page < total_pages - 1);
-        pagination.set("has_next", show_next);
-        if (show_next) {
+        // Next page link (only if not last page and not same as last)
+        pagination.set("has_next", page < total_pages - 1);
+        if (page < total_pages - 1) {
             char next_str[16];
             snprintf(next_str, sizeof(next_str), "%d", page + 1);
             pagination.set("next_page", next_str);
         }
         
-        // Last page (always shown if not on last page)
-        bool show_last = (page < total_pages);
-        pagination.set("has_last", show_last);
-        if (show_last) {
+        // Last page link
+        pagination.set("has_last", page < total_pages);
+        if (page < total_pages) {
             char last_str[16];
             snprintf(last_str, sizeof(last_str), "%d", total_pages);
             pagination.set("last_page", last_str);
         }
         
         context.set("pagination", pagination);
-    } else {
-        // No pagination needed
-        context.set("pagination", mustache::data());
     }
-
+    
     // Find the current USB mode
     boolean is_full_speed = CKernelOptions::Get()->GetUSBFullSpeed();
     if (is_full_speed)

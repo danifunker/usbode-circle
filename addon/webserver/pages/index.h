@@ -55,7 +55,7 @@
 "            <a href=\"/?page={{prev_page}}\">{{prev_page}}</a>\n"
 "            {{/has_prev}}\n"
 "            \n"
-"            <span class=\"current\">{{current_page_str}}</span>\n"
+"            <span class=\"current\">{{current_page}}</span>\n"
 "            \n"
 "            {{#has_next}}\n"
 "            <a href=\"/?page={{next_page}}\">{{next_page}}</a>\n"
