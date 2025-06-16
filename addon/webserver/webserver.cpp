@@ -26,7 +26,7 @@
 #include <circle/string.h>
 #include "pagehandlerregistry.h"
 
-#define MAX_CONTENT_SIZE 32768
+#define MAX_CONTENT_SIZE 16384
 #define MAX_FILES 1024
 #define MAX_FILES_PER_PAGE 50
 #define MAX_FILENAME 255
