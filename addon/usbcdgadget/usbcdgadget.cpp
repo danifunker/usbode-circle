@@ -1098,9 +1098,9 @@ void CUSBCDGadget::HandleSCSICommand() {
                     if (trackInfo->track_number < startingTrack)
                         continue;
                     // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, data_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->data_start, GetAddress(trackInfo->data_start, msf));
-                    tocEntries[index].ADR_Control = 0x04;
+                    tocEntries[index].ADR_Control = 0x14;
                     if (trackInfo->track_mode == CUETrack_AUDIO)
-                        tocEntries[index].ADR_Control = 0x00;
+                        tocEntries[index].ADR_Control = 0x10;
                     tocEntries[index].reserved = 0x00;
                     tocEntries[index].TrackNumber = trackInfo->track_number;
                     tocEntries[index].reserved2 = 0x00;
@@ -1113,7 +1113,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             // Lead-Out LBA
             u32 leadOutLBA = GetLeadoutLBA();
-            tocEntries[index].ADR_Control = 0x16;
+            tocEntries[index].ADR_Control = 0x10;
             tocEntries[index].reserved = 0x00;
             tocEntries[index].TrackNumber = 0xAA;
             tocEntries[index].reserved2 = 0x00;
