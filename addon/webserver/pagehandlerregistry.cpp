@@ -15,8 +15,9 @@ static AssetHandler s_assetHandler;
 
 const PageHandlerEntry PageHandlerRegistry::s_pathHandlers[] = {
     {"/",        &s_homePageHandler},
-    {"/mount",        &s_mountPageHandler},
-    {"/asset",        &s_assetHandler}
+    {"/favicon.ico",        &s_assetHandler},
+    {"/logo.jpg",        &s_assetHandler},
+    {"/mount",        &s_mountPageHandler}
 };
 
 // Define the size of the static array.

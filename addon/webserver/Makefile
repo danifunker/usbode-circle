@@ -30,10 +30,15 @@ CFLAGS += -D_TIME_T_DECLARED
 handlers/mountpage.o: pages/mount.h
 handlers/homepage.o: pages/index.h
 handlers/asset.o: assets/logo.h
+handlers/asset.o: assets/favicon.h
 
 pages/%.h: pages/%.html
 	@echo "  CONVERTTOOL   $@"
 	@$(CIRCLEHOME)/tools/converttool $< > $@
+
+assets/%.h: assets/%.ico
+	@echo "  XXD   $@"
+	@xxd -i $< $@
 
 assets/%.h: assets/%.jpg
 	@echo "  XXD   $@"

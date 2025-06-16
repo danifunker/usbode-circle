@@ -1,20 +1,29 @@
 #include <circle/logger.h>
 #include <circle/util.h>
 #include <circle/net/httpdaemon.h>
-#include <fatfs/ff.h>
-#include <vector>
 #include <string>
 #include <cstring>
 #include <map>
-#include <sstream>
-#include <iostream>
-#include <algorithm>
 #include "asset.h"
 #include "util.h"
 
 #include "logo.h"
+#include "favicon.h"
 
 LOGMODULE("assethandler");
+
+struct StaticAsset {
+    const uint8_t *data;
+    size_t length;
+    const char *contentType;
+};
+
+// Asset registry
+static const std::map<std::string, StaticAsset> g_staticAssets = {
+    { "/logo.jpg",     { assets_logo_jpg, assets_logo_jpg_len, "image/jpeg" } },
+    { "/favicon.ico",  { assets_favicon_ico, assets_favicon_ico_len, "image/x-icon" } },
+    // Add more assets here
+};
 
 THTTPStatus AssetHandler::GetContent (const char  *pPath,
                                    const char  *pParams,
@@ -27,25 +36,25 @@ THTTPStatus AssetHandler::GetContent (const char  *pPath,
 {
 	LOGNOTE("Asset Handler called");
 
-	auto params = parse_query_params(pParams);
 
-	if (params.count("name") == 0)
-		return HTTPBadRequest;
+    if (!pPath || !pBuffer || !pLength || !ppContentType) {
+        return HTTPBadRequest;
+    }
 
-	std::string file_name = params["name"];
+    auto it = g_staticAssets.find(pPath);
+    if (it == g_staticAssets.end()) {
+        return HTTPNotFound;
+    }
 
-	LOGNOTE("Got filename %s from parameter", file_name.c_str());
+    const StaticAsset &asset = it->second;
 
-	// Add known files here
-	if (file_name == "logo.jpg") {
-    		if (!pBuffer || *pLength < assets_logo_jpg_len)
-      		  return HTTPInternalServerError;
+    if (*pLength < asset.length) {
+        return HTTPInternalServerError;
+    }
 
-		std::memcpy(pBuffer, assets_logo_jpg, assets_logo_jpg_len);
-		*ppContentType = "image/jpg";
-		*pLength = assets_logo_jpg_len;
-		return HTTPOK;
-	}
-	else
-		return HTTPNotFound;
+    std::memcpy(pBuffer, asset.data, asset.length);
+    *pLength = asset.length;
+    *ppContentType = asset.contentType;
+
+    return HTTPOK;
 }

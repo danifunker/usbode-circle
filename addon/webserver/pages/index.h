@@ -26,7 +26,7 @@
 "<body>\n"
 "    <div class=\"container\">\n"
 "        <div class=\"header\">\n"
-"\t    <img src=\"/asset?name=logo.jpg\" alt=\"Logo\" align=\"left\" height=\"100%\" style=\"margin-right:10px;\">\n"
+"\t    <img src=\"/logo.jpg\" alt=\"Logo\" align=\"left\" height=\"100%\" style=\"margin-right:10px;\">\n"
 "            <h1>USBODE</h1>\n"
 "            <h2>USB Optical Drive Emulator</h2>\n"
 "        </div>\n"
