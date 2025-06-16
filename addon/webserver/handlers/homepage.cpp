@@ -137,7 +137,7 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
 	}
 	
 	// The provided buffer is too small
-	LOGERR("Output buffer too small for Jinjac content.");
+	LOGERR("Output buffer too small for rendered content.");
 	*pLength = 0; // Indicate no content could be written
 	*ppContentType = "text/plain"; // Default content type for error
 	return HTTPInternalServerError; // Or a more specific error
