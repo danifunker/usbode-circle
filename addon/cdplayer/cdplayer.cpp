@@ -212,17 +212,15 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
     //          method will be called instead of passing this
     //          value to this method
 
-    if (lba == 0x00000000) {
-        // do nothing
-    } else if (lba == 0xFFFFFFFF) {
+    if (lba == 0xFFFFFFFF) {
         // resume
         return this->Resume();
-    } else {
-        // play from new lba
-        address = lba;
-        end_address = address + num_blocks;
-        state = SEEKING_PLAYING;
     }
+    
+    // play from new lba
+    address = lba;
+    end_address = address + num_blocks;
+    state = SEEKING_PLAYING;
     return true;
 }
 
