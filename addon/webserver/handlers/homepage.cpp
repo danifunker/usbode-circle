@@ -18,7 +18,6 @@ char s_Index[] =
 #include "index.h"
 ;
 
-#define VERSION "2.1.0"
 #define ITEMS_PER_PAGE 35  // Number of items per page
 
 void sort_links_by_display_name(std::vector<kainjow::mustache::data>& links_vec) {
@@ -210,7 +209,7 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
             context.set("usb_mode", "HighSpeed");
         
         // Add build info
-        context.set("version", VERSION);
+        context.set("version", CGitInfo::Get()->GetFullVersionString());
         context.set("build_info", std::string(GIT_BRANCH) + " @ " + std::string(GIT_COMMIT) + " | " + __DATE__ + " " + __TIME__);
 
         // Render

@@ -2,9 +2,31 @@
 # Makefile
 #
 
-gitinfo.h:
-	@echo "Generating $@..."; \
-	./gitinfo.sh
+USBODEHOME = ../..
+STDLIBHOME = $(USBODEHOME)/circle-stdlib
+NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
+CIRCLEHOME = $(STDLIBHOME)/libs/circle
+
+OBJS = gitinfo.o
+
+libgitinfo.a: $(OBJS)
+	@echo "  AR    $@"
+	@rm -f $@
+	@$(AR) cr $@ $(OBJS)
+
+include $(CIRCLEHOME)/Rules.mk
+
+gitinfo.o: gitinfo.h
+
+gitinfo.h: gitinfo.sh
+	@echo "  SH    $@"
+	@./gitinfo.sh
+
+.PHONY: clean
 
 clean:
-	rm -f gitinfo.h
+	@echo "  CLEAN"
+	@rm -f gitinfo.h
+	@rm -f $(OBJS) $(DEPS) libgitinfo.a
+	@rm -f *.d
+

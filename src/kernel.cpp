@@ -265,7 +265,7 @@ TShutdownMode CKernel::Run(void) {
             }
 
             m_pDisplayManager->ShowStatusScreen(
-                "USBODE v2.00-pre1",
+                CGitInfo::Get()->GetVersionString(),
                 (const char*)IPString,
                 imageName,
                 m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
@@ -582,7 +582,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
 
         // Update the status screen
         m_pDisplayManager->ShowStatusScreen(
-            "USBODE v2.00-pre1",
+            CGitInfo::Get()->GetVersionString(), 
             (const char*)IPString,
             currentImage,
             pUSBSpeed);  // Pass USB speed to display manager
