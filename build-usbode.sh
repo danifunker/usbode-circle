@@ -101,7 +101,6 @@ for arch in "${supported_rasppi[@]}"; do
     cd ${projectRoot}/src
     make clean
     make
-    cp ${projectRoot}/src/kernel*.img ${destDir}
 done
 
 echo "Platform Specific Builds Completes Sucessfully, copying general files to ${destDir}"
@@ -109,9 +108,9 @@ cp ${projectRoot}/src/kernel*.img ${destDir}
 cp ${projectRoot}/sdcard/wpa_supplicant.conf ${destDir}
 cp ${projectRoot}/sdcard/cmdline.txt ${destDir}
 mkdir -p ${destDir}/images
+cp ${projectRoot}/sdcard/image.iso.gz ${destDir}/images
+gunzip ${destDir}/images/image.iso.gz
 mkdir -p ${destDir}/system
-cp ${projectRoot}/sdcard/image.iso.gz ${destDir}/system
-gunzip ${destDir}/system/image.iso.gz
 cp ${projectRoot}/sdcard/test.pcm.gz ${destDir}/system
 gunzip ${destDir}/system/test.pcm.gz
 mkdir -p ${destDir}/firmware
