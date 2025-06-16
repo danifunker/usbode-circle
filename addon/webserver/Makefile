@@ -13,8 +13,7 @@ OBJS    = webserver.o \
 	handlers/notfound.o \
 	handlers/mountpage.o \
 	handlers/homepage.o \
-	handlers/asset.o
-
+	handlers/asset.o 
 
 libwebserver.a: $(OBJS)
 	@echo "  AR    $@"
