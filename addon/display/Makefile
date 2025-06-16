@@ -17,4 +17,7 @@ libdisplay.a: $(OBJS)
 include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
 
+INCLUDE += -I $(USBODEHOME)/include
+CFLAGS += -I $(USBODEHOME)/include
+
 -include $(DEPS)

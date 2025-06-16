@@ -743,8 +743,7 @@ void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const
                                          FALSE, FALSE, Font6x7);
             }
             
-            // POSITION INDICATOR =========================
-            // Display file position indicator only ONCE at bottom (moved up)
+            // Draw position indicator for file selection
             char position[16];
             snprintf(position, sizeof(position), "%u/%u", CurrentFileIndex, TotalFiles);
             int posWidth = strlen(position) * 6; // Approximate width of text
@@ -1214,7 +1213,38 @@ void CDisplayManager::ShowAdvancedScreen(void)
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
-        // Implement SH1106 advanced screen if needed
+        if (m_pSH1106Display != nullptr)
+        {
+            // Clear display first
+            m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
+            
+            // Draw title at the top
+            m_pSH1106Display->DrawText(0, 2, "Advanced Menu", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font8x8);
+            
+            // Draw horizontal divider
+            for (unsigned int x = 0; x < 128; x++)
+            {
+                m_pSH1106Display->SetPixel(x, 12, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            // Draw menu options
+            m_pSH1106Display->DrawText(0, 16, "1. Build Information", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            m_pSH1106Display->DrawText(0, 26, "2. USB Speed", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            m_pSH1106Display->DrawText(0, 36, "3. Network Info", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            m_pSH1106Display->DrawText(0, 46, "4. Return to Main", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Highlight the first option as selected
+            m_pSH1106Display->DrawText(128 - 7, 16, ">", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Ensure the display is updated
+            m_pSH1106Display->Refresh();
+        }
         break;
         
     case DisplayTypeST7789:
@@ -1228,7 +1258,7 @@ void CDisplayManager::ShowAdvancedScreen(void)
                 return;
             }
             
-            // Clear the screen with WHITE background using the graphics object
+            // Clear the screen with WHITE background
             graphics.ClearScreen(COLOR2D(255, 255, 255));
             
             // Draw header bar with blue background
@@ -1236,6 +1266,209 @@ void CDisplayManager::ShowAdvancedScreen(void)
             
             // Draw title text in white
             graphics.DrawText(10, 8, COLOR2D(255, 255, 255), "Advanced Menu", C2DGraphics::AlignLeft);
+            
+            // Draw menu items in a styled list
+            // Item 1 - Build Information (highlighted as selected)
+            graphics.DrawRect(10, 40, m_pST7789Display->GetWidth() - 20, 40, COLOR2D(58, 124, 165));
+            graphics.DrawText(20, 60, COLOR2D(255, 255, 255), "Build Information", C2DGraphics::AlignLeft);
+            
+            // Info icon for build info
+            unsigned info_x = m_pST7789Display->GetWidth() - 40;
+            unsigned info_y = 60;
+            graphics.DrawCircle(info_x, info_y, 12, COLOR2D(255, 255, 255));
+            graphics.DrawText(info_x-3, info_y+4, COLOR2D(58, 124, 165), "i", C2DGraphics::AlignCenter);
+            
+            // Item 2 - USB Speed
+            graphics.DrawRect(10, 90, m_pST7789Display->GetWidth() - 20, 40, COLOR2D(220, 220, 220));
+            graphics.DrawText(20, 110, COLOR2D(0, 0, 0), "USB Speed Settings", C2DGraphics::AlignLeft);
+            
+            // USB icon
+            unsigned usb_x = m_pST7789Display->GetWidth() - 40;
+            unsigned usb_y = 110;
+            
+            // USB outline - rectangular shape
+            graphics.DrawRect(usb_x-12, usb_y-10, 24, 20, COLOR2D(80, 80, 80));
+            graphics.DrawRect(usb_x-6, usb_y-5, 4, 10, COLOR2D(220, 220, 220)); // Left pin
+            graphics.DrawRect(usb_x+2, usb_y-5, 4, 10, COLOR2D(220, 220, 220)); // Right pin
+            
+            // Item 3 - Network Info
+            graphics.DrawRect(10, 140, m_pST7789Display->GetWidth() - 20, 40, COLOR2D(220, 220, 220));
+            graphics.DrawText(20, 160, COLOR2D(0, 0, 0), "Network Information", C2DGraphics::AlignLeft);
+            
+            // Network icon
+            unsigned net_x = m_pST7789Display->GetWidth() - 40;
+            unsigned net_y = 160;
+            
+            // Draw WiFi icon
+            for (int i = 0; i < 3; i++) {
+                graphics.DrawCircleOutline(net_x, net_y, 6 + i*4, COLOR2D(80, 80, 80));
+            }
+            graphics.DrawCircle(net_x, net_y, 3, COLOR2D(80, 80, 80));
+            
+            // Item 4 - Return to Main
+            graphics.DrawRect(10, 190, m_pST7789Display->GetWidth() - 20, 40, COLOR2D(220, 220, 220));
+            graphics.DrawText(20, 210, COLOR2D(0, 0, 0), "Return to Main Screen", C2DGraphics::AlignLeft);
+            
+            // Home icon
+            unsigned home_x = m_pST7789Display->GetWidth() - 40;
+            unsigned home_y = 210;
+            
+            // Draw house icon
+            graphics.DrawRect(home_x-10, home_y, 20, 10, COLOR2D(80, 80, 80));
+            graphics.DrawLine(home_x-12, home_y, home_x, home_y-12, COLOR2D(80, 80, 80));
+            graphics.DrawLine(home_x, home_y-12, home_x+12, home_y, COLOR2D(80, 80, 80));
+            graphics.DrawRect(home_x-4, home_y+2, 8, 8, COLOR2D(220, 220, 220)); // Door
+            
+            // Use the helper function to draw navigation bar
+            DrawNavigationBar(graphics, "advanced");
+            
+            // Update the display
+            graphics.UpdateDisplay();
+            
+            // Ensure display stays on
+            m_pST7789Display->On();
+        }
+        break;
+        
+    default:
+        break;
+    }
+}
+
+void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* pBuildDate, 
+                                        const char* pGitBranch, const char* pGitCommit)
+{
+    assert(pVersionInfo != nullptr);
+    assert(pBuildDate != nullptr);
+    assert(pGitBranch != nullptr);
+    assert(pGitCommit != nullptr);
+    
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        if (m_pSH1106Display != nullptr)
+        {
+            // Clear display first
+            m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
+            
+            // Draw title at the top
+            m_pSH1106Display->DrawText(0, 2, "Build Information", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font8x8);
+            
+            // Draw horizontal divider
+            for (unsigned int x = 0; x < 128; x++)
+            {
+                m_pSH1106Display->SetPixel(x, 12, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            // Draw version info
+            m_pSH1106Display->DrawText(0, 16, "Version:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            m_pSH1106Display->DrawText(48, 16, pVersionInfo, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Draw build date
+            m_pSH1106Display->DrawText(0, 26, "Build:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            m_pSH1106Display->DrawText(48, 26, pBuildDate, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Draw Git branch
+            m_pSH1106Display->DrawText(0, 36, "Branch:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Handle potentially long branch name
+            char branch_display[22] = {0};
+            if (strlen(pGitBranch) > 21) {
+                // Truncate with ellipsis if too long
+                strncpy(branch_display, pGitBranch, 18);
+                strcat(branch_display, "...");
+            } else {
+                strcpy(branch_display, pGitBranch);
+            }
+            m_pSH1106Display->DrawText(48, 36, branch_display, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Draw Git commit
+            m_pSH1106Display->DrawText(0, 46, "Commit:", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Handle commit hash (typically show first 8 chars)
+            char commit_display[10] = {0};
+            strncpy(commit_display, pGitCommit, 8);
+            commit_display[8] = '\0';
+            
+            m_pSH1106Display->DrawText(48, 46, commit_display, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Draw a "Back" instruction at the bottom
+            m_pSH1106Display->DrawText(0, 56, "Press any button to return", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Ensure the display is updated
+            m_pSH1106Display->Refresh();
+        }
+        break;
+        
+    case DisplayTypeST7789:
+        if (m_pST7789Display != nullptr)
+        {
+            // Create a 2D graphics instance for drawing
+            C2DGraphics graphics(m_pST7789Display);
+            if (!graphics.Initialize())
+            {
+                m_pLogger->Write("dispman", LogError, "Failed to initialize 2D graphics");
+                return;
+            }
+            
+            // Clear the screen with WHITE background
+            graphics.ClearScreen(COLOR2D(255, 255, 255));
+            
+            // Draw header bar with blue background
+            graphics.DrawRect(0, 0, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
+            
+            // Draw title text in white
+            graphics.DrawText(10, 8, COLOR2D(255, 255, 255), "Build Information", C2DGraphics::AlignLeft);
+            
+            // Draw content box with light blue background
+            graphics.DrawRect(5, 40, m_pST7789Display->GetWidth() - 10, 150, COLOR2D(235, 245, 255));
+            graphics.DrawRectOutline(5, 40, m_pST7789Display->GetWidth() - 10, 150, COLOR2D(58, 124, 165));
+            
+            // Draw version info with label
+            graphics.DrawText(15, 55, COLOR2D(0, 0, 0), "Version:", C2DGraphics::AlignLeft);
+            graphics.DrawText(100, 55, COLOR2D(0, 0, 140), pVersionInfo, C2DGraphics::AlignLeft);
+            
+            // Draw build date with label
+            graphics.DrawText(15, 85, COLOR2D(0, 0, 0), "Build Date:", C2DGraphics::AlignLeft);
+            graphics.DrawText(100, 85, COLOR2D(0, 0, 140), pBuildDate, C2DGraphics::AlignLeft);
+            
+            // Draw Git branch with label
+            graphics.DrawText(15, 115, COLOR2D(0, 0, 0), "Git Branch:", C2DGraphics::AlignLeft);
+            
+            // Handle potentially long branch name
+            char branch_display[40] = {0};
+            if (strlen(pGitBranch) > 25) {
+                // Truncate with ellipsis if too long
+                strncpy(branch_display, pGitBranch, 22);
+                strcat(branch_display, "...");
+            } else {
+                strcpy(branch_display, pGitBranch);
+            }
+            graphics.DrawText(100, 115, COLOR2D(0, 0, 140), branch_display, C2DGraphics::AlignLeft);
+            
+            // Draw Git commit with label
+            graphics.DrawText(15, 145, COLOR2D(0, 0, 0), "Git Commit:", C2DGraphics::AlignLeft);
+            graphics.DrawText(100, 145, COLOR2D(0, 0, 140), pGitCommit, C2DGraphics::AlignLeft);
+            
+            // Draw logo or icon at bottom of content box
+            // Circle logo representing Circle OS
+            unsigned circle_x = 120;
+            unsigned circle_y = 175;
+            unsigned circle_radius = 15;
+            
+            graphics.DrawCircle(circle_x, circle_y, circle_radius, COLOR2D(58, 124, 165));
+            graphics.DrawCircle(circle_x, circle_y, circle_radius-3, COLOR2D(255, 255, 255));
+            graphics.DrawCircle(circle_x, circle_y, circle_radius-6, COLOR2D(58, 124, 165));
             
             // Use the helper function to draw navigation bar
             DrawNavigationBar(graphics, "advanced");

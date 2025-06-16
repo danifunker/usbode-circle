@@ -68,6 +68,8 @@ public:
     void Refresh(void); // Added method declaration for Refresh
     void ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel); // Added method declaration for button press display
     void ShowAdvancedScreen(void); // Added method declaration for advanced screen
+    void ShowBuildInfoScreen(const char* pVersionInfo, const char* pBuildDate, 
+                            const char* pGitBranch, const char* pGitCommit); // New method for build info
     
 private:
     // Initialize SH1106 display
