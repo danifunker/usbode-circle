@@ -264,8 +264,9 @@ TShutdownMode CKernel::Run(void) {
                 IPString = "Not connected";
             }
 
+            // CHANGED: Use short version string for display
             m_pDisplayManager->ShowStatusScreen(
-                CGitInfo::Get()->GetVersionString(),
+                CGitInfo::Get()->GetShortVersionString(), // Use short version
                 (const char*)IPString,
                 imageName,
                 m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
@@ -580,16 +581,17 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
         boolean bUSBFullSpeed = m_Options.GetUSBFullSpeed();
         const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
 
-        // Update the status screen
+        // CHANGED: Use the short version string for display
         m_pDisplayManager->ShowStatusScreen(
-            CGitInfo::Get()->GetVersionString(), 
+            CGitInfo::Get()->GetShortVersionString(),  // Use short version for display
             (const char*)IPString,
             currentImage,
-            pUSBSpeed);  // Pass USB speed to display manager
+            pUSBSpeed);
 
         // Only log when the display actually changes
-        LOGNOTE("Display updated: IP=%s, Image=%s, USB=%s",
-                (const char*)IPString, currentImage, pUSBSpeed);
+        LOGNOTE("Display updated: IP=%s, Image=%s, USB=%s, Version=%s",
+                (const char*)IPString, currentImage, pUSBSpeed, 
+                CGitInfo::Get()->GetShortVersionString());  // Log short version
 
         // Store current values
         LastDisplayedIP = IPString;

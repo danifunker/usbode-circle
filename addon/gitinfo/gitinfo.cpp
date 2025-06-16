@@ -65,6 +65,11 @@ const char* CGitInfo::GetFullVersionString(void) const
     return m_FullFormattedVersion;
 }
 
+const char* CGitInfo::GetShortVersionString(void) const
+{
+    return m_ShortVersionString;
+}
+
 void CGitInfo::UpdateFormattedVersions(void)
 {
     // Create the base version string (x.y.z)
@@ -102,9 +107,27 @@ void CGitInfo::UpdateFormattedVersions(void)
                                 (const char*)m_FormattedVersion,
                                 __DATE__, __TIME__);
     
+    // Create a very short version string for display (18 chars max)
+    m_ShortVersionString.Format("USBODE v%s.%s.%s-%s", 
+                               m_MajorVersion, 
+                               m_MinorVersion, 
+                               m_PatchVersion,
+                               shortHash);
+    
+    // Ensure it's never longer than 18 characters
+    if (m_ShortVersionString.GetLength() > 18)
+    {
+        // Truncate and add ellipsis
+        char truncated[19]; // 18 + null terminator
+        strncpy(truncated, (const char*)m_ShortVersionString, 15);
+        strcpy(truncated + 15, "...");
+        m_ShortVersionString = truncated;
+    }
+    
     // Log the version information for debugging
     CLogger::Get()->Write("gitinfo", LogNotice, 
-                         "Version: %s, Full: %s", 
+                         "Version: %s, Short: %s, Full: %s", 
                          (const char*)m_FormattedVersion,
+                         (const char*)m_ShortVersionString,
                          (const char*)m_FullFormattedVersion);
 }
