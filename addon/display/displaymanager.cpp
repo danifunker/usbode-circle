@@ -743,8 +743,7 @@ void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const
                                          FALSE, FALSE, Font6x7);
             }
             
-            // POSITION INDICATOR =========================
-            // Display file position indicator only ONCE at bottom (moved up)
+            // Draw position indicator for file selection
             char position[16];
             snprintf(position, sizeof(position), "%u/%u", CurrentFileIndex, TotalFiles);
             int posWidth = strlen(position) * 6; // Approximate width of text
@@ -1012,7 +1011,7 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     
     // Middle bar of A
     graphics.DrawLine(a_x - 2, a_y, a_x + 2, a_y, COLOR2D(0, 0, 0));
-    graphics.DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0));
+    graphics.DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0)); // Fixed: a_y+1 instead of a_x+1
     
     // Same arrow code as before but with white color for better visibility
     unsigned arrow_x = 35;
@@ -1214,7 +1213,37 @@ void CDisplayManager::ShowAdvancedScreen(void)
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
-        // Implement SH1106 advanced screen if needed
+        // SH1106 implementation remains unchanged
+        if (m_pSH1106Display != nullptr)
+        {
+            // Clear display first
+            m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
+            
+            // Draw title at the top
+            m_pSH1106Display->DrawText(0, 2, "Advanced Menu", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font8x8);
+            
+            // Draw horizontal divider
+            for (unsigned int x = 0; x < 128; x++)
+            {
+                m_pSH1106Display->SetPixel(x, 12, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            // Draw only the Build Info option with selection indicator
+            m_pSH1106Display->DrawText(10, 25, "Build Info", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Add selection arrows to indicate navigation
+            m_pSH1106Display->DrawText(0, 25, ">", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Draw navigation instructions at bottom
+            m_pSH1106Display->DrawText(0, 55, "KEY1: OK KEY2: Cancel", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Ensure the display is updated
+            m_pSH1106Display->Refresh();
+        }
         break;
         
     case DisplayTypeST7789:
@@ -1228,7 +1257,7 @@ void CDisplayManager::ShowAdvancedScreen(void)
                 return;
             }
             
-            // Clear the screen with WHITE background using the graphics object
+            // Clear the screen with WHITE background
             graphics.ClearScreen(COLOR2D(255, 255, 255));
             
             // Draw header bar with blue background
@@ -1236,6 +1265,223 @@ void CDisplayManager::ShowAdvancedScreen(void)
             
             // Draw title text in white
             graphics.DrawText(10, 8, COLOR2D(255, 255, 255), "Advanced Menu", C2DGraphics::AlignLeft);
+            
+            // Draw only Build Information option (highlighted as selected)
+            graphics.DrawRect(10, 40, m_pST7789Display->GetWidth() - 20, 40, COLOR2D(58, 124, 165));
+            graphics.DrawText(20, 60, COLOR2D(255, 255, 255), "Build Information", C2DGraphics::AlignLeft);
+            
+            // Replace info icon with a small hammer icon for build info
+            unsigned hammer_x = m_pST7789Display->GetWidth() - 40;
+            unsigned hammer_y = 60;
+            
+            // Draw hammer head (rectangle with rounded corners)
+            graphics.DrawRect(hammer_x - 12, hammer_y - 8, 16, 10, COLOR2D(255, 255, 255));
+            
+            // Draw hammer handle
+            graphics.DrawRect(hammer_x - 2, hammer_y - 4, 4, 14, COLOR2D(255, 255, 255));
+            
+            // Add some shading/detail to the hammer
+            graphics.DrawLine(hammer_x - 10, hammer_y - 6, hammer_x + 2, hammer_y - 6, COLOR2D(58, 124, 165)); // Top detail
+            graphics.DrawLine(hammer_x - 10, hammer_y - 2, hammer_x - 4, hammer_y - 2, COLOR2D(58, 124, 165)); // Middle detail
+            
+            // Use the helper function to draw navigation bar
+            DrawNavigationBar(graphics, "advanced");
+            
+            // Update the display
+            graphics.UpdateDisplay();
+            
+            // Ensure display stays on
+            m_pST7789Display->On();
+        }
+        break;
+        
+    default:
+        break;
+    }
+}
+
+void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* pBuildDate, 
+                                        const char* pGitBranch, const char* pGitCommit)
+{
+    assert(pVersionInfo != nullptr);
+    assert(pBuildDate != nullptr);
+    assert(pGitBranch != nullptr);
+    assert(pGitCommit != nullptr);
+    
+    // Create a full version string that combines all information
+    char fullVersionInfo[256];
+    snprintf(fullVersionInfo, sizeof(fullVersionInfo), 
+             "%s %s %s %s", 
+             pVersionInfo, pBuildDate, pGitBranch, pGitCommit);
+    
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        // SH1106 implementation remains unchanged
+        if (m_pSH1106Display != nullptr)
+        {
+            // Clear display first
+            m_pSH1106Display->Clear(SH1106_BLACK_COLOR);
+            
+            // Draw title at the top
+            m_pSH1106Display->DrawText(0, 2, "Build Info", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font8x8);
+            
+            // Draw horizontal divider
+            for (unsigned int x = 0; x < 128; x++)
+            {
+                m_pSH1106Display->SetPixel(x, 12, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
+            }
+            
+            // Draw content - version info
+            m_pSH1106Display->DrawText(0, 25, fullVersionInfo, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                     FALSE, FALSE, Font6x7);
+            
+            // Ensure the display is updated
+            m_pSH1106Display->Refresh();
+        }
+        break;
+        
+    case DisplayTypeST7789:
+        if (m_pST7789Display != nullptr)
+        {
+            // Create a 2D graphics instance for drawing
+            C2DGraphics graphics(m_pST7789Display);
+            if (!graphics.Initialize())
+            {
+                m_pLogger->Write("dispman", LogError, "Failed to initialize 2D graphics");
+                return;
+            }
+            
+            // Clear the screen with WHITE background
+            graphics.ClearScreen(COLOR2D(255, 255, 255));
+            
+            // Draw header bar with blue background
+            graphics.DrawRect(0, 0, m_pST7789Display->GetWidth(), 30, COLOR2D(58, 124, 165));
+            
+            // Draw title text in white with a small hammer icon
+            graphics.DrawText(40, 8, COLOR2D(255, 255, 255), "Build Info", C2DGraphics::AlignLeft);
+            
+            // Draw small hammer icon in the header
+            unsigned hammer_x = 22;
+            unsigned hammer_y = 15;
+            
+            // Draw hammer head (rectangle with rounded corners)
+            graphics.DrawRect(hammer_x - 8, hammer_y - 6, 12, 8, COLOR2D(255, 255, 255));
+            
+            // Draw hammer handle
+            graphics.DrawRect(hammer_x - 1, hammer_y - 3, 3, 10, COLOR2D(255, 255, 255));
+            
+            // Add some detail to the hammer
+            graphics.DrawLine(hammer_x - 7, hammer_y - 4, hammer_x + 2, hammer_y - 4, COLOR2D(58, 124, 165));
+            graphics.DrawLine(hammer_x - 7, hammer_y - 1, hammer_x - 3, hammer_y - 1, COLOR2D(58, 124, 165));
+            
+            // Draw content box with light blue background
+            graphics.DrawRect(5, 40, m_pST7789Display->GetWidth() - 10, 160, COLOR2D(235, 245, 255));
+            graphics.DrawRectOutline(5, 40, m_pST7789Display->GetWidth() - 10, 160, COLOR2D(58, 124, 165));
+            
+            // IMPROVED: Use shorter line length to force more wrapping
+            // and use smaller line spacing to fit more text
+            const size_t chars_per_line = 23; // Shorter lines
+            
+            size_t total_length = strlen(fullVersionInfo);
+            size_t current_pos = 0;
+            
+            // Start higher in the content box
+            unsigned int y_pos = 50;
+            // Reduced line spacing
+            const unsigned int line_spacing = 18;
+            
+            // Force at least 5 lines of text by breaking the content
+            // into roughly equal parts if it's short
+            if (total_length < chars_per_line * 5) {
+                // Break into roughly 5 equal parts
+                size_t chars_per_part = total_length / 5;
+                if (chars_per_part < 1) chars_per_part = 1;
+                
+                for (int i = 0; i < 5 && current_pos < total_length; i++) {
+                    size_t chars_to_display = chars_per_part;
+                    
+                    // For the last part, use all remaining chars
+                    if (i == 4 || current_pos + chars_to_display >= total_length) {
+                        chars_to_display = total_length - current_pos;
+                    }
+                    
+                    // Try to break at spaces when possible
+                    if (i < 4 && current_pos + chars_to_display < total_length) {
+                        // Look for a space near the end of this part
+                        for (size_t j = chars_to_display; j > chars_to_display/2; j--) {
+                            if (fullVersionInfo[current_pos + j] == ' ') {
+                                chars_to_display = j;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    char line[40] = {0};
+                    strncpy(line, fullVersionInfo + current_pos, chars_to_display);
+                    line[chars_to_display] = '\0';
+                    
+                    graphics.DrawText(15, y_pos + (i * line_spacing), COLOR2D(0, 0, 140), line, C2DGraphics::AlignLeft);
+                    
+                    current_pos += chars_to_display;
+                    
+                    // Skip spaces at start of next line
+                    if (current_pos < total_length && fullVersionInfo[current_pos] == ' ') {
+                        current_pos++;
+                    }
+                }
+            } 
+            else {
+                // For longer content, use normal word wrapping but with tighter spacing
+                while (current_pos < total_length && y_pos < 180) {
+                    size_t chars_to_display = chars_per_line;
+                    
+                    if (current_pos + chars_to_display < total_length) {
+                        size_t space_pos = chars_to_display;
+                        while (space_pos > 0 && fullVersionInfo[current_pos + space_pos] != ' ') {
+                            space_pos--;
+                        }
+                        
+                        if (space_pos > 0) {
+                            chars_to_display = space_pos;
+                        }
+                    }
+                    
+                    if (current_pos + chars_to_display > total_length) {
+                        chars_to_display = total_length - current_pos;
+                    }
+                    
+                    char line[40] = {0};
+                    strncpy(line, fullVersionInfo + current_pos, chars_to_display);
+                    line[chars_to_display] = '\0';
+                    
+                    graphics.DrawText(15, y_pos, COLOR2D(0, 0, 140), line, C2DGraphics::AlignLeft);
+                    
+                    current_pos += chars_to_display;
+                    
+                    // Skip spaces at the start of the next line
+                    if (current_pos < total_length && fullVersionInfo[current_pos] == ' ') {
+                        current_pos++;
+                    }
+                    
+                    y_pos += line_spacing;
+                }
+            }
+            
+            // Instead of circle logo, draw a larger hammer icon at the bottom
+            unsigned bottom_hammer_x = 120;
+            unsigned bottom_hammer_y = 185;
+            
+            // Draw hammer head (rectangle with rounded corners)
+            graphics.DrawRect(bottom_hammer_x - 15, bottom_hammer_y - 10, 24, 16, COLOR2D(58, 124, 165));
+            
+            // Draw hammer handle
+            graphics.DrawRect(bottom_hammer_x - 2, bottom_hammer_y - 6, 5, 20, COLOR2D(58, 124, 165));
+            
+            // Add some detail/shading to the hammer
+            graphics.DrawRect(bottom_hammer_x - 12, bottom_hammer_y - 7, 18, 10, COLOR2D(255, 255, 255));
+            graphics.DrawRect(bottom_hammer_x - 1, bottom_hammer_y - 6, 3, 16, COLOR2D(255, 255, 255));
             
             // Use the helper function to draw navigation bar
             DrawNavigationBar(graphics, "advanced");

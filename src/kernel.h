@@ -138,7 +138,8 @@ private:
 	{
 		ScreenStateMain,
 		ScreenStateLoadISO,
-		ScreenStateAdvanced
+		ScreenStateAdvanced,
+		ScreenStateBuildInfo    // New screen state for build info
 	};
 	
 	TScreenState m_ScreenState;
