@@ -1155,6 +1155,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 
+	    // TODO We're ignoring subq for now
+
+	    if (parameter_list == 0x00 )
+		    parameter_list = 0x01; // 0x00 is "reserved" so let's assume they want cd info
+	    
             switch (parameter_list) {
                 // Current Position Data request
                 case 0x01: {
@@ -1221,6 +1226,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                 case 0x03: {
                     // International Standard Recording Code (ISRC)
+	    	    // TODO We're ignoring track number because that's only valid here
                     break;
                 }
 
@@ -1460,10 +1466,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x2B:  // SEEK
         {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SEEK");
 
             // Where to start reading (LBA)
             m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SEEK to LBA %lu", m_nblock_address);
 
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
             if (cdplayer) {
@@ -1496,7 +1503,12 @@ void CUSBCDGadget::HandleSCSICommand() {
             // Play the audio
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
             if (cdplayer) {
-                cdplayer->Play(start_lba, num_blocks);
+		if (start_lba == 0xFFFFFFFF)
+                	cdplayer->Resume();
+		else if (start_lba == end_lba)
+                	cdplayer->Pause();
+		else
+                	cdplayer->Play(start_lba, num_blocks);
             }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
@@ -1504,6 +1516,19 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
+        case 0x4E:  // STOP / SCAN
+        {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "STOP / SCAN");
+
+                CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+                if (cdplayer) {
+                        cdplayer->Pause();
+                }
+
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            SendCSW();
+            break;
+        }
         case 0x45:  // PLAY AUDIO (10)
         {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10)");
@@ -1596,7 +1621,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             int length = SIZE_MODE_SENSE10_HEADER;
 
 	    // We don't support saved values
-	    if (page_control != 0x03) {
+	    if (page_control == 0x03) {
                         m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
                         m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
                         m_SenseParams.bAddlSenseCode = 0x39;      // Saving parameters not supported

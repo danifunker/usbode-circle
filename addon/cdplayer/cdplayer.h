@@ -96,7 +96,6 @@ class CCDPlayer : public CTask {
     u32 end_address;
     PlayState state;
     u8 *m_FileChunk = new (HEAP_LOW) u8[BUFFER_SIZE_BYTES];
-    boolean has_error;
     u8 volumeByte = 255;
     const u16 s_VolumeTable[VOLUME_STEPS] = {
 	    0,    273,  546,  819,  1092, 1365, 1638, 1911,

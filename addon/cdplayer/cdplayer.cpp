@@ -41,7 +41,6 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
 
     LOGNOTE("CD Player starting");
     SetName("cdplayer");
-    has_error = false;
     Initialize();
 }
 
@@ -201,23 +200,7 @@ boolean CCDPlayer::SoundTest() {
 
 boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
     LOGNOTE("CD Player playing from %u for %u blocks", lba, num_blocks);
-    // The PlayAudio SCSI command has some weird exceptions
-    // for LBA addresses:-
-    //
-    // 00000000 do nothing. It's preferable that this method
-    //          will not be called if an LBA of zero is
-    //          encountered
-    //
-    // FFFFFFFF resume playing. It's preferable that the Resume
-    //          method will be called instead of passing this
-    //          value to this method
 
-    if (lba == 0xFFFFFFFF) {
-        // resume
-        return this->Resume();
-    }
-    
-    // play from new lba
     address = lba;
     end_address = address + num_blocks;
     state = SEEKING_PLAYING;
@@ -263,8 +246,7 @@ void CCDPlayer::Run(void) {
                     state = STOPPED_OK;
                 }
             } else {
-                LOGERR("Error seeking to byte position %u", address * SECTOR_SIZE);
-                has_error = true;
+                LOGNOTE("Error seeking to byte position %u", address * SECTOR_SIZE);
                 state = STOPPED_ERROR;
                 break;
             }
@@ -286,7 +268,6 @@ void CCDPlayer::Run(void) {
                 // Partial read
                 if (readCount < bytes_to_read) {
                     LOGERR("Partial read");
-                    has_error = true;
                     state = STOPPED_ERROR;
                     break;
                 }
@@ -299,7 +280,6 @@ void CCDPlayer::Run(void) {
                 int writeCount = m_pSound->Write(m_FileChunk, readCount);
                 if (writeCount != readCount) {
                     LOGERR("Truncated write, audio dropped");
-                    has_error = true;
                     state = STOPPED_ERROR;
                     break;
                 }
