@@ -756,8 +756,14 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             if ((m_CBW.CBWCB[1] & 0x01) == 0) {  // EVPD bit is 0: Standard Inquiry
                 // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
-                memcpy(&m_InBuffer, &m_InqReply, SIZE_INQR);
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, SIZE_INQR);
+		
+		// Set response length
+		int datalen = SIZE_INQR;
+		if (allocationLength < datalen)
+		    datalen = allocationLength;
+
+                memcpy(&m_InBuffer, &m_InqReply, datalen);
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
                 m_nState = TCDState::DataIn;
                 m_nnumber_blocks = 0;  // nothing more after this send
                 m_CSW.bmCSWStatus = bmCSWStatus;
