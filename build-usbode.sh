@@ -101,10 +101,11 @@ for arch in "${supported_rasppi[@]}"; do
     cd ${projectRoot}/src
     make clean
     make
+    #Copy the kernel image to the destination directory before starting the next arch
+    cp ${projectRoot}/src/kernel*.img ${destDir}
 done
 
 echo "Platform Specific Builds Completes Sucessfully, copying general files to ${destDir}"
-cp ${projectRoot}/src/kernel*.img ${destDir}
 cp ${projectRoot}/sdcard/wpa_supplicant.conf ${destDir}
 cp ${projectRoot}/sdcard/cmdline.txt ${destDir}
 mkdir -p ${destDir}/images
