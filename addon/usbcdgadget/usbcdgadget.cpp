@@ -607,8 +607,11 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
                 // Tombraider works initially then starts always sending 00
                 // as the volume level. I suspect this has something to do with
                 // the mode sense command. Perhaps we're feeding back the wrong thing?
-                // cdplayer->SetVolume(modePage->Output0Volume);
-            }
+            	MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume"); 
+                cdplayer->SetVolume(modePage->Output0Volume);
+            } else {
+            	MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Couldn't get CDPlayer");
+	    }
             break;
         }
     }
@@ -1717,9 +1720,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    codepage.pageLength = 16;
 		    codepage.IMMEDAndSOTC = 0x04;
 		    codepage.CDDAOutput0Select = 0x01;  // audio channel 0
-		    codepage.Output0Volume = volume;
+		    //codepage.Output0Volume = volume;  // When we return real volume, games that allow volume control screw up
+		    codepage.Output0Volume = 0xff;
 		    codepage.CDDAOutput1Select = 0x02;  // audio channel 1
-		    codepage.Output1Volume = volume;
+		    //codepage.Output1Volume = volume;
+		    codepage.Output1Volume = 0xff;
 		    codepage.CDDAOutput2Select = 0x00;  // none
 		    codepage.Output2Volume = 0x00;      // muted
 		    codepage.CDDAOutput3Select = 0x00;  // none

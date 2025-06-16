@@ -108,6 +108,7 @@ u8 CCDPlayer::GetVolume() {
 }
 
 boolean CCDPlayer::SetVolume(u8 vol) {
+	LOGNOTE("Setting volume to 0x%02x", vol);
     volumeByte = vol;
     return true;
 }
@@ -210,19 +211,14 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
 // DACs don't support volume control, so we scale the data
 // accordingly instead
 void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
-    // Clamp and quantize volume to VOLUME_STEPS
-    u32 index = (volumeByte * (VOLUME_STEPS - 1)) >> 8;  // 0–15
-    u16 scale = s_VolumeTable[index];                    // fixed-point Q12
+    // Compute fixed-point Q12 scale dynamically (0–4096)
+    u16 scale = volumeByte << 4;
 
-    // Scale each 16bit sample
     for (u32 i = 0; i < byteCount; i += 2) {
-        // Load 16-bit signed little-endian sample
         short sample = (short)((buffer[i + 1] << 8) | buffer[i]);
 
-        // Apply volume scaling
-        int scaled = (sample * scale) >> VOLUME_SCALE_BITS;
+        int scaled = (sample * scale) >> 12;  // Q12 shift
 
-        // Store back (little-endian)
         buffer[i] = (u8)(scaled & 0xFF);
         buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
     }
