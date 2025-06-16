@@ -108,11 +108,10 @@ void CGitInfo::UpdateFormattedVersions(void)
                                 __DATE__, __TIME__);
     
     // Create a very short version string for display (18 chars max)
-    m_ShortVersionString.Format("USBODE v%s.%s.%s-%s", 
+    m_ShortVersionString.Format("USBODE v%s.%s.%s", 
                                m_MajorVersion, 
                                m_MinorVersion, 
-                               m_PatchVersion,
-                               shortHash);
+                               m_PatchVersion);
     
     // Ensure it's never longer than 18 characters
     if (m_ShortVersionString.GetLength() > 18)
