@@ -1559,64 +1559,64 @@ void CDisplayManager::WakeScreen(void)
 void CDisplayManager::UpdateScreenTimeout(void)
 {
     // Don't timeout if not on main screen
-    if (!m_bMainScreenActive) {
+    if (!m_bMainScreenActive || !m_bScreenActive) {
         return;
     }
     
     // Get current time
     unsigned nCurrentTime = CTimer::Get()->GetTicks();
     
-    // Calculate elapsed time in milliseconds
-    unsigned nElapsedTime = nCurrentTime - m_nLastActivityTime;
+    // Calculate elapsed time in seconds (not milliseconds)
+    // This simplifies the comparison and reduces need for frequent conversions
+    unsigned nElapsedSeconds = (nCurrentTime - m_nLastActivityTime) / 1000;
     
-    // Convert timeout to milliseconds
-    unsigned nTimeoutMs = m_nScreenTimeoutSeconds * 1000;
+    // Check if we need to show warning (2 seconds before timeout)
+    if (!m_bTimeoutWarningShown && nElapsedSeconds >= m_nScreenTimeoutSeconds - 2) {
+        // Only log when actually showing the warning
+        CTime Time;
+        CString TimeString;
+        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
+        
+        m_pLogger->Write("dispman", LogNotice, 
+                      "[%s] Showing sleep warning: elapsed=%u sec, timeout=%u sec", 
+                      (const char *)TimeString, nElapsedSeconds, m_nScreenTimeoutSeconds);
+        
+        ShowTimeoutWarning();
+        m_bTimeoutWarningShown = TRUE;
+        return; // Exit early after showing warning
+    }
     
-    // Warning threshold (2 seconds before timeout)
-    unsigned nWarningThreshold = nTimeoutMs > 2000 ? nTimeoutMs - 2000 : 0;
+    // Check for actual timeout
+    if (nElapsedSeconds >= m_nScreenTimeoutSeconds) {
+        // Only log when actually sleeping
+        CTime Time;
+        CString TimeString;
+        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
+        
+        m_pLogger->Write("dispman", LogNotice, 
+                      "[%s] Screen sleeping: elapsed=%u sec, timeout=%u sec", 
+                      (const char *)TimeString, nElapsedSeconds, m_nScreenTimeoutSeconds);
+        
+        SetScreenPower(FALSE);
+        m_bScreenActive = FALSE;
+    }
     
-    // Add debugging every 5 seconds
+    // Add occasional debug logging (every ~10 seconds)
     static unsigned nLastLogTime = 0;
-    if (nCurrentTime - nLastLogTime > 5000) { // Log every 5 seconds
+    if (nCurrentTime - nLastLogTime > 10000) { // Log every 10 seconds
         CTime Time;
         CString TimeString;
         TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
         
         m_pLogger->Write("dispman", LogDebug, 
-                      "[%s] Timeout status: elapsed=%u ms, timeout=%u ms, warning_at=%u ms", 
-                      (const char *)TimeString, nElapsedTime, nTimeoutMs, nWarningThreshold);
-        
+                      "[%s] Timeout status: elapsed=%u sec, timeout=%u sec, warning=%s, screen=%s", 
+                      (const char *)TimeString,
+                      nElapsedSeconds, 
+                      m_nScreenTimeoutSeconds,
+                      m_bTimeoutWarningShown ? "shown" : "not shown",
+                      m_bScreenActive ? "active" : "sleep");
+                      
         nLastLogTime = nCurrentTime;
-    }
-    
-    // CRITICAL: Check timeout FIRST, then warning
-    // This ensures the right sequence regardless of how frequently this is called
-    if (m_bScreenActive && nElapsedTime >= nTimeoutMs) {
-        // Time to sleep
-        CTime Time;
-        CString TimeString;
-        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-        
-        m_pLogger->Write("dispman", LogNotice, 
-                      "[%s] Screen sleeping: elapsed=%u ms, timeout=%u ms", 
-                      (const char *)TimeString, nElapsedTime, nTimeoutMs);
-        
-        SetScreenPower(FALSE);
-        m_bScreenActive = FALSE;
-    }
-    // Only show warning if we haven't already shown it
-    else if (m_bScreenActive && !m_bTimeoutWarningShown && nElapsedTime >= nWarningThreshold) {
-        // Show timeout warning 2 seconds before sleep
-        CTime Time;
-        CString TimeString;
-        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-        
-        m_pLogger->Write("dispman", LogNotice, 
-                      "[%s] Showing sleep warning: elapsed=%u ms, warning_at=%u ms", 
-                      (const char *)TimeString, nElapsedTime, nWarningThreshold);
-        
-        ShowTimeoutWarning();
-        m_bTimeoutWarningShown = TRUE;
     }
 }
 

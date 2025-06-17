@@ -313,11 +313,18 @@ TShutdownMode CKernel::Run(void) {
 
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
-        // Process display timeouts more frequently
-        if (m_pDisplayManager  && (nCount % 50 == 0)) {
+        // Process display timeouts ONCE PER SECOND using the timer
+        // This significantly reduces CPU usage while maintaining adequate responsiveness
+        static unsigned nLastTimeoutCheck = 0;
+        unsigned nCurrentTime = m_Timer.GetTicks();
+        
+        // Only check timeout approximately once per second
+        if (m_pDisplayManager && (nCurrentTime - nLastTimeoutCheck >= 1000)) {
             m_pDisplayManager->UpdateScreenTimeout();
+            nLastTimeoutCheck = nCurrentTime;
         }
-
+        
+        // Ensure we yield to other threads
         CScheduler::Get()->Yield();
         
         // Process button updates AFTER checking timeouts
