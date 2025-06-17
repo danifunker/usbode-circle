@@ -246,7 +246,15 @@ TShutdownMode CKernel::Run(void) {
 	    if (strcmp(pSoundDevice, "sndi2s") == 0 
             || strcmp(pSoundDevice, "sndpwm") == 0 
             || strcmp(pSoundDevice, "sndhdmi") == 0 ) {
+                // Give extra time for HDMI audio to negotiate
+                if (strcmp(pSoundDevice, "sndhdmi") == 0) {
+                    LOGNOTE("Waiting 2000ms for HDMI audio to negotiate");
+                    CTimer::Get()->MsDelay(2000);
+                }
+        // Initialize the sound device
 		new CCDPlayer(pSoundDevice);
+
+
 		LOGNOTE("Started the CD Player service");
 	    }
 
