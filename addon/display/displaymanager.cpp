@@ -301,6 +301,11 @@ void CDisplayManager::ClearDisplay(void)
 
 void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddress, const char *pISOName, const char *pUSBSpeed)
 {
+    // Don't update if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     assert(pTitle != nullptr);
     assert(pIPAddress != nullptr);
     assert(pISOName != nullptr);
@@ -601,6 +606,11 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
 void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const char* pSelectedFileName, 
                                             unsigned CurrentFileIndex, unsigned TotalFiles)
 {
+    // Don't update if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     assert(pCurrentISOName != nullptr);
     assert(pSelectedFileName != nullptr);
     
@@ -967,6 +977,11 @@ void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const
 
 void CDisplayManager::Refresh(void)
 {
+    // Don't refresh if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
@@ -1196,6 +1211,11 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
 
 void CDisplayManager::ShowAdvancedScreen(void)
 {
+    // Don't update if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
@@ -1289,6 +1309,11 @@ void CDisplayManager::ShowAdvancedScreen(void)
 void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* pBuildDate, 
                                         const char* pGitBranch, const char* pGitCommit)
 {
+    // Don't update if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     assert(pVersionInfo != nullptr);
     assert(pBuildDate != nullptr);
     assert(pGitBranch != nullptr);
@@ -1558,7 +1583,7 @@ void CDisplayManager::WakeScreen(void)
 
 void CDisplayManager::UpdateScreenTimeout(void)
 {
-    // Don't timeout if not on main screen
+    // Don't timeout if not on main screen or already sleeping
     if (!m_bMainScreenActive || !m_bScreenActive) {
         return;
     }
@@ -1566,9 +1591,27 @@ void CDisplayManager::UpdateScreenTimeout(void)
     // Get current time
     unsigned nCurrentTime = CTimer::Get()->GetTicks();
     
-    // Calculate elapsed time in seconds (not milliseconds)
-    // This simplifies the comparison and reduces need for frequent conversions
+    // Calculate elapsed time in seconds
     unsigned nElapsedSeconds = (nCurrentTime - m_nLastActivityTime) / 1000;
+    
+    // Check for actual timeout first (this ensures we don't get stuck in warning state)
+    if (nElapsedSeconds >= m_nScreenTimeoutSeconds) {
+        // Only log and act if we're actually changing state
+        if (m_bScreenActive) {
+            CTime Time;
+            CString TimeString;
+            TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
+            
+            m_pLogger->Write("dispman", LogNotice, 
+                          "[%s] Screen sleeping: elapsed=%u sec, timeout=%u sec", 
+                          (const char *)TimeString, nElapsedSeconds, m_nScreenTimeoutSeconds);
+            
+            // IMPORTANT: Set state to FALSE *before* turning off to prevent race conditions
+            m_bScreenActive = FALSE; 
+            SetScreenPower(FALSE);
+        }
+        return; // Exit early to avoid warning check
+    }
     
     // Check if we need to show warning (2 seconds before timeout)
     if (!m_bTimeoutWarningShown && nElapsedSeconds >= m_nScreenTimeoutSeconds - 2) {
@@ -1583,22 +1626,6 @@ void CDisplayManager::UpdateScreenTimeout(void)
         
         ShowTimeoutWarning();
         m_bTimeoutWarningShown = TRUE;
-        return; // Exit early after showing warning
-    }
-    
-    // Check for actual timeout
-    if (nElapsedSeconds >= m_nScreenTimeoutSeconds) {
-        // Only log when actually sleeping
-        CTime Time;
-        CString TimeString;
-        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-        
-        m_pLogger->Write("dispman", LogNotice, 
-                      "[%s] Screen sleeping: elapsed=%u sec, timeout=%u sec", 
-                      (const char *)TimeString, nElapsedSeconds, m_nScreenTimeoutSeconds);
-        
-        SetScreenPower(FALSE);
-        m_bScreenActive = FALSE;
     }
     
     // Add occasional debug logging (every ~10 seconds)
@@ -1735,6 +1762,9 @@ void CDisplayManager::SetScreenPower(boolean bOn)
                   bOn ? "ON" : "OFF",
                   pCaller);
     
+    // Update screen state BEFORE changing hardware state
+    m_bScreenActive = bOn;
+    
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
@@ -1814,4 +1844,26 @@ void CDisplayManager::DebugTimerAccuracy(void)
         
         nLastCheckTime = nCurrentTime;
     }
+}
+
+// Add this helper method to prevent unwanted screen wake-ups
+boolean CDisplayManager::ShouldAllowDisplayUpdates(void)
+{
+    // If the screen is off due to timeout, block all display updates
+    // that aren't explicitly initiated by WakeScreen()
+    if (!m_bScreenActive && m_bMainScreenActive) {
+        // Debug log this occasionally to trace unwanted wake-ups
+        static unsigned nLastLogTime = 0;
+        unsigned nCurrentTime = CTimer::Get()->GetTicks();
+        
+        if (nCurrentTime - nLastLogTime > 5000) { // Log every 5 seconds
+            m_pLogger->Write("dispman", LogDebug, 
+                         "Blocking display update while screen is sleeping");
+            nLastLogTime = nCurrentTime;
+        }
+        
+        return FALSE;
+    }
+    
+    return TRUE;
 }

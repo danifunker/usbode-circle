@@ -92,6 +92,9 @@ private:
     void ShowTimeoutWarning(void); // Show warning before sleep
     void SetScreenPower(boolean bOn); // Turn screen on/off
 
+    // Add this helper method to check if updates should be allowed
+    boolean ShouldAllowDisplayUpdates(void);
+
 private:
     CLogger *m_pLogger;
     TDisplayType m_DisplayType;
