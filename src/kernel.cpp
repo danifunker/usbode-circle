@@ -313,7 +313,18 @@ TShutdownMode CKernel::Run(void) {
 
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
-        // Process button updates FIRST for best responsiveness
+        // Process display timeouts on every loop iteration
+        if (m_pDisplayManager) {
+            // Check every iteration, but only log debug info occasionally
+            m_pDisplayManager->UpdateScreenTimeout();
+            
+            // Debug timer accuracy less frequently
+            if (nCount % 100 == 0) {
+                m_pDisplayManager->DebugTimerAccuracy();
+            }
+        }
+        
+        // Process button updates AFTER checking timeouts
         if (m_pButtonManager) {
             m_pButtonManager->Update();
 

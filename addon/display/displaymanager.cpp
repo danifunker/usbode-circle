@@ -1210,17 +1210,11 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
         graphics.DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
         graphics.DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
         
-        // Green checkmark
-        unsigned check_x = 215;
-        unsigned check_y = 225;
-        graphics.DrawLine(check_x - 8, check_y, check_x - 3, check_y + 8, COLOR2D(0, 255, 0));
-        graphics.DrawLine(check_x - 3, check_y + 8, check_x + 8, check_y - 5, COLOR2D(0, 255, 0));
-        
-        // Make green checkmark thicker
-        graphics.DrawLine(check_x - 7, check_y, check_x - 2, check_y + 8, COLOR2D(0, 255, 0));
-        graphics.DrawLine(check_x - 2, check_y + 8, check_x + 9, check_y - 5, COLOR2D(0, 255, 0));
-        graphics.DrawLine(check_x - 8, check_y + 1, check_x - 3, check_y + 9, COLOR2D(0, 255, 0));
-        graphics.DrawLine(check_x - 3, check_y + 9, check_x + 8, check_y - 4, COLOR2D(0, 255, 0));
+        // Folder icon
+        unsigned folder_x = 215;
+        unsigned folder_y = 220;
+        graphics.DrawRect(folder_x, folder_y + 3, 16, 11, COLOR2D(255, 255, 255));
+        graphics.DrawRect(folder_x + 2, folder_y, 8, 4, COLOR2D(255, 255, 255));
     }
 }
 
@@ -1449,7 +1443,7 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 }
             } 
             else {
-                // For longer content, use normal word wrapping but with tighter spacing
+                                                                                           // For longer content, use normal word wrapping but with tighter spacing
                 while (current_pos < total_length && y_pos < 180) {
                     size_t chars_to_display = chars_per_line;
                     
@@ -1522,25 +1516,28 @@ void CDisplayManager::WakeScreen(void)
     CString TimeString;
     TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
     
+    // Get caller information for debugging
+    void *pCaller = __builtin_return_address(0);
+    
     // Reset the last activity time
     unsigned nPreviousTime = m_nLastActivityTime;
     m_nLastActivityTime = CTimer::Get()->GetTicks();
     
-    m_pLogger->Write("dispman", LogDebug, 
-                  "[%s] Screen activity: time since last activity=%u ms", 
-                  (const char *)TimeString, m_nLastActivityTime - nPreviousTime);
+    // Always log wakeup attempts
+    m_pLogger->Write("dispman", LogNotice, 
+                  "[%s] Screen wake attempt: caller=%p, time since last activity=%u ms", 
+                  (const char *)TimeString, pCaller, CTimer::Get()->GetTicks() - nPreviousTime);
     
     // If screen is not active, turn it on
     if (!m_bScreenActive) {
         SetScreenPower(TRUE);
         m_bScreenActive = TRUE;
+        m_bTimeoutWarningShown = FALSE;
+        
         m_pLogger->Write("dispman", LogNotice, 
                       "[%s] Screen woken up after %u ms of inactivity", 
-                      (const char *)TimeString, m_nLastActivityTime - nPreviousTime);
+                      (const char *)TimeString, CTimer::Get()->GetTicks() - nPreviousTime);
     }
-    
-    // Reset warning state
-    m_bTimeoutWarningShown = FALSE;
 }
 
 void CDisplayManager::UpdateScreenTimeout(void)
@@ -1559,6 +1556,9 @@ void CDisplayManager::UpdateScreenTimeout(void)
     // Convert timeout to milliseconds
     unsigned nTimeoutMs = m_nScreenTimeoutSeconds * 1000;
     
+    // Warning threshold (2 seconds before timeout)
+    unsigned nWarningThreshold = nTimeoutMs > 2000 ? nTimeoutMs - 2000 : 0;
+    
     // Add detailed logging (only every few seconds to avoid flooding logs)
     static unsigned nLastLogTime = 0;
     if (nCurrentTime - nLastLogTime > 5000) { // Log every 5 seconds
@@ -1568,31 +1568,20 @@ void CDisplayManager::UpdateScreenTimeout(void)
         TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
         
         m_pLogger->Write("dispman", LogDebug, 
-                      "[%s] Timeout status: elapsed=%u ms, timeout=%u ms, warning=%s, screen=%s", 
+                      "[%s] Timeout status: elapsed=%u ms, timeout=%u ms, warning_at=%u ms, warning=%s, screen=%s", 
                       (const char *)TimeString,
                       nElapsedTime, 
                       nTimeoutMs,
+                      nWarningThreshold,
                       m_bTimeoutWarningShown ? "shown" : "not shown",
                       m_bScreenActive ? "active" : "sleep");
                       
         nLastLogTime = nCurrentTime;
     }
     
-    // Check if we should show warning or sleep
-    if (m_bScreenActive && !m_bTimeoutWarningShown && nElapsedTime >= (nTimeoutMs - 2000)) {
-        // Show timeout warning 2 seconds before sleep
-        CTime Time;
-        CString TimeString;
-        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-        
-        m_pLogger->Write("dispman", LogNotice, 
-                      "[%s] Showing sleep warning: elapsed=%u ms, timeout=%u ms", 
-                      (const char *)TimeString, nElapsedTime, nTimeoutMs);
-        
-        ShowTimeoutWarning();
-        m_bTimeoutWarningShown = TRUE;
-    } 
-    else if (m_bScreenActive && nElapsedTime >= nTimeoutMs) {
+    // FIXED TIMING LOGIC:
+    // First check for actual timeout
+    if (m_bScreenActive && nElapsedTime >= nTimeoutMs) {
         // Time to sleep
         CTime Time;
         CString TimeString;
@@ -1605,7 +1594,22 @@ void CDisplayManager::UpdateScreenTimeout(void)
         SetScreenPower(FALSE);
         m_bScreenActive = FALSE;
     }
+    // Then check for warning (only if we haven't shown it yet)
+    else if (m_bScreenActive && !m_bTimeoutWarningShown && nElapsedTime >= nWarningThreshold) {
+        // Show timeout warning 2 seconds before sleep
+        CTime Time;
+        CString TimeString;
+        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
+        
+        m_pLogger->Write("dispman", LogNotice, 
+                      "[%s] Showing sleep warning: elapsed=%u ms, warning_at=%u ms, timeout=%u ms", 
+                      (const char *)TimeString, nElapsedTime, nWarningThreshold, nTimeoutMs);
+        
+        ShowTimeoutWarning();
+        m_bTimeoutWarningShown = TRUE;
+    }
 }
+
 void CDisplayManager::SetMainScreenActive(boolean bActive)
 {
     // Format current time using Circle's time functions
@@ -1645,6 +1649,13 @@ void CDisplayManager::SetScreenTimeout(unsigned nSeconds)
 
 void CDisplayManager::ShowTimeoutWarning(void)
 {
+    CTime Time;
+    CString TimeString;
+    TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
+    
+    m_pLogger->Write("dispman", LogDebug, 
+                  "[%s] Displaying timeout warning", (const char *)TimeString);
+    
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
@@ -1659,8 +1670,8 @@ void CDisplayManager::ShowTimeoutWarning(void)
                 }
             }
             
-            // Draw warning text
-            m_pSH1106Display->DrawText(5, 56, "Screen sleep in 2s...", 
+            // Draw warning text with countdown
+            m_pSH1106Display->DrawText(5, 56, "Sleep in 2s - Press any key", 
                                      SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
                                      FALSE, FALSE, Font6x7);
             
@@ -1681,11 +1692,14 @@ void CDisplayManager::ShowTimeoutWarning(void)
             }
             
             // Draw a black semi-transparent overlay at the bottom with the warning
-            graphics.DrawRect(0, 180, m_pST7789Display->GetWidth(), 30, COLOR2D(0, 0, 0));
+            graphics.DrawRect(0, 180, m_pST7789Display->GetWidth(), 40, COLOR2D(0, 0, 0));
             
             // Draw text in white
             graphics.DrawText(120, 195, COLOR2D(255, 255, 255), 
-                            "Screen sleep in 2 seconds...", 
+                            "Screen sleep in 2 seconds", 
+                            C2DGraphics::AlignCenter);
+            graphics.DrawText(120, 210, COLOR2D(255, 255, 255), 
+                            "Press any key to cancel", 
                             C2DGraphics::AlignCenter);
             
             // Update the display
@@ -1700,6 +1714,20 @@ void CDisplayManager::ShowTimeoutWarning(void)
 
 void CDisplayManager::SetScreenPower(boolean bOn)
 {
+    // Format current time using Circle's time functions
+    CTime Time;
+    CString TimeString;
+    TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
+    
+    // Get caller information for debugging
+    void *pCaller = __builtin_return_address(0);
+    
+    m_pLogger->Write("dispman", LogNotice, 
+                  "[%s] Screen power %s: caller=%p", 
+                  (const char *)TimeString, 
+                  bOn ? "ON" : "OFF",
+                  pCaller);
+    
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
@@ -1733,6 +1761,7 @@ void CDisplayManager::DebugTimerAccuracy(void)
 {
     static unsigned nStartTime = 0;
     static unsigned nLastCheckTime = 0;
+    static unsigned nCheckCount = 0;
     
     unsigned nCurrentTime = CTimer::Get()->GetTicks();
     
@@ -1752,24 +1781,29 @@ void CDisplayManager::DebugTimerAccuracy(void)
         return;
     }
     
-    // Only log every 5 seconds
-    if (nCurrentTime - nLastCheckTime > 5000) {
+    // Only log every second for first 10 checks, then less frequently
+    unsigned nCheckInterval = (nCheckCount < 10) ? 1000 : 5000;
+    
+    if (nCurrentTime - nLastCheckTime > nCheckInterval) {
         CTime Time;
         CString TimeString;
         TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
         
         // Calculate elapsed time according to system timer
         unsigned nElapsedTicks = nCurrentTime - nStartTime;
+        unsigned nIntervalTicks = nCurrentTime - nLastCheckTime;
         
         // Calculate elapsed seconds
         unsigned nElapsedSeconds = nElapsedTicks / 1000;
         
         m_pLogger->Write("dispman", LogNotice, 
-                      "[%s] Timer check: elapsed=%u ticks (%u.%03u sec) since start", 
-                      (const char *)TimeString, 
+                      "[%s] Timer check %u: elapsed=%u ticks (%u.%03u sec), interval=%u ticks", 
+                      (const char *)TimeString,
+                      ++nCheckCount,
                       nElapsedTicks,
                       nElapsedSeconds,
-                      nElapsedTicks % 1000);
+                      nElapsedTicks % 1000,
+                      nIntervalTicks);
         
         nLastCheckTime = nCurrentTime;
     }
