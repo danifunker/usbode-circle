@@ -64,6 +64,8 @@ boolean CCDPlayer::Initialize() {
                                            &m_I2CMaster, DAC_I2C_ADDRESS);
         LOGNOTE("CD Player Initializing sndi2c");
     } else if (strcmp(m_pSoundDevice, "sndhdmi") == 0) {
+        LOGNOTE("CD Player Initializing sndhdmi, waiting 2000ms for HDMI audio to negotiate");
+        CTimer::Get()->MsDelay(2000);
         m_pSound = new CHDMISoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
         LOGNOTE("CD Player Initializing sndhdmi");
     }

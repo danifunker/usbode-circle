@@ -36,6 +36,7 @@ enum TDisplayType
 {
     DisplayTypeSH1106,     // SH1106 OLED display
     DisplayTypeST7789,     // ST7789 TFT display
+    DisplayTypeHDMI,       // HDMI display output
     DisplayTypeUnknown     // Unknown or unspecified display
 };
 
@@ -86,6 +87,8 @@ private:
     // Initialize ST7789 display
     boolean InitializeST7789(CSPIMaster *pSPIMaster);
     
+    boolean InitializeHDMI(void); // Initialize HDMI display
+
     void DrawNavigationBar(C2DGraphics& graphics, const char* screenType);
     
     // Helper methods for screen timeout

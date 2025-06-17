@@ -215,7 +215,9 @@ TShutdownMode CKernel::Run(void) {
 	    const char* pSoundDevice = m_Options.GetSoundDevice();
 	    
 	    //Currently supporting PWM and I2S sound devices. HDMI needs more work.
-	    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
+	    if (strcmp(pSoundDevice, "sndi2s") == 0 
+            || strcmp(pSoundDevice, "sndpwm") == 0 
+            || strcmp(pSoundDevice, "sndhdmi") == 0 ) {
 		new CCDPlayer(pSoundDevice);
 		LOGNOTE("Started the CD Player service");
 	    }
@@ -491,6 +493,8 @@ TDisplayType CKernel::GetDisplayTypeFromString(const char* displayType) {
         return DisplayTypeUnknown;
     } else if (strcmp(displayType, "pirateaudiolineout") == 0) {
         return DisplayTypeST7789;
+    } else if (strcmp(displayType, "hdmi") == 0) {
+        return DisplayTypeHDMI;        
     } else if (strcmp(displayType, "waveshare") == 0) {
         return DisplayTypeSH1106;
     }
@@ -505,6 +509,11 @@ void CKernel::InitializeDisplay(TDisplayType displayType) {
         LOGNOTE("No display configured");
         return;
     }
+
+    // For HDMI display, we don't need SPI
+    if (displayType == DisplayTypeHDMI) {
+        LOGNOTE("Using HDMI display, no SPI initialization needed");
+    }     
 
     // Initialize the appropriate SPI settings based on display type
     if (displayType == DisplayTypeSH1106) {

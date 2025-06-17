@@ -103,6 +103,9 @@ boolean CDisplayManager::Initialize(CSPIMaster *pSPIMaster)
     case DisplayTypeST7789:
         pDisplayTypeStr = "ST7789";
         break;
+    case DisplayTypeHDMI:
+        pDisplayTypeStr = "HDMI";
+        break;        
     default:
         pDisplayTypeStr = "Unknown";
         break;
@@ -122,6 +125,11 @@ boolean CDisplayManager::Initialize(CSPIMaster *pSPIMaster)
     case DisplayTypeST7789:
         bResult = InitializeST7789(pSPIMaster);
         break;
+
+    case DisplayTypeHDMI:
+        // HDMI doesn't need SPI master
+        bResult = InitializeHDMI();
+        break;        
         
     default:
         m_pLogger->Write(FromDisplayManager, LogError, "Unknown display type");
@@ -135,6 +143,18 @@ boolean CDisplayManager::Initialize(CSPIMaster *pSPIMaster)
     }
     
     return bResult;
+}
+
+boolean CDisplayManager::InitializeHDMI(void)
+{
+    // HDMI display is already initialized by the system
+    // We just need to log that we're using it
+    m_pLogger->Write(FromDisplayManager, LogNotice, "Using system HDMI display");
+    
+    // For HDMI display, we won't create any new display device
+    // The system already has CScreenDevice initialized in kernel.cpp
+    
+    return TRUE;
 }
 
 boolean CDisplayManager::InitializeSH1106(CSPIMaster *pSPIMaster)
@@ -591,6 +611,13 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
             // Ensure display stays on
             m_pST7789Display->On();
         }
+        break;
+
+    case DisplayTypeHDMI:
+        // For HDMI, we'll just log the information since we don't have direct screen control
+        m_pLogger->Write(FromDisplayManager, LogNotice, 
+                      "HDMI Status: Title=%s, IP=%s, ISO=%s, USB=%s", 
+                      pTitle, pIPAddress, pISOName, pUSBSpeed);
         break;
         
     default:
