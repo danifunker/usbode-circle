@@ -1550,217 +1550,10 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
     }
 }
 
-void CDisplayManager::WakeScreen(void)
-{
-    // Format current time using Circle's time functions
-    CTime Time;
-    CString TimeString;
-    TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-    
-    // Get caller information for debugging
-    void *pCaller = __builtin_return_address(0);
-    
-    // Reset the last activity time
-    unsigned nPreviousTime = m_nLastActivityTime;
-    m_nLastActivityTime = CTimer::Get()->GetTicks();
-    
-    // Always log wakeup attempts
-    m_pLogger->Write("dispman", LogNotice, 
-                  "[%s] Screen wake attempt: caller=%p, time since last activity=%u ms", 
-                  (const char *)TimeString, pCaller, CTimer::Get()->GetTicks() - nPreviousTime);
-    
-    // If screen is not active, turn it on
-    if (!m_bScreenActive) {
-        SetScreenPower(TRUE);
-        m_bScreenActive = TRUE;
-        m_bTimeoutWarningShown = FALSE;
-        
-        m_pLogger->Write("dispman", LogNotice, 
-                      "[%s] Screen woken up after %u ms of inactivity", 
-                      (const char *)TimeString, CTimer::Get()->GetTicks() - nPreviousTime);
-    }
-}
-
-void CDisplayManager::UpdateScreenTimeout(void)
-{
-    // Don't timeout if not on main screen or already sleeping
-    if (!m_bMainScreenActive || !m_bScreenActive) {
-        return;
-    }
-    
-    // Get current time
-    unsigned nCurrentTime = CTimer::Get()->GetTicks();
-    
-    // Calculate elapsed time in seconds
-    unsigned nElapsedSeconds = (nCurrentTime - m_nLastActivityTime) / 1000;
-    
-    // Check for actual timeout first (this ensures we don't get stuck in warning state)
-    if (nElapsedSeconds >= m_nScreenTimeoutSeconds) {
-        // Only log and act if we're actually changing state
-        if (m_bScreenActive) {
-            CTime Time;
-            CString TimeString;
-            TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-            
-            m_pLogger->Write("dispman", LogNotice, 
-                          "[%s] Screen sleeping: elapsed=%u sec, timeout=%u sec", 
-                          (const char *)TimeString, nElapsedSeconds, m_nScreenTimeoutSeconds);
-            
-            // IMPORTANT: Set state to FALSE *before* turning off to prevent race conditions
-            m_bScreenActive = FALSE; 
-            SetScreenPower(FALSE);
-        }
-        return; // Exit early to avoid warning check
-    }
-    
-    // Check if we need to show warning (2 seconds before timeout)
-    if (!m_bTimeoutWarningShown && nElapsedSeconds >= m_nScreenTimeoutSeconds - 2) {
-        // Only log when actually showing the warning
-        CTime Time;
-        CString TimeString;
-        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-        
-        m_pLogger->Write("dispman", LogNotice, 
-                      "[%s] Showing sleep warning: elapsed=%u sec, timeout=%u sec", 
-                      (const char *)TimeString, nElapsedSeconds, m_nScreenTimeoutSeconds);
-        
-        ShowTimeoutWarning();
-        m_bTimeoutWarningShown = TRUE;
-    }
-    
-    // Add occasional debug logging (every ~10 seconds)
-    static unsigned nLastLogTime = 0;
-    if (nCurrentTime - nLastLogTime > 10000) { // Log every 10 seconds
-        CTime Time;
-        CString TimeString;
-        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-        
-        m_pLogger->Write("dispman", LogDebug, 
-                      "[%s] Timeout status: elapsed=%u sec, timeout=%u sec, warning=%s, screen=%s", 
-                      (const char *)TimeString,
-                      nElapsedSeconds, 
-                      m_nScreenTimeoutSeconds,
-                      m_bTimeoutWarningShown ? "shown" : "not shown",
-                      m_bScreenActive ? "active" : "sleep");
-                      
-        nLastLogTime = nCurrentTime;
-    }
-}
-
-void CDisplayManager::SetMainScreenActive(boolean bActive)
-{
-    // Only log if actually changing
-    if (m_bMainScreenActive != bActive) {
-        m_pLogger->Write("dispman", LogNotice, 
-                      "Main screen status changing: %s → %s", 
-                      m_bMainScreenActive ? "active" : "inactive",
-                      bActive ? "active" : "inactive");
-    }
-    
-    // If we're entering the main screen, reset timer
-    if (bActive && !m_bMainScreenActive) {
-        WakeScreen(); // This resets timer and ensures screen is on
-    }
-    
-    m_bMainScreenActive = bActive;
-}
-
-void CDisplayManager::SetScreenTimeout(unsigned nSeconds)
-{
-    // Ensure minimum timeout of 3 seconds to allow for warning
-    if (nSeconds < 3) {
-        nSeconds = 3;
-    }
-    
-    m_nScreenTimeoutSeconds = nSeconds;
-    
-    // Reset timer
-    m_nLastActivityTime = CTimer::Get()->GetTicks();
-    
-    m_pLogger->Write("dispman", LogNotice, 
-                  "Screen timeout changed to %u seconds", m_nScreenTimeoutSeconds);
-}
-
-void CDisplayManager::ShowTimeoutWarning(void)
-{
-    CTime Time;
-    CString TimeString;
-    TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-    
-    m_pLogger->Write("dispman", LogDebug, 
-                  "[%s] Displaying timeout warning", (const char *)TimeString);
-    
-    switch (m_DisplayType)
-    {
-    case DisplayTypeSH1106:
-        if (m_pSH1106Display != nullptr)
-        {
-            // Save current display content (don't clear)
-            
-            // Draw warning message at the bottom of the screen
-            for (unsigned int y = 54; y < 64; y++) {
-                for (unsigned int x = 0; x < 128; x++) {
-                    m_pSH1106Display->SetPixel(x, y, (CSH1106Display::TSH1106Color)SH1106_BLACK_COLOR);
-                }
-            }
-            
-            // Draw warning text with countdown
-            m_pSH1106Display->DrawText(5, 56, "Sleep in 2s - Press any key", 
-                                     SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
-                                     FALSE, FALSE, Font6x7);
-            
-            // Refresh display
-            m_pSH1106Display->Refresh();
-        }
-        break;
-        
-    case DisplayTypeST7789:
-        if (m_pST7789Display != nullptr)
-        {
-            // Create a 2D graphics instance for drawing
-            C2DGraphics graphics(m_pST7789Display);
-            if (!graphics.Initialize())
-            {
-                m_pLogger->Write("dispman", LogError, "Failed to initialize 2D graphics");
-                return;
-            }
-            
-            // Draw a black semi-transparent overlay at the bottom with the warning
-            graphics.DrawRect(0, 180, m_pST7789Display->GetWidth(), 40, COLOR2D(0, 0, 0));
-            
-            // Draw text in white
-            graphics.DrawText(120, 195, COLOR2D(255, 255, 255), 
-                            "Screen sleep in 2 seconds", 
-                            C2DGraphics::AlignCenter);
-            graphics.DrawText(120, 210, COLOR2D(255, 255, 255), 
-                            "Press any key to cancel", 
-                            C2DGraphics::AlignCenter);
-            
-            // Update the display
-            graphics.UpdateDisplay();
-        }
-        break;
-        
-    default:
-        break;
-    }
-}
-
 void CDisplayManager::SetScreenPower(boolean bOn)
 {
-    // Format current time using Circle's time functions
-    CTime Time;
-    CString TimeString;
-    TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-    
-    // Get caller information for debugging
-    void *pCaller = __builtin_return_address(0);
-    
-    m_pLogger->Write("dispman", LogNotice, 
-                  "[%s] Screen power %s: caller=%p", 
-                  (const char *)TimeString, 
-                  bOn ? "ON" : "OFF",
-                  pCaller);
+    // Minimal logging for power state changes
+    m_pLogger->Write("dispman", LogNotice, "Screen power %s", bOn ? "ON" : "OFF");
     
     // Update screen state BEFORE changing hardware state
     m_bScreenActive = bOn;
@@ -1852,18 +1645,25 @@ boolean CDisplayManager::ShouldAllowDisplayUpdates(void)
     // If the screen is off due to timeout, block all display updates
     // that aren't explicitly initiated by WakeScreen()
     if (!m_bScreenActive && m_bMainScreenActive) {
-        // Debug log this occasionally to trace unwanted wake-ups
-        static unsigned nLastLogTime = 0;
-        unsigned nCurrentTime = CTimer::Get()->GetTicks();
-        
-        if (nCurrentTime - nLastLogTime > 5000) { // Log every 5 seconds
-            m_pLogger->Write("dispman", LogDebug, 
-                         "Blocking display update while screen is sleeping");
-            nLastLogTime = nCurrentTime;
-        }
-        
         return FALSE;
     }
     
     return TRUE;
+}
+
+// In displaymanager.cpp - optimize SetMainScreenActive
+void CDisplayManager::SetMainScreenActive(boolean bActive)
+{
+    // Only log if actually changing, with minimal details
+    if (m_bMainScreenActive != bActive) {
+        m_pLogger->Write("dispman", LogNotice, 
+                      "Main screen %s", bActive ? "active" : "inactive");
+    }
+    
+    // If we're entering the main screen, reset timer
+    if (bActive && !m_bMainScreenActive) {
+        WakeScreen(); // This resets timer and ensures screen is on
+    }
+    
+    m_bMainScreenActive = bActive;
 }

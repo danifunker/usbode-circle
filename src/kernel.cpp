@@ -313,19 +313,21 @@ TShutdownMode CKernel::Run(void) {
 
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
-        // Process display timeouts ONCE PER SECOND using the timer
-        // This significantly reduces CPU usage while maintaining adequate responsiveness
+        // Process display timeouts once per second using the timer
+        // This significantly reduces CPU usage
         static unsigned nLastTimeoutCheck = 0;
         unsigned nCurrentTime = m_Timer.GetTicks();
         
-        // Only check timeout approximately once per second
+        // Only check timeout once per second 
         if (m_pDisplayManager && (nCurrentTime - nLastTimeoutCheck >= 1000)) {
             m_pDisplayManager->UpdateScreenTimeout();
             nLastTimeoutCheck = nCurrentTime;
         }
         
-        // Ensure we yield to other threads
-        CScheduler::Get()->Yield();
+        // Ensure we yield to other threads frequently
+        if (nCount % 10 == 0) {
+            CScheduler::Get()->Yield();
+        }
         
         // Process button updates AFTER checking timeouts
         if (m_pButtonManager) {
@@ -415,29 +417,22 @@ TShutdownMode CKernel::Run(void) {
 
         // Status updates less frequently
 	// TODO move to a display manager run loop
-        if (nCount % 100 == 0)  // Only update status occasionally
-        {
-            // Check display timeouts
-                m_pDisplayManager->UpdateScreenTimeout();
-            // Periodic status update
+        if (nCount % 500 == 0) { // Reduce frequency (was 100)
             unsigned currentTime = m_Timer.GetTicks();
             if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL &&
-                m_ScreenState == ScreenStateMain) {  // Skip updates while in ISO selection screen
+                m_ScreenState == ScreenStateMain) {
                 
                 // Add this check to prevent waking up a sleeping screen
                 if (m_pDisplayManager && m_pDisplayManager->ShouldAllowDisplayUpdates()) {
                     // Get the current image name from properties
                     Properties.SelectSection("usbode");
                     const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
-
+                    
                     // Update display with current image name ONLY on the main screen
-                    if (m_ScreenState == ScreenStateMain) {
-                        UpdateDisplayStatus(currentImage);
-                        lastStatusUpdate = currentTime;
-                    }
+                    UpdateDisplayStatus(currentImage);
+                    lastStatusUpdate = currentTime;
                 }
             }
-
 		// Show details of the network connection
 		// TODO We *really* don't want to do this on every iteration of this loop!
 		if (m_Net.IsRunning()) {
@@ -453,15 +448,10 @@ TShutdownMode CKernel::Run(void) {
 			PreviousIPString = CurrentIPString;
 
 			// Update the display with the new IP address
-			// but only if we're not in the ISO selection screen
-			if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr) {
-			    // Get the current ISO name
-			    // TODO: We just got the image name 15lines above here. I doubt it's changed since then. Do we need to look it up again?
-			    Properties.SelectSection("usbode");
-			    const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
-
-			    // Force an update of the display
-			    UpdateDisplayStatus(currentImage);
+			// but only if we're not in the ISO selection screen and screen is awake
+			if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr && 
+			    m_pDisplayManager->ShouldAllowDisplayUpdates()) {
+			    UpdateDisplayStatus(nullptr); // Use simpler call
 			}
 		    }
 		}
