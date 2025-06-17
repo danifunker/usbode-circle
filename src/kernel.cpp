@@ -209,6 +209,34 @@ TShutdownMode CKernel::Run(void) {
 
     // TODO improve this to encompass the GUI
     const char* imageName = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
+    // Display configuration
+    const char* displayType = Properties.GetString("displayhat", "none");
+
+    // Initialize the appropriate display type
+    TDisplayType displayTypeEnum = GetDisplayTypeFromString(displayType);
+    if (displayTypeEnum != DisplayTypeUnknown) {
+        // Initialize display based on type
+        InitializeDisplay(displayTypeEnum);
+
+        // If display was initialized successfully
+        if (m_pDisplayManager != nullptr) {
+	    // TODO: Refactor
+            // Show status screen with current information
+            CString IPString;
+            if (m_Net.IsRunning()) {
+                m_Net.GetConfig()->GetIPAddress()->Format(&IPString);
+            } else {
+                IPString = "Not connected";
+            }
+
+            // CHANGED: Use short version string for display
+            m_pDisplayManager->ShowStatusScreen(
+                CGitInfo::Get()->GetShortVersionString(), // Use short version
+                (const char*)IPString,
+                imageName,
+                m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
+        }
+
     if (mode == 0) { // CDROM Mode
 
 	    // Initialize the CD Player service
@@ -261,34 +289,6 @@ TShutdownMode CKernel::Run(void) {
 	    }
 	    LOGNOTE("Started USB MSD gadget");
     }
-
-    // Display configuration
-    const char* displayType = Properties.GetString("displayhat", "none");
-
-    // Initialize the appropriate display type
-    TDisplayType displayTypeEnum = GetDisplayTypeFromString(displayType);
-    if (displayTypeEnum != DisplayTypeUnknown) {
-        // Initialize display based on type
-        InitializeDisplay(displayTypeEnum);
-
-        // If display was initialized successfully
-        if (m_pDisplayManager != nullptr) {
-	    // TODO: Refactor
-            // Show status screen with current information
-            CString IPString;
-            if (m_Net.IsRunning()) {
-                m_Net.GetConfig()->GetIPAddress()->Format(&IPString);
-            } else {
-                IPString = "Not connected";
-            }
-
-            // CHANGED: Use short version string for display
-            m_pDisplayManager->ShowStatusScreen(
-                CGitInfo::Get()->GetShortVersionString(), // Use short version
-                (const char*)IPString,
-                imageName,
-                m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
-        }
 
 	// TODO refactor
         // Allow some time for USB to stabilize before initializing buttons
