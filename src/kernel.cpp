@@ -314,9 +314,11 @@ TShutdownMode CKernel::Run(void) {
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
         // Process display timeouts more frequently
-        if (m_pDisplayManager) {
+        if (m_pDisplayManager  && (nCount % 50 == 0)) {
             m_pDisplayManager->UpdateScreenTimeout();
         }
+
+        CScheduler::Get()->Yield();
         
         // Process button updates AFTER checking timeouts
         if (m_pButtonManager) {
