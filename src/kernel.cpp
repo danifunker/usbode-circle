@@ -214,8 +214,8 @@ TShutdownMode CKernel::Run(void) {
 	    // Initialize the CD Player service
 	    const char* pSoundDevice = m_Options.GetSoundDevice();
 	    
-	    //TODO support other sound options
-	    if (strcmp(pSoundDevice, "sndi2s") == 0) {
+	    //Currently supporting PWM and I2S sound devices. HDMI needs more work.
+	    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
 		new CCDPlayer(pSoundDevice);
 		LOGNOTE("Started the CD Player service");
 	    }
@@ -313,15 +313,9 @@ TShutdownMode CKernel::Run(void) {
 
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
-        // Process display timeouts on every loop iteration
+        // Process display timeouts more frequently
         if (m_pDisplayManager) {
-            // Check every iteration, but only log debug info occasionally
             m_pDisplayManager->UpdateScreenTimeout();
-            
-            // Debug timer accuracy less frequently
-            if (nCount % 100 == 0) {
-                m_pDisplayManager->DebugTimerAccuracy();
-            }
         }
         
         // Process button updates AFTER checking timeouts
@@ -481,6 +475,9 @@ TShutdownMode CKernel::Run(void) {
 
 	// Give tasks a chance to run
 	m_Scheduler.Yield();
+
+	// Small delay to prevent CPU hogging
+	CTimer::SimpleMsDelay(10);
     }
 
     LOGNOTE("ShutdownHalt");
@@ -535,17 +532,12 @@ void CKernel::InitializeDisplay(TDisplayType displayType) {
         return;
     }
 
-    // Get screen timeout from config.txt
+    // Load screen timeout from config.txt
     CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
     Properties.Load();
     Properties.SelectSection("usbode");
     unsigned nScreenTimeout = Properties.GetNumber(ConfigOptionScreenSleep, 5); // Default 5 seconds
-    
-    CTime Time;
-    CString TimeString;
-    TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
-    
-    LOGNOTE("[%s] Screen timeout set to %u seconds (from config)", (const char *)TimeString, nScreenTimeout);
+    LOGNOTE("Screen timeout set to %u seconds", nScreenTimeout);
 
     // Create and initialize the display manager with timeout
     m_pDisplayManager = new CDisplayManager(&m_Logger, displayType, nScreenTimeout);
@@ -687,6 +679,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     else if (nButtonIndex == 6) {  // KEY2 button
                         pKernel->m_ScreenState = ScreenStateAdvanced;
                         if (pKernel->m_pDisplayManager != nullptr) {
+                            pKernel->m_pDisplayManager->SetMainScreenActive(FALSE); // Add this line
                             pKernel->m_pDisplayManager->ShowAdvancedScreen();
                         }
                     }
@@ -820,7 +813,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     }
                     else if (nButtonIndex == 6) {  // KEY2 button - back to main
                         pKernel->m_ScreenState = ScreenStateMain;
-                        pKernel->m_pDisplayManager->SetMainScreenActive(TRUE); // Tell display we're on main screen
+                        pKernel->m_pDisplayManager->SetMainScreenActive(TRUE); // Add this line
                         pKernel->UpdateDisplayStatus(nullptr);
                     }
                     break;
@@ -886,6 +879,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         // Button X - Advanced menu
                         LOGNOTE("Button X pressed - Opening Advanced Menu");
                         pKernel->m_ScreenState = ScreenStateAdvanced;
+                        pKernel->m_pDisplayManager->SetMainScreenActive(FALSE); // Add this line
                         pKernel->m_pDisplayManager->ShowAdvancedScreen();
                     }
                     break;
