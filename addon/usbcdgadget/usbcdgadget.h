@@ -126,7 +126,7 @@ struct ModePage0x01Data {
     u8 readRetryCount;
     u8 reserved[3];
     u8 writeRetryCount;
-    u8 reserved2[3];
+    u8 reserved2[4];
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X01 12
 
