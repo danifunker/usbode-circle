@@ -346,6 +346,16 @@ struct TUSBCDRemovableMediumFeatureReply {
 } PACKED;
 #define SIZE_REMOVABLE_MEDIUM_HEADER_REPLY 8
 
+struct TUSBCDAnalogueAudioPlayFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+    u8 ScanSCMSV;
+    u8 reserved1;
+    u16 NumVolumeLevels;
+} PACKED;
+#define SIZE_ANALOGUE_AUDIO_PLAY_HEADER_REPLY 8
+
 struct TUSBCDMultiReadFeatureReply {
     u16 featureCode;
     u8 VersionPersistentCurrent;
@@ -631,6 +641,16 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         0x00,           // reserved
         0x00,           // reserved
         0x00            // reserved
+    };
+
+    // Feture 0103h - CD Audio External Play Feature
+    TUSBCDAnalogueAudioPlayFeatureReply audioplay = {
+    	htons(0x0103),	// featureCode;
+    	0x0b,		// VersionPersistentCurrent;
+    	0x04,		// AdditionalLength;
+    	0x00,		// ScanSCMSV;
+    	0x00,		// reserved1;
+    	0xff		// NumVolumeLevels;
     };
 
     // Feature 001dh - Multi-Read - The ability to read all CD media types

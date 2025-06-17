@@ -203,7 +203,7 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("Got mode = %d", mode);
 
     // TODO improve this to encompass the GUI
-    const char* imageName = Properties.GetString("current_image", "image.iso");
+    const char* imageName = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
     if (mode == 0) { // CDROM Mode
 
 	    // Initialize the CD Player service
@@ -218,8 +218,19 @@ TShutdownMode CKernel::Run(void) {
 	    // Load our current disc image
 	    CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
 	    if (!cueBinFileDevice) {
-		LOGERR("Failed to load cueBinFileDevice %s", imageName);
-		return ShutdownHalt;
+		LOGERR("Failed to load image %s, trying default image", imageName);
+
+		// Save current mounted image name
+		Properties.SelectSection("usbode");
+		Properties.SetString("current_image", DEFAULT_IMAGE_FILENAME);
+		Properties.Save();
+
+		// Fall back to default image
+		cueBinFileDevice = loadCueBinFileDevice(DEFAULT_IMAGE_FILENAME);
+		if (!cueBinFileDevice) {
+			LOGERR("Can't load default image either. Shutting down");
+			return ShutdownHalt;
+		}
 	    }
 	    LOGNOTE("Loaded cue/bin file %s", imageName);
 
@@ -393,7 +404,7 @@ TShutdownMode CKernel::Run(void) {
                 m_ScreenState != ScreenStateLoadISO) {  // Skip updates while in ISO selection screen
                 // Get the current image name from properties
                 Properties.SelectSection("usbode");
-                const char* currentImage = Properties.GetString("current_image", "image.iso");
+                const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
 
                 // Update display with current image name ONLY if not in ISO selection
                 if (m_ScreenState != ScreenStateLoadISO) {
@@ -420,8 +431,9 @@ TShutdownMode CKernel::Run(void) {
 			// but only if we're not in the ISO selection screen
 			if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr) {
 			    // Get the current ISO name
+			    // TODO: We just got the image name 15lines above here. I doubt it's changed since then. Do we need to look it up again?
 			    Properties.SelectSection("usbode");
-			    const char* currentImage = Properties.GetString("current_image", "image.iso");
+			    const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
 
 			    // Force an update of the display
 			    UpdateDisplayStatus(currentImage);
@@ -544,6 +556,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
     static unsigned LastUpdateTime = 0;
 
     // Debounce display updates - prevent multiple updates within a short time window
+    // TODO This doesn't debounce. Is this left-over code?
     unsigned currentTime = m_Timer.GetTicks();
     if (currentTime - LastUpdateTime < 500)  // 500ms debounce time
     {
@@ -554,10 +567,11 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
     }
 
     // Always load the current image from properties to ensure consistency
+    // TODO: Why do we load it here yet again when we've been given the imageName when we were called?
     CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
     Properties.Load();
     Properties.SelectSection("usbode");
-    const char* currentImage = Properties.GetString("current_image", "image.iso");
+    const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
 
     // Use the provided imageName if it's not null, otherwise use the one from properties
     if (imageName != nullptr && *imageName != '\0') {

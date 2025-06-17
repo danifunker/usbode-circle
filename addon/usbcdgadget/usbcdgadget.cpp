@@ -602,13 +602,19 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
             if (cdplayer) {
-                // Perhaps there's something I'm missing here?
-                // Quake, for example, always sends 00 as the volume level :O
-                // Tombraider works initially then starts always sending 00
-                // as the volume level. I suspect this has something to do with
-                // the mode sense command. Perhaps we're feeding back the wrong thing?
+
+		// Descent 2 sets the volume weird. For each volume change, it sends
+		// the following in quick succession :-
+		// Mode Select (10), Volume is 0,255
+		// Mode Select (10), Volume is 255,0
+		// Mode Select (10), Volume is 74,255
+		// Mode Select (10), Volume is 255,74
+		// So, we'll pick Output1Volume which is the last one it sets to a
+		// sensible value. Other games seem to set Output0Volume and Output1Volume
+		// the same so we should remain compatible
+
             	MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume"); 
-                cdplayer->SetVolume(modePage->Output0Volume);
+                cdplayer->SetVolume(modePage->Output1Volume);
             } else {
             	MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Couldn't get CDPlayer");
 	    }
@@ -1381,6 +1387,9 @@ void CUSBCDGadget::HandleSCSICommand() {
                     memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
                     dataLength += sizeof(cdread);
 
+                    memcpy(m_InBuffer + dataLength, &audioplay, sizeof(audioplay));
+                    dataLength += sizeof(audioplay);
+
                     // Finally copy the header
                     header.dataLength = htonl(dataLength - 4);
                     memcpy(m_InBuffer, &header, sizeof(header));
@@ -1388,7 +1397,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     break;
                 }
 
-                case 0x02:  // Only the features requested
+                case 0x02:  // starting at the feature requested
                 {
                     // Offset for header
                     dataLength += sizeof(header);
@@ -1401,33 +1410,36 @@ void CUSBCDGadget::HandleSCSICommand() {
                             // and its associated profile
                             memcpy(m_InBuffer + dataLength, &cdrom_profile, sizeof(cdrom_profile));
                             dataLength += sizeof(cdrom_profile);
-                            break;
                         }
+
                         case 0x01: {  // Core
                             memcpy(m_InBuffer + dataLength, &core, sizeof(core));
                             dataLength += sizeof(core);
-                            break;
                         }
 
                         case 0x02: {  // Morphing
                             memcpy(m_InBuffer + dataLength, &morphing, sizeof(morphing));
                             dataLength += sizeof(morphing);
-                            break;
                         }
+
                         case 0x03: {  // Removable Medium
                             memcpy(m_InBuffer + dataLength, &mechanism, sizeof(mechanism));
                             dataLength += sizeof(mechanism);
-                            break;
                         }
+
                         case 0x1d: {  // Multiread
                             memcpy(m_InBuffer + dataLength, &multiread, sizeof(multiread));
                             dataLength += sizeof(multiread);
-                            break;
                         }
+
                         case 0x1e: {  // CD-Read
                             memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
                             dataLength += sizeof(cdread);
-                            break;
+                        }
+
+                        case 0x103: {  // Analogue Audio Play
+                            memcpy(m_InBuffer + dataLength, &audioplay, sizeof(audioplay));
+                            dataLength += sizeof(audioplay);
                         }
                     }
 
@@ -1720,7 +1732,9 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    codepage.pageLength = 16;
 		    codepage.IMMEDAndSOTC = 0x04;
 		    codepage.CDDAOutput0Select = 0x01;  // audio channel 0
-		    //codepage.Output0Volume = volume;  // When we return real volume, games that allow volume control screw up
+		    // When we return real volume, games that allow volume control don't send proper volume levels
+		    // but when we hard code this to 0xff, everything seems to work fine. Weird.
+		    //codepage.Output0Volume = volume;  
 		    codepage.Output0Volume = 0xff;
 		    codepage.CDDAOutput1Select = 0x02;  // audio channel 1
 		    //codepage.Output1Volume = volume;

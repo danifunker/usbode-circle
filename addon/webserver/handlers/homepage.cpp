@@ -58,7 +58,7 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
         // Get current loaded image
         m_pProperties->Load();
         m_pProperties->SelectSection("usbode");
-        std::string current_image = m_pProperties->GetString("current_image", "image.iso");
+        std::string current_image = m_pProperties->GetString("current_image", DEFAULT_IMAGE_FILENAME);
         context.set("current_image", current_image);
 
         // Open directory
