@@ -1667,3 +1667,99 @@ void CDisplayManager::SetMainScreenActive(boolean bActive)
     
     m_bMainScreenActive = bActive;
 }
+
+// Add these implementations to displaymanager.cpp
+
+void CDisplayManager::WakeScreen(void)
+{
+    // Reset the last activity time
+    m_nLastActivityTime = CTimer::Get()->GetTicks();
+    
+    // If screen is not active, turn it on
+    if (!m_bScreenActive) {
+        // Only log when actually waking up
+        m_pLogger->Write("dispman", LogNotice, "Screen woken up");
+        
+        SetScreenPower(TRUE);
+        m_bScreenActive = TRUE;
+        m_bTimeoutWarningShown = FALSE;
+    }
+}
+
+void CDisplayManager::UpdateScreenTimeout(void)
+{
+    // Don't timeout if not on main screen or already sleeping
+    if (!m_bMainScreenActive || !m_bScreenActive) {
+        return;
+    }
+    
+    // Get current time
+    unsigned nCurrentTime = CTimer::Get()->GetTicks();
+    
+    // Calculate elapsed time in seconds
+    unsigned nElapsedSeconds = (nCurrentTime - m_nLastActivityTime) / 1000;
+    
+    // Check for actual timeout first (this ensures we don't get stuck in warning state)
+    if (nElapsedSeconds >= m_nScreenTimeoutSeconds) {
+        // Only log and act if we're actually changing state
+        if (m_bScreenActive) {
+            // Keep this important state change log
+            m_pLogger->Write("dispman", LogNotice, 
+                          "Screen sleeping: elapsed=%u sec, timeout=%u sec", 
+                          nElapsedSeconds, m_nScreenTimeoutSeconds);
+            
+            // Set state to FALSE before turning off to prevent race conditions
+            m_bScreenActive = FALSE; 
+            SetScreenPower(FALSE);
+        }
+        return; // Exit early to avoid warning check
+    }
+    
+    // Check if we need to show warning (2 seconds before timeout)
+    if (!m_bTimeoutWarningShown && nElapsedSeconds >= m_nScreenTimeoutSeconds - 2) {
+        // Keep warning log
+        m_pLogger->Write("dispman", LogNotice, 
+                      "Showing sleep warning: elapsed=%u sec, timeout=%u sec", 
+                      nElapsedSeconds, m_nScreenTimeoutSeconds);
+        
+        ShowTimeoutWarning();
+        m_bTimeoutWarningShown = TRUE;
+    }
+}
+
+// Also need to add the ShowTimeoutWarning implementation which was called but missing
+void CDisplayManager::ShowTimeoutWarning(void)
+{
+    // For now, just show a simple timeout warning on each display
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        if (m_pSH1106Display != nullptr)
+        {
+            // Draw a simple warning at the bottom of the screen
+            m_pSH1106Display->DrawText(5, 55, "Sleep in 2s...", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                     FALSE, FALSE, Font6x7);
+            m_pSH1106Display->Refresh();
+        }
+        break;
+        
+    case DisplayTypeST7789:
+        if (m_pST7789Display != nullptr)
+        {
+            // For ST7789, create a translucent warning bar at the bottom
+            C2DGraphics graphics(m_pST7789Display);
+            if (graphics.Initialize())
+            {
+                // Draw a semi-transparent warning bar
+                graphics.DrawRect(0, 190, m_pST7789Display->GetWidth(), 20, COLOR2D(40, 40, 40));
+                graphics.DrawText(m_pST7789Display->GetWidth()/2, 200, COLOR2D(255, 255, 255), 
+                                "Screen will sleep in 2s...", C2DGraphics::AlignCenter);
+                graphics.UpdateDisplay();
+            }
+        }
+        break;
+        
+    default:
+        break;
+    }
+}
