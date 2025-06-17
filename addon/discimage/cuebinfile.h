@@ -13,6 +13,8 @@
 
 #include "filetype.h"
 
+#define DEFAULT_IMAGE_FILENAME "image.iso"
+
 class CCueBinFileDevice : public CDevice {
    public:
     CCueBinFileDevice(FIL* pFile, char* cue_str = nullptr);
