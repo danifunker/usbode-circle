@@ -1387,6 +1387,9 @@ void CUSBCDGadget::HandleSCSICommand() {
                     memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
                     dataLength += sizeof(cdread);
 
+                    memcpy(m_InBuffer + dataLength, &powermanagement, sizeof(powermanagement));
+                    dataLength += sizeof(powermanagement);
+
                     memcpy(m_InBuffer + dataLength, &audioplay, sizeof(audioplay));
                     dataLength += sizeof(audioplay);
 
@@ -1435,6 +1438,11 @@ void CUSBCDGadget::HandleSCSICommand() {
                         case 0x1e: {  // CD-Read
                             memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
                             dataLength += sizeof(cdread);
+                        }
+
+                        case 0x100: {  // Power Management
+                            memcpy(m_InBuffer + dataLength, &powermanagement, sizeof(powermanagement));
+                            dataLength += sizeof(powermanagement);
                         }
 
                         case 0x103: {  // Analogue Audio Play
@@ -1691,6 +1699,31 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memcpy(m_InBuffer + SIZE_MODE_SENSE10_HEADER, &codepage, SIZE_MODE_SENSE10_PAGE_0X01);
 			    break;
 			}
+			case 0x1a: {
+			    // Mode Page 0x1A (Power Condition)
+
+			    // Define our response
+			    ModeSense10Header reply_header;
+			    memset(&reply_header, 0, sizeof(reply_header));
+			    reply_header.modeDataLength = htons(SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2);
+			    reply_header.mediumType = GetMediumType();
+			    reply_header.deviceSpecificParameter = 0xC0;
+			    reply_header.blockDescriptorLength = htonl(0x00000000);
+
+			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
+
+			    // Define our Code Page
+			    ModePage0x1AData codepage;
+			    memset(&codepage, 0, sizeof(codepage));
+			    codepage.pageCodeAndPS = 0x1a;
+			    codepage.pageLength = 0x0a;
+			    length += SIZE_MODE_SENSE10_PAGE_0X1A;
+
+			    // Copy the header & Code Page
+			    memcpy(m_InBuffer, &reply_header, SIZE_MODE_SENSE10_HEADER);
+			    memcpy(m_InBuffer + SIZE_MODE_SENSE10_HEADER, &codepage, SIZE_MODE_SENSE10_PAGE_0X1A);
+			    break;
+			}
 			case 0x2a: {
 			    // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
 
@@ -1716,7 +1749,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    codepage.capabilityBits[4] = 0x20;  // tray loading mechanism
 			    codepage.capabilityBits[5] = 0x00;
 			    codepage.maxSpeed = htons(706);  // 4x
-			    codepage.numVolumeLevels = 0x00ff;
+			    codepage.numVolumeLevels = htons(0x00ff);
 			    codepage.bufferSize = htons(0);
 			    codepage.currentSpeed = htons(706);
 

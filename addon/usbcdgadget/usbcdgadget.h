@@ -130,6 +130,17 @@ struct ModePage0x01Data {
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X01 12
 
+// Mode Page 0x1A (Power Condition)
+struct ModePage0x1AData {
+    u8 pageCodeAndPS;
+    u8 pageLength;
+    u8 reserved1;
+    u8 idleStandby;
+    u32 idleConditionTimer;
+    u32 standbyConditionTimer;
+} PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X1A 12
+
 // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
 struct ModePage0x2AData {
     u8 pageCodeAndPS;
@@ -357,6 +368,13 @@ struct TUSBCDAnalogueAudioPlayFeatureReply {
 #define SIZE_ANALOGUE_AUDIO_PLAY_HEADER_REPLY 8
 
 struct TUSBCDMultiReadFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+} PACKED;
+#define SIZE_MULTI_READ_HEADER_REPLY 4
+
+struct TUSBCDPowerManagementFeatureReply {
     u16 featureCode;
     u8 VersionPersistentCurrent;
     u8 AdditionalLength;
@@ -656,6 +674,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     // Feature 001dh - Multi-Read - The ability to read all CD media types
     TUSBCDMultiReadFeatureReply multiread = {
         htons(0x001d),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x00,           // AdditionalLength
+    };
+
+    // Feature 0100h - Power Management Feature
+    TUSBCDPowerManagementFeatureReply powermanagement = {
+        htons(0x0100),  // featureCode
         0x0b,           // VersionPersistentCurrent
         0x00,           // AdditionalLength
     };
