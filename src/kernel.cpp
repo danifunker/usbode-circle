@@ -313,35 +313,6 @@ TShutdownMode CKernel::Run(void) {
 
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
-        // Process display timeouts once per second using the timer
-        // This significantly reduces CPU usage
-        static unsigned nLastTimeoutCheck = 0;
-        unsigned nCurrentTime = m_Timer.GetTicks();
-        
-        // Only check timeout once per second 
-        if (m_pDisplayManager && (nCurrentTime - nLastTimeoutCheck >= 1000)) {
-            m_pDisplayManager->UpdateScreenTimeout();
-            nLastTimeoutCheck = nCurrentTime;
-        }
-        
-        // Ensure we yield to other threads frequently
-        if (nCount % 100 == 0) {
-            CScheduler::Get()->Yield();
-        }
-        
-        // Process button updates AFTER checking timeouts
-        if (m_pButtonManager) {
-            m_pButtonManager->Update();
-
-            // OPTIMIZATION: Check for button updates more frequently during file selection
-            // This makes the UI feel much more responsive when navigating file lists
-            if (m_ScreenState == ScreenStateLoadISO) {
-                // If we're in the file selection screen, check buttons again immediately
-		// TODO does this really do anything? Did anything happen since the last call to Update()?
-                m_pButtonManager->Update();
-            }
-        }
-
         // Update USB transfers
     	if (m_CDGadget) {
         	m_CDGadget->UpdatePlugAndPlay();
@@ -377,7 +348,6 @@ TShutdownMode CKernel::Run(void) {
                 ntpInitialized = true;
         }
 
-
         // Publish mDNS
         if (m_Net.IsRunning() && !pmDNSPublisher) {
             static const char* ppText[] = {"path=/index.html", nullptr};
@@ -403,6 +373,37 @@ TShutdownMode CKernel::Run(void) {
         if (DeviceState::getInstance().getShutdownMode() != ShutdownNone) {
             return DeviceState::getInstance().getShutdownMode();
     	}
+
+        // Process display timeouts once per second using the timer
+        // This significantly reduces CPU usage
+        static unsigned nLastTimeoutCheck = 0;
+        unsigned nCurrentTime = m_Timer.GetTicks();
+        
+        // Only check timeout once per second 
+        if (m_pDisplayManager && (nCurrentTime - nLastTimeoutCheck >= 1000)) {
+            m_pDisplayManager->UpdateScreenTimeout();
+            nLastTimeoutCheck = nCurrentTime;
+        }
+        
+        // Ensure we yield to other threads frequently
+        if (nCount % 100 == 0) {
+            CScheduler::Get()->Yield();
+        }
+        
+        // Process button updates AFTER checking timeouts
+        if (m_pButtonManager) {
+            m_pButtonManager->Update();
+
+            // OPTIMIZATION: Check for button updates more frequently during file selection
+            // This makes the UI feel much more responsive when navigating file lists
+            if (m_ScreenState == ScreenStateLoadISO) {
+                // If we're in the file selection screen, check buttons again immediately
+		// TODO does this really do anything? Did anything happen since the last call to Update()?
+                m_pButtonManager->Update();
+            }
+        }
+
+
 
         // Use shorter yielding for more responsive button checks
         // OPTIMIZATION: Yield less frequently when in file selection mode
@@ -447,7 +448,7 @@ TShutdownMode CKernel::Run(void) {
 
 			// Update the display with the new IP address
 			// but only if we're not in the ISO selection screen and screen is awake
-			if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr && 
+			if (m_ScreenState == ScreenStateMain && m_pDisplayManager != nullptr && 
 			    m_pDisplayManager->ShouldAllowDisplayUpdates()) {
 			    UpdateDisplayStatus(nullptr); // Use simpler call
 			}
@@ -475,6 +476,7 @@ TShutdownMode CKernel::Run(void) {
         }
 
 	// Give tasks a chance to run
+    
 	m_Scheduler.Yield();
 
 	// Small delay to prevent CPU hogging
