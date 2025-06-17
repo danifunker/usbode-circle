@@ -315,6 +315,7 @@ int CUSBCDGadget::GetSkipbytesForTrack(const CUETrackInfo* trackInfo) {
     }
 }
 
+// Make an assumption about media type based on track 1 mode
 int CUSBCDGadget::GetMediumType() {
     cueParser.restart();
     const CUETrackInfo* trackInfo = nullptr;
@@ -1508,25 +1509,30 @@ void CUSBCDGadget::HandleSCSICommand() {
             u8 ES = m_CBW.CBWCB[7];
             u8 EF = m_CBW.CBWCB[8];
 
-	    //TODO throw check condition if not audio track
-	    // 05, 64, 00, ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
-
             // Convert MSF to LBA
             u32 start_lba = msf_to_lba(SM, SS, SF);
             u32 end_lba = msf_to_lba(EM, ES, EF);
             int num_blocks = end_lba - start_lba;
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO MSF. Start MSF %d:%d:%d, End MSF: %d:%d:%d, start LBA %u, end LBA %u", SM, SS, SF, EM, ES, EF, start_lba, end_lba);
 
-            // Play the audio
-            CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-            if (cdplayer) {
-		if (start_lba == 0xFFFFFFFF)
-                	cdplayer->Resume();
-		else if (start_lba == end_lba)
-                	cdplayer->Pause();
-		else
-                	cdplayer->Play(start_lba, num_blocks);
-            }
+	    const CUETrackInfo* trackInfo = GetTrackInfoForLBA(start_lba);
+	    if (trackInfo->track_mode == CUETrack_AUDIO) {
+		    // Play the audio
+		    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+		    if (cdplayer) {
+			if (start_lba == 0xFFFFFFFF)
+				cdplayer->Resume();
+			else if (start_lba == end_lba)
+				cdplayer->Pause();
+			else
+				cdplayer->Play(start_lba, num_blocks);
+		    }
+	    } else {
+		   bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
+                   m_SenseParams.bSenseKey = 0x05;
+                   m_SenseParams.bAddlSenseCode = 0x64;      // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
+                   m_SenseParams.bAddlSenseCodeQual = 0x00;  
+	    }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
@@ -1556,22 +1562,27 @@ void CUSBCDGadget::HandleSCSICommand() {
             // Number of blocks to read (LBA)
             m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
 	    
-	    //TODO throw check condition if not audio track
-	    // 05, 64, 00, ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
-
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
 
-            // Play the audio, but only if length > 0
-            if (m_nnumber_blocks > 0) {
-                CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-                if (cdplayer) {
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
-                    if (m_nblock_address == 0xffffffff)
-                        cdplayer->Resume();
-                    else
-                        cdplayer->Play(m_nblock_address, m_nnumber_blocks);
-                }
-            }
+	    // Play the audio, but only if length > 0
+	    if (m_nnumber_blocks > 0) {
+		    const CUETrackInfo* trackInfo = GetTrackInfoForLBA(m_nblock_address);
+		    if (trackInfo->track_mode == CUETrack_AUDIO) {
+			CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+			if (cdplayer) {
+			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
+			    if (m_nblock_address == 0xffffffff)
+				cdplayer->Resume();
+			    else
+				cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+			}
+		    } else {
+			bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
+			m_SenseParams.bSenseKey = 0x05;
+			m_SenseParams.bAddlSenseCode = 0x64;      // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
+			m_SenseParams.bAddlSenseCodeQual = 0x00;  
+		    }
+	    }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
@@ -1590,17 +1601,25 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
 
-            // Play the audio, but only if length > 0
-            if (m_nnumber_blocks > 0) {
-                CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-                if (cdplayer) {
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
-                    if (m_nblock_address == 0xffffffff)
-                        cdplayer->Resume();
-                    else
-                        cdplayer->Play(m_nblock_address, m_nnumber_blocks);
-                }
-            }
+	    // Play the audio, but only if length > 0
+	    if (m_nnumber_blocks > 0) {
+		    const CUETrackInfo* trackInfo = GetTrackInfoForLBA(m_nblock_address);
+		    if (trackInfo->track_mode == CUETrack_AUDIO) {
+			CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+			if (cdplayer) {
+			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
+			    if (m_nblock_address == 0xffffffff)
+				cdplayer->Resume();
+			    else
+				cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+			}
+		    } else {
+			bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
+			m_SenseParams.bSenseKey = 0x05;
+			m_SenseParams.bAddlSenseCode = 0x64;      // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
+			m_SenseParams.bAddlSenseCodeQual = 0x00;  
+		    }
+	    }
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             SendCSW();
