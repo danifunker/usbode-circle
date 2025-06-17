@@ -325,7 +325,7 @@ TShutdownMode CKernel::Run(void) {
         }
         
         // Ensure we yield to other threads frequently
-        if (nCount % 10 == 0) {
+        if (nCount % 100 == 0) {
             CScheduler::Get()->Yield();
         }
         
@@ -343,23 +343,21 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Update USB transfers
-	if (m_CDGadget) {
+    	if (m_CDGadget) {
         	m_CDGadget->UpdatePlugAndPlay();
        		m_CDGadget->Update();
     	}
 
-	if (m_MMSDGadget) {
+	    if (m_MMSDGadget) {
 	       m_MMSDGadget->UpdatePlugAndPlay ();
                m_MMSDGadget->Update ();
-	}
+	    }
 
-	/*
         // CRITICAL: Process network tasks even in ISO selection mode
         if (m_Net.IsRunning()) {
             m_Net.Process();
         }
-	*/
-
+	
         // Start the Web Server
         if (m_Net.IsRunning() && !pCWebServer) {
             // Create the web server
@@ -368,16 +366,16 @@ TShutdownMode CKernel::Run(void) {
             LOGNOTE("Started Webserver service");
         }
 
-	// Run NTP
-	if (m_Net.IsRunning() && !ntpInitialized) {
-            // Read timezone from config.txt
-            Properties.SelectSection("usbode");
-            const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
+        // Run NTP
+        if (m_Net.IsRunning() && !ntpInitialized) {
+                // Read timezone from config.txt
+                Properties.SelectSection("usbode");
+                const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
 
-            // Initialize NTP with the timezone
-            InitializeNTP(timezone);
-            ntpInitialized = true;
-	}
+                // Initialize NTP with the timezone
+                InitializeNTP(timezone);
+                ntpInitialized = true;
+        }
 
 
         // Publish mDNS
@@ -402,9 +400,9 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Check if we should shutdown or halt
-	if (DeviceState::getInstance().getShutdownMode() != ShutdownNone) {
-		return DeviceState::getInstance().getShutdownMode();
-	}
+        if (DeviceState::getInstance().getShutdownMode() != ShutdownNone) {
+            return DeviceState::getInstance().getShutdownMode();
+    	}
 
         // Use shorter yielding for more responsive button checks
         // OPTIMIZATION: Yield less frequently when in file selection mode
@@ -480,7 +478,7 @@ TShutdownMode CKernel::Run(void) {
 	m_Scheduler.Yield();
 
 	// Small delay to prevent CPU hogging
-	CTimer::SimpleMsDelay(10);
+	// CTimer::SimpleMsDelay(10);
     }
 
     LOGNOTE("ShutdownHalt");
