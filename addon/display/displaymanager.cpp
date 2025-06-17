@@ -91,7 +91,9 @@ CDisplayManager::~CDisplayManager(void)
 
 boolean CDisplayManager::Initialize(CSPIMaster *pSPIMaster)
 {
-    assert(pSPIMaster != nullptr);
+    if (m_DisplayType != DisplayTypeHDMI) {
+        assert(pSPIMaster != nullptr);
+    }
     
     // Log the display type
     const char *pDisplayTypeStr = "Unknown";

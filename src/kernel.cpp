@@ -513,6 +513,19 @@ void CKernel::InitializeDisplay(TDisplayType displayType) {
     // For HDMI display, we don't need SPI
     if (displayType == DisplayTypeHDMI) {
         LOGNOTE("Using HDMI display, no SPI initialization needed");
+        m_pDisplayManager = new CDisplayManager(&m_Logger, displayType);
+        if (m_pDisplayManager == nullptr) {
+            LOGERR("Failed to create display manager for HDMI");
+            return;
+        }
+        
+        // Initialize without SPI
+        if (!m_pDisplayManager->Initialize(nullptr)) {
+            LOGERR("Failed to initialize HDMI display");
+            delete m_pDisplayManager;
+            m_pDisplayManager = nullptr;
+            return;
+        }        
     }     
 
     // Initialize the appropriate SPI settings based on display type
