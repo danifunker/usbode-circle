@@ -79,6 +79,8 @@ public:
     void SetMainScreenActive(boolean bActive); // Set main screen active status
     void SetScreenTimeout(unsigned nSeconds); // Change the screen timeout value
     void DebugTimerAccuracy(void); // For debugging timer accuracy
+    boolean ShouldAllowDisplayUpdates(void);
+
 private:
     // Initialize SH1106 display
     boolean InitializeSH1106(CSPIMaster *pSPIMaster);
@@ -92,10 +94,6 @@ private:
     void ShowTimeoutWarning(void); // Show warning before sleep
     void SetScreenPower(boolean bOn); // Turn screen on/off
 
-    // Add this helper method to check if updates should be allowed
-    boolean ShouldAllowDisplayUpdates(void);
-
-private:
     CLogger *m_pLogger;
     TDisplayType m_DisplayType;
     

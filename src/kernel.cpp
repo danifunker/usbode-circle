@@ -422,15 +422,19 @@ TShutdownMode CKernel::Run(void) {
             // Periodic status update
             unsigned currentTime = m_Timer.GetTicks();
             if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL &&
-                m_ScreenState != ScreenStateLoadISO) {  // Skip updates while in ISO selection screen
-                // Get the current image name from properties
-                Properties.SelectSection("usbode");
-                const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
+                m_ScreenState == ScreenStateMain) {  // Skip updates while in ISO selection screen
+                
+                // Add this check to prevent waking up a sleeping screen
+                if (m_pDisplayManager && m_pDisplayManager->ShouldAllowDisplayUpdates()) {
+                    // Get the current image name from properties
+                    Properties.SelectSection("usbode");
+                    const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
 
-                // Update display with current image name ONLY if not in ISO selection
-                if (m_ScreenState != ScreenStateLoadISO) {
-                    UpdateDisplayStatus(currentImage);
-                    lastStatusUpdate = currentTime;
+                    // Update display with current image name ONLY on the main screen
+                    if (m_ScreenState == ScreenStateMain) {
+                        UpdateDisplayStatus(currentImage);
+                        lastStatusUpdate = currentTime;
+                    }
                 }
             }
 
