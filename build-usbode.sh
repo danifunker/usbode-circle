@@ -104,6 +104,9 @@ for arch in "${supported_rasppi[@]}"; do
     cd ${projectRoot}/addon/usbcdgadget
     make clean
     make 
+    cd ${projectRoot}/addon/shutdown
+    make clean
+    make 
     cd ${projectRoot}/addon/usbmsdgadget
     make clean
     make 
