@@ -1,7 +1,38 @@
 #!/bin/bash
 set -e
 
+# Parse command line arguments
+run_number=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --run-number)
+            run_number="$2"
+            shift 2
+            ;;
+        -r)
+            run_number="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--run-number|-r <number>]"
+            exit 1
+            ;;
+    esac
+done
+
 projectRoot=$(git rev-parse --show-toplevel)
+
+# Read and display version information
+BASE_VERSION=$(cat ${projectRoot}/version.txt | head -n 1 | tr -d '\n\r')
+if [ -n "$run_number" ]; then
+    BUILD_VERSION="${BASE_VERSION}-${run_number}"
+    echo "Building version: ${BUILD_VERSION} (base: ${BASE_VERSION}, run: ${run_number})"
+else
+    BUILD_VERSION="${BASE_VERSION}"
+    echo "Building version: ${BUILD_VERSION}"
+fi
+
 echo "This script requires a successful ./configure -r X --prefix=/path/to/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi- run in ${projectRoot}/circle-stdlib"
 git submodule update --init --recursive
 circleDir="${projectRoot}/circle-stdlib"
@@ -130,7 +161,7 @@ cp ${projectRoot}/sdcard/cmdline.txt ${destDir}
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
-zipFileName="usbode-${BRANCH}-${COMMIT}.zip"
+zipFileName="usbode-${BUILD_VERSION}-${BRANCH}-${COMMIT}.zip"
 cd ${destDir}
 zip -r ${projectRoot}/${zipFileName} ./*
 echo "Built ${zipFileName}  . Copy the contents of the zip file to a freshly formatted SDCard (FAT32 or EXFAT) and try the build!"
