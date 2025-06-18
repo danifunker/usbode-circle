@@ -15,6 +15,10 @@ using namespace kainjow;
 
 LOGMODULE("pagehandlerbase");
 
+char s_Template[] =
+#include "template.h"
+;
+
 THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 		   const char *pParams,
 		   const char *pFormData,
@@ -25,9 +29,18 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 		   CUSBCDGadget *pCDGadget)
 {
 	// Set up Mustache Template Engine
-	std::string html = GetHTML();
-        mustache::mustache tmpl{html};
+        mustache::mustache tmpl{s_Template};
+	if (!tmpl.is_valid())
+		return HTTPInternalServerError;
+
+	// Set up context
         mustache::data context;
+
+	// Fetch the page content from the subclass
+	partial part{[]() {
+	    return GetHTML();
+	}};
+	context.set("content", data{part});
 	
 	// Call subclass hook to add page specific context
 	THTTPStatus status = PopulateContext(context, pPath, pParams, pFormData, m_pProperties, pCDGadget);
