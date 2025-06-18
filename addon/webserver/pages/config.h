@@ -40,7 +40,7 @@
 "        \n"
 "        <div class=\"content\">\n"
 "            <div class=\"navigation\">\n"
-"                <a href=\"/\" class=\"button\">← Back to Home</a>\n"
+"                <a href=\"/\" class=\"button\">Back to Home</a>\n"
 "            </div>\n"
 "\n"
 "            {{#error_message}}\n"
