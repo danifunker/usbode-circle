@@ -25,6 +25,7 @@
 #include <circle/2dgraphics.h>
 #include <linux/kernel.h>
 #include <circle/time.h>
+#include <gitinfo/gitinfo.h>
 
 #include <assert.h>
 
@@ -1347,18 +1348,15 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 m_pSH1106Display->SetPixel(x, 12, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
             }
             
-            // For SH1106, create a compact version of the build info
+            // Create a comprehensive build info string using the full version string and branch info
             char buildInfo[512];
             snprintf(buildInfo, sizeof(buildInfo), 
-                     "%s\nBuild: %s%s\nBuild Date: %s\nBranch: %s%s\nCommit: %.8s", 
-                     pVersionInfo, 
-                     (strlen(pBuildNumber) > 0) ? pBuildNumber : "N/A",
-                     (strlen(pBuildNumber) > 0) ? "" : "",
-                     pBuildDate, pGitBranch,
-                     (strcmp(pGitBranch, "main") == 0) ? " *" : "",
-                     pGitCommit);
+                     "%s Branch: %s%s", 
+                     CGitInfo::Get()->GetFullVersionString(),
+                     pGitBranch,
+                     (strcmp(pGitBranch, "main") == 0) ? " *" : "");
             
-            // Display the compact build info with word wrapping
+            // Display the complete build info with word wrapping
             const size_t chars_per_line = 21; // Maximum chars per line for SH1106
             
             size_t total_length = strlen(buildInfo);
