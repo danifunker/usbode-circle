@@ -37,7 +37,8 @@
 #include <circle/serial.h>
 #include <circle/timer.h>
 #include <circle/types.h>
-#include <circle/usb/gadget/usbcdgadget.h>
+#include <usbcdgadget/usbcdgadget.h>
+#include <usbmsdgadget/usbmsdgadget.h>
 #include <circle/sound/soundbasedevice.h>
 #include <discimage/cuebinfile.h>
 #include <fatfs/ff.h>
@@ -47,14 +48,17 @@
 #include <wlan/hostap/wpa_supplicant/wpasupplicant.h>
 #include <circle/spimaster.h>
 #include <circle/gpiopin.h>
-#include "displaymanager.h"
-#include "gpiobuttonmanager.h"
+#include <display/displaymanager.h>
+#include <gpiobuttonmanager/gpiobuttonmanager.h>
 
+#ifndef TSHUTDOWNMODE
+#define TSHUTDOWNMODE
 enum TShutdownMode {
     ShutdownNone,
     ShutdownHalt,
     ShutdownReboot
 };
+#endif
 
 class CKernel 
 {
@@ -85,7 +89,12 @@ private:
 	CBcm4343Device          m_WLAN;
         CNetSubSystem           m_Net;
         CWPASupplicant          m_WPASupplicant;
-	CUSBCDGadget		m_CDGadget;
+
+	// CD Gadget
+	CUSBCDGadget*		m_CDGadget = nullptr;
+	
+	// MSD Gadget
+	CUSBMMSDGadget*		m_MMSDGadget = nullptr;
 
 	// SPI and display components
 	CSPIMaster* m_pSPIMaster;
@@ -129,7 +138,8 @@ private:
 	{
 		ScreenStateMain,
 		ScreenStateLoadISO,
-		ScreenStateAdvanced
+		ScreenStateAdvanced,
+		ScreenStateBuildInfo    // New screen state for build info
 	};
 	
 	TScreenState m_ScreenState;
@@ -144,6 +154,9 @@ private:
 	void ScanForISOFiles(void);
 	void ShowISOSelectionScreen(void);
 	void LoadSelectedISO(void);
+
+	// Add this near other constant definitions
+	static const char ConfigOptionScreenSleep[];
 };
 
 #endif

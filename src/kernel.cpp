@@ -24,9 +24,12 @@
 #include <ftpserver/ftpdaemon.h>
 #include <string.h>
 
-#include "gitinfo.d"
-#include "util.h"
-#include "webserver.h"
+#include <gitinfo/gitinfo.h>
+#include <discimage/util.h>
+#include <webserver/webserver.h>
+#include <devicestate/devicestate.h>
+
+#include <circle/time.h>
 
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
@@ -63,6 +66,9 @@ static const char* FindLastOccurrence(const char* str, int ch) {
 // Add this near other constant definitions at the top of the file
 const char CKernel::ConfigOptionTimeZone[] = "timezone";
 
+// Define the constant for screen_sleep config option
+const char CKernel::ConfigOptionScreenSleep[] = "screen_sleep";
+
 CKernel::CKernel(void)
     : m_Screen(m_Options.GetWidth(), m_Options.GetHeight()),
       m_Timer(&m_Interrupt),
@@ -71,7 +77,6 @@ CKernel::CKernel(void)
       m_WLAN(FIRMWARE_PATH),
       m_Net(0, 0, 0, 0, HOSTNAME, NetDeviceTypeWLAN),
       m_WPASupplicant(SUPPLICANT_CONFIG_FILE),
-      m_CDGadget(&m_Interrupt),
       m_pSPIMaster(nullptr),
       m_pDisplayManager(nullptr),
       m_pButtonManager(nullptr),
@@ -80,6 +85,7 @@ CKernel::CKernel(void)
       m_nTotalISOCount(0),
       m_pISOList(nullptr) {
     // m_ActLED.Blink(5);  // show we are alive
+    //  m_CDGadget(&m_Interrupt),
 }
 
 CKernel::~CKernel(void) {
@@ -167,31 +173,11 @@ boolean CKernel::Initialize(void) {
         LOGNOTE("Initialized WAP supplicant");
     }
 
-    // If network initialization succeeded, read timezone from config.txt
-    // Commented because Network definately won't be running yet and
-    // we start this later in the run loop anyway
-    /*
-    if (bOK && m_Net.IsRunning()) {
-        // Read timezone from config.txt
-        CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
-        if (Properties.Load()) {
-            Properties.SelectSection("usbode");
-            CString Value;
-            const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
-
-            // Initialize NTP with the timezone
-            InitializeNTP(timezone);
-        } else {
-            // Use default timezone if config file not available
-            InitializeNTP("UTC");
-        }
-    }
-    */
-
     return bOK;
 }
 
 TShutdownMode CKernel::Run(void) {
+	//
     // Initialize the global kernel pointer
     g_pKernel = this;
 
@@ -211,35 +197,68 @@ TShutdownMode CKernel::Run(void) {
         LOGNOTE("Started the Log File service");
     }
 
+    // Announce ourselves
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
     LOGNOTE("=====================================");
 
-    // Initialize the CD Player service
-    const char* pSoundDevice = m_Options.GetSoundDevice();
-    if (strcmp(pSoundDevice, "sndi2s") == 0) {
-        new CCDPlayer(pSoundDevice);
-        LOGNOTE("Started the CD Player service");
-    }
+    int mode = Properties.GetNumber("mode", 0);
+    LOGNOTE("Got mode = %d", mode);
 
-    // Load our current disc image
-    const char* imageName = Properties.GetString("current_image", "image.iso");
-    CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
-    if (!cueBinFileDevice) {
-        LOGERR("Failed to load cueBinFileDevice %s", imageName);
-        return ShutdownHalt;
-    }
-    LOGNOTE("Loaded cue/bin file %s", imageName);
+    // TODO improve this to encompass the GUI
+    const char* imageName = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
+    if (mode == 0) { // CDROM Mode
 
-    // Initialize USB CD gadget
-    m_CDGadget.SetDevice(cueBinFileDevice);
-    if (!m_CDGadget.Initialize()) {
-        LOGERR("Failed to initialize USB CD gadget");
-        return ShutdownHalt;
+	    // Initialize the CD Player service
+	    const char* pSoundDevice = m_Options.GetSoundDevice();
+	    
+	    //Currently supporting PWM and I2S sound devices. HDMI needs more work.
+	    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
+		new CCDPlayer(pSoundDevice);
+		LOGNOTE("Started the CD Player service");
+	    }
+
+	    // Load our current disc image
+	    CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
+	    if (!cueBinFileDevice) {
+		LOGERR("Failed to load image %s, trying default image", imageName);
+
+		// Save current mounted image name
+		Properties.SelectSection("usbode");
+		Properties.SetString("current_image", DEFAULT_IMAGE_FILENAME);
+		Properties.Save();
+
+		// Fall back to default image
+		cueBinFileDevice = loadCueBinFileDevice(DEFAULT_IMAGE_FILENAME);
+		if (!cueBinFileDevice) {
+			LOGERR("Can't load default image either. Shutting down");
+			return ShutdownHalt;
+		}
+	    }
+	    LOGNOTE("Loaded cue/bin file %s", imageName);
+
+	    // Initialize USB CD gadget
+	    // TODO get USB speed from Properties
+	    // TODO allow UI to set USB speed
+	    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), cueBinFileDevice);
+	    //m_CDGadget->SetDevice(cueBinFileDevice);
+	    if (!m_CDGadget->Initialize()) {
+		LOGERR("Failed to initialize USB CD gadget");
+		return ShutdownHalt;
+	    }
+	    LOGNOTE("Started USB CD gadget");
+
+    } else { // Mass Storage Device Mode
+	     
+	    m_MMSDGadget = new CUSBMMSDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), &m_EMMC);
+	    if (!m_MMSDGadget->Initialize()) {
+		LOGERR("Failed to initialize USB MSD gadget");
+		return ShutdownHalt;
+	    }
+	    LOGNOTE("Started USB MSD gadget");
     }
-    LOGNOTE("Started USB CD gadget");
 
     // Display configuration
     const char* displayType = Properties.GetString("displayhat", "none");
@@ -252,6 +271,7 @@ TShutdownMode CKernel::Run(void) {
 
         // If display was initialized successfully
         if (m_pDisplayManager != nullptr) {
+	    // TODO: Refactor
             // Show status screen with current information
             CString IPString;
             if (m_Net.IsRunning()) {
@@ -260,13 +280,15 @@ TShutdownMode CKernel::Run(void) {
                 IPString = "Not connected";
             }
 
+            // CHANGED: Use short version string for display (includes USBODE v prefix)
             m_pDisplayManager->ShowStatusScreen(
-                "USBODE v2.00-pre1",
+                CGitInfo::Get()->GetShortVersionString(), // Use short version with USBODE v prefix
                 (const char*)IPString,
                 imageName,
                 m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
         }
 
+	// TODO refactor
         // Allow some time for USB to stabilize before initializing buttons
         LOGNOTE("Waiting for USB to stabilize before initializing buttons");
         m_Scheduler.MsSleep(2000);
@@ -277,7 +299,6 @@ TShutdownMode CKernel::Run(void) {
     }
 
     static const char ServiceName[] = HOSTNAME;
-    static const char* ppText[] = {"path=/index.html", nullptr};
     CmDNSPublisher* pmDNSPublisher = nullptr;
     CWebServer* pCWebServer = nullptr;
     CFTPDaemon* m_pFTPDaemon = nullptr;
@@ -292,75 +313,44 @@ TShutdownMode CKernel::Run(void) {
 
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
-        // Process button updates FIRST for best responsiveness
-        if (m_pButtonManager != nullptr) {
-            m_pButtonManager->Update();
+        // Update USB transfers
+    	if (m_CDGadget) {
+        	m_CDGadget->UpdatePlugAndPlay();
+       		m_CDGadget->Update();
+    	}
 
-            // OPTIMIZATION: Check for button updates more frequently during file selection
-            // This makes the UI feel much more responsive when navigating file lists
-            if (m_ScreenState == ScreenStateLoadISO) {
-                // If we're in the file selection screen, check buttons again immediately
-                m_pButtonManager->Update();
-            }
-        }
-
-        // Then handle USB and network
-        m_CDGadget.UpdatePlugAndPlay();
-        m_CDGadget.Update();
+	    if (m_MMSDGadget) {
+	       m_MMSDGadget->UpdatePlugAndPlay ();
+               m_MMSDGadget->Update ();
+	    }
 
         // CRITICAL: Process network tasks even in ISO selection mode
         if (m_Net.IsRunning()) {
             m_Net.Process();
         }
-
+	
         // Start the Web Server
-        if (m_Net.IsRunning() && pCWebServer == nullptr) {
+        if (m_Net.IsRunning() && !pCWebServer) {
             // Create the web server
-            pCWebServer = new CWebServer(&m_Net, &m_CDGadget, &m_ActLED, &Properties);
+            pCWebServer = new CWebServer(&m_Net, m_CDGadget, &m_ActLED, &Properties);
 
             LOGNOTE("Started Webserver service");
         }
 
-        // Show details of the network connection
-        if (m_Net.IsRunning()) {
-            CString CurrentIPString;
-            m_Net.GetConfig()->GetIPAddress()->Format(&CurrentIPString);
+        // Run NTP
+        if (m_Net.IsRunning() && !ntpInitialized) {
+                // Read timezone from config.txt
+                Properties.SelectSection("usbode");
+                const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
 
-            // If IP changed (including from not connected to connected)
-            if (strcmp((const char*)CurrentIPString, (const char*)PreviousIPString) != 0) {
-                // Log the new IP address
-                LOGNOTE("IP address: %s", (const char*)CurrentIPString);
-
-                // Store for next time - make sure to use deep copy
-                PreviousIPString = CurrentIPString;
-
-                // If network is newly up and running with a valid IP address
-                // and NTP hasn't been initialized yet, do it now
-                if (!ntpInitialized && CurrentIPString != "0.0.0.0") {
-                    // Read timezone from config.txt
-                    Properties.SelectSection("usbode");
-                    const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
-
-                    // Initialize NTP with the timezone
-                    InitializeNTP(timezone);
-                    ntpInitialized = true;
-                }
-
-                // Update the display with the new IP address
-                // but only if we're not in the ISO selection screen
-                if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr) {
-                    // Get the current ISO name
-                    Properties.SelectSection("usbode");
-                    const char* currentImage = Properties.GetString("current_image", "image.iso");
-
-                    // Force an update of the display
-                    UpdateDisplayStatus(currentImage);
-                }
-            }
+                // Initialize NTP with the timezone
+                InitializeNTP(timezone);
+                ntpInitialized = true;
         }
 
         // Publish mDNS
-        if (m_Net.IsRunning() && pmDNSPublisher == nullptr) {
+        if (m_Net.IsRunning() && !pmDNSPublisher) {
+            static const char* ppText[] = {"path=/index.html", nullptr};
             pmDNSPublisher = new CmDNSPublisher(&m_Net);
             if (!pmDNSPublisher->PublishService(ServiceName, "_http._tcp", 80, ppText)) {
                 LOGNOTE("Cannot publish service");
@@ -369,7 +359,7 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Start the FTP Server
-        if (m_Net.IsRunning() && !m_pFTPDaemon) {
+        if (mode == 0 && m_Net.IsRunning() && !m_pFTPDaemon) {
             m_pFTPDaemon = new CFTPDaemon("cdrom", "cdrom");
             if (!m_pFTPDaemon->Initialize()) {
                 LOGERR("Failed to init FTP daemon");
@@ -379,66 +369,119 @@ TShutdownMode CKernel::Run(void) {
                 LOGNOTE("Started FTP service");
         }
 
-        // Check for shutdown/reboot request from the web interface
-        if (pCWebServer != nullptr) {
-            TShutdownMode mode = pCWebServer->GetShutdownMode();
-            if (mode != ShutdownNone) {
-                LOGNOTE("Shutdown requested via web interface: %s",
-                        (mode == ShutdownReboot) ? "Reboot" : "Halt");
+        // Check if we should shutdown or halt
+	if (DeviceState::Get().getShutdownMode() != ShutdownNone) {
 
-                // Clean up resources
-                delete pmDNSPublisher;
-                delete pCWebServer;
-                if (m_pFTPDaemon) {
-                    delete m_pFTPDaemon;
-                }
+		// Unmount & flush before we reboot or shutdown
+		f_mount(0, DRIVE, 1);
+		return DeviceState::Get().getShutdownMode();
+	}
 
-                return mode;
+        // Process display timeouts once per second using the timer
+        // This significantly reduces CPU usage
+        static unsigned nLastTimeoutCheck = 0;
+        unsigned nCurrentTime = m_Timer.GetTicks();
+        
+        // Only check timeout once per second 
+        if (m_pDisplayManager && (nCurrentTime - nLastTimeoutCheck >= 1000)) {
+            m_pDisplayManager->UpdateScreenTimeout();
+            nLastTimeoutCheck = nCurrentTime;
+        }
+        
+        // Ensure we yield to other threads frequently
+        if (nCount % 100 == 0) {
+            CScheduler::Get()->Yield();
+        }
+        
+        // Process button updates AFTER checking timeouts
+        if (m_pButtonManager) {
+            m_pButtonManager->Update();
+
+            // OPTIMIZATION: Check for button updates more frequently during file selection
+            // This makes the UI feel much more responsive when navigating file lists
+            if (m_ScreenState == ScreenStateLoadISO) {
+                // If we're in the file selection screen, check buttons again immediately
+		// TODO does this really do anything? Did anything happen since the last call to Update()?
+                m_pButtonManager->Update();
             }
         }
 
         // Use shorter yielding for more responsive button checks
         // OPTIMIZATION: Yield less frequently when in file selection mode
+	// We don't want to do this or it will slow down our core use-case of being a CDROM drive
+	// TODO implement interrupt driven gpio
+	/*
         if (m_ScreenState != ScreenStateLoadISO || nCount % 10 == 0) {
             m_Scheduler.Yield();
-        }
+        }*/
 
         // Status updates less frequently
-        if (nCount % 100 == 0)  // Only update status occasionally
-        {
-            // Periodic status update
+	// TODO move to a display manager run loop
+        if (nCount % 500 == 0) { // Reduce frequency (was 100)
             unsigned currentTime = m_Timer.GetTicks();
             if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL &&
-                m_ScreenState != ScreenStateLoadISO) {  // Skip updates while in ISO selection screen
-                // Get the current image name from properties
-                Properties.SelectSection("usbode");
-                const char* currentImage = Properties.GetString("current_image", "image.iso");
-
-                // Update display with current image name ONLY if not in ISO selection
-                if (m_ScreenState != ScreenStateLoadISO) {
+                m_ScreenState == ScreenStateMain) {
+                
+                // Add this check to prevent waking up a sleeping screen
+                if (m_pDisplayManager && m_pDisplayManager->ShouldAllowDisplayUpdates()) {
+                    // Get the current image name from properties
+                    Properties.SelectSection("usbode");
+                    const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
+                    
+                    // Update display with current image name ONLY on the main screen
                     UpdateDisplayStatus(currentImage);
                     lastStatusUpdate = currentTime;
                 }
             }
-        }
+		// Show details of the network connection
+		// TODO We *really* don't want to do this on every iteration of this loop!
+		if (m_Net.IsRunning()) {
+		    CString CurrentIPString;
+		    m_Net.GetConfig()->GetIPAddress()->Format(&CurrentIPString);
 
-        // Process display updates if needed - after network processing but before yielding
-        if (CWebServer::IsDisplayUpdateNeeded() && m_pDisplayManager != nullptr && m_ScreenState != ScreenStateLoadISO) {
-            const char* imageName = CWebServer::GetLastMountedImage();
-            LOGNOTE("Processing pending display update for: %s", imageName);
+		    // If IP changed (including from not connected to connected)
+		    if (strcmp((const char*)CurrentIPString, (const char*)PreviousIPString) != 0) {
+			// Log the new IP address
+			LOGNOTE("IP address: %s", (const char*)CurrentIPString);
 
-            // Make sure we're not in ISO selection mode
-            m_ScreenState = ScreenStateMain;
+			// Store for next time - make sure to use deep copy
+			PreviousIPString = CurrentIPString;
 
-            // Update the display with the image name
-            UpdateDisplayStatus(imageName);
+			// Update the display with the new IP address
+			// but only if we're not in the ISO selection screen and screen is awake
+			if (m_ScreenState == ScreenStateMain && m_pDisplayManager != nullptr && 
+			    m_pDisplayManager->ShouldAllowDisplayUpdates()) {
+			    UpdateDisplayStatus(nullptr); // Use simpler call
+			}
+		    }
+		}
 
-            // Clear the flag
-            CWebServer::ClearDisplayUpdateFlag();
+		// Process display timeouts
+        // Do we really need to do this on EVERY iteration of the main loop?
+		// TODO move this stuff to the display manager on its own run loop
+		/* FIXME!!
+		if (CWebServer::IsDisplayUpdateNeeded() && m_pDisplayManager != nullptr && m_ScreenState != ScreenStateLoadISO) {
+		    const char* imageName = CWebServer::GetLastMountedImage();
+		    LOGNOTE("Processing pending display update for: %s", imageName);
+
+		    // Make sure we're not in ISO selection mode
+		    m_ScreenState = ScreenStateMain;
+
+		    // Update the display with the image name
+		    UpdateDisplayStatus(imageName);
+
+		    // Clear the flag
+		    CWebServer::ClearDisplayUpdateFlag();
+		}
+		*/
         }
 
 	// Give tasks a chance to run
+    
 	m_Scheduler.Yield();
+
+	// Small delay to prevent CPU hogging
+	// CTimer::SimpleMsDelay(10);
     }
 
     LOGNOTE("ShutdownHalt");
@@ -493,8 +536,15 @@ void CKernel::InitializeDisplay(TDisplayType displayType) {
         return;
     }
 
-    // Create and initialize the display manager
-    m_pDisplayManager = new CDisplayManager(&m_Logger, displayType);
+    // Load screen timeout from config.txt
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    Properties.Load();
+    Properties.SelectSection("usbode");
+    unsigned nScreenTimeout = Properties.GetNumber(ConfigOptionScreenSleep, 5); // Default 5 seconds
+    LOGNOTE("Screen timeout set to %u seconds", nScreenTimeout);
+
+    // Create and initialize the display manager with timeout
+    m_pDisplayManager = new CDisplayManager(&m_Logger, displayType, nScreenTimeout);
     if (m_pDisplayManager == nullptr) {
         LOGERR("Failed to create display manager");
         delete m_pSPIMaster;
@@ -522,7 +572,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
     }
 
     // CRITICAL: Skip updates completely while in ISO selection screen
-    if (m_ScreenState == ScreenStateLoadISO) {
+    if (m_ScreenState != ScreenStateMain) {
         return;
     }
 
@@ -532,6 +582,7 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
     static unsigned LastUpdateTime = 0;
 
     // Debounce display updates - prevent multiple updates within a short time window
+    // TODO This doesn't debounce. Is this left-over code?
     unsigned currentTime = m_Timer.GetTicks();
     if (currentTime - LastUpdateTime < 500)  // 500ms debounce time
     {
@@ -542,10 +593,11 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
     }
 
     // Always load the current image from properties to ensure consistency
+    // TODO: Why do we load it here yet again when we've been given the imageName when we were called?
     CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
     Properties.Load();
     Properties.SelectSection("usbode");
-    const char* currentImage = Properties.GetString("current_image", "image.iso");
+    const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
 
     // Use the provided imageName if it's not null, otherwise use the one from properties
     if (imageName != nullptr && *imageName != '\0') {
@@ -569,16 +621,17 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
         boolean bUSBFullSpeed = m_Options.GetUSBFullSpeed();
         const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
 
-        // Update the status screen
+        // CHANGED: Use short version string for display (includes USBODE v prefix)
         m_pDisplayManager->ShowStatusScreen(
-            "USBODE v2.00-pre1",
+            CGitInfo::Get()->GetShortVersionString(),  // Use short version with USBODE v prefix
             (const char*)IPString,
             currentImage,
-            pUSBSpeed);  // Pass USB speed to display manager
+            pUSBSpeed);
 
         // Only log when the display actually changes
-        LOGNOTE("Display updated: IP=%s, Image=%s, USB=%s",
-                (const char*)IPString, currentImage, pUSBSpeed);
+        LOGNOTE("Display updated: IP=%s, Image=%s, USB=%s, Version=%s",
+                (const char*)IPString, currentImage, pUSBSpeed, 
+                CGitInfo::Get()->GetShortVersionString());  // Log short version
 
         // Store current values
         LastDisplayedIP = IPString;
@@ -596,6 +649,11 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
     // Get display type to handle buttons differently
     TDisplayType displayType = pKernel->m_pDisplayManager->GetDisplayType();
 
+    // Wake the screen on any button press (before handling the button)
+    if (bPressed) {
+        pKernel->m_pDisplayManager->WakeScreen();
+    }
+
     // Only handle button presses (not releases) for responsiveness
     if (bPressed) {
         // Handle differently based on display type
@@ -604,7 +662,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
             // Handle specific actions based on current screen state
             switch (pKernel->m_ScreenState) {
                 case ScreenStateMain:
-                    // On main screen, only KEY1 (button 5) should work to open ISO selection
+                    // On main screen, KEY1 (button 5) opens ISO selection
                     if (nButtonIndex == 5) {  // KEY1 button
                         // Show a loading message before scanning for files
                         if (pKernel->m_pDisplayManager != nullptr) {
@@ -620,6 +678,14 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->m_ScreenState = ScreenStateLoadISO;
                         pKernel->ScanForISOFiles();
                         pKernel->ShowISOSelectionScreen();
+                    }
+                    // KEY2 (button 6) opens advanced screen
+                    else if (nButtonIndex == 6) {  // KEY2 button
+                        pKernel->m_ScreenState = ScreenStateAdvanced;
+                        if (pKernel->m_pDisplayManager != nullptr) {
+                            pKernel->m_pDisplayManager->SetMainScreenActive(FALSE); // Add this line
+                            pKernel->m_pDisplayManager->ShowAdvancedScreen();
+                        }
                     }
                     break;
 
@@ -728,6 +794,50 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     }
                     break;
 
+                case ScreenStateAdvanced:
+                    // In advanced screen, handle menu navigation
+                    if (nButtonIndex == 0) {  // UP button - move selection up
+                        // Not implemented yet - would need to track current selection
+                    } 
+                    else if (nButtonIndex == 1) {  // DOWN button - move selection down
+                        // Not implemented yet - would need to track current selection
+                    }
+                    else if (nButtonIndex == 5 || nButtonIndex == 4) {  // KEY1 or JOYSTICK_PRESS - select item
+                        // For now, always select the first option (Build Info)
+                        pKernel->m_ScreenState = ScreenStateBuildInfo;
+                        
+                        // Show build info screen
+                        if (pKernel->m_pDisplayManager != nullptr) {
+                            // Create clean version string without "USBODE v" prefix
+                            char clean_version[32];
+                            snprintf(clean_version, sizeof(clean_version), "%s.%s.%s",
+                                    CGitInfo::Get()->GetMajorVersion(),
+                                    CGitInfo::Get()->GetMinorVersion(),
+                                    CGitInfo::Get()->GetPatchVersion());
+                            
+                            pKernel->m_pDisplayManager->ShowBuildInfoScreen(
+                                clean_version,
+                                __DATE__ " " __TIME__,
+                                GIT_BRANCH,
+                                GIT_COMMIT,
+                                CGitInfo::Get()->GetBuildNumber());
+                        }
+                    }
+                    else if (nButtonIndex == 6) {  // KEY2 button - back to main
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->m_pDisplayManager->SetMainScreenActive(TRUE); // Add this line
+                        pKernel->UpdateDisplayStatus(nullptr);
+                    }
+                    break;
+
+                case ScreenStateBuildInfo:
+                    // Any button press in build info returns to advanced menu
+                    pKernel->m_ScreenState = ScreenStateAdvanced;
+                    if (pKernel->m_pDisplayManager != nullptr) {
+                        pKernel->m_pDisplayManager->ShowAdvancedScreen();
+                    }
+                    break;
+
                 default:
                     break;
             }
@@ -778,14 +888,11 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->ScanForISOFiles();
                         pKernel->ShowISOSelectionScreen();
                     } else if (nButtonIndex == 2) {
-                        // Button X - Advanced menu (not implemented yet)
-                        LOGNOTE("Button X pressed - Advanced menu (not implemented)");
-
-                        pKernel->m_pDisplayManager->ShowStatusScreen(
-                            "Advanced Menu",
-                            "Not implemented yet",
-                            "Coming soon",
-                            pKernel->m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");
+                        // Button X - Advanced menu
+                        LOGNOTE("Button X pressed - Opening Advanced Menu");
+                        pKernel->m_ScreenState = ScreenStateAdvanced;
+                        pKernel->m_pDisplayManager->SetMainScreenActive(FALSE); // Add this line
+                        pKernel->m_pDisplayManager->ShowAdvancedScreen();
                     }
                     break;
 
@@ -840,15 +947,55 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     }
                     break;
 
+                case ScreenStateAdvanced:
+                    // Advanced menu screen handling
+                    if (nButtonIndex == 0) {  // Button A (Up) - move selection up
+                        // Not implemented yet - would need to track current selection
+                    } 
+                    else if (nButtonIndex == 1) {  // Button B (Down) - move selection down
+                        // Not implemented yet - would need to track current selection
+                    }
+                    else if (nButtonIndex == 3) {  // Button Y (Select) - select highlighted option
+                        // For now, always select the first option (Build Info)
+                        pKernel->m_ScreenState = ScreenStateBuildInfo;
+                        
+                        // Show build info screen
+                        char clean_version2[32];
+                        snprintf(clean_version2, sizeof(clean_version2), "%s.%s.%s",
+                                CGitInfo::Get()->GetMajorVersion(),
+                                CGitInfo::Get()->GetMinorVersion(),
+                                CGitInfo::Get()->GetPatchVersion());
+                        
+                        pKernel->m_pDisplayManager->ShowBuildInfoScreen(
+                            clean_version2,
+                            __DATE__ " " __TIME__,
+                            GIT_BRANCH,
+                            GIT_COMMIT,
+                            CGitInfo::Get()->GetBuildNumber());
+                    }
+                    else if (nButtonIndex == 2) {  // Button X (Cancel/Back) - return to main
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->UpdateDisplayStatus(nullptr);
+                    }
+                    break;
+
+                case ScreenStateBuildInfo:
+                    // Any button press in build info returns to advanced menu
+                    if (nButtonIndex == 2) {  // Button X (Cancel/Back)
+                        pKernel->m_ScreenState = ScreenStateAdvanced;
+                        pKernel->m_pDisplayManager->ShowAdvancedScreen();
+                    }
+                    else if (nButtonIndex == 3) {  // Button Y (OK/Select)
+                        pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->UpdateDisplayStatus(nullptr);
+                    }
+                    break;
+
                 default:
                     break;
             }
         } else {
-            // Unknown display type - use PirateAudio (ST7789) default mapping
-            // This ensures backward compatibility
-            LOGWARN("Unknown display type, using default button mapping");
-
-            // Default to ST7789 handling code if needed
+            // Unknown display type - default handling
         }
     }
 }
@@ -927,7 +1074,6 @@ void CKernel::ScanForISOFiles(void) {
     Properties.Load();
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
-    bool currentImageFound = false;
 
     // First try to scan the images directory
     DIR Directory;
@@ -963,7 +1109,6 @@ void CKernel::ScanForISOFiles(void) {
                 // Check if this is the current image
                 if (strcasecmp(FileInfo.fname, currentImage) == 0) {
                     m_nCurrentISOIndex = m_nTotalISOCount;
-                    currentImageFound = true;
                 }
 
                 m_nTotalISOCount++;
@@ -1084,7 +1229,7 @@ void CKernel::LoadSelectedISO(void) {
     LOGNOTE("Selected new Image: %s", SelectedISO);
 
     // Set the new device in the CD gadget
-    m_CDGadget.SetDevice(CueBinFileDevice);
+    m_CDGadget->SetDevice(CueBinFileDevice);
 
     // Return to main screen state first
     m_ScreenState = ScreenStateMain;

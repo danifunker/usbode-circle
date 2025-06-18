@@ -95,3 +95,5 @@ tmp/
 /circle.geany
 dist/
 gitinfo.h
+/usbode*.zip
+.vscode/
