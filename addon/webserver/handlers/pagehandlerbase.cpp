@@ -50,7 +50,7 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
         context.set("usb_mode", is_full_speed?"FullSpeed":"HighSpeed");
 
         // Add build info
-        context.set("version", CGitInfo::Get()->GetFullVersionString());
+        context.set("version", CGitInfo::Get()->GetVersionWithBuildString());
         context.set("build_info", std::string(GIT_BRANCH) + " @ " + std::string(GIT_COMMIT) + " | " + __DATE__ + " " + __TIME__);
 
 	// Render

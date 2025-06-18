@@ -39,7 +39,7 @@
         <div class="content">
                 <h3>File Selection</h3>
                 <div class="info-box">
-                    <p>Current File Loaded: <strong>{{current_image}}</strong></p>
+                    <p>Current File Loaded: <strong>{{image_name}}</strong></p>
                 </div>
                 <h4>Available Files</h4>
                 {{#links}}
@@ -74,6 +74,9 @@
 	{{/cdrom}}
         <div class="usb-info">
                 <p>USB Mode: {{ usb_mode }}</p>
+                <div style="margin-top: 10px; text-align: center;">
+                    <a href="/config" class="button">Configuration</a>
+                </div>
         </div>
         <div class="footer">
                 <p>Version {{ version }}</p>

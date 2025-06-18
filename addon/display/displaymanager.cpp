@@ -25,6 +25,7 @@
 #include <circle/2dgraphics.h>
 #include <linux/kernel.h>
 #include <circle/time.h>
+#include <gitinfo/gitinfo.h>
 
 #include <assert.h>
 
@@ -649,7 +650,7 @@ void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const
                 }
             }
             
-            // First line has CD icon + space, so fewer characters per line
+            // First line has CD icon - fewer characters per line
             const size_t first_line_chars = 18;
             // Second line and selection lines have no prefix, so can use more characters
             const size_t chars_per_line = 21;
@@ -1299,9 +1300,6 @@ void CDisplayManager::ShowAdvancedScreen(void)
             graphics.DrawLine(hammer_x - 1, hammer_y + 6, hammer_x, hammer_y + 6, COLOR2D(58, 124, 165));
             graphics.DrawLine(hammer_x - 1, hammer_y + 9, hammer_x, hammer_y + 9, COLOR2D(58, 124, 165));
             
-            // Use the helper function to draw navigation bar
-            DrawNavigationBar(graphics, "advanced");
-            
             // Update the display
             graphics.UpdateDisplay();
             
@@ -1347,18 +1345,15 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 m_pSH1106Display->SetPixel(x, 12, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
             }
             
-            // For SH1106, create a compact version of the build info
+            // Create a comprehensive build info string using the full version string and branch info
             char buildInfo[512];
             snprintf(buildInfo, sizeof(buildInfo), 
-                     "%s\nBuild: %s%s\nBuild Date: %s\nBranch: %s%s\nCommit: %.8s", 
-                     pVersionInfo, 
-                     (strlen(pBuildNumber) > 0) ? pBuildNumber : "N/A",
-                     (strlen(pBuildNumber) > 0) ? "" : "",
-                     pBuildDate, pGitBranch,
-                     (strcmp(pGitBranch, "main") == 0) ? " *" : "",
-                     pGitCommit);
+                     "%s %s%s", 
+                     CGitInfo::Get()->GetFullVersionString(),
+                     pGitBranch,
+                     (strcmp(pGitBranch, "main") == 0) ? " *" : "");
             
-            // Display the compact build info with word wrapping
+            // Display the complete build info with word wrapping
             const size_t chars_per_line = 21; // Maximum chars per line for SH1106
             
             size_t total_length = strlen(buildInfo);
@@ -1734,5 +1729,19 @@ void CDisplayManager::ShowTimeoutWarning(void)
         
     default:
         break;
+    }
+}
+
+void CDisplayManager::PrepareForShutdown(void)
+{
+    m_pLogger->Write("dispman", LogNotice, "Preparing display for shutdown");
+    
+    // For ST7789 (Pirate Audio), power off the display to make it appear properly shut down
+    // For SH1106, the display naturally powers off with the device
+    if (m_DisplayType == DisplayTypeST7789)
+    {
+        SetScreenPower(FALSE);
+        // Give the display time to process the power-off command
+        CTimer::Get()->usDelay(100000); // 100ms delay
     }
 }
