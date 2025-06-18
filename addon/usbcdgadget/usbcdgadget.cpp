@@ -1866,6 +1866,12 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         default: {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Unknown SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+            // Log the full command for debugging
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Full command: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x", 
+                     m_CBW.CBWCB[0], m_CBW.CBWCB[1], m_CBW.CBWCB[2], m_CBW.CBWCB[3],
+                     m_CBW.CBWCB[4], m_CBW.CBWCB[5], m_CBW.CBWCB[6], m_CBW.CBWCB[7],
+                     m_CBW.CBWCB[8], m_CBW.CBWCB[9], m_CBW.CBWCB[10], m_CBW.CBWCB[11],
+                     m_CBW.CBWCB[12], m_CBW.CBWCB[13], m_CBW.CBWCB[14], m_CBW.CBWCB[15]);
             m_SenseParams.bSenseKey = 0x5;  // Illegal/not supported
             m_SenseParams.bAddlSenseCode = 0x20;
             m_SenseParams.bAddlSenseCodeQual = 0x00;
