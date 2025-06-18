@@ -134,10 +134,8 @@ class CFTPWorker : protected CTask {
 
     // Command/data buffers
     char m_CommandBuffer[FRAME_BUFFER_SIZE];
-    // u8 m_DataBuffer[FRAME_BUFFER_SIZE];
-    //u8 m_DataBuffer[2048];
-    alignas(512) BYTE* WriteBuffer = new (HEAP_LOW) BYTE[WRITE_BUFFER_SIZE];
-    BYTE* m_DataBuffer = new (HEAP_LOW) BYTE[NETWORK_BUFFER_SIZE];
+    BYTE* WriteBuffer;
+    BYTE* m_DataBuffer;
 
     // Session state
     CString m_User;
