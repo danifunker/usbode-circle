@@ -52,7 +52,7 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
                                    CPropertiesFatFsFile *m_pProperties,
                                    CUSBCDGadget *pCDGadget)
 {
-        LOGNOTE("Home page called");
+        LOGDBG("Home page called");
 
 	// Get current loaded image
         m_pProperties->Load();
@@ -80,7 +80,7 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
                 continue;
             }
 
-            LOGNOTE("Read directory index %s", full_name.c_str());
+            LOGDBG("Read directory index %s", full_name.c_str());
 
             // Define the display name
             size_t dot_pos = full_name.rfind('.');

@@ -294,7 +294,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     
     // Handle POST request (form submission)
     if (pFormData && strlen(pFormData) > 0) {
-        LOGNOTE("Processing configuration form data");
+        LOGDBG("Processing configuration form data");
         
         auto form_params = ParseFormData(pFormData);
         

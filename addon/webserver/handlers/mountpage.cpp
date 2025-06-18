@@ -35,7 +35,7 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
                                    CPropertiesFatFsFile *m_pProperties,
                                    CUSBCDGadget *pCDGadget)
 {
-	LOGNOTE("Mount page called");
+	LOGDBG("Mount page called");
 
 	auto params = parse_query_params(pParams);
 
@@ -44,7 +44,7 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 
 	std::string file_name = params["file"];
 
-	LOGNOTE("Got filename %s from parameter", file_name.c_str());
+	LOGDBG("Got filename %s from parameter", file_name.c_str());
 
 	// Save current mounted image name
 	m_pProperties->SelectSection("usbode");
@@ -60,7 +60,7 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 
 	// Set the new device in the CD gadget
         pCDGadget->SetDevice(cueBinFileDevice);
-        LOGNOTE("CD gadget updated with new image: %s", file_name.c_str());
+        LOGDBG("CD gadget updated with new image: %s", file_name.c_str());
 
 	return HTTPOK;
 }
