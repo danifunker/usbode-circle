@@ -33,6 +33,13 @@ else
     echo "Warning: $VERSION_FILE not found. Using default version."
 fi
 
+# Check for build number from environment variable (set by build script)
+BUILD_NUMBER=""
+if [ -n "$USBODE_BUILD_NUMBER" ]; then
+    BUILD_NUMBER="-${USBODE_BUILD_NUMBER}"
+    echo "Using build number: $USBODE_BUILD_NUMBER"
+fi
+
 # Create header file with git and version info
 cat > ./gitinfo.h << EOF
 // Auto-generated file - Do not edit
@@ -50,6 +57,7 @@ cat > ./gitinfo.h << EOF
 #define VERSION_MAJOR "${MAJOR_VERSION}"
 #define VERSION_MINOR "${MINOR_VERSION}"
 #define VERSION_PATCH "${PATCH_VERSION}"
+#define BUILD_NUMBER "${BUILD_NUMBER}"
 
 class CGitInfo
 {
@@ -64,6 +72,7 @@ public:
     const char* GetMajorVersion(void) const;
     const char* GetMinorVersion(void) const;
     const char* GetPatchVersion(void) const;
+    const char* GetBuildNumber(void) const;
     
     // Get git information
     const char* GetBranch(void) const;
@@ -89,6 +98,7 @@ private:
     const char* m_MajorVersion;
     const char* m_MinorVersion;
     const char* m_PatchVersion;
+    const char* m_BuildNumber;
     
     // Git information
     const char* m_GitBranch;
@@ -103,4 +113,4 @@ private:
 #endif
 EOF
 
-echo "Generated gitinfo.h with branch ${BRANCH}, commit ${COMMIT}${DIRTY}, and version ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
+echo "Generated gitinfo.h with branch ${BRANCH}, commit ${COMMIT}${DIRTY}, version ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}${BUILD_NUMBER}"

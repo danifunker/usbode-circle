@@ -34,6 +34,13 @@ else
 fi
 
 echo "This script requires a successful ./configure -r X --prefix=/path/to/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi- run in ${projectRoot}/circle-stdlib"
+
+# Export build number for gitinfo system
+if [ -n "$run_number" ]; then
+    export USBODE_BUILD_NUMBER="$run_number"
+    echo "Exported USBODE_BUILD_NUMBER=$run_number for gitinfo system"
+fi
+
 git submodule update --init --recursive
 circleDir="${projectRoot}/circle-stdlib"
 buildConfPath="${HOME}/build-usbode.conf"

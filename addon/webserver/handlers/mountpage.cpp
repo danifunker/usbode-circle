@@ -24,8 +24,6 @@ char s_Mount[] =
 #include "mount.h"
 ;
 
-#define VERSION "2.1.0"
-
 THTTPStatus MountPageHandler::GetContent (const char  *pPath,
                                    const char  *pParams,
                                    const char  *pFormData,
@@ -77,7 +75,7 @@ THTTPStatus MountPageHandler::GetContent (const char  *pPath,
                 context.set("usb_mode", "HighSpeed");
 
         // Add build info
-        context.set("version", VERSION);
+        context.set("version", CGitInfo::Get()->GetVersionString());
         context.set("build_info", std::string(GIT_BRANCH) + " @ " + std::string(GIT_COMMIT) + " | " + __DATE__ + " " + __TIME__);
 
 	// Render
