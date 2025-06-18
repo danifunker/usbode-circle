@@ -27,6 +27,7 @@
 #include <circle/net/netsubsystem.h>
 #include <circle/sched/scheduler.h>
 #include <circle/timer.h>
+#include <gitinfo/gitinfo.h>
 
 #include "ftpworker.h"
 #include "utility.h"
@@ -39,7 +40,7 @@ constexpr size_t TextBufferSize = 512;
 constexpr unsigned int SocketTimeout = 20;
 constexpr unsigned int NumRetries = 3;
 
-const char MOTDBanner[] = "Welcome to the USBODE embedded FTP server!";
+const char MOTDBannerPrefix[] = "Welcome to USBODE";
 
 const char ROOTDIR[] = "/";
 
@@ -122,14 +123,25 @@ CFTPWorker::CFTPWorker(CSocket* pControlSocket, const char* pExpectedUser, const
       m_nDataSocketPort(0),
       m_DataSocketIPAddress(),
       m_CommandBuffer{'\0'},
+      WriteBuffer(nullptr),
+      m_DataBuffer(nullptr),
       m_User(),
       m_Password(),
       m_DataType(TDataType::ASCII),
       m_TransferMode(TTransferMode::Active),
-      m_CurrentPath(ROOTDIR),
+      m_CurrentPath("SD:"),
       m_RenameFrom() {
     ++s_nInstanceCount;
     m_LogName.Format("ftpd[%d]", s_nInstanceCount);
+    
+    // Allocate buffers
+    WriteBuffer = new (HEAP_LOW) BYTE[WRITE_BUFFER_SIZE];
+    m_DataBuffer = new (HEAP_LOW) BYTE[NETWORK_BUFFER_SIZE];
+    
+    if (WriteBuffer == nullptr || m_DataBuffer == nullptr) {
+        LOGERR("Failed to allocate buffers for FTP worker");
+        // Constructor can't fail, but Run() will check for null pointers
+    }
 }
 
 CFTPWorker::~CFTPWorker() {
@@ -139,8 +151,10 @@ CFTPWorker::~CFTPWorker() {
     if (m_pDataSocket)
         delete m_pDataSocket;
 
-    delete[] m_DataBuffer;
-    delete[] WriteBuffer;
+    if (m_DataBuffer != nullptr)
+        delete[] m_DataBuffer;
+    if (WriteBuffer != nullptr)
+        delete[] WriteBuffer;
 
     --s_nInstanceCount;
     LOGNOTE("Instance count is now %d", s_nInstanceCount);
@@ -154,8 +168,50 @@ void CFTPWorker::Run() {
 
     LOGNOTE("Worker task %d spawned", nWorkerNumber);
 
-    if (!SendStatus(TFTPStatus::ReadyForNewUser, MOTDBanner))
+    // Check if buffer allocation was successful
+    if (WriteBuffer == nullptr || m_DataBuffer == nullptr) {
+        LOGERR("Worker task %d terminating due to buffer allocation failure", nWorkerNumber);
         return;
+    }
+
+    // Create dynamic MOTD banner with version information
+    CString motdBanner;
+    LOGDBG("Attempting to get GitInfo");
+    CGitInfo* pGitInfo = CGitInfo::Get();
+    if (pGitInfo != nullptr) {
+        LOGDBG("GitInfo obtained, formatting MOTD");
+        const char* versionStr = pGitInfo->GetFullVersionString();
+        const char* branchStr = pGitInfo->GetBranch();
+        const char* commitStr = pGitInfo->GetCommit();
+        
+        if (versionStr && branchStr && commitStr) {
+            motdBanner.Format("%s %s\r\nBranch/Commit: %s @ %s\r\n\r\nPlease navigate to /SD/images to place supported CD Image files.",
+                              MOTDBannerPrefix, versionStr, branchStr, commitStr);
+        } else {
+            LOGWARN("GitInfo strings are null, using fallback MOTD");
+            motdBanner.Format("%s\r\n\r\nPlease navigate to /SD/images to place supported CD Image files.", MOTDBannerPrefix);
+        }
+    } else {
+        LOGWARN("GitInfo is null, using fallback MOTD");
+        motdBanner.Format("%s\r\n\r\nPlease navigate to /SD/images to place supported CD Image files.", MOTDBannerPrefix);
+    }
+
+    LOGDBG("Sending welcome banner");
+    if (!SendStatus(TFTPStatus::ReadyForNewUser, motdBanner)) {
+        LOGERR("Failed to send welcome banner, terminating worker");
+        return;
+    }
+    LOGDBG("Welcome banner sent successfully");
+
+    // Try to change to images directory after successful connection
+    DIR Dir;
+    if (f_opendir(&Dir, "SD:/images") == FR_OK) {
+        f_closedir(&Dir);
+        m_CurrentPath = "SD:/images";
+        LOGNOTE("Starting in images directory");
+    } else {
+        LOGNOTE("Starting in SD root directory (images directory not found)");
+    }
 
     CTimer* const pTimer = CTimer::Get();
     unsigned int nTimeout = pTimer->GetTicks();
@@ -286,6 +342,12 @@ bool CFTPWorker::CheckLoggedIn() {
     LOGDBG("Password compare: expected '%s', actual '%s'", static_cast<const char*>(m_pExpectedPassword), static_cast<const char*>(m_Password));
 #endif
 
+    // Allow anonymous access
+    if (m_User.Compare("anonymous") == 0 || m_User.Compare("Anonymous") == 0) {
+        return true;
+    }
+    
+    // Also allow the configured username/password
     if (m_User.Compare(m_pExpectedUser) == 0 && m_Password.Compare(m_pExpectedPassword) == 0)
         return true;
 
@@ -324,7 +386,8 @@ const TDirectoryListEntry* CFTPWorker::BuildDirectoryList(size_t& nOutEntries) c
 
         for (size_t i = 0; i < nVolumes; ++i) {
             char VolumeName[6];
-            strncpy(VolumeName, VolumeNames[i], sizeof(VolumeName));
+            strncpy(VolumeName, VolumeNames[i], sizeof(VolumeName) - 1);
+            VolumeName[sizeof(VolumeName) - 1] = '\0';
             strcat(VolumeName, ":");
 
             // Returns FR_
@@ -341,7 +404,8 @@ const TDirectoryListEntry* CFTPWorker::BuildDirectoryList(size_t& nOutEntries) c
         for (size_t i = 0; i < nVolumes && nCurrentEntry < nOutEntries; ++i) {
             if (VolumesAvailable[i]) {
                 TDirectoryListEntry& Entry = pEntries[nCurrentEntry++];
-                strncpy(Entry.Name, VolumeNames[i], sizeof(Entry.Name));
+                strncpy(Entry.Name, VolumeNames[i], sizeof(Entry.Name) - 1);
+                Entry.Name[sizeof(Entry.Name) - 1] = '\0';
                 Entry.Type = TDirectoryListEntryType::Directory;
                 Entry.nSize = 0;
                 Entry.nLastModifedDate = 0;
@@ -402,7 +466,14 @@ bool CFTPWorker::System(const char* pArgs) {
 bool CFTPWorker::Username(const char* pArgs) {
     m_User = pArgs;
     char Buffer[TextBufferSize];
-    snprintf(Buffer, sizeof(Buffer), "Password required for '%s'.", static_cast<const char*>(m_User));
+    
+    // Provide friendly message for anonymous users
+    if (m_User.Compare("anonymous") == 0 || m_User.Compare("Anonymous") == 0) {
+        snprintf(Buffer, sizeof(Buffer), "Anonymous access allowed. Any password accepted.");
+    } else {
+        snprintf(Buffer, sizeof(Buffer), "Password required for '%s'.", static_cast<const char*>(m_User));
+    }
+    
     SendStatus(TFTPStatus::PasswordRequired, Buffer);
     return true;
 }
@@ -412,7 +483,8 @@ bool CFTPWorker::Port(const char* pArgs) {
         return false;
 
     char Buffer[TextBufferSize];
-    strncpy(Buffer, pArgs, sizeof(Buffer));
+    strncpy(Buffer, pArgs, sizeof(Buffer) - 1);
+    Buffer[sizeof(Buffer) - 1] = '\0';
 
     if (m_pDataSocket != nullptr) {
         delete m_pDataSocket;
@@ -518,7 +590,12 @@ bool CFTPWorker::Password(const char* pArgs) {
     if (!CheckLoggedIn())
         return false;
 
-    SendStatus(TFTPStatus::UserLoggedIn, "User logged in.");
+    // Provide appropriate message based on user type
+    if (m_User.Compare("anonymous") == 0 || m_User.Compare("Anonymous") == 0) {
+        SendStatus(TFTPStatus::UserLoggedIn, "Anonymous user logged in.");
+    } else {
+        SendStatus(TFTPStatus::UserLoggedIn, "User logged in.");
+    }
     return true;
 }
 
@@ -745,8 +822,7 @@ bool CFTPWorker::ChangeWorkingDirectory(const char* pArgs) {
     const bool bAbsolute = pArgs[0] == '/';
     if (bAbsolute) {
         // Root
-        // FIXME compare against ROOTDIR
-        if (pArgs[1] == '\0') {
+        if (strcmp(pArgs, "/") == 0) {
             m_CurrentPath = "";
             bSuccess = true;
         } else {
