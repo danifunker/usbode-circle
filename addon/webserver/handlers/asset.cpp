@@ -7,6 +7,7 @@
 #include "asset.h"
 #include "util.h"
 
+// Include files for the assets
 #include "logo.h"
 #include "favicon.h"
 
@@ -18,7 +19,7 @@ struct StaticAsset {
     const char *contentType;
 };
 
-// Asset registry
+// route mappings for your asset
 static const std::map<std::string, StaticAsset> g_staticAssets = {
     { "/logo.jpg",     { assets_logo_jpg, assets_logo_jpg_len, "image/jpeg" } },
     { "/favicon.ico",  { assets_favicon_ico, assets_favicon_ico_len, "image/x-icon" } },
