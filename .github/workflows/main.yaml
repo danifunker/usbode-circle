@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: ./build-usbode.sh
+      run: ./build-usbode.sh --run-number ${{ github.run_number }}
 
     - name: Get filename
       id: get-filename

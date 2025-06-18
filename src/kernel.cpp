@@ -29,6 +29,8 @@
 #include <webserver/webserver.h>
 #include <devicestate/devicestate.h>
 
+#include <circle/time.h>
+
 #define DRIVE "SD:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
 #define SUPPLICANT_CONFIG_FILE DRIVE "/wpa_supplicant.conf"
@@ -63,6 +65,9 @@ static const char* FindLastOccurrence(const char* str, int ch) {
 
 // Add this near other constant definitions at the top of the file
 const char CKernel::ConfigOptionTimeZone[] = "timezone";
+
+// Define the constant for screen_sleep config option
+const char CKernel::ConfigOptionScreenSleep[] = "screen_sleep";
 
 CKernel::CKernel(void)
     : m_Screen(m_Options.GetWidth(), m_Options.GetHeight()),
@@ -209,8 +214,8 @@ TShutdownMode CKernel::Run(void) {
 	    // Initialize the CD Player service
 	    const char* pSoundDevice = m_Options.GetSoundDevice();
 	    
-	    //TODO support other sound options
-	    if (strcmp(pSoundDevice, "sndi2s") == 0) {
+	    //Currently supporting PWM and I2S sound devices. HDMI needs more work.
+	    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
 		new CCDPlayer(pSoundDevice);
 		LOGNOTE("Started the CD Player service");
 	    }
@@ -275,9 +280,9 @@ TShutdownMode CKernel::Run(void) {
                 IPString = "Not connected";
             }
 
-            // CHANGED: Use short version string for display
+            // CHANGED: Use short version string for display (includes USBODE v prefix)
             m_pDisplayManager->ShowStatusScreen(
-                CGitInfo::Get()->GetShortVersionString(), // Use short version
+                CGitInfo::Get()->GetShortVersionString(), // Use short version with USBODE v prefix
                 (const char*)IPString,
                 imageName,
                 m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
@@ -308,37 +313,22 @@ TShutdownMode CKernel::Run(void) {
 
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
-        // Process button updates FIRST for best responsiveness
-        if (m_pButtonManager) {
-            m_pButtonManager->Update();
-
-            // OPTIMIZATION: Check for button updates more frequently during file selection
-            // This makes the UI feel much more responsive when navigating file lists
-            if (m_ScreenState == ScreenStateLoadISO) {
-                // If we're in the file selection screen, check buttons again immediately
-		// TODO does this really do anything? Did anything happen since the last call to Update()?
-                m_pButtonManager->Update();
-            }
-        }
-
         // Update USB transfers
-	if (m_CDGadget) {
+    	if (m_CDGadget) {
         	m_CDGadget->UpdatePlugAndPlay();
        		m_CDGadget->Update();
     	}
 
-	if (m_MMSDGadget) {
+	    if (m_MMSDGadget) {
 	       m_MMSDGadget->UpdatePlugAndPlay ();
                m_MMSDGadget->Update ();
-	}
+	    }
 
-	/*
         // CRITICAL: Process network tasks even in ISO selection mode
         if (m_Net.IsRunning()) {
             m_Net.Process();
         }
-	*/
-
+	
         // Start the Web Server
         if (m_Net.IsRunning() && !pCWebServer) {
             // Create the web server
@@ -347,17 +337,16 @@ TShutdownMode CKernel::Run(void) {
             LOGNOTE("Started Webserver service");
         }
 
-	// Run NTP
-	if (m_Net.IsRunning() && !ntpInitialized) {
-            // Read timezone from config.txt
-            Properties.SelectSection("usbode");
-            const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
+        // Run NTP
+        if (m_Net.IsRunning() && !ntpInitialized) {
+                // Read timezone from config.txt
+                Properties.SelectSection("usbode");
+                const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
 
-            // Initialize NTP with the timezone
-            InitializeNTP(timezone);
-            ntpInitialized = true;
-	}
-
+                // Initialize NTP with the timezone
+                InitializeNTP(timezone);
+                ntpInitialized = true;
+        }
 
         // Publish mDNS
         if (m_Net.IsRunning() && !pmDNSPublisher) {
@@ -388,6 +377,35 @@ TShutdownMode CKernel::Run(void) {
 		return DeviceState::Get().getShutdownMode();
 	}
 
+        // Process display timeouts once per second using the timer
+        // This significantly reduces CPU usage
+        static unsigned nLastTimeoutCheck = 0;
+        unsigned nCurrentTime = m_Timer.GetTicks();
+        
+        // Only check timeout once per second 
+        if (m_pDisplayManager && (nCurrentTime - nLastTimeoutCheck >= 1000)) {
+            m_pDisplayManager->UpdateScreenTimeout();
+            nLastTimeoutCheck = nCurrentTime;
+        }
+        
+        // Ensure we yield to other threads frequently
+        if (nCount % 100 == 0) {
+            CScheduler::Get()->Yield();
+        }
+        
+        // Process button updates AFTER checking timeouts
+        if (m_pButtonManager) {
+            m_pButtonManager->Update();
+
+            // OPTIMIZATION: Check for button updates more frequently during file selection
+            // This makes the UI feel much more responsive when navigating file lists
+            if (m_ScreenState == ScreenStateLoadISO) {
+                // If we're in the file selection screen, check buttons again immediately
+		// TODO does this really do anything? Did anything happen since the last call to Update()?
+                m_pButtonManager->Update();
+            }
+        }
+
         // Use shorter yielding for more responsive button checks
         // OPTIMIZATION: Yield less frequently when in file selection mode
 	// We don't want to do this or it will slow down our core use-case of being a CDROM drive
@@ -399,23 +417,22 @@ TShutdownMode CKernel::Run(void) {
 
         // Status updates less frequently
 	// TODO move to a display manager run loop
-        if (nCount % 100 == 0)  // Only update status occasionally
-        {
-            // Periodic status update
+        if (nCount % 500 == 0) { // Reduce frequency (was 100)
             unsigned currentTime = m_Timer.GetTicks();
             if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL &&
-                m_ScreenState != ScreenStateLoadISO) {  // Skip updates while in ISO selection screen
-                // Get the current image name from properties
-                Properties.SelectSection("usbode");
-                const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
-
-                // Update display with current image name ONLY if not in ISO selection
-                if (m_ScreenState != ScreenStateLoadISO) {
+                m_ScreenState == ScreenStateMain) {
+                
+                // Add this check to prevent waking up a sleeping screen
+                if (m_pDisplayManager && m_pDisplayManager->ShouldAllowDisplayUpdates()) {
+                    // Get the current image name from properties
+                    Properties.SelectSection("usbode");
+                    const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
+                    
+                    // Update display with current image name ONLY on the main screen
                     UpdateDisplayStatus(currentImage);
                     lastStatusUpdate = currentTime;
                 }
             }
-
 		// Show details of the network connection
 		// TODO We *really* don't want to do this on every iteration of this loop!
 		if (m_Net.IsRunning()) {
@@ -431,21 +448,16 @@ TShutdownMode CKernel::Run(void) {
 			PreviousIPString = CurrentIPString;
 
 			// Update the display with the new IP address
-			// but only if we're not in the ISO selection screen
-			if (m_ScreenState != ScreenStateLoadISO && m_pDisplayManager != nullptr) {
-			    // Get the current ISO name
-			    // TODO: We just got the image name 15lines above here. I doubt it's changed since then. Do we need to look it up again?
-			    Properties.SelectSection("usbode");
-			    const char* currentImage = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
-
-			    // Force an update of the display
-			    UpdateDisplayStatus(currentImage);
+			// but only if we're not in the ISO selection screen and screen is awake
+			if (m_ScreenState == ScreenStateMain && m_pDisplayManager != nullptr && 
+			    m_pDisplayManager->ShouldAllowDisplayUpdates()) {
+			    UpdateDisplayStatus(nullptr); // Use simpler call
 			}
 		    }
 		}
 
-		// Process display updates if needed - after network processing but before yielding
-		// Do we really need to do this on EVERY iteration of the main loop?
+		// Process display timeouts
+        // Do we really need to do this on EVERY iteration of the main loop?
 		// TODO move this stuff to the display manager on its own run loop
 		/* FIXME!!
 		if (CWebServer::IsDisplayUpdateNeeded() && m_pDisplayManager != nullptr && m_ScreenState != ScreenStateLoadISO) {
@@ -465,7 +477,11 @@ TShutdownMode CKernel::Run(void) {
         }
 
 	// Give tasks a chance to run
+    
 	m_Scheduler.Yield();
+
+	// Small delay to prevent CPU hogging
+	// CTimer::SimpleMsDelay(10);
     }
 
     LOGNOTE("ShutdownHalt");
@@ -520,8 +536,15 @@ void CKernel::InitializeDisplay(TDisplayType displayType) {
         return;
     }
 
-    // Create and initialize the display manager
-    m_pDisplayManager = new CDisplayManager(&m_Logger, displayType);
+    // Load screen timeout from config.txt
+    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
+    Properties.Load();
+    Properties.SelectSection("usbode");
+    unsigned nScreenTimeout = Properties.GetNumber(ConfigOptionScreenSleep, 5); // Default 5 seconds
+    LOGNOTE("Screen timeout set to %u seconds", nScreenTimeout);
+
+    // Create and initialize the display manager with timeout
+    m_pDisplayManager = new CDisplayManager(&m_Logger, displayType, nScreenTimeout);
     if (m_pDisplayManager == nullptr) {
         LOGERR("Failed to create display manager");
         delete m_pSPIMaster;
@@ -598,9 +621,9 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
         boolean bUSBFullSpeed = m_Options.GetUSBFullSpeed();
         const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
 
-        // CHANGED: Use the short version string for display
+        // CHANGED: Use short version string for display (includes USBODE v prefix)
         m_pDisplayManager->ShowStatusScreen(
-            CGitInfo::Get()->GetShortVersionString(),  // Use short version for display
+            CGitInfo::Get()->GetShortVersionString(),  // Use short version with USBODE v prefix
             (const char*)IPString,
             currentImage,
             pUSBSpeed);
@@ -625,6 +648,11 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
 
     // Get display type to handle buttons differently
     TDisplayType displayType = pKernel->m_pDisplayManager->GetDisplayType();
+
+    // Wake the screen on any button press (before handling the button)
+    if (bPressed) {
+        pKernel->m_pDisplayManager->WakeScreen();
+    }
 
     // Only handle button presses (not releases) for responsiveness
     if (bPressed) {
@@ -655,6 +683,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                     else if (nButtonIndex == 6) {  // KEY2 button
                         pKernel->m_ScreenState = ScreenStateAdvanced;
                         if (pKernel->m_pDisplayManager != nullptr) {
+                            pKernel->m_pDisplayManager->SetMainScreenActive(FALSE); // Add this line
                             pKernel->m_pDisplayManager->ShowAdvancedScreen();
                         }
                     }
@@ -779,15 +808,24 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         
                         // Show build info screen
                         if (pKernel->m_pDisplayManager != nullptr) {
+                            // Create clean version string without "USBODE v" prefix
+                            char clean_version[32];
+                            snprintf(clean_version, sizeof(clean_version), "%s.%s.%s",
+                                    CGitInfo::Get()->GetMajorVersion(),
+                                    CGitInfo::Get()->GetMinorVersion(),
+                                    CGitInfo::Get()->GetPatchVersion());
+                            
                             pKernel->m_pDisplayManager->ShowBuildInfoScreen(
-                                CGitInfo::Get()->GetVersionString(),
+                                clean_version,
                                 __DATE__ " " __TIME__,
                                 GIT_BRANCH,
-                                GIT_COMMIT);
+                                GIT_COMMIT,
+                                CGitInfo::Get()->GetBuildNumber());
                         }
                     }
                     else if (nButtonIndex == 6) {  // KEY2 button - back to main
                         pKernel->m_ScreenState = ScreenStateMain;
+                        pKernel->m_pDisplayManager->SetMainScreenActive(TRUE); // Add this line
                         pKernel->UpdateDisplayStatus(nullptr);
                     }
                     break;
@@ -853,6 +891,7 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         // Button X - Advanced menu
                         LOGNOTE("Button X pressed - Opening Advanced Menu");
                         pKernel->m_ScreenState = ScreenStateAdvanced;
+                        pKernel->m_pDisplayManager->SetMainScreenActive(FALSE); // Add this line
                         pKernel->m_pDisplayManager->ShowAdvancedScreen();
                     }
                     break;
@@ -921,11 +960,18 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->m_ScreenState = ScreenStateBuildInfo;
                         
                         // Show build info screen
+                        char clean_version2[32];
+                        snprintf(clean_version2, sizeof(clean_version2), "%s.%s.%s",
+                                CGitInfo::Get()->GetMajorVersion(),
+                                CGitInfo::Get()->GetMinorVersion(),
+                                CGitInfo::Get()->GetPatchVersion());
+                        
                         pKernel->m_pDisplayManager->ShowBuildInfoScreen(
-                            CGitInfo::Get()->GetVersionString(),
+                            clean_version2,
                             __DATE__ " " __TIME__,
                             GIT_BRANCH,
-                            GIT_COMMIT);
+                            GIT_COMMIT,
+                            CGitInfo::Get()->GetBuildNumber());
                     }
                     else if (nButtonIndex == 2) {  // Button X (Cancel/Back) - return to main
                         pKernel->m_ScreenState = ScreenStateMain;
@@ -1028,7 +1074,6 @@ void CKernel::ScanForISOFiles(void) {
     Properties.Load();
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
-    bool currentImageFound = false;
 
     // First try to scan the images directory
     DIR Directory;
@@ -1064,7 +1109,6 @@ void CKernel::ScanForISOFiles(void) {
                 // Check if this is the current image
                 if (strcasecmp(FileInfo.fname, currentImage) == 0) {
                     m_nCurrentISOIndex = m_nTotalISOCount;
-                    currentImageFound = true;
                 }
 
                 m_nTotalISOCount++;

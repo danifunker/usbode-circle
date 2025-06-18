@@ -10,6 +10,7 @@ CGitInfo::CGitInfo(void)
     : m_MajorVersion(VERSION_MAJOR)
     , m_MinorVersion(VERSION_MINOR)
     , m_PatchVersion(VERSION_PATCH)
+    , m_BuildNumber(BUILD_NUMBER)
     , m_GitBranch(GIT_BRANCH)
     , m_GitCommit(GIT_COMMIT)
 {
@@ -45,6 +46,11 @@ const char* CGitInfo::GetPatchVersion(void) const
     return m_PatchVersion;
 }
 
+const char* CGitInfo::GetBuildNumber(void) const
+{
+    return m_BuildNumber;
+}
+
 const char* CGitInfo::GetBranch(void) const
 {
     return m_GitBranch;
@@ -58,6 +64,11 @@ const char* CGitInfo::GetCommit(void) const
 const char* CGitInfo::GetVersionString(void) const
 {
     return m_FormattedVersion;
+}
+
+const char* CGitInfo::GetVersionWithBuildString(void) const
+{
+    return m_VersionWithBuildString;
 }
 
 const char* CGitInfo::GetFullVersionString(void) const
@@ -75,6 +86,17 @@ void CGitInfo::UpdateFormattedVersions(void)
     // Create the base version string (x.y.z)
     CString baseVersion;
     baseVersion.Format("%s.%s.%s", m_MajorVersion, m_MinorVersion, m_PatchVersion);
+    
+    // Add build number if present
+    if (strlen(m_BuildNumber) > 0)
+    {
+        CString versionWithBuild;
+        versionWithBuild.Format("%s%s", (const char*)baseVersion, m_BuildNumber);
+        baseVersion = versionWithBuild;
+    }
+    
+    // Store the version with build number (without git hash)
+    m_VersionWithBuildString = baseVersion;
     
     // Add branch name only if not on main branch
     if (strcmp(m_GitBranch, "main") != 0)
@@ -108,10 +130,18 @@ void CGitInfo::UpdateFormattedVersions(void)
                                 __DATE__, __TIME__);
     
     // Create a very short version string for display (18 chars max)
-    m_ShortVersionString.Format("USBODE v%s.%s.%s", 
-                               m_MajorVersion, 
-                               m_MinorVersion, 
-                               m_PatchVersion);
+    CString shortVersionBase;
+    shortVersionBase.Format("%s.%s.%s", m_MajorVersion, m_MinorVersion, m_PatchVersion);
+    
+    // Add build number to short version if present
+    if (strlen(m_BuildNumber) > 0)
+    {
+        CString shortVersionWithBuild;
+        shortVersionWithBuild.Format("%s%s", (const char*)shortVersionBase, m_BuildNumber);
+        shortVersionBase = shortVersionWithBuild;
+    }
+    
+    m_ShortVersionString.Format("USBODE v%s", (const char*)shortVersionBase);
     
     // Ensure it's never longer than 18 characters
     if (m_ShortVersionString.GetLength() > 18)
