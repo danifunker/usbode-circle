@@ -37,10 +37,10 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
         mustache::data context;
 
 	// Fetch the page content from the subclass
-	partial part{[]() {
+	mustache::partial part{[this]() {
 	    return GetHTML();
 	}};
-	context.set("content", data{part});
+	context.set("content", mustache::data{part});
 	
 	// Call subclass hook to add page specific context
 	THTTPStatus status = PopulateContext(context, pPath, pParams, pFormData, m_pProperties, pCDGadget);
@@ -63,7 +63,7 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
         context.set("usb_mode", is_full_speed?"FullSpeed":"HighSpeed");
 
         // Add build info
-        context.set("version", CGitInfo::Get()->GetFullVersionString());
+        context.set("version", CGitInfo::Get()->GetVersionWithBuildString());
         context.set("build_info", std::string(GIT_BRANCH) + " @ " + std::string(GIT_COMMIT) + " | " + __DATE__ + " " + __TIME__);
 
 	// Render

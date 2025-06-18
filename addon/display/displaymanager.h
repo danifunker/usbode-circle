@@ -80,6 +80,7 @@ public:
     void SetScreenTimeout(unsigned nSeconds); // Change the screen timeout value
     void DebugTimerAccuracy(void); // For debugging timer accuracy
     boolean ShouldAllowDisplayUpdates(void);
+    void PrepareForShutdown(void); // Prepare display for shutdown (power off for ST7789)
 
 private:
     // Initialize SH1106 display
