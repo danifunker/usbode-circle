@@ -371,6 +371,10 @@ TShutdownMode CKernel::Run(void) {
 
         // Check if we should shutdown or halt
 	if (DeviceState::Get().getShutdownMode() != ShutdownNone) {
+		// Prepare display for shutdown (powers off Pirate Audio display)
+		if (m_pDisplayManager) {
+			m_pDisplayManager->PrepareForShutdown();
+		}
 
 		// Unmount & flush before we reboot or shutdown
 		f_mount(0, DRIVE, 1);

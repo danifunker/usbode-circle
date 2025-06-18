@@ -14,6 +14,7 @@ OBJS    = webserver.o \
 	handlers/mountpage.o \
 	handlers/modepage.o \
 	handlers/homepage.o \
+	handlers/configpage.o \
 	handlers/asset.o 
 
 libwebserver.a: $(OBJS)
@@ -30,6 +31,7 @@ CFLAGS += -D_TIME_T_DECLARED
 handlers/mountpage.o: pages/mount.h
 handlers/modepage.o: pages/mode.h
 handlers/homepage.o: pages/index.h
+handlers/configpage.o: pages/config.h
 handlers/asset.o: assets/logo.h
 handlers/asset.o: assets/favicon.h
 
