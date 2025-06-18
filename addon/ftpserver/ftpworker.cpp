@@ -175,6 +175,7 @@ void CFTPWorker::Run() {
     }
 
     // Create dynamic MOTD banner with version information
+    LOGDBG("Sending welcome banner");
     CString motdBanner;
     LOGDBG("Attempting to get GitInfo");
     CGitInfo* pGitInfo = CGitInfo::Get();
@@ -185,22 +186,27 @@ void CFTPWorker::Run() {
         const char* commitStr = pGitInfo->GetCommit();
         
         if (versionStr && branchStr && commitStr) {
-            motdBanner.Format("%s %s\r\nBranch/Commit: %s @ %s\r\n\r\nPlease navigate to /SD/images to place supported CD Image files.",
-                              MOTDBannerPrefix, versionStr, branchStr, commitStr);
+            motdBanner.Format("%s %s", MOTDBannerPrefix, versionStr);
+    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true);
+            motdBanner.Format("Branch/Commit: %s @ %s", branchStr, commitStr);
+    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true);
+            motdBanner.Format("Please navigate to /SD/images to place supported CD Image files.");
+    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, false);
         } else {
-            LOGWARN("GitInfo strings are null, using fallback MOTD");
-            motdBanner.Format("%s\r\n\r\nPlease navigate to /SD/images to place supported CD Image files.", MOTDBannerPrefix);
+            LOGWARN("GitInfo strings re null, using fallback MOTD");
+            motdBanner.Format("%s", MOTDBannerPrefix);
+    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true);
+            motdBanner.Format("Please navigate to /SD/images to place supported CD Image files.");
+    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, false);
         }
     } else {
         LOGWARN("GitInfo is null, using fallback MOTD");
-        motdBanner.Format("%s\r\n\r\nPlease navigate to /SD/images to place supported CD Image files.", MOTDBannerPrefix);
+        motdBanner.Format("%s", MOTDBannerPrefix);
+    	SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true);
+        motdBanner.Format("Please navigate to /SD/images to place supported CD Image files.");
+    	SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, false);
     }
 
-    LOGDBG("Sending welcome banner");
-    if (!SendStatus(TFTPStatus::ReadyForNewUser, motdBanner)) {
-        LOGERR("Failed to send welcome banner, terminating worker");
-        return;
-    }
     LOGDBG("Welcome banner sent successfully");
 
     // Try to change to images directory after successful connection
@@ -318,10 +324,10 @@ CSocket* CFTPWorker::OpenDataConnection() {
     return pDataSocket;
 }
 
-bool CFTPWorker::SendStatus(TFTPStatus StatusCode, const char* pMessage) {
+bool CFTPWorker::SendStatus(TFTPStatus StatusCode, const char* pMessage, bool multiline) {
     assert(m_pControlSocket != nullptr);
 
-    const int nLength = snprintf(m_CommandBuffer, sizeof(m_CommandBuffer), "%d %s\r\n", StatusCode, pMessage);
+    const int nLength = snprintf(m_CommandBuffer, sizeof(m_CommandBuffer), "%03d%s%s\r\n", StatusCode, multiline?"-":" ", pMessage);
     if (m_pControlSocket->Send(m_CommandBuffer, nLength, 0) < 0) {
         LOGERR("Failed to send status");
         return false;

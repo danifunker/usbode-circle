@@ -91,7 +91,7 @@ class CFTPWorker : protected CTask {
    private:
     CSocket* OpenDataConnection();
 
-    bool SendStatus(TFTPStatus StatusCode, const char* pMessage);
+    bool SendStatus(TFTPStatus StatusCode, const char* pMessage, boolean multiline=false);
 
     bool CheckLoggedIn();
 
