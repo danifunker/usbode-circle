@@ -914,7 +914,9 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x25:  // Read Capacity (10))
         {
-            m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);  // this value is the Start address of last recorded lead-out minus 1
+            u32 leadoutLBA = GetLeadoutLBA() - 1;
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Capacity (10) - returning last block addr %u, block size 2048", leadoutLBA);
+            m_ReadCapReply.nLastBlockAddr = htonl(leadoutLBA);  // this value is the Start address of last recorded lead-out minus 1
             memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
             m_nnumber_blocks = 0;  // nothing more after this send
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
@@ -927,7 +929,7 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x28:  // Read (10)
         {
             if (m_CDReady) {
-                // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Read (10)");
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read (10)");
                 // will be updated if read fails on any block
                 m_CSW.bmCSWStatus = bmCSWStatus;
 
@@ -936,6 +938,8 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                 // Number of blocks to read (LBA)
                 m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read (10) - LBA %u, blocks %u", m_nblock_address, m_nnumber_blocks);
 
                 // Transfer Block Size is the size of data to return to host
                 // Block Size and Skip Bytes is worked out from cue sheet
@@ -1668,14 +1672,13 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x5a:  // Mode Sense (10)
         {
-            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
-
-            //int LLBAA = (m_CBW.CBWCB[1] >> 7) & 0x01; // We don't support this
-            //int DBD = (m_CBW.CBWCB[1] >> 6) & 0x01; // Nor this
+            int LLBAA = (m_CBW.CBWCB[1] >> 4) & 0x01; 
+            int DBD = (m_CBW.CBWCB[1] >> 3) & 0x01; 
             int page = m_CBW.CBWCB[2] & 0x3F;
-            int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;  // We'll ignore this for now
+            int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
             u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = %02x, allocationLength = %lu", LLBAA, DBD, page, allocationLength);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA=%d, DBD=%d, page=0x%02x, page_control=%d, allocationLength=%d", 
+                     LLBAA, DBD, page, page_control, allocationLength);
 
             int length = SIZE_MODE_SENSE10_HEADER;
 
@@ -1815,11 +1818,96 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    // Copy the header & Code Page
 			    memcpy(m_InBuffer, &reply_header, SIZE_MODE_SENSE10_HEADER);
 			    memcpy(m_InBuffer + SIZE_MODE_SENSE10_HEADER, &codepage, SIZE_MODE_SENSE10_PAGE_0X0E);
+				break;
+			}
+
+			case 0x3f: {
+			    // Return all pages - this is critical for BIOS boot detection
+			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) - All pages requested (0x3F)");
+			    
+			    // Calculate total length needed for all pages
+			    int totalPageLength = SIZE_MODE_SENSE10_PAGE_0X01 + SIZE_MODE_SENSE10_PAGE_0X1A + SIZE_MODE_SENSE10_PAGE_0X2A + SIZE_MODE_SENSE10_PAGE_0X0E;
+			    
+			    ModeSense10Header reply_header;
+			    memset(&reply_header, 0, sizeof(reply_header));
+			    reply_header.modeDataLength = htons(SIZE_MODE_SENSE10_HEADER + totalPageLength - 2);
+			    reply_header.mediumType = GetMediumType();
+			    reply_header.deviceSpecificParameter = 0xC0;
+			    reply_header.blockDescriptorLength = htonl(0x00000000);
+			    
+			    int offset = SIZE_MODE_SENSE10_HEADER;
+			    
+			    // Copy header first
+			    memcpy(m_InBuffer, &reply_header, SIZE_MODE_SENSE10_HEADER);
+			    
+			    // Add Page 0x01 (Read/Write Error Recovery)
+			    ModePage0x01Data page01;
+			    memset(&page01, 0, sizeof(page01));
+			    page01.pageCodeAndPS = 0x01;
+			    page01.pageLength = 10;
+			    page01.errorRecoveryBehaviour = 0x00;
+			    page01.readRetryCount = 0x03;
+			    page01.writeRetryCount = 0x03;
+			    memcpy(m_InBuffer + offset, &page01, SIZE_MODE_SENSE10_PAGE_0X01);
+			    offset += SIZE_MODE_SENSE10_PAGE_0X01;
+			    
+			    // Add Page 0x1A (Power Condition)
+			    ModePage0x1AData page1A;
+			    memset(&page1A, 0, sizeof(page1A));
+			    page1A.pageCodeAndPS = 0x1A;
+			    page1A.pageLength = 10;
+			    page1A.idleStandby = 0x01;
+			    page1A.idleConditionTimer = htonl(0);
+			    page1A.standbyConditionTimer = htonl(0);
+			    memcpy(m_InBuffer + offset, &page1A, SIZE_MODE_SENSE10_PAGE_0X1A);
+			    offset += SIZE_MODE_SENSE10_PAGE_0X1A;
+			    
+			    // Add Page 0x2A (MM Capabilities and Mechanical Status)
+			    ModePage0x2AData page2A;
+			    memset(&page2A, 0, sizeof(page2A));
+			    page2A.pageCodeAndPS = 0x2A;
+			    page2A.pageLength = 18;
+			    page2A.capabilityBits[0] = 0x70; // DVD-ROM read, CD-R read, CD-RW read
+			    page2A.capabilityBits[1] = 0x00;
+			    page2A.capabilityBits[2] = 0x70; // DVD-ROM read, CD-R read, CD-RW read
+			    page2A.capabilityBits[3] = 0x00;
+			    page2A.capabilityBits[4] = 0x29; // Multi-session, Mode 2 Form 1, Mode 2 Form 2
+			    page2A.capabilityBits[5] = 0x00;
+			    page2A.maxSpeed = htons(0x3200);    // 50x speed
+			    page2A.numVolumeLevels = htons(0x0100);
+			    page2A.bufferSize = htons(0x0400);  // 1MB buffer
+			    page2A.currentSpeed = htons(0x3200);
+			    memcpy(m_InBuffer + offset, &page2A, SIZE_MODE_SENSE10_PAGE_0X2A);
+			    offset += SIZE_MODE_SENSE10_PAGE_0X2A;
+			    
+			    // Add Page 0x0E (CD Audio Control)
+			    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+			    u8 volume = 0x80;
+			    if (cdplayer) {
+				volume = cdplayer->GetVolume();
+			    }
+			    ModePage0x0EData page0E;
+			    memset(&page0E, 0, sizeof(page0E));
+			    page0E.pageCodeAndPS = 0x0e;
+			    page0E.pageLength = 16;
+			    page0E.IMMEDAndSOTC = 0x04;
+			    page0E.CDDAOutput0Select = 0x01;
+			    page0E.Output0Volume = volume;
+			    page0E.CDDAOutput1Select = 0x02;
+			    page0E.Output1Volume = volume;
+			    page0E.CDDAOutput2Select = 0x00;
+			    page0E.Output2Volume = 0x00;
+			    page0E.CDDAOutput3Select = 0x00;
+			    page0E.Output3Volume = 0x00;
+			    memcpy(m_InBuffer + offset, &page0E, SIZE_MODE_SENSE10_PAGE_0X0E);
+			    
+			    length = SIZE_MODE_SENSE10_HEADER + totalPageLength;
 			    break;
 			}
 
 			default: {
 				// We don't support this code page
+				MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) - Unsupported page 0x%02x", page);
 				bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
 				m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
 				m_SenseParams.bAddlSenseCode = 0x24;      // INVALID FIELD IN COMMAND PACKET
