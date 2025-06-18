@@ -1,44 +1,3 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>USBODE Configuration</title>
-    <style>
-        body {background-color: #EAEAEA; color: #333333; font-family: "Times New Roman", serif; margin: 0; padding: 0;}
-        h1, h2, h3 {color: #1E4D8C;}
-        a {color: #0066CC;}
-        a:visited {color: #0066CC;}
-        .container {width: 100%; margin: 0; padding: 0;}
-        .header {background-color: #3A7CA5; padding: 10px; height: 80px; text-align: center; color: #FFFFFF;}
-        .header h1, .header h2 {color: #FFFFFF; margin: 5px 0;}
-        .content {padding: 20px; background-color: #FFFFFF; min-height: 400px;}
-        .footer {background-color: #3A7CA5; padding: 10px; text-align: center; color: #FFFFFF;}
-        .button {background-color: #4CAF50; padding: 10px 20px; text-decoration: none; color: #FFFFFF; margin: 10px 5px; display: inline-block; border: none; cursor: pointer; font-size: 16px;}
-        .button:hover {background-color: #45a049;}
-        .button-danger {background-color: #f44336;}
-        .button-danger:hover {background-color: #da190b;}
-        .info-box {background-color: #F5F5F5; padding: 15px; margin: 15px 0; border-left: 4px solid #3A7CA5;}
-        .warning {background-color: #FFDDDD; padding: 15px; margin: 15px 0; color: #990000; border-left: 4px solid #ff0000;}
-        .success {background-color: #DDFFDD; padding: 15px; margin: 15px 0; color: #006600; border-left: 4px solid #00aa00;}
-        .form-group {margin: 15px 0;}
-        .form-group label {display: block; margin-bottom: 5px; font-weight: bold;}
-        .form-group select, .form-group input {
-            width: 300px; padding: 8px; border: 1px solid #ccc; font-size: 14px;
-        }
-        .form-section {background-color: #f9f9f9; padding: 20px; margin: 20px 0; border: 1px solid #ddd;}
-        .form-section h3 {margin-top: 0; color: #1E4D8C; border-bottom: 2px solid #3A7CA5; padding-bottom: 10px;}
-        .current-value {color: #666; font-style: italic; font-size: 12px;}
-        .navigation {margin: 20px 0;}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <img src="/logo.jpg" alt="Logo" align="left" height="100%" style="margin-right:10px;">
-            <h1>USBODE</h1>
-            <h2>Configuration</h2>
-        </div>
-        
-        <div class="content">
             <div class="navigation">
                 <a href="/" class="button">Back to Home</a>
             </div>
@@ -133,14 +92,4 @@
                     <a href="/" class="button button-danger">Cancel</a>
                 </div>
             </form>
-        </div>
         
-        <div class="footer">
-            <p>Version {{ version }}</p>
-            <div class="build-info">
-                Build: {{ build_info}}
-            </div>
-        </div>
-    </div>
-</body>
-</html>
