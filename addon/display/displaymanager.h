@@ -26,6 +26,7 @@
 #include <circle/types.h>
 #include <circle/gpiopin.h>
 #include <circle/2dgraphics.h>
+#include <circle/timer.h>
 #include "sh1106display.h"
 #include "sh1106device.h"
 #include "st7789display.h"
@@ -41,8 +42,8 @@ enum TDisplayType
 class CDisplayManager
 {
 public:
-    // Modified constructor that takes display type
-    CDisplayManager(CLogger *pLogger, TDisplayType DisplayType);
+    // Constructor now takes screen timeout parameter
+    CDisplayManager(CLogger *pLogger, TDisplayType DisplayType, unsigned nScreenTimeoutSeconds = 5);
     
     // Destructor
     ~CDisplayManager(void);
@@ -69,8 +70,17 @@ public:
     void ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel); // Added method declaration for button press display
     void ShowAdvancedScreen(void); // Added method declaration for advanced screen
     void ShowBuildInfoScreen(const char* pVersionInfo, const char* pBuildDate, 
-                            const char* pGitBranch, const char* pGitCommit); // New method for build info
+                            const char* pGitBranch, const char* pGitCommit); // Method for build info
     
+    // Screen timeout methods
+    void WakeScreen(void); // Wake up the screen from sleep
+    void UpdateScreenTimeout(void); // Call this periodically to handle screen timeout
+    boolean IsMainScreenActive(void) const { return m_bMainScreenActive; }
+    void SetMainScreenActive(boolean bActive); // Set main screen active status
+    void SetScreenTimeout(unsigned nSeconds); // Change the screen timeout value
+    void DebugTimerAccuracy(void); // For debugging timer accuracy
+    boolean ShouldAllowDisplayUpdates(void);
+
 private:
     // Initialize SH1106 display
     boolean InitializeSH1106(CSPIMaster *pSPIMaster);
@@ -79,8 +89,11 @@ private:
     boolean InitializeST7789(CSPIMaster *pSPIMaster);
     
     void DrawNavigationBar(C2DGraphics& graphics, const char* screenType);
+    
+    // Helper methods for screen timeout
+    void ShowTimeoutWarning(void); // Show warning before sleep
+    void SetScreenPower(boolean bOn); // Turn screen on/off
 
-private:
     CLogger *m_pLogger;
     TDisplayType m_DisplayType;
     
@@ -91,6 +104,13 @@ private:
     // ST7789 display components
     CST7789Display *m_pST7789Display;
     CST7789Device *m_pST7789Device;
+    
+    // Screen timeout variables
+    unsigned m_nScreenTimeoutSeconds;
+    unsigned m_nLastActivityTime;
+    boolean m_bScreenActive; // Whether screen is awake
+    boolean m_bTimeoutWarningShown; // Whether warning has been shown
+    boolean m_bMainScreenActive; // Whether we're on the main screen
 };
 
 #endif

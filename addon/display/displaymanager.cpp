@@ -24,22 +24,38 @@
 #include <circle/timer.h>
 #include <circle/2dgraphics.h>
 #include <linux/kernel.h>
+#include <circle/time.h>
 
 #include <assert.h>
 
 static const char FromDisplayManager[] = "dispman";
 
 // Updated constructor that takes display type directly
-CDisplayManager::CDisplayManager(CLogger *pLogger, TDisplayType DisplayType)
+CDisplayManager::CDisplayManager(CLogger *pLogger, TDisplayType DisplayType, unsigned nScreenTimeoutSeconds)
     : m_pLogger(pLogger),
       m_DisplayType(DisplayType),
       m_pSH1106Display(nullptr),
-      m_pSH1106Device(nullptr)
-      // Initialize ST7789 pointers when implemented
-      // m_pST7789Display(nullptr),
-      // m_pST7789Device(nullptr)
+      m_pSH1106Device(nullptr),
+      m_pST7789Display(nullptr),
+      m_pST7789Device(nullptr),
+      m_nScreenTimeoutSeconds(nScreenTimeoutSeconds),
+      m_nLastActivityTime(0),
+      m_bScreenActive(true),
+      m_bTimeoutWarningShown(false),
+      m_bMainScreenActive(true)
 {
     assert(m_pLogger != nullptr);
+    
+    // Ensure minimum timeout of 3 seconds to allow for warning
+    if (m_nScreenTimeoutSeconds < 3) {
+        m_nScreenTimeoutSeconds = 3;
+    }
+    
+    // Initialize the last activity time to now
+    m_nLastActivityTime = CTimer::Get()->GetTicks();
+    
+    m_pLogger->Write("dispman", LogNotice, 
+                  "Screen timeout initialized to %u seconds", m_nScreenTimeoutSeconds);
 }
 
 CDisplayManager::~CDisplayManager(void)
@@ -285,6 +301,11 @@ void CDisplayManager::ClearDisplay(void)
 
 void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddress, const char *pISOName, const char *pUSBSpeed)
 {
+    // Don't update if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     assert(pTitle != nullptr);
     assert(pIPAddress != nullptr);
     assert(pISOName != nullptr);
@@ -585,6 +606,11 @@ void CDisplayManager::ShowStatusScreen(const char *pTitle, const char *pIPAddres
 void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const char* pSelectedFileName, 
                                             unsigned CurrentFileIndex, unsigned TotalFiles)
 {
+    // Don't update if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     assert(pCurrentISOName != nullptr);
     assert(pSelectedFileName != nullptr);
     
@@ -951,6 +977,11 @@ void CDisplayManager::ShowFileSelectionScreen(const char* pCurrentISOName, const
 
 void CDisplayManager::Refresh(void)
 {
+    // Don't refresh if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
@@ -1013,18 +1044,31 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawLine(a_x - 2, a_y, a_x + 2, a_y, COLOR2D(0, 0, 0));
     graphics.DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0)); // Fixed: a_y+1 instead of a_x+1
     
-    // Same arrow code as before but with white color for better visibility
+    // UP arrow for navigation screens or custom icon for main screen
     unsigned arrow_x = 35;
     unsigned arrow_y = 225;
     
-    // Stem (3px thick)
-    graphics.DrawLine(arrow_x, arrow_y - 13, arrow_x, arrow_y, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x - 1, arrow_y - 13, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x + 1, arrow_y - 13, arrow_x + 1, arrow_y, COLOR2D(255, 255, 255));
-    
-    // Arrow head
-    graphics.DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
-    graphics.DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
+    if (strcmp(screenType, "main") == 0) {
+        // On main screen, show select icon
+        // Stem (3px thick)
+        graphics.DrawLine(arrow_x, arrow_y - 13, arrow_x, arrow_y, COLOR2D(255, 255, 255));
+        graphics.DrawLine(arrow_x - 1, arrow_y - 13, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));
+        graphics.DrawLine(arrow_x + 1, arrow_y - 13, arrow_x + 1, arrow_y, COLOR2D(255, 255, 255));
+        
+        // Arrow head
+        graphics.DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
+        graphics.DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
+    } else {
+        // On other screens, show up navigation arrow
+        // Stem (3px thick)
+        graphics.DrawLine(arrow_x, arrow_y - 13, arrow_x, arrow_y, COLOR2D(255, 255, 255));
+        graphics.DrawLine(arrow_x - 1, arrow_y - 13, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));
+        graphics.DrawLine(arrow_x + 1, arrow_y - 13, arrow_x + 1, arrow_y, COLOR2D(255, 255, 255));
+        
+        // Arrow head
+        graphics.DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
+        graphics.DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
+    }
     
     // --- B BUTTON ---
     // Draw a white button with dark border for better contrast
@@ -1057,7 +1101,7 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawLine(b_x - 1, b_y - 5, b_x + 1, b_y - 5, COLOR2D(0, 0, 0));
     graphics.DrawLine(b_x - 1, b_y + 5, b_x + 1, b_y + 5, COLOR2D(0, 0, 0));
     
-    // Down arrow
+    // Down arrow for all screens
     arrow_x = 95;
     arrow_y = 225;
     
@@ -1070,146 +1114,108 @@ void CDisplayManager::DrawNavigationBar(C2DGraphics& graphics, const char* scree
     graphics.DrawLine(arrow_x - 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
     graphics.DrawLine(arrow_x + 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
     
+    // --- X BUTTON ---
+    // Draw a white button with dark border for better contrast
+    graphics.DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
+    graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
+    
+    // Draw letter "X" using lines instead of text
+    unsigned x_x = 134; // Center of X
+    unsigned x_y = 225; // Center of button
+    
+    // Draw X using thick lines (3px wide)
+    // First diagonal of X (top-left to bottom-right)
+    graphics.DrawLine(x_x - 4, x_y - 6, x_x + 4, x_y + 6, COLOR2D(0, 0, 0));
+    graphics.DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
+    graphics.DrawLine(x_x - 3, x_y - 6, x_x + 5, x_y + 6, COLOR2D(0, 0, 0));
+    
+    // Second diagonal of X (top-right to bottom-left)
+    graphics.DrawLine(x_x + 4, x_y - 6, x_x - 4, x_y + 6, COLOR2D(0, 0, 0));
+    graphics.DrawLine(x_x + 5, x_y - 6, x_x - 3, x_y + 6, COLOR2D(0, 0, 0));
+    graphics.DrawLine(x_x + 3, x_y - 6, x_x - 5, x_y + 6, COLOR2D(0, 0, 0));
+    
+    // Icon next to X button - different based on screen type
+    unsigned icon_x = 155;
+    unsigned icon_y = 225;
+    
     if (strcmp(screenType, "main") == 0) {
-        // --- X BUTTON ---
-        // Draw a white button with dark border for better contrast
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
-        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
-        
-        // Draw letter "X" using lines instead of text
-        unsigned x_x = 134; // Center of X
-        unsigned x_y = 225; // Center of button
-        
-        // Draw X using thick lines (3px wide)
-        // First diagonal of X (top-left to bottom-right)
-        graphics.DrawLine(x_x - 4, x_y - 6, x_x + 4, x_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(x_x - 3, x_y - 6, x_x + 5, x_y + 6, COLOR2D(0, 0, 0));
-        
-        // Second diagonal of X (top-right to bottom-left)
-        graphics.DrawLine(x_x + 4, x_y - 6, x_x - 4, x_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(x_x + 5, x_y - 6, x_x - 3, x_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(x_x + 3, x_y - 6, x_x - 5, x_y + 6, COLOR2D(0, 0, 0));
-        
-        // Menu bars
-        unsigned menu_x = 155;
-        unsigned menu_y = 220;
-        
+        // Menu bars for main screen
         // Thicker menu bars (2px)
-        graphics.DrawLine(menu_x, menu_y, menu_x + 15, menu_y, COLOR2D(255, 255, 255));
-        graphics.DrawLine(menu_x, menu_y + 1, menu_x + 15, menu_y + 1, COLOR2D(255, 255, 255));
+        graphics.DrawLine(icon_x, icon_y - 5, icon_x + 15, icon_y - 5, COLOR2D(255, 255, 255));
+        graphics.DrawLine(icon_x, icon_y - 4, icon_x + 15, icon_y - 4, COLOR2D(255, 255, 255));
         
-        graphics.DrawLine(menu_x, menu_y + 5, menu_x + 15, menu_y + 5, COLOR2D(255, 255, 255));
-        graphics.DrawLine(menu_x, menu_y + 6, menu_x + 15, menu_y + 6, COLOR2D(255, 255, 255));
+        graphics.DrawLine(icon_x, icon_y, icon_x + 15, icon_y, COLOR2D(255, 255, 255));
+        graphics.DrawLine(icon_x, icon_y + 1, icon_x + 15, icon_y + 1, COLOR2D(255, 255, 255));
         
-        graphics.DrawLine(menu_x, menu_y + 10, menu_x + 15, menu_y + 10, COLOR2D(255, 255, 255));
-        graphics.DrawLine(menu_x, menu_y + 11, menu_x + 15, menu_y + 11, COLOR2D(255, 255, 255));
-        
-        // --- Y BUTTON ---
-        // Draw a white button with dark border for better contrast
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
-        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
-        
-        // Draw letter "Y" using lines instead of text
-        unsigned y_x = 194; // Center of Y
-        unsigned y_y = 225; // Center of button
-        
-        // Draw Y using thick lines (3px wide)
-        // Upper left diagonal of Y
-        graphics.DrawLine(y_x - 4, y_y - 6, y_x, y_y, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x - 5, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x - 3, y_y - 6, y_x + 1, y_y, COLOR2D(0, 0, 0));
-        
-        // Upper right diagonal of Y
-        graphics.DrawLine(y_x + 4, y_y - 6, y_x, y_y, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x + 5, y_y - 6, y_x + 1, y_y, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x + 3, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
-        
-        // Stem of Y
-        graphics.DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
-        
-        // Folder icon
-        unsigned folder_x = 215;
-        unsigned folder_y = 220;
-        graphics.DrawRect(folder_x, folder_y + 3, 16, 11, COLOR2D(255, 255, 255));
-        graphics.DrawRect(folder_x + 2, folder_y, 8, 4, COLOR2D(255, 255, 255));
-    } 
-    else if (strcmp(screenType, "selection") == 0 || strcmp(screenType, "advanced") == 0) {
-        // --- X BUTTON ---
-        // Draw a white button with dark border for better contrast
-        graphics.DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
-        graphics.DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
-        
-        // Draw letter "X" using lines instead of text
-        unsigned x_x = 134; // Center of X
-        unsigned x_y = 225; // Center of button
-        
-        // Draw X using thick lines (3px wide)
-        // First diagonal of X (top-left to bottom-right)
-        graphics.DrawLine(x_x - 4, x_y - 6, x_x + 4, x_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(x_x - 3, x_y - 6, x_x + 5, x_y + 6, COLOR2D(0, 0, 0));
-        
-        // Second diagonal of X (top-right to bottom-left)
-        graphics.DrawLine(x_x + 4, x_y - 6, x_x - 4, x_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(x_x + 5, x_y - 6, x_x - 3, x_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(x_x + 3, x_y - 6, x_x - 5, x_y + 6, COLOR2D(0, 0, 0));
-        
-        // Red X icon
-        unsigned x_center = 155;
-        unsigned y_center = 225;
-        graphics.DrawLine(x_center - 8, y_center - 8, x_center + 8, y_center + 8, COLOR2D(255, 0, 0));
-        graphics.DrawLine(x_center + 8, y_center - 8, x_center - 8, y_center + 8, COLOR2D(255, 0, 0));
+        graphics.DrawLine(icon_x, icon_y + 5, icon_x + 15, icon_y + 5, COLOR2D(255, 255, 255));
+        graphics.DrawLine(icon_x, icon_y + 6, icon_x + 15, icon_y + 6, COLOR2D(255, 255, 255));
+    } else {
+        // Red X icon for other screens (cancel)
+        graphics.DrawLine(icon_x - 8, icon_y - 8, icon_x + 8, icon_y + 8, COLOR2D(255, 0, 0));
+        graphics.DrawLine(icon_x + 8, icon_y - 8, icon_x - 8, icon_y + 8, COLOR2D(255, 0, 0));
         
         // Make red X thicker
-        graphics.DrawLine(x_center - 7, y_center - 8, x_center + 7, y_center + 8, COLOR2D(255, 0, 0));
-        graphics.DrawLine(x_center + 7, y_center - 8, x_center - 7, y_center + 8, COLOR2D(255, 0, 0));
-        graphics.DrawLine(x_center - 8, y_center - 7, x_center + 8, y_center + 7, COLOR2D(255, 0, 0));
-        graphics.DrawLine(x_center + 8, y_center - 7, x_center - 8, y_center + 7, COLOR2D(255, 0, 0));
+        graphics.DrawLine(icon_x - 7, icon_y - 8, icon_x + 7, icon_y + 8, COLOR2D(255, 0, 0));
+        graphics.DrawLine(icon_x + 7, icon_y - 8, icon_x - 7, icon_y + 8, COLOR2D(255, 0, 0));
+        graphics.DrawLine(icon_x - 8, icon_y - 7, icon_x + 8, icon_y + 7, COLOR2D(255, 0, 0));
+        graphics.DrawLine(icon_x + 8, icon_y - 7, icon_x - 8, icon_y + 7, COLOR2D(255, 0, 0));
+    }
+    
+    // --- Y BUTTON ---
+    // Draw a white button with dark border for better contrast
+    graphics.DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
+    graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
+    
+    // Draw letter "Y" using lines instead of text
+    unsigned y_x = 194; // Center of Y
+    unsigned y_y = 225; // Center of button
+    
+    // Draw Y using thick lines (3px wide)
+    // Upper left diagonal of Y
+    graphics.DrawLine(y_x - 4, y_y - 6, y_x, y_y, COLOR2D(0, 0, 0));
+    graphics.DrawLine(y_x - 5, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
+    graphics.DrawLine(y_x - 3, y_y - 6, y_x + 1, y_y, COLOR2D(0, 0, 0));
+    
+    // Upper right diagonal of Y
+    graphics.DrawLine(y_x + 4, y_y - 6, y_x, y_y, COLOR2D(0, 0, 0));
+    graphics.DrawLine(y_x + 5, y_y - 6, y_x + 1, y_y, COLOR2D(0, 0, 0));
+    graphics.DrawLine(y_x + 3, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
+    
+    // Stem of Y
+    graphics.DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
+    graphics.DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
+    graphics.DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
+    
+    // Icon next to Y button - different based on screen type
+    unsigned y_icon_x = 215;
+    unsigned y_icon_y = 225;
+    
+    if (strcmp(screenType, "main") == 0) {
+        // Folder icon for main screen
+        graphics.DrawRect(y_icon_x, y_icon_y - 2, 16, 11, COLOR2D(255, 255, 255));
+        graphics.DrawRect(y_icon_x + 2, y_icon_y - 5, 8, 4, COLOR2D(255, 255, 255));
+    } else {
+        // GREEN CHECKMARK for all other screens
+        // Draw a green checkmark
+        // Shorter part of checkmark
+        graphics.DrawLine(y_icon_x - 8, y_icon_y, y_icon_x - 3, y_icon_y + 5, COLOR2D(0, 255, 0));
+        graphics.DrawLine(y_icon_x - 8, y_icon_y + 1, y_icon_x - 3, y_icon_y + 6, COLOR2D(0, 255, 0));
+        graphics.DrawLine(y_icon_x - 7, y_icon_y, y_icon_x - 2, y_icon_y + 5, COLOR2D(0, 255, 0));
         
-        // --- Y BUTTON ---
-        // Draw a white button with dark border for better contrast
-        graphics.DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
-        graphics.DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
-        
-        // Draw letter "Y" using lines instead of text
-        unsigned y_x = 194; // Center of Y
-        unsigned y_y = 225; // Center of button
-        
-        // Draw Y using thick lines (3px wide)
-        // Upper left diagonal of Y
-        graphics.DrawLine(y_x - 4, y_y - 6, y_x, y_y, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x - 5, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x - 3, y_y - 6, y_x + 1, y_y, COLOR2D(0, 0, 0));
-        
-        // Upper right diagonal of Y
-        graphics.DrawLine(y_x + 4, y_y - 6, y_x, y_y, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x + 5, y_y - 6, y_x + 1, y_y, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x + 3, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
-        
-        // Stem of Y
-        graphics.DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
-        graphics.DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
-        
-        // Green checkmark
-        unsigned check_x = 215;
-        unsigned check_y = 225;
-        graphics.DrawLine(check_x - 8, check_y, check_x - 3, check_y + 8, COLOR2D(0, 255, 0));
-        graphics.DrawLine(check_x - 3, check_y + 8, check_x + 8, check_y - 5, COLOR2D(0, 255, 0));
-        
-        // Make green checkmark thicker
-        graphics.DrawLine(check_x - 7, check_y, check_x - 2, check_y + 8, COLOR2D(0, 255, 0));
-        graphics.DrawLine(check_x - 2, check_y + 8, check_x + 9, check_y - 5, COLOR2D(0, 255, 0));
-        graphics.DrawLine(check_x - 8, check_y + 1, check_x - 3, check_y + 9, COLOR2D(0, 255, 0));
-        graphics.DrawLine(check_x - 3, check_y + 9, check_x + 8, check_y - 4, COLOR2D(0, 255, 0));
+        // Longer part of checkmark
+        graphics.DrawLine(y_icon_x - 3, y_icon_y + 5, y_icon_x + 8, y_icon_y - 6, COLOR2D(0, 255, 0));
+        graphics.DrawLine(y_icon_x - 3, y_icon_y + 6, y_icon_x + 8, y_icon_y - 5, COLOR2D(0, 255, 0));
+        graphics.DrawLine(y_icon_x - 2, y_icon_y + 5, y_icon_x + 7, y_icon_y - 4, COLOR2D(0, 255, 0));
     }
 }
 
 void CDisplayManager::ShowAdvancedScreen(void)
 {
+    // Don't update if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
@@ -1303,6 +1309,11 @@ void CDisplayManager::ShowAdvancedScreen(void)
 void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* pBuildDate, 
                                         const char* pGitBranch, const char* pGitCommit)
 {
+    // Don't update if screen should be sleeping
+    if (!ShouldAllowDisplayUpdates()) {
+        return;
+    }
+    
     assert(pVersionInfo != nullptr);
     assert(pBuildDate != nullptr);
     assert(pGitBranch != nullptr);
@@ -1317,7 +1328,6 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
     switch (m_DisplayType)
     {
     case DisplayTypeSH1106:
-        // SH1106 implementation remains unchanged
         if (m_pSH1106Display != nullptr)
         {
             // Clear display first
@@ -1333,11 +1343,61 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 m_pSH1106Display->SetPixel(x, 12, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
             }
             
-            // Draw content - version info
-            m_pSH1106Display->DrawText(0, 25, fullVersionInfo, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+            // Fix: Reinstate word wrapping for SH1106
+            const size_t chars_per_line = 21; // Maximum chars per line for SH1106
+            
+            size_t total_length = strlen(fullVersionInfo);
+            size_t current_pos = 0;
+            unsigned int y_pos = 16; // Start position for text
+            
+            // Word wrapping implementation
+            while (current_pos < total_length && y_pos < 55) {
+                // Determine how many characters fit on this line
+                size_t chars_to_display = chars_per_line;
+                
+                // Adjust for end of string
+                if (current_pos + chars_to_display > total_length) {
+                    chars_to_display = total_length - current_pos;
+                } 
+                // Try to break at word boundaries
+                else if (current_pos + chars_to_display < total_length) {
+                    // Find the last space in the line
+                    size_t space_pos = chars_to_display;
+                    while (space_pos > 0 && fullVersionInfo[current_pos + space_pos] != ' ') {
+                        space_pos--;
+                    }
+                    
+                    // If we found a space, break there
+                    if (space_pos > 0) {
+                        chars_to_display = space_pos;
+                    }
+                }
+                
+                // Copy this line's text
+                char line[32] = {0};
+                strncpy(line, fullVersionInfo + current_pos, chars_to_display);
+                line[chars_to_display] = '\0';
+                
+                // Draw this line
+                m_pSH1106Display->DrawText(0, y_pos, line, SH1106_WHITE_COLOR, SH1106_BLACK_COLOR, 
+                                         FALSE, FALSE, Font6x7);
+                
+                // Move to next line
+                current_pos += chars_to_display;
+                
+                // Skip space at beginning of next line
+                if (current_pos < total_length && fullVersionInfo[current_pos] == ' ') {
+                    current_pos++;
+                }
+                
+                y_pos += 10; // Line spacing
+            }
+            
+            // Draw a "Back" instruction at the bottom
+            m_pSH1106Display->DrawText(0, 56, "Press any key...", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
                                      FALSE, FALSE, Font6x7);
             
-            // Ensure the display is updated
+            // Refresh the display
             m_pSH1106Display->Refresh();
         }
         break;
@@ -1380,20 +1440,17 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
             graphics.DrawRect(5, 40, m_pST7789Display->GetWidth() - 10, 160, COLOR2D(235, 245, 255));
             graphics.DrawRectOutline(5, 40, m_pST7789Display->GetWidth() - 10, 160, COLOR2D(58, 124, 165));
             
-            // IMPROVED: Use shorter line length to force more wrapping
-            // and use smaller line spacing to fit more text
-            const size_t chars_per_line = 23; // Shorter lines
+            // ST7789 wrapping implementation
+            const size_t chars_per_line = 23; // Shorter lines for ST7789
             
             size_t total_length = strlen(fullVersionInfo);
             size_t current_pos = 0;
             
-            // Start higher in the content box
+            // Start position for ST7789
             unsigned int y_pos = 50;
-            // Reduced line spacing
             const unsigned int line_spacing = 18;
             
-            // Force at least 5 lines of text by breaking the content
-            // into roughly equal parts if it's short
+            // Force at least 5 lines for ST7789 display
             if (total_length < chars_per_line * 5) {
                 // Break into roughly 5 equal parts
                 size_t chars_per_part = total_length / 5;
@@ -1402,16 +1459,13 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 for (int i = 0; i < 5 && current_pos < total_length; i++) {
                     size_t chars_to_display = chars_per_part;
                     
-                    // For the last part, use all remaining chars
                     if (i == 4 || current_pos + chars_to_display >= total_length) {
                         chars_to_display = total_length - current_pos;
                     }
                     
-                    // Try to break at spaces when possible
                     if (i < 4 && current_pos + chars_to_display < total_length) {
-                        // Look for a space near the end of this part
                         for (size_t j = chars_to_display; j > chars_to_display/2; j--) {
-                            if (fullVersionInfo[current_pos + j] == ' ') {
+                                                       if (fullVersionInfo[current_pos + j] == ' ') {
                                 chars_to_display = j;
                                 break;
                             }
@@ -1433,7 +1487,7 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 }
             } 
             else {
-                // For longer content, use normal word wrapping but with tighter spacing
+                // Normal word wrapping for longer content
                 while (current_pos < total_length && y_pos < 180) {
                     size_t chars_to_display = chars_per_line;
                     
@@ -1469,14 +1523,11 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 }
             }
             
-            // Instead of circle logo, draw a larger hammer icon at the bottom
+            // Draw hammer icon at bottom
             unsigned bottom_hammer_x = 120;
             unsigned bottom_hammer_y = 185;
             
-            // Draw hammer head (rectangle with rounded corners)
             graphics.DrawRect(bottom_hammer_x - 15, bottom_hammer_y - 10, 24, 16, COLOR2D(58, 124, 165));
-            
-            // Draw hammer handle
             graphics.DrawRect(bottom_hammer_x - 2, bottom_hammer_y - 6, 5, 20, COLOR2D(58, 124, 165));
             
             // Add some detail/shading to the hammer
@@ -1491,6 +1542,220 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
             
             // Ensure display stays on
             m_pST7789Display->On();
+        }
+        break;
+        
+    default:
+        break;
+    }
+}
+
+void CDisplayManager::SetScreenPower(boolean bOn)
+{
+    // Minimal logging for power state changes
+    m_pLogger->Write("dispman", LogNotice, "Screen power %s", bOn ? "ON" : "OFF");
+    
+    // Update screen state BEFORE changing hardware state
+    m_bScreenActive = bOn;
+    
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        if (m_pSH1106Display != nullptr)
+        {
+            if (bOn) {
+                m_pSH1106Display->On();
+            } else {
+                m_pSH1106Display->Off();
+            }
+        }
+        break;
+        
+    case DisplayTypeST7789:
+        if (m_pST7789Display != nullptr)
+        {
+            if (bOn) {
+                m_pST7789Display->On();
+            } else {
+                m_pST7789Display->Off();
+            }
+        }
+        break;
+        
+    default:
+        break;
+    }
+}
+
+void CDisplayManager::DebugTimerAccuracy(void)
+{
+    static unsigned nStartTime = 0;
+    static unsigned nLastCheckTime = 0;
+    static unsigned nCheckCount = 0;
+    
+    unsigned nCurrentTime = CTimer::Get()->GetTicks();
+    
+    // Initialize start time if this is the first call
+    if (nStartTime == 0) {
+        nStartTime = nCurrentTime;
+        nLastCheckTime = nCurrentTime;
+        
+        // Format current time using Circle's time functions
+        CTime Time;
+        CString TimeString;
+        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
+        
+        m_pLogger->Write("dispman", LogNotice, 
+                      "[%s] Timer accuracy check started. Reference ticks=%u", 
+                      (const char *)TimeString, nCurrentTime);
+        return;
+    }
+    
+    // Only log every second for first 10 checks, then less frequently
+    unsigned nCheckInterval = (nCheckCount < 10) ? 1000 : 5000;
+    
+    if (nCurrentTime - nLastCheckTime > nCheckInterval) {
+        CTime Time;
+        CString TimeString;
+        TimeString.Format("%02d:%02d:%02d", Time.GetHours(), Time.GetMinutes(), Time.GetSeconds());
+        
+        // Calculate elapsed time according to system timer
+        unsigned nElapsedTicks = nCurrentTime - nStartTime;
+        unsigned nIntervalTicks = nCurrentTime - nLastCheckTime;
+        
+        // Calculate elapsed seconds
+        unsigned nElapsedSeconds = nElapsedTicks / 1000;
+        
+        m_pLogger->Write("dispman", LogNotice, 
+                      "[%s] Timer check %u: elapsed=%u ticks (%u.%03u sec), interval=%u ticks", 
+                      (const char *)TimeString,
+                      ++nCheckCount,
+                      nElapsedTicks,
+                      nElapsedSeconds,
+                      nElapsedTicks % 1000,
+                      nIntervalTicks);
+        
+        nLastCheckTime = nCurrentTime;
+    }
+}
+
+// Add this helper method to prevent unwanted screen wake-ups
+boolean CDisplayManager::ShouldAllowDisplayUpdates(void)
+{
+    // If the screen is off due to timeout, block all display updates
+    // that aren't explicitly initiated by WakeScreen()
+    if (!m_bScreenActive && m_bMainScreenActive) {
+        return FALSE;
+    }
+    
+    return TRUE;
+}
+
+// In displaymanager.cpp - optimize SetMainScreenActive
+void CDisplayManager::SetMainScreenActive(boolean bActive)
+{
+    // Only log if actually changing, with minimal details
+    if (m_bMainScreenActive != bActive) {
+        m_pLogger->Write("dispman", LogNotice, 
+                      "Main screen %s", bActive ? "active" : "inactive");
+    }
+    
+    // If we're entering the main screen, reset timer
+    if (bActive && !m_bMainScreenActive) {
+        WakeScreen(); // This resets timer and ensures screen is on
+    }
+    
+    m_bMainScreenActive = bActive;
+}
+
+// Add these implementations to displaymanager.cpp
+
+void CDisplayManager::WakeScreen(void)
+{
+    // Reset the last activity time
+    m_nLastActivityTime = CTimer::Get()->GetTicks();
+    
+    // If screen is not active, turn it on
+    if (!m_bScreenActive) {
+        // Only log when actually waking up
+        m_pLogger->Write("dispman", LogNotice, "Screen woken up");
+        
+        SetScreenPower(TRUE);
+        m_bScreenActive = TRUE;
+        m_bTimeoutWarningShown = FALSE;
+    }
+}
+
+void CDisplayManager::UpdateScreenTimeout(void)
+{
+    // Don't timeout if not on main screen or already sleeping
+    if (!m_bMainScreenActive || !m_bScreenActive) {
+        return;
+    }
+    
+    // Get current time
+    unsigned nCurrentTime = CTimer::Get()->GetTicks();
+    
+    // Calculate elapsed time in seconds
+    unsigned nElapsedSeconds = (nCurrentTime - m_nLastActivityTime) / 1000;
+    
+    // Check for actual timeout first (this ensures we don't get stuck in warning state)
+    if (nElapsedSeconds >= m_nScreenTimeoutSeconds) {
+        // Only log and act if we're actually changing state
+        if (m_bScreenActive) {
+            // Keep this important state change log
+            m_pLogger->Write("dispman", LogNotice, 
+                          "Screen sleeping: elapsed=%u sec, timeout=%u sec", 
+                          nElapsedSeconds, m_nScreenTimeoutSeconds);
+            
+            // Set state to FALSE before turning off to prevent race conditions
+            m_bScreenActive = FALSE; 
+            SetScreenPower(FALSE);
+        }
+        return; // Exit early to avoid warning check
+    }
+    
+    // Check if we need to show warning (2 seconds before timeout)
+    if (!m_bTimeoutWarningShown && nElapsedSeconds >= m_nScreenTimeoutSeconds - 2) {
+        // Keep warning log
+        m_pLogger->Write("dispman", LogNotice, 
+                      "Showing sleep warning: elapsed=%u sec, timeout=%u sec", 
+                      nElapsedSeconds, m_nScreenTimeoutSeconds);
+        
+        ShowTimeoutWarning();
+        m_bTimeoutWarningShown = TRUE;
+    }
+}
+
+// Also need to add the ShowTimeoutWarning implementation which was called but missing
+void CDisplayManager::ShowTimeoutWarning(void)
+{
+    // For now, just show a simple timeout warning on each display
+    switch (m_DisplayType)
+    {
+    case DisplayTypeSH1106:
+        if (m_pSH1106Display != nullptr)
+        {
+            // Draw a simple warning at the bottom of the screen
+            m_pSH1106Display->DrawText(5, 55, "Sleep in 2s...", SH1106_WHITE_COLOR, SH1106_BLACK_COLOR,
+                                     FALSE, FALSE, Font6x7);
+            m_pSH1106Display->Refresh();
+        }
+        break;
+        
+    case DisplayTypeST7789:
+        if (m_pST7789Display != nullptr)
+        {
+            // For ST7789, create a translucent warning bar at the bottom
+            C2DGraphics graphics(m_pST7789Display);
+            if (graphics.Initialize())
+            {
+                // Draw a semi-transparent warning bar
+                graphics.DrawRect(0, 190, m_pST7789Display->GetWidth(), 20, COLOR2D(40, 40, 40));
+                graphics.DrawText(m_pST7789Display->GetWidth()/2, 200, COLOR2D(255, 255, 255), 
+                                "Screen will sleep in 2s...", C2DGraphics::AlignCenter);
+                graphics.UpdateDisplay();
+            }
         }
         break;
         
