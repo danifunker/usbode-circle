@@ -207,35 +207,5 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
             context.set("pagination", pagination);
         }
         
-<<<<<<< HEAD
         return HTTPOK;
-=======
-        // Find the current USB mode
-        boolean is_full_speed = CKernelOptions::Get()->GetUSBFullSpeed();
-        if (is_full_speed)
-            context.set("usb_mode", "FullSpeed");
-        else
-            context.set("usb_mode", "HighSpeed");
-        
-        // Add build info
-        context.set("version", CGitInfo::Get()->GetVersionWithBuildString());
-        context.set("build_info", std::string(GIT_BRANCH) + " @ " + std::string(GIT_COMMIT) + " | " + __DATE__ + " " + __TIME__);
-
-        // Render
-        LOGNOTE("Rendering the template");
-        std::string rendered = tmpl.render(context);
-
-        if (pBuffer && *pLength >= rendered.length()) {
-            memcpy(pBuffer, rendered.c_str(), rendered.length());
-            *pLength = rendered.length();
-            *ppContentType = "text/html";
-            return HTTPOK;
-        }
-        
-        // The provided buffer is too small
-        LOGERR("Output buffer too small for rendered content.");
-        *pLength = 0;
-        *ppContentType = "text/plain";
-        return HTTPInternalServerError;
->>>>>>> 8cb7b9b368569fd81463d7cc532fcb913d65f403
 }
