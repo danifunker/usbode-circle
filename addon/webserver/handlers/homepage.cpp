@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <gitinfo/gitinfo.h>
 #include "homepage.h"
+#include "util.h"
 
 using namespace kainjow;
 
@@ -114,14 +115,19 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
         
         // Get the requested page number from parameters
         int page = 1;
-        if (pParams && strstr(pParams, "page=") != nullptr) {
-            const char* pageParam = strstr(pParams, "page=");
-            if (pageParam) {
-                page = atoi(pageParam + 5);
-                if (page < 1) page = 1;
-            }
-        }
-        
+	auto params = parse_query_params(pParams);
+	auto it = params.find("page");
+	if (it != params.end()) {
+	    try {
+		int parsed = std::stoi(it->second);
+		if (parsed > 0) {
+		    page = parsed;
+		}
+	    } catch (const std::exception&) {
+		// Ignore invalid input, use default
+	    }
+	}
+
         // Calculate total pages and ensure page is valid
         int total_items = all_links_vec.size();
         int total_pages = (total_items + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
@@ -141,11 +147,14 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
         }
         
         // If no page specified and we found current image, go to that page
-        if (pParams == nullptr || strstr(pParams, "page=") == nullptr) {
-            if (current_image_page > 0) {
-                page = current_image_page;
-            }
-        }
+	// TODO: If the found image is not on page 1, we should redirect the browser
+	// to a different page so that the query param in the url reflects the page
+	// we want to be on
+	if (params.find("page") == params.end()) {
+	    if (current_image_page > 0) {
+		page = current_image_page;
+	    }
+	}
         
         // Get subset of links for current page
         int start_idx = (page - 1) * ITEMS_PER_PAGE;
@@ -224,7 +233,7 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
         }
         
         // The provided buffer is too small
-        LOGERR("Output buffer too small for Jinjac content.");
+        LOGERR("Output buffer too small for rendered content.");
         *pLength = 0;
         *ppContentType = "text/plain";
         return HTTPInternalServerError;

@@ -5,7 +5,6 @@
 #include <cstring>
 
 #include "pagehandlerregistry.h"
-#include "handlers/notfound.h"
 #include "handlers/homepage.h"
 #include "handlers/mountpage.h"
 #include "handlers/asset.h"

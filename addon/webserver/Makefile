@@ -10,7 +10,6 @@ CIRCLEHOME = $(STDLIBHOME)/libs/circle
 OBJS    = webserver.o \
 	util.o \
 	pagehandlerregistry.o \
-	handlers/notfound.o \
 	handlers/mountpage.o \
 	handlers/homepage.o \
 	handlers/asset.o 
