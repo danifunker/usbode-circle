@@ -392,6 +392,13 @@ struct TUSBCDCDReadFeatureReply {
 } PACKED;
 #define SIZE_CD_READ_HEADER_REPLY 4
 
+struct TUSBCDBootFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+} PACKED;
+#define SIZE_BOOT_HEADER_REPLY 4
+
 struct TUSBCDSubChannelHeaderReply {
     u8 reserved;
     u8 audioStatus;
@@ -694,6 +701,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         0x00,           // reserved
         0x00,           // reserved
         0x00            // reserved
+    };
+
+    // Feature 0108h - Boot - The ability to boot from this device
+    TUSBCDBootFeatureReply boot = {
+        htons(0x0108),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x00            // AdditionalLength
     };
 
     TUSBDiscInfoReply m_DiscInfoReply{

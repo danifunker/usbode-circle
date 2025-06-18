@@ -708,16 +708,19 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
 //  https://chatgpt.com/share/683ecad4-e250-8012-b9aa-22c76de6e871
 //
 void CUSBCDGadget::HandleSCSICommand() {
-    // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
     switch (m_CBW.CBWCB[0]) {
         case 0x0:  // Test unit ready
         {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready - m_CDReady=%d", m_CDReady);
             if (!m_CDReady) {
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
                 bmCSWStatus = CD_CSW_STATUS_FAIL;
                 m_SenseParams.bSenseKey = 2;
                 m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
                 m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+            } else {
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_OK)");
             }
 	    
             // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
@@ -763,7 +766,8 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x12:  // Inquiry
         {
             int allocationLength = (m_CBW.CBWCB[3] << 8) | m_CBW.CBWCB[4];
-            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry %0x, allocation length %d", m_CBW.CBWCB[1], allocationLength);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry EVPD=%d, PageCode=0x%02x, allocation length %d", 
+                     (m_CBW.CBWCB[1] & 0x01), m_CBW.CBWCB[2], allocationLength);
 
             if ((m_CBW.CBWCB[1] & 0x01) == 0) {  // EVPD bit is 0: Standard Inquiry
                 // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
@@ -1354,7 +1358,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             int rt = m_CBW.CBWCB[1] & 0x03;
             int feature = (m_CBW.CBWCB[2] << 8) | m_CBW.CBWCB[3];
             u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Configuration with rt = %d and feature %lu", rt, feature);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Configuration with rt = %d, feature 0x%04x, allocLen = %d", rt, feature, allocationLength);
 
             int dataLength = 0;
 
@@ -1380,6 +1384,9 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                     memcpy(m_InBuffer + dataLength, &mechanism, sizeof(mechanism));
                     dataLength += sizeof(mechanism);
+
+                    memcpy(m_InBuffer + dataLength, &boot, sizeof(boot));
+                    dataLength += sizeof(boot);
 
                     memcpy(m_InBuffer + dataLength, &multiread, sizeof(multiread));
                     dataLength += sizeof(multiread);
@@ -1428,6 +1435,11 @@ void CUSBCDGadget::HandleSCSICommand() {
                         case 0x03: {  // Removable Medium
                             memcpy(m_InBuffer + dataLength, &mechanism, sizeof(mechanism));
                             dataLength += sizeof(mechanism);
+                        }
+
+                        case 0x108: {  // Boot
+                            memcpy(m_InBuffer + dataLength, &boot, sizeof(boot));
+                            dataLength += sizeof(boot);
                         }
 
                         case 0x1d: {  // Multiread
