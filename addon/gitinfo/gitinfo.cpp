@@ -66,6 +66,11 @@ const char* CGitInfo::GetVersionString(void) const
     return m_FormattedVersion;
 }
 
+const char* CGitInfo::GetVersionWithBuildString(void) const
+{
+    return m_VersionWithBuildString;
+}
+
 const char* CGitInfo::GetFullVersionString(void) const
 {
     return m_FullFormattedVersion;
@@ -89,6 +94,9 @@ void CGitInfo::UpdateFormattedVersions(void)
         versionWithBuild.Format("%s%s", (const char*)baseVersion, m_BuildNumber);
         baseVersion = versionWithBuild;
     }
+    
+    // Store the version with build number (without git hash)
+    m_VersionWithBuildString = baseVersion;
     
     // Add branch name only if not on main branch
     if (strcmp(m_GitBranch, "main") != 0)

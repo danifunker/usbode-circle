@@ -80,6 +80,7 @@ public:
     
     // Get formatted version strings
     const char* GetVersionString(void) const;
+    const char* GetVersionWithBuildString(void) const; // Version with build number only
     const char* GetFullVersionString(void) const; // Includes build date/time
     const char* GetShortVersionString(void) const; // For displays (max 18 chars)
     
@@ -106,6 +107,7 @@ private:
     
     // Formatted version strings
     CString m_FormattedVersion;
+    CString m_VersionWithBuildString;
     CString m_FullFormattedVersion;
     CString m_ShortVersionString;
 };

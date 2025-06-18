@@ -70,7 +70,7 @@ public:
     void ShowButtonPress(unsigned nButtonIndex, const char* pButtonLabel); // Added method declaration for button press display
     void ShowAdvancedScreen(void); // Added method declaration for advanced screen
     void ShowBuildInfoScreen(const char* pVersionInfo, const char* pBuildDate, 
-                            const char* pGitBranch, const char* pGitCommit); // Method for build info
+                            const char* pGitBranch, const char* pGitCommit, const char* pBuildNumber); // Method for build info
     
     // Screen timeout methods
     void WakeScreen(void); // Wake up the screen from sleep

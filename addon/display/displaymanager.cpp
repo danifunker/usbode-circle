@@ -1280,15 +1280,24 @@ void CDisplayManager::ShowAdvancedScreen(void)
             unsigned hammer_x = m_pST7789Display->GetWidth() - 40;
             unsigned hammer_y = 60;
             
-            // Draw hammer head (rectangle with rounded corners)
-            graphics.DrawRect(hammer_x - 12, hammer_y - 8, 16, 10, COLOR2D(255, 255, 255));
+            // Draw hammer head (claw hammer shape)
+            // Main head body
+            graphics.DrawRect(hammer_x - 10, hammer_y - 6, 12, 6, COLOR2D(255, 255, 255));
+            
+            // Claw part (back of hammer)
+            graphics.DrawRect(hammer_x - 12, hammer_y - 5, 3, 2, COLOR2D(255, 255, 255));
+            graphics.DrawRect(hammer_x - 13, hammer_y - 4, 2, 2, COLOR2D(255, 255, 255));
+            
+            // Strike face (front of hammer)
+            graphics.DrawRect(hammer_x + 2, hammer_y - 5, 2, 4, COLOR2D(255, 255, 255));
             
             // Draw hammer handle
-            graphics.DrawRect(hammer_x - 2, hammer_y - 4, 4, 14, COLOR2D(255, 255, 255));
+            graphics.DrawRect(hammer_x - 2, hammer_y, 3, 12, COLOR2D(255, 255, 255));
             
-            // Add some shading/detail to the hammer
-            graphics.DrawLine(hammer_x - 10, hammer_y - 6, hammer_x + 2, hammer_y - 6, COLOR2D(58, 124, 165)); // Top detail
-            graphics.DrawLine(hammer_x - 10, hammer_y - 2, hammer_x - 4, hammer_y - 2, COLOR2D(58, 124, 165)); // Middle detail
+            // Add grip texture lines
+            graphics.DrawLine(hammer_x - 1, hammer_y + 3, hammer_x, hammer_y + 3, COLOR2D(58, 124, 165));
+            graphics.DrawLine(hammer_x - 1, hammer_y + 6, hammer_x, hammer_y + 6, COLOR2D(58, 124, 165));
+            graphics.DrawLine(hammer_x - 1, hammer_y + 9, hammer_x, hammer_y + 9, COLOR2D(58, 124, 165));
             
             // Use the helper function to draw navigation bar
             DrawNavigationBar(graphics, "advanced");
@@ -1307,7 +1316,7 @@ void CDisplayManager::ShowAdvancedScreen(void)
 }
 
 void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* pBuildDate, 
-                                        const char* pGitBranch, const char* pGitCommit)
+                                        const char* pGitBranch, const char* pGitCommit, const char* pBuildNumber)
 {
     // Don't update if screen should be sleeping
     if (!ShouldAllowDisplayUpdates()) {
@@ -1318,12 +1327,7 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
     assert(pBuildDate != nullptr);
     assert(pGitBranch != nullptr);
     assert(pGitCommit != nullptr);
-    
-    // Create a full version string that combines all information
-    char fullVersionInfo[256];
-    snprintf(fullVersionInfo, sizeof(fullVersionInfo), 
-             "%s %s %s %s", 
-             pVersionInfo, pBuildDate, pGitBranch, pGitCommit);
+    assert(pBuildNumber != nullptr);
     
     switch (m_DisplayType)
     {
@@ -1343,10 +1347,21 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 m_pSH1106Display->SetPixel(x, 12, (CSH1106Display::TSH1106Color)SH1106_WHITE_COLOR);
             }
             
-            // Fix: Reinstate word wrapping for SH1106
+            // For SH1106, create a compact version of the build info
+            char buildInfo[512];
+            snprintf(buildInfo, sizeof(buildInfo), 
+                     "%s\nBuild: %s%s\nBuild Date: %s\nBranch: %s%s\nCommit: %.8s", 
+                     pVersionInfo, 
+                     (strlen(pBuildNumber) > 0) ? pBuildNumber : "N/A",
+                     (strlen(pBuildNumber) > 0) ? "" : "",
+                     pBuildDate, pGitBranch,
+                     (strcmp(pGitBranch, "main") == 0) ? " *" : "",
+                     pGitCommit);
+            
+            // Display the compact build info with word wrapping
             const size_t chars_per_line = 21; // Maximum chars per line for SH1106
             
-            size_t total_length = strlen(fullVersionInfo);
+            size_t total_length = strlen(buildInfo);
             size_t current_pos = 0;
             unsigned int y_pos = 16; // Start position for text
             
@@ -1363,7 +1378,7 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 else if (current_pos + chars_to_display < total_length) {
                     // Find the last space in the line
                     size_t space_pos = chars_to_display;
-                    while (space_pos > 0 && fullVersionInfo[current_pos + space_pos] != ' ') {
+                    while (space_pos > 0 && buildInfo[current_pos + space_pos] != ' ') {
                         space_pos--;
                     }
                     
@@ -1375,7 +1390,7 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 
                 // Copy this line's text
                 char line[32] = {0};
-                strncpy(line, fullVersionInfo + current_pos, chars_to_display);
+                strncpy(line, buildInfo + current_pos, chars_to_display);
                 line[chars_to_display] = '\0';
                 
                 // Draw this line
@@ -1386,7 +1401,7 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
                 current_pos += chars_to_display;
                 
                 // Skip space at beginning of next line
-                if (current_pos < total_length && fullVersionInfo[current_pos] == ' ') {
+                if (current_pos < total_length && buildInfo[current_pos] == ' ') {
                     current_pos++;
                 }
                 
@@ -1426,113 +1441,71 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
             unsigned hammer_x = 22;
             unsigned hammer_y = 15;
             
-            // Draw hammer head (rectangle with rounded corners)
-            graphics.DrawRect(hammer_x - 8, hammer_y - 6, 12, 8, COLOR2D(255, 255, 255));
+            // Draw hammer head (claw hammer shape)
+            // Main head body
+            graphics.DrawRect(hammer_x - 7, hammer_y - 4, 10, 6, COLOR2D(255, 255, 255));
             
-            // Draw hammer handle
-            graphics.DrawRect(hammer_x - 1, hammer_y - 3, 3, 10, COLOR2D(255, 255, 255));
+            // Claw part (back of hammer)
+            graphics.DrawRect(hammer_x - 9, hammer_y - 3, 3, 2, COLOR2D(255, 255, 255));
+            graphics.DrawRect(hammer_x - 10, hammer_y - 2, 2, 2, COLOR2D(255, 255, 255));
             
-            // Add some detail to the hammer
-            graphics.DrawLine(hammer_x - 7, hammer_y - 4, hammer_x + 2, hammer_y - 4, COLOR2D(58, 124, 165));
-            graphics.DrawLine(hammer_x - 7, hammer_y - 1, hammer_x - 3, hammer_y - 1, COLOR2D(58, 124, 165));
+            // Strike face (front of hammer)
+            graphics.DrawRect(hammer_x + 3, hammer_y - 3, 2, 4, COLOR2D(255, 255, 255));
+            
+            // Draw hammer handle (wooden grip)
+            graphics.DrawRect(hammer_x - 1, hammer_y + 2, 2, 8, COLOR2D(255, 255, 255));
+            
+            // Add grip texture lines
+            graphics.DrawLine(hammer_x - 1, hammer_y + 4, hammer_x, hammer_y + 4, COLOR2D(58, 124, 165));
+            graphics.DrawLine(hammer_x - 1, hammer_y + 6, hammer_x, hammer_y + 6, COLOR2D(58, 124, 165));
+            graphics.DrawLine(hammer_x - 1, hammer_y + 8, hammer_x, hammer_y + 8, COLOR2D(58, 124, 165));
             
             // Draw content box with light blue background
             graphics.DrawRect(5, 40, m_pST7789Display->GetWidth() - 10, 160, COLOR2D(235, 245, 255));
             graphics.DrawRectOutline(5, 40, m_pST7789Display->GetWidth() - 10, 160, COLOR2D(58, 124, 165));
             
-            // ST7789 wrapping implementation
-            const size_t chars_per_line = 23; // Shorter lines for ST7789
+            // Improved layout with better space utilization
+            const unsigned int line_spacing = 25;  // Slightly reduced spacing to fit more content
+            const unsigned int left_margin = 15;
+            unsigned int y_pos = 55;  // Start position for content
             
-            size_t total_length = strlen(fullVersionInfo);
-            size_t current_pos = 0;
+            // Line 1: Version info (clean version without git hash)
+            char version_line[64];
+            snprintf(version_line, sizeof(version_line), "Version: %s", pVersionInfo);
+            graphics.DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), version_line, C2DGraphics::AlignLeft);
+            y_pos += line_spacing;
             
-            // Start position for ST7789
-            unsigned int y_pos = 50;
-            const unsigned int line_spacing = 18;
-            
-            // Force at least 5 lines for ST7789 display
-            if (total_length < chars_per_line * 5) {
-                // Break into roughly 5 equal parts
-                size_t chars_per_part = total_length / 5;
-                if (chars_per_part < 1) chars_per_part = 1;
-                
-                for (int i = 0; i < 5 && current_pos < total_length; i++) {
-                    size_t chars_to_display = chars_per_part;
-                    
-                    if (i == 4 || current_pos + chars_to_display >= total_length) {
-                        chars_to_display = total_length - current_pos;
-                    }
-                    
-                    if (i < 4 && current_pos + chars_to_display < total_length) {
-                        for (size_t j = chars_to_display; j > chars_to_display/2; j--) {
-                                                       if (fullVersionInfo[current_pos + j] == ' ') {
-                                chars_to_display = j;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    char line[40] = {0};
-                    strncpy(line, fullVersionInfo + current_pos, chars_to_display);
-                    line[chars_to_display] = '\0';
-                    
-                    graphics.DrawText(15, y_pos + (i * line_spacing), COLOR2D(0, 0, 140), line, C2DGraphics::AlignLeft);
-                    
-                    current_pos += chars_to_display;
-                    
-                    // Skip spaces at start of next line
-                    if (current_pos < total_length && fullVersionInfo[current_pos] == ' ') {
-                        current_pos++;
-                    }
-                }
-            } 
-            else {
-                // Normal word wrapping for longer content
-                while (current_pos < total_length && y_pos < 180) {
-                    size_t chars_to_display = chars_per_line;
-                    
-                    if (current_pos + chars_to_display < total_length) {
-                        size_t space_pos = chars_to_display;
-                        while (space_pos > 0 && fullVersionInfo[current_pos + space_pos] != ' ') {
-                            space_pos--;
-                        }
-                        
-                        if (space_pos > 0) {
-                            chars_to_display = space_pos;
-                        }
-                    }
-                    
-                    if (current_pos + chars_to_display > total_length) {
-                        chars_to_display = total_length - current_pos;
-                    }
-                    
-                    char line[40] = {0};
-                    strncpy(line, fullVersionInfo + current_pos, chars_to_display);
-                    line[chars_to_display] = '\0';
-                    
-                    graphics.DrawText(15, y_pos, COLOR2D(0, 0, 140), line, C2DGraphics::AlignLeft);
-                    
-                    current_pos += chars_to_display;
-                    
-                    // Skip spaces at the start of the next line
-                    if (current_pos < total_length && fullVersionInfo[current_pos] == ' ') {
-                        current_pos++;
-                    }
-                    
-                    y_pos += line_spacing;
-                }
+            // Line 2: Build number (if available)
+            if (strlen(pBuildNumber) > 0) {
+                char build_num_line[64];
+                snprintf(build_num_line, sizeof(build_num_line), "Build: %s", pBuildNumber);
+                graphics.DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), build_num_line, C2DGraphics::AlignLeft);
+                y_pos += line_spacing;
             }
             
-            // Draw hammer icon at bottom
-            unsigned bottom_hammer_x = 120;
-            unsigned bottom_hammer_y = 185;
+            // Line 3: Build Date label
+            graphics.DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), "Build Date:", C2DGraphics::AlignLeft);
+            y_pos += 20; // Smaller spacing for the date line
             
-            graphics.DrawRect(bottom_hammer_x - 15, bottom_hammer_y - 10, 24, 16, COLOR2D(58, 124, 165));
-            graphics.DrawRect(bottom_hammer_x - 2, bottom_hammer_y - 6, 5, 20, COLOR2D(58, 124, 165));
+            // Line 4: Build Date value (on second line)
+            graphics.DrawText(left_margin + 10, y_pos, COLOR2D(0, 0, 140), pBuildDate, C2DGraphics::AlignLeft);
+            y_pos += line_spacing;
             
-            // Add some detail/shading to the hammer
-            graphics.DrawRect(bottom_hammer_x - 12, bottom_hammer_y - 7, 18, 10, COLOR2D(255, 255, 255));
-            graphics.DrawRect(bottom_hammer_x - 1, bottom_hammer_y - 6, 3, 16, COLOR2D(255, 255, 255));
+            // Line 5: Git branch (with star if main)
+            char branch_line[64];
+            if (strcmp(pGitBranch, "main") == 0) {
+                snprintf(branch_line, sizeof(branch_line), "Branch: %s *", pGitBranch);
+            } else {
+                snprintf(branch_line, sizeof(branch_line), "Branch: %s", pGitBranch);
+            }
+            graphics.DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), branch_line, C2DGraphics::AlignLeft);
+            
+            // Add git hash at the bottom of the content area (before navigation bar)
+            char hash_line[64];
+            char short_hash[9] = {0};  // 8 chars + null terminator
+            strncpy(short_hash, pGitCommit, 8);
+            snprintf(hash_line, sizeof(hash_line), "Commit: %s", short_hash);
+            graphics.DrawText(left_margin, 175, COLOR2D(0, 0, 140), hash_line, C2DGraphics::AlignLeft);
             
             // Use the helper function to draw navigation bar
             DrawNavigationBar(graphics, "advanced");

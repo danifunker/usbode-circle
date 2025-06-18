@@ -280,9 +280,9 @@ TShutdownMode CKernel::Run(void) {
                 IPString = "Not connected";
             }
 
-            // CHANGED: Use short version string for display
+            // CHANGED: Use short version string for display (includes USBODE v prefix)
             m_pDisplayManager->ShowStatusScreen(
-                CGitInfo::Get()->GetShortVersionString(), // Use short version
+                CGitInfo::Get()->GetShortVersionString(), // Use short version with USBODE v prefix
                 (const char*)IPString,
                 imageName,
                 m_Options.GetUSBFullSpeed() ? "USB1.1" : "USB2.0");  // Add USB speed parameter
@@ -620,9 +620,9 @@ void CKernel::UpdateDisplayStatus(const char* imageName) {
         boolean bUSBFullSpeed = m_Options.GetUSBFullSpeed();
         const char* pUSBSpeed = bUSBFullSpeed ? "USB1.1" : "USB2.0";
 
-        // CHANGED: Use the short version string for display
+        // CHANGED: Use short version string for display (includes USBODE v prefix)
         m_pDisplayManager->ShowStatusScreen(
-            CGitInfo::Get()->GetShortVersionString(),  // Use short version for display
+            CGitInfo::Get()->GetShortVersionString(),  // Use short version with USBODE v prefix
             (const char*)IPString,
             currentImage,
             pUSBSpeed);
@@ -807,11 +807,19 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         
                         // Show build info screen
                         if (pKernel->m_pDisplayManager != nullptr) {
+                            // Create clean version string without "USBODE v" prefix
+                            char clean_version[32];
+                            snprintf(clean_version, sizeof(clean_version), "%s.%s.%s",
+                                    CGitInfo::Get()->GetMajorVersion(),
+                                    CGitInfo::Get()->GetMinorVersion(),
+                                    CGitInfo::Get()->GetPatchVersion());
+                            
                             pKernel->m_pDisplayManager->ShowBuildInfoScreen(
-                                CGitInfo::Get()->GetVersionString(),
+                                clean_version,
                                 __DATE__ " " __TIME__,
                                 GIT_BRANCH,
-                                GIT_COMMIT);
+                                GIT_COMMIT,
+                                CGitInfo::Get()->GetBuildNumber());
                         }
                     }
                     else if (nButtonIndex == 6) {  // KEY2 button - back to main
@@ -951,11 +959,18 @@ void CKernel::ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* 
                         pKernel->m_ScreenState = ScreenStateBuildInfo;
                         
                         // Show build info screen
+                        char clean_version2[32];
+                        snprintf(clean_version2, sizeof(clean_version2), "%s.%s.%s",
+                                CGitInfo::Get()->GetMajorVersion(),
+                                CGitInfo::Get()->GetMinorVersion(),
+                                CGitInfo::Get()->GetPatchVersion());
+                        
                         pKernel->m_pDisplayManager->ShowBuildInfoScreen(
-                            CGitInfo::Get()->GetVersionString(),
+                            clean_version2,
                             __DATE__ " " __TIME__,
                             GIT_BRANCH,
-                            GIT_COMMIT);
+                            GIT_COMMIT,
+                            CGitInfo::Get()->GetBuildNumber());
                     }
                     else if (nButtonIndex == 2) {  // Button X (Cancel/Back) - return to main
                         pKernel->m_ScreenState = ScreenStateMain;
@@ -1058,7 +1073,6 @@ void CKernel::ScanForISOFiles(void) {
     Properties.Load();
     Properties.SelectSection("usbode");
     const char* currentImage = Properties.GetString("current_image", "image.iso");
-    bool currentImageFound = false;
 
     // First try to scan the images directory
     DIR Directory;
@@ -1094,7 +1108,6 @@ void CKernel::ScanForISOFiles(void) {
                 // Check if this is the current image
                 if (strcasecmp(FileInfo.fname, currentImage) == 0) {
                     m_nCurrentISOIndex = m_nTotalISOCount;
-                    currentImageFound = true;
                 }
 
                 m_nTotalISOCount++;
