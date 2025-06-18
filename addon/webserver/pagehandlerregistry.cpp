@@ -1,42 +1,39 @@
-// PageHandlerRegistry.cpp
+#include <circle/logger.h>
+#include <circle/util.h>
+#include <map>
+#include <string>
+#include <cstring>
+
 #include "pagehandlerregistry.h"
 #include "handlers/notfound.h"
 #include "handlers/homepage.h"
 #include "handlers/mountpage.h"
 #include "handlers/asset.h"
 
-// ----------------------------------------------------------------------
-// Define and initialize the static array of PageHandlerEntry structs.
-// ----------------------------------------------------------------------
+// Static handler instances
 static HomePageHandler s_homePageHandler;
-static NotFoundPageHandler s_notFoundPageHandler;
 static MountPageHandler s_mountPageHandler;
 static AssetHandler s_assetHandler;
 
-const PageHandlerEntry PageHandlerRegistry::s_pathHandlers[] = {
-    {"/",        &s_homePageHandler},
-    {"/favicon.ico",        &s_assetHandler},
-    {"/logo.jpg",        &s_assetHandler},
-    {"/mount",        &s_mountPageHandler}
+// Handler registry
+static const std::map<std::string, IPageHandler*> g_pageHandlers = {
+    { "/",      &s_homePageHandler },
+    { "/mount", &s_mountPageHandler },
+    // More routes can be added here
 };
 
-// Define the size of the static array.
-// This is calculated automatically at compile time.
-const int PageHandlerRegistry::s_numHandlers =
-    sizeof(PageHandlerRegistry::s_pathHandlers) / sizeof(PageHandlerEntry);
-
-
-// ----------------------------------------------------------------------
-// Implement the getHandler method.
-// This now manually iterates through the array to find a match.
-// ----------------------------------------------------------------------
 IPageHandler* PageHandlerRegistry::getHandler(const char* path) {
-    for (int i = 0; i < s_numHandlers; ++i) {
-        // Use strcmp for C-style string comparison
-        if (strcmp(path, s_pathHandlers[i].path) == 0) {
-            return s_pathHandlers[i].handler;
-        }
+
+    if (!path)
+        return &s_assetHandler;
+
+    auto it = g_pageHandlers.find(path);
+    if (it != g_pageHandlers.end()) {
+        return it->second;
     }
-    // If no specific handler is found, return the default "not found" handler
-    return &s_notFoundPageHandler;
+
+    // No page handler found so assume it's an asset. If it's
+    // not, the asset handler will return a 404
+    return &s_assetHandler;
 }
+

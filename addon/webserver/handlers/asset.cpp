@@ -34,27 +34,24 @@ THTTPStatus AssetHandler::GetContent (const char  *pPath,
 				   CPropertiesFatFsFile *m_pProperties,
 				   CUSBCDGadget *m_pCDGadget)
 {
-	LOGNOTE("Asset Handler called");
 
-
-    if (!pPath || !pBuffer || !pLength || !ppContentType) {
+    // Sanity checking
+    if (!pPath || !pBuffer || !pLength || !ppContentType)
         return HTTPBadRequest;
-    }
 
+    // Find the asset path, returning 404 if not found
     auto it = g_staticAssets.find(pPath);
-    if (it == g_staticAssets.end()) {
+    if (it == g_staticAssets.end())
         return HTTPNotFound;
-    }
 
+    // Get the asset
     const StaticAsset &asset = it->second;
-
-    if (*pLength < asset.length) {
+    if (*pLength < asset.length)
         return HTTPInternalServerError;
-    }
 
+    // Serve the asset content
     std::memcpy(pBuffer, asset.data, asset.length);
     *pLength = asset.length;
     *ppContentType = asset.contentType;
-
     return HTTPOK;
 }
