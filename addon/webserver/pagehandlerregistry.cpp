@@ -7,17 +7,20 @@
 #include "pagehandlerregistry.h"
 #include "handlers/homepage.h"
 #include "handlers/mountpage.h"
+#include "handlers/modepage.h"
 #include "handlers/asset.h"
 
 // Static handler instances
 static HomePageHandler s_homePageHandler;
 static MountPageHandler s_mountPageHandler;
+static ModePageHandler s_modePageHandler;
 static AssetHandler s_assetHandler;
 
 // Handler registry
 static const std::map<std::string, IPageHandler*> g_pageHandlers = {
     { "/",      &s_homePageHandler },
     { "/mount", &s_mountPageHandler },
+    { "/switchmode", &s_modePageHandler },
     // More routes can be added here
 };
 

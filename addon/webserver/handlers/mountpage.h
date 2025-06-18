@@ -2,17 +2,16 @@
 #ifndef MOUNTPAGE_HANDLER_H
 #define MOUNTPAGE_HANDLER_H
 
-#include "pagehandler.h"
+#include "pagehandlerbase.h"
 
-class MountPageHandler : public IPageHandler {
+class MountPageHandler : public PageHandlerBase {
 public:
-    THTTPStatus GetContent (const char  *pPath,
+    THTTPStatus PopulateContext(kainjow::mustache::data& context,
+		    		   const char *pPath,
                                    const char  *pParams,
                                    const char  *pFormData,
-                                   u8          *pBuffer,
-                                   unsigned    *pLength,
-                                   const char **ppContentType,
 				   CPropertiesFatFsFile *m_pProperties,
 				   CUSBCDGadget *pCDGadget);
+    std::string GetHTML();
 };
 #endif

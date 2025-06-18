@@ -35,6 +35,7 @@
             <h1>USBODE</h1>
             <h2>USB Optical Drive Emulator</h2>
         </div>
+	{{#cdrom}}
         <div class="content">
                 <h3>File Selection</h3>
                 <div class="info-box">
@@ -45,28 +46,32 @@
                 <div class="file-link file-link-even"{{{style}}}><a href="/mount?file={{file_name}}">{{display_name}}{{current}}</a></div>
                 {{/links}}
         
-        {{#pagination}}
-        <div class="pagination">
-            {{#has_first}}
-            <a href="/?page=1">1</a>
-            {{/has_first}}
-            
-            {{#has_prev}}
-            <a href="/?page={{prev_page}}">{{prev_page}}</a>
-            {{/has_prev}}
-            
-            <span class="current">{{current_page}}</span>
-            
-            {{#has_next}}
-            <a href="/?page={{next_page}}">{{next_page}}</a>
-            {{/has_next}}
-            
-            {{#has_last}}
-            <a href="/?page={{last_page}}">{{last_page}}</a>
-            {{/has_last}}
+		{{#pagination}}
+		<div class="pagination">
+		    {{#has_first}}
+		    <a href="/?page=1">1</a>
+		    {{/has_first}}
+		    
+		    {{#has_prev}}
+		    <a href="/?page={{prev_page}}">{{prev_page}}</a>
+		    {{/has_prev}}
+		    
+		    <span class="current">{{current_page}}</span>
+		    
+		    {{#has_next}}
+		    <a href="/?page={{next_page}}">{{next_page}}</a>
+		    {{/has_next}}
+		    
+		    {{#has_last}}
+		    <a href="/?page={{last_page}}">{{last_page}}</a>
+		    {{/has_last}}
+		</div>
+		{{/pagination}}
         </div>
-        {{/pagination}}
-        </div>
+	{{/cdrom}}
+	{{^cdrom}}
+		<p>Device is in USB Mass Storage Mode</p>
+	{{/cdrom}}
         <div class="usb-info">
                 <p>USB Mode: {{ usb_mode }}</p>
         </div>

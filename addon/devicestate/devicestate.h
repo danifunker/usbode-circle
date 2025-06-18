@@ -12,7 +12,7 @@ enum TShutdownMode {
 
 class DeviceState {
 public:
-    static DeviceState& getInstance() {
+    static DeviceState& Get() {
         static DeviceState instance;
         return instance;
     }

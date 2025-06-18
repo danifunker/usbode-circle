@@ -41,26 +41,23 @@ void sort_links_by_display_name(std::vector<kainjow::mustache::data>& links_vec)
     });
 }
 
-THTTPStatus HomePageHandler::GetContent (const char  *pPath,
+std::string HomePageHandler::GetHTML() {
+        return std::string(s_Index);
+}
+
+THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
+                                   const char *pPath,
                                    const char  *pParams,
                                    const char  *pFormData,
-                                   u8          *pBuffer,
-                                   unsigned    *pLength,
-                                   const char **ppContentType,
                                    CPropertiesFatFsFile *m_pProperties,
                                    CUSBCDGadget *pCDGadget)
 {
         LOGNOTE("Home page called");
 
-        // Set up Mustache Template Engine
-        mustache::mustache tmpl{s_Index};
-        mustache::data context;
-
-        // Get current loaded image
+	// Get current loaded image
         m_pProperties->Load();
         m_pProperties->SelectSection("usbode");
         std::string current_image = m_pProperties->GetString("current_image", DEFAULT_IMAGE_FILENAME);
-        context.set("current_image", current_image);
 
         // Open directory
         DIR dir;
@@ -210,31 +207,5 @@ THTTPStatus HomePageHandler::GetContent (const char  *pPath,
             context.set("pagination", pagination);
         }
         
-        // Find the current USB mode
-        boolean is_full_speed = CKernelOptions::Get()->GetUSBFullSpeed();
-        if (is_full_speed)
-            context.set("usb_mode", "FullSpeed");
-        else
-            context.set("usb_mode", "HighSpeed");
-        
-        // Add build info
-        context.set("version", CGitInfo::Get()->GetFullVersionString());
-        context.set("build_info", std::string(GIT_BRANCH) + " @ " + std::string(GIT_COMMIT) + " | " + __DATE__ + " " + __TIME__);
-
-        // Render
-        LOGNOTE("Rendering the template");
-        std::string rendered = tmpl.render(context);
-
-        if (pBuffer && *pLength >= rendered.length()) {
-            memcpy(pBuffer, rendered.c_str(), rendered.length());
-            *pLength = rendered.length();
-            *ppContentType = "text/html";
-            return HTTPOK;
-        }
-        
-        // The provided buffer is too small
-        LOGERR("Output buffer too small for rendered content.");
-        *pLength = 0;
-        *ppContentType = "text/plain";
-        return HTTPInternalServerError;
+        return HTTPOK;
 }

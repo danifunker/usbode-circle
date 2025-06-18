@@ -24,16 +24,16 @@ char s_Mount[] =
 #include "mount.h"
 ;
 
-#define VERSION "2.1.0"
+std::string MountPageHandler::GetHTML() {
+	return std::string(s_Mount);
+}
 
-THTTPStatus MountPageHandler::GetContent (const char  *pPath,
+THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
+                                   const char *pPath,
                                    const char  *pParams,
                                    const char  *pFormData,
-                                   u8          *pBuffer,
-                                   unsigned    *pLength,
-                                   const char **ppContentType,
-				   CPropertiesFatFsFile *m_pProperties,
-				   CUSBCDGadget *m_pCDGadget)
+                                   CPropertiesFatFsFile *m_pProperties,
+                                   CUSBCDGadget *pCDGadget)
 {
 	LOGNOTE("Mount page called");
 
@@ -59,41 +59,8 @@ THTTPStatus MountPageHandler::GetContent (const char  *pPath,
         }
 
 	// Set the new device in the CD gadget
-        m_pCDGadget->SetDevice(cueBinFileDevice);
+        pCDGadget->SetDevice(cueBinFileDevice);
         LOGNOTE("CD gadget updated with new image: %s", file_name.c_str());
 
-	// Set up Mustache Template Engine
-	mustache::mustache tmpl{s_Mount};
-	mustache::data context;
-
-	context.set("image_name", file_name);
-
-	// Find the current USB mode
-        // TODO replace with Property get if we move the location of this
-        boolean is_full_speed = CKernelOptions::Get()->GetUSBFullSpeed();
-        if (is_full_speed)
-                context.set("usb_mode", "FullSpeed");
-        else
-                context.set("usb_mode", "HighSpeed");
-
-        // Add build info
-        context.set("version", VERSION);
-        context.set("build_info", std::string(GIT_BRANCH) + " @ " + std::string(GIT_COMMIT) + " | " + __DATE__ + " " + __TIME__);
-
-	// Render
-	LOGNOTE("Rendering the template");
-	std::string rendered = tmpl.render(context);
-
-	if (pBuffer && *pLength >= rendered.length()) {
-		memcpy(pBuffer, rendered.c_str(), rendered.length());
-		*pLength = rendered.length();
-		*ppContentType = "text/html"; // Most likely HTML for a templating engine
-		return HTTPOK;
-	}
-	
-	// The provided buffer is too small
-	LOGERR("Output buffer too small for Jinjac content.");
-	*pLength = 0; // Indicate no content could be written
-	*ppContentType = "text/plain"; // Default content type for error
-	return HTTPInternalServerError; // Or a more specific error
+	return HTTPOK;
 }

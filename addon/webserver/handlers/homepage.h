@@ -2,17 +2,16 @@
 #ifndef HOMEPAGE_HANDLER_H
 #define HOMEPAGE_HANDLER_H
 
-#include "pagehandler.h"
+#include "pagehandlerbase.h"
 
-class HomePageHandler : public IPageHandler {
+class HomePageHandler : public PageHandlerBase {
 public:
-    THTTPStatus GetContent (const char  *pPath,
+    THTTPStatus PopulateContext(kainjow::mustache::data& context,
+                                   const char *pPath,
                                    const char  *pParams,
                                    const char  *pFormData,
-                                   u8          *pBuffer,
-                                   unsigned    *pLength,
-                                   const char **ppContentType,
-				   CPropertiesFatFsFile *m_pProperties,
-				   CUSBCDGadget *pCDGadget);
+                                   CPropertiesFatFsFile *m_pProperties,
+                                   CUSBCDGadget *pCDGadget);
+    std::string GetHTML();
 };
 #endif
