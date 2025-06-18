@@ -21,10 +21,10 @@
         .success {background-color: #DDFFDD; padding: 15px; margin: 15px 0; color: #006600; border-left: 4px solid #00aa00;}
         .form-group {margin: 15px 0;}
         .form-group label {display: block; margin-bottom: 5px; font-weight: bold;}
-        .form-group select, .form-group input[type="text"], .form-group input[type="number"] {
-            width: 300px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;
+        .form-group select, .form-group input {
+            width: 300px; padding: 8px; border: 1px solid #ccc; font-size: 14px;
         }
-        .form-section {background-color: #f9f9f9; padding: 20px; margin: 20px 0; border-radius: 5px; border: 1px solid #ddd;}
+        .form-section {background-color: #f9f9f9; padding: 20px; margin: 20px 0; border: 1px solid #ddd;}
         .form-section h3 {margin-top: 0; color: #1E4D8C; border-bottom: 2px solid #3A7CA5; padding-bottom: 10px;}
         .current-value {color: #666; font-style: italic; font-size: 12px;}
         .navigation {margin: 20px 0;}
@@ -70,7 +70,7 @@
                     <div class="form-group">
                         <label for="screen_timeout">Screen Timeout (seconds):</label>
                         <div class="current-value">Current: {{current_screen_timeout}} seconds</div>
-                        <input type="number" name="screen_timeout" id="screen_timeout" value="{{screen_timeout}}" min="0" max="3600">
+                        <input type="text" name="screen_timeout" id="screen_timeout" value="{{screen_timeout}}" size="6">
                         <div class="current-value">Set to 0 to disable timeout</div>
                     </div>
                 </div>
@@ -83,8 +83,6 @@
                         <select name="sounddev" id="sounddev">
                             <option value="sndpwm" {{#sounddev_sndpwm}}selected{{/sounddev_sndpwm}}>PWM Audio (3.5mm jack)</option>
                             <option value="sndi2s" {{#sounddev_sndi2s}}selected{{/sounddev_sndi2s}}>I2S Audio (HATs)</option>
-                            <option value="sndhdmi" {{#sounddev_sndhdmi}}selected{{/sounddev_sndhdmi}}>HDMI Audio</option>
-                            <option value="sndusb" {{#sounddev_sndusb}}selected{{/sounddev_sndusb}}>USB Audio (Pi 4 only)</option>
                         </select>
                     </div>
                 </div>
@@ -107,7 +105,7 @@
                     <div class="form-group">
                         <label for="logfile">Log File Path:</label>
                         <div class="current-value">Current: {{current_logfile}}</div>
-                        <input type="text" name="logfile" id="logfile" value="{{logfile}}" placeholder="usbode-logs.txt">
+                        <input type="text" name="logfile" id="logfile" value="{{logfile}}" size="30">
                         <div class="current-value">Leave empty to disable file logging. Will be automatically prefixed with SD:/</div>
                     </div>
                     <div class="form-group">
@@ -129,14 +127,19 @@
                 </div>
 
                 <div style="text-align: center; margin: 30px 0;">
-                    <button type="submit" class="button">Save Configuration</button>
+                    <button type="submit" name="action" value="save" class="button">Save Configuration</button>
+                    <button type="submit" name="action" value="save_reboot" class="button">Save & Reboot</button>
+                    <button type="submit" name="action" value="save_shutdown" class="button">Save & Shutdown</button>
                     <a href="/" class="button button-danger">Cancel</a>
                 </div>
             </form>
         </div>
         
         <div class="footer">
-            <p>&copy; 2024 USBODE Project</p>
+            <p>Version {{ version }}</p>
+            <div class="build-info">
+                Build: {{ build_info}}
+            </div>
         </div>
     </div>
 </body>

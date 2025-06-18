@@ -11,6 +11,7 @@
 #include <iostream>
 #include <algorithm>
 #include <fstream>
+#include <shutdown/shutdown.h>
 #include "configpage.h"
 #include "util.h"
 
@@ -359,7 +360,20 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
         }
         
         if (config_success && cmdline_success) {
-            success_message = "Configuration saved successfully. Reboot required for changes to take effect.";
+            // Check for action parameter to determine what to do after saving
+            std::string action = form_params.count("action") ? form_params["action"] : "save";
+            
+            if (action == "save_reboot") {
+                success_message = "Configuration saved successfully. Rebooting in 3 seconds...";
+                // Schedule a reboot in 3 seconds
+                new CShutdown(ShutdownReboot, 3000);
+            } else if (action == "save_shutdown") {
+                success_message = "Configuration saved successfully. Shutting down in 3 seconds...";
+                // Schedule a shutdown in 3 seconds
+                new CShutdown(ShutdownHalt, 3000);
+            } else {
+                success_message = "Configuration saved successfully. Reboot required for changes to take effect.";
+            }
         }
     }
     
@@ -369,7 +383,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     
     // Set current values for display
     std::string current_displayhat = config_data.count("displayhat") ? config_data["displayhat"] : "none";
-    std::string current_screen_timeout = config_data.count("screen_timeout") ? config_data["screen_timeout"] : "60";
+    std::string current_screen_timeout = config_data.count("screen_timeout") ? config_data["screen_timeout"] : "5";
     std::string current_logfile = config_data.count("logfile") ? config_data["logfile"] : "";
     std::string current_sounddev = cmdline_data.count("sounddev") ? cmdline_data["sounddev"] : "sndpwm";
     std::string current_loglevel = cmdline_data.count("loglevel") ? cmdline_data["loglevel"] : "4";
@@ -400,8 +414,6 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     // Set sound device options
     context["sounddev_sndpwm"] = (current_sounddev == "sndpwm");
     context["sounddev_sndi2s"] = (current_sounddev == "sndi2s");
-    context["sounddev_sndhdmi"] = (current_sounddev == "sndhdmi");
-    context["sounddev_sndusb"] = (current_sounddev == "sndusb");
     
     // Set USB speed options
     context["usbspeed_high"] = (current_usbspeed == "high");
