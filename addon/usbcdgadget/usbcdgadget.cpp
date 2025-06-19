@@ -433,14 +433,17 @@ void CUSBCDGadget::CreateDevice(void) {
 }
 
 void CUSBCDGadget::OnSuspend(void) {
-    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered");
+    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered - maintaining device readiness");
+    
+    // Clean up endpoints but don't reset device readiness
     delete m_pEP[EPOut];
     m_pEP[EPOut] = nullptr;
 
     delete m_pEP[EPIn];
     m_pEP[EPIn] = nullptr;
 
-    m_nState = TCDState::Init;
+    // Don't reset to Init - maintain readiness for quick resume
+    // m_nState = TCDState::Init;  // Commented out to maintain state
 }
 
 const void* CUSBCDGadget::ToStringDescriptor(const char* pString, size_t* pLength) {
@@ -627,9 +630,15 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate() {
     MLOGNOTE("CD OnActivate", "state = %i", m_nState);
+    
+    // Add a delay to ensure USB enumeration stability - critical for BIOS compatibility
+    CScheduler::Get()->MsSleep(100);
+    
     m_CDReady = true;
     m_nState = TCDState::ReceiveCBW;
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
+    
+    MLOGNOTE("CD OnActivate", "completed, ready for commands");
 }
 
 void CUSBCDGadget::SendCSW() {
