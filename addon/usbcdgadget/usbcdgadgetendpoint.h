@@ -1,5 +1,5 @@
 //
-// usbmstgadgetendpoint.h
+// usbcdgadgetendpoint.h
 //
 // CDROM Gadget by Ian Cass, heavily based on
 // USB Mass Storage Gadget by Mike Messinides
@@ -30,7 +30,7 @@
 class CUSBCDGadget;
 
 
-class CUSBCDGadgetEndpoint : public CDWUSBGadgetEndpoint /// Endpoint of the USB mass storage gadget
+class CUSBCDGadgetEndpoint : public CDWUSBGadgetEndpoint /// Endpoint of the USB CD-ROM gadget
 {
 public:
 	CUSBCDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc, CUSBCDGadget *pGadget);
@@ -39,6 +39,10 @@ public:
 	void OnActivate (void) override;
 
 	void OnTransferComplete (boolean bIn, size_t nLength) override;
+	
+	// Enhanced state queries for debugging and robustness
+	boolean IsValid (void) const { return m_pGadget != nullptr; }
+	CUSBCDGadget *GetGadget (void) const { return m_pGadget; }
 
 private:
 	friend class CUSBCDGadget;

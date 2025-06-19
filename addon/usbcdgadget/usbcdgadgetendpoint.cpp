@@ -1,5 +1,5 @@
 //
-// uscdgadgetendpoint.cpp
+// usbcdgadgetendpoint.cpp
 //
 // CDROM Gadget by Ian Cass, heavily based on
 // USB Mass Storage Gadget by Mike Messinides
@@ -35,12 +35,19 @@ CUSBCDGadgetEndpoint::CUSBCDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc,
 :	CDWUSBGadgetEndpoint (pDesc, pGadget),
 	m_pGadget (pGadget)
 {
-
+	assert (pDesc != nullptr);
+	assert (pGadget != nullptr);
+	
+	MLOGNOTE("CDEndpoint", "Endpoint created - Direction: %s, MaxPacket: %u", 
+		GetDirection() == DirectionOut ? "OUT" : "IN", 
+		GetMaxPacketSize());
 }
 
 CUSBCDGadgetEndpoint::~CUSBCDGadgetEndpoint (void)
 {
-
+	MLOGNOTE("CDEndpoint", "Endpoint destroyed - Direction: %s", 
+		GetDirection() == DirectionOut ? "OUT" : "IN");
+	m_pGadget = nullptr;
 }
 
 //the following methods forward to the gadget class to facilitate
@@ -48,15 +55,27 @@ CUSBCDGadgetEndpoint::~CUSBCDGadgetEndpoint (void)
 
 void CUSBCDGadgetEndpoint::OnActivate (void)
 {
+	assert (m_pGadget != nullptr);
+	
+	// Only trigger activation on OUT endpoint to avoid duplicate activations
+	// This follows the pattern where the host initiates communication on the OUT endpoint
 	if (GetDirection () == DirectionOut)
 	{
+		MLOGNOTE("CDEndpoint", "OUT endpoint activated, triggering gadget activation");
 		m_pGadget->OnActivate();
+	}
+	else
+	{
+		MLOGNOTE("CDEndpoint", "IN endpoint activated");
 	}
 }
 
 void CUSBCDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 {
-	MLOGNOTE("CDEndpoint","Transfer complete nlen= %i",nLength);
+	assert (m_pGadget != nullptr);
+	
+	MLOGNOTE("CDEndpoint","Transfer complete - Direction: %s, Length: %u",
+		bIn ? "IN" : "OUT", nLength);
 	m_pGadget->OnTransferComplete(bIn, nLength);
 }
 
@@ -110,28 +129,35 @@ static void HexDumpBuffer(const char* prefix, const void* buffer, size_t length)
 
 void CUSBCDGadgetEndpoint::BeginTransfer (TCDTransferMode Mode, void *pBuffer, size_t nLength)
 {
+	assert (m_pGadget != nullptr);
+	assert (pBuffer != nullptr || nLength == 0);
+	
 	switch (Mode)
 	{
 	case TCDTransferMode::TransferCBWOut:
 	case TCDTransferMode::TransferDataOut:
-		MLOGNOTE("CDEndpoint","Begin Transfer Out  nlen= %i",nLength);
-		//HexDumpBuffer("Outgoing data", pBuffer, nLength);
+		MLOGNOTE("CDEndpoint","Begin Transfer OUT - Mode: %s, Length: %u",
+			Mode == TCDTransferMode::TransferCBWOut ? "CBW" : "Data", nLength);
 		CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode::TransferDataOut, pBuffer, nLength);
 		break;
+		
 	case TCDTransferMode::TransferDataIn:
 	case TCDTransferMode::TransferCSWIn:
-		MLOGNOTE("CDEndpoint","Begin Transfer In  nlen= %i",nLength);
-		//HexDumpBuffer("Incoming data", pBuffer, nLength);
+		MLOGNOTE("CDEndpoint","Begin Transfer IN - Mode: %s, Length: %u",
+			Mode == TCDTransferMode::TransferCSWIn ? "CSW" : "Data", nLength);
 		CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode::TransferDataIn, pBuffer, nLength);
 		break;
+		
 	default:
-		assert(0);
+		assert(0); // Invalid transfer mode
 		break;
 	}
 }
 
 void CUSBCDGadgetEndpoint::StallRequest(boolean bIn)
 {
+	assert (m_pGadget != nullptr);
+	
+	MLOGNOTE("CDEndpoint", "Stalling endpoint - Direction: %s", bIn ? "IN" : "OUT");
 	CDWUSBGadgetEndpoint::Stall(bIn);
-
 }

@@ -199,9 +199,13 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
 void CUSBCDGadget::AddEndpoints(void) {
     MLOGNOTE("CUSBCDGadget::AddEndpoints", "entered");
     
-    // Clean up any existing endpoints first to prevent assertion failures
-    RemoveEndpoints();
+    // Only clean up if endpoints already exist to prevent assertion failures
+    if (m_pEP[EPOut] || m_pEP[EPIn]) {
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints already exist, cleaning up");
+        RemoveEndpoints();
+    }
     
+    // Create OUT endpoint
     assert(!m_pEP[EPOut]);
     if (m_IsFullSpeed)
         m_pEP[EPOut] = new CUSBCDGadgetEndpoint(
@@ -215,6 +219,7 @@ void CUSBCDGadget::AddEndpoints(void) {
             this);
     assert(m_pEP[EPOut]);
 
+    // Create IN endpoint
     assert(!m_pEP[EPIn]);
     if (m_IsFullSpeed)
         m_pEP[EPIn] = new CUSBCDGadgetEndpoint(
@@ -228,23 +233,34 @@ void CUSBCDGadget::AddEndpoints(void) {
             this);
     assert(m_pEP[EPIn]);
 
+    // Verify endpoints are properly created and valid
+    assert(m_pEP[EPOut]->IsValid());
+    assert(m_pEP[EPIn]->IsValid());
+    
+    MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints created successfully - Speed: %s", 
+        m_IsFullSpeed ? "Full" : "High");
+
     m_nState = TCDState::Init;
 }
 
 void CUSBCDGadget::RemoveEndpoints(void) {
     MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "entered");
     
+    // Clean up OUT endpoint
     if (m_pEP[EPOut]) {
+        MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "removing OUT endpoint");
         delete m_pEP[EPOut];
         m_pEP[EPOut] = nullptr;
     }
     
+    // Clean up IN endpoint
     if (m_pEP[EPIn]) {
+        MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "removing IN endpoint");
         delete m_pEP[EPIn];
         m_pEP[EPIn] = nullptr;
     }
     
-    MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "endpoints cleaned up");
+    MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "endpoints cleaned up successfully");
 }
 
 // must set device before usb activation
@@ -455,15 +471,14 @@ void CUSBCDGadget::CreateDevice(void) {
 }
 
 void CUSBCDGadget::OnSuspend(void) {
-    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered - cleaning up endpoints");
+    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered - maintaining state for enumeration stability");
     
-    // Properly clean up endpoints during suspend to prevent assertion failures
-    // on subsequent AddEndpoints calls during resume/enumeration
-    RemoveEndpoints();
+    // For BIOS compatibility, avoid aggressive endpoint cleanup during enumeration
+    // Only reset state if we're not in the middle of enumeration
+    // Keep endpoints active to prevent enumeration issues
     
-    // Reset state to allow proper re-initialization
-    m_nState = TCDState::Init;
-    m_CDReady = false;
+    // Don't call RemoveEndpoints() here as it causes enumeration instability
+    // The AddEndpoints() method will handle cleanup if needed
 }
 
 const void* CUSBCDGadget::ToStringDescriptor(const char* pString, size_t* pLength) {
@@ -650,6 +665,18 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate() {
     MLOGNOTE("CD OnActivate", "state = %i", m_nState);
+    
+    // Ensure endpoints are ready before trying to use them
+    if (!m_pEP[EPOut] || !m_pEP[EPIn]) {
+        MLOGNOTE("CD OnActivate", "endpoints not ready, skipping activation");
+        return;
+    }
+    
+    // Additional safety check for endpoint validity
+    if (!m_pEP[EPOut]->IsValid() || !m_pEP[EPIn]->IsValid()) {
+        MLOGNOTE("CD OnActivate", "endpoints invalid, skipping activation");
+        return;
+    }
     
     m_CDReady = true;
     m_nState = TCDState::ReceiveCBW;
