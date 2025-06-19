@@ -59,10 +59,17 @@ void CUSBCDGadgetEndpoint::OnActivate (void)
 	
 	// Only trigger activation on OUT endpoint to avoid duplicate activations
 	// This follows the pattern where the host initiates communication on the OUT endpoint
+	// and follows the Linux gadget pattern of single activation per configuration
 	if (GetDirection () == DirectionOut)
 	{
 		MLOGNOTE("CDEndpoint", "OUT endpoint activated, triggering gadget activation");
-		m_pGadget->OnActivate();
+		
+		// Additional safety check to prevent activation during invalid states
+		if (m_pGadget != nullptr && IsValid()) {
+			m_pGadget->OnActivate();
+		} else {
+			MLOGNOTE("CDEndpoint", "skipping activation - gadget or endpoint invalid");
+		}
 	}
 	else
 	{
@@ -76,7 +83,13 @@ void CUSBCDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 	
 	MLOGNOTE("CDEndpoint","Transfer complete - Direction: %s, Length: %u",
 		bIn ? "IN" : "OUT", nLength);
-	m_pGadget->OnTransferComplete(bIn, nLength);
+	
+	// Additional safety check before forwarding to gadget
+	if (m_pGadget != nullptr && IsValid()) {
+		m_pGadget->OnTransferComplete(bIn, nLength);
+	} else {
+		MLOGNOTE("CDEndpoint", "skipping transfer complete - gadget or endpoint invalid");
+	}
 }
 
 /*
@@ -132,6 +145,12 @@ void CUSBCDGadgetEndpoint::BeginTransfer (TCDTransferMode Mode, void *pBuffer, s
 	assert (m_pGadget != nullptr);
 	assert (pBuffer != nullptr || nLength == 0);
 	
+	// Additional safety check before starting transfer
+	if (!IsValid()) {
+		MLOGNOTE("CDEndpoint", "cannot begin transfer - endpoint invalid");
+		return;
+	}
+	
 	switch (Mode)
 	{
 	case TCDTransferMode::TransferCBWOut:
@@ -159,5 +178,11 @@ void CUSBCDGadgetEndpoint::StallRequest(boolean bIn)
 	assert (m_pGadget != nullptr);
 	
 	MLOGNOTE("CDEndpoint", "Stalling endpoint - Direction: %s", bIn ? "IN" : "OUT");
-	CDWUSBGadgetEndpoint::Stall(bIn);
+	
+	// Additional safety check before stalling
+	if (IsValid()) {
+		CDWUSBGadgetEndpoint::Stall(bIn);
+	} else {
+		MLOGNOTE("CDEndpoint", "cannot stall - endpoint invalid");
+	}
 }

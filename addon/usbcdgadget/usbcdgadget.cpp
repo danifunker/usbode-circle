@@ -73,8 +73,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (SCSI transparent - ITX Llama BIOS expects this)
+            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (ATAPI/CD-ROM - caused BIOS enumeration issues)
             0                  // iInterface
         },
         {
@@ -112,8 +112,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (SCSI transparent - ITX Llama BIOS expects this)
+            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (ATAPI/CD-ROM - caused BIOS enumeration issues)
             0                  // iInterface
         },
         {
@@ -144,7 +144,9 @@ const char* const CUSBCDGadget::s_StringDescriptor[] =
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpeed, CCueBinFileDevice* pDevice)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_pDevice(pDevice),
-      m_pEP{nullptr, nullptr, nullptr}
+      m_pEP{nullptr, nullptr, nullptr},
+      m_nState(TCDState::Init),
+      m_CDReady(false)
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "entered %d", isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
@@ -199,10 +201,44 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
 void CUSBCDGadget::AddEndpoints(void) {
     MLOGNOTE("CUSBCDGadget::AddEndpoints", "entered");
     
-    // Only clean up if endpoints already exist to prevent assertion failures
+    // Check if endpoints already exist and are valid - if so, preserve them
+    // This minimizes disruption during repeated calls from the USB framework
+    if (m_pEP[EPOut] && m_pEP[EPIn] && 
+        m_pEP[EPOut]->IsValid() && m_pEP[EPIn]->IsValid()) {
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints already exist and valid, preserving them");
+        
+        // Ensure consistent state after framework resume
+        if (m_nState == TCDState::Init) {
+            MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints preserved, state already consistent");
+        }
+        return;
+    }
+    
+    // Only clean up if endpoints exist but are invalid or null
     if (m_pEP[EPOut] || m_pEP[EPIn]) {
-        MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints already exist, cleaning up");
-        RemoveEndpoints();
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "cleaning up existing endpoints");
+        // Use direct cleanup to avoid extra logging during framework-driven recreation
+        if (m_pEP[EPOut]) {
+            delete m_pEP[EPOut];
+            m_pEP[EPOut] = nullptr;
+        }
+        if (m_pEP[EPIn]) {
+            delete m_pEP[EPIn];
+            m_pEP[EPIn] = nullptr;
+        }
+    }
+    
+    // Reset state during endpoint recreation to ensure consistency
+    m_nState = TCDState::Init;
+    
+    // Store previous ready state to restore after endpoint recreation
+    boolean wasReady = m_CDReady;
+    m_CDReady = false;
+    
+    if (wasReady) {
+        MLOGNOTE("CUSBCDGadget::CreateEndpoints", "CD was ready, will restore after endpoint recreation");
+    } else {
+        MLOGNOTE("CUSBCDGadget::CreateEndpoints", "CD set to NOT READY during endpoint recreation - BIOS will fail until SetDevice called");
     }
     
     // Create OUT endpoint
@@ -237,14 +273,24 @@ void CUSBCDGadget::AddEndpoints(void) {
     assert(m_pEP[EPOut]->IsValid());
     assert(m_pEP[EPIn]->IsValid());
     
-    MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints created successfully - Speed: %s", 
-        m_IsFullSpeed ? "Full" : "High");
+    // Restore ready state if we had a valid device before endpoint recreation
+    if (wasReady && m_pDevice) {
+        m_CDReady = true;
+        MLOGNOTE("CUSBCDGadget::CreateEndpoints", "*** CD READY STATE RESTORED *** Device available for BIOS boot");
+    }
+    
+    MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints created successfully - Speed: %s, suspend/resume cycle #%u", 
+        m_IsFullSpeed ? "Full" : "High", m_SuspendResumeCount);
 
-    m_nState = TCDState::Init;
+    // State will be set to ReceiveCBW in OnActivate()
 }
 
 void CUSBCDGadget::RemoveEndpoints(void) {
     MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "entered");
+    
+    // Reset state before endpoint cleanup for consistency
+    m_nState = TCDState::Init;
+    m_CDReady = false;
     
     // Clean up OUT endpoint
     if (m_pEP[EPOut]) {
@@ -291,7 +337,7 @@ void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
     data_block_size = GetBlocksize();
 
     m_CDReady = true;
-    MLOGNOTE("CUSBCDGadget::SetDevice", "Block size is %d, m_CDReady = %d", block_size, m_CDReady);
+    MLOGNOTE("CUSBCDGadget::SetDevice", "*** CD NOW READY FOR BIOS BOOT *** Block size is %d, m_CDReady = %d", block_size, m_CDReady);
 
     // Hand the device to the CD Player
     CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
@@ -471,14 +517,32 @@ void CUSBCDGadget::CreateDevice(void) {
 }
 
 void CUSBCDGadget::OnSuspend(void) {
-    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered - maintaining state for enumeration stability");
+    m_SuspendResumeCount++;
+    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered - framework-driven cleanup, state=%d, CD ready=%d, suspend/resume cycle #%u", m_nState, m_CDReady, m_SuspendResumeCount);
     
-    // For BIOS compatibility, avoid aggressive endpoint cleanup during enumeration
-    // Only reset state if we're not in the middle of enumeration
-    // Keep endpoints active to prevent enumeration issues
+    // Follow Circle framework pattern: clean up endpoints during suspend
+    // The framework will call AddEndpoints() again on resume
+    // This is the expected behavior per the base class documentation
     
-    // Don't call RemoveEndpoints() here as it causes enumeration instability
-    // The AddEndpoints() method will handle cleanup if needed
+    if (m_pEP[EPOut]) {
+        delete m_pEP[EPOut];
+        m_pEP[EPOut] = nullptr;
+    }
+    
+    if (m_pEP[EPIn]) {
+        delete m_pEP[EPIn];
+        m_pEP[EPIn] = nullptr;
+    }
+    
+    // Reset state per framework expectations
+    m_nState = TCDState::Init;
+    // Note: Don't reset m_CDReady here - let CreateEndpoints handle device state restoration
+    
+    if (m_SuspendResumeCount > 5) {
+        MLOGERR("CUSBCDGadget::OnSuspend", "*** EXCESSIVE SUSPEND/RESUME CYCLES *** Count: %u - This may indicate USB enumeration issues causing BIOS boot failure", m_SuspendResumeCount);
+    }
+    
+    MLOGNOTE("CUSBCDGadget::OnSuspend", "cleanup complete - framework will recreate endpoints on resume, CD ready state preserved");
 }
 
 const void* CUSBCDGadget::ToStringDescriptor(const char* pString, size_t* pLength) {
@@ -517,6 +581,14 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData* pSetupData, u8* pData
 
 void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
     // MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
+    
+    // Add safety check for endpoint validity during transfer completion
+    if (!m_pEP[EPOut] || !m_pEP[EPIn] || 
+        !m_pEP[EPOut]->IsValid() || !m_pEP[EPIn]->IsValid()) {
+        MLOGERR("OnTransferComplete", "endpoints invalid during transfer completion, aborting");
+        return;
+    }
+    
     assert(m_nState != TCDState::Init);
     if (bIn)  // packet to host has been transferred
     {
@@ -528,6 +600,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                 break;
             }
             case TCDState::DataIn: {
+                MLOGNOTE("OnTransferComplete", "DataIn completion - remaining blocks: %d", m_nnumber_blocks);
                 if (m_nnumber_blocks > 0) {
                     if (m_CDReady) {
                         m_nState = TCDState::DataInRead;  // see Update function
@@ -542,6 +615,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                     }
                 } else  // done sending data to host
                 {
+                    MLOGNOTE("OnTransferComplete", "DataIn complete, sending CSW");
                     SendCSW();
                 }
                 break;
@@ -573,6 +647,8 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                     break;
                 }
                 m_CSW.dCSWTag = m_CBW.dCBWTag;
+                m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength; // Initialize to full expected length
+                m_CSW.bmCSWStatus = CD_CSW_STATUS_OK; // Initialize to success, commands will override if needed
                 if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0)  // meaningful CBW
                 {
                     HandleSCSICommand();  // will update m_nstate
@@ -678,15 +754,29 @@ void CUSBCDGadget::OnActivate() {
         return;
     }
     
+    // Only activate if we're in a safe state
+    if (m_nState != TCDState::Init && m_nState != TCDState::ReceiveCBW) {
+        MLOGNOTE("CD OnActivate", "unsafe state %d for activation, resetting to Init", m_nState);
+        m_nState = TCDState::Init;
+    }
+    
     m_CDReady = true;
     m_nState = TCDState::ReceiveCBW;
+    
+    // Begin transfer with additional error checking 
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
     
     MLOGNOTE("CD OnActivate", "completed, ready for commands");
 }
 
 void CUSBCDGadget::SendCSW() {
-    // MLOGNOTE ("CUSBCDGadget::SendCSW", "entered");
+    if (m_CSW.bmCSWStatus != CD_CSW_STATUS_OK) {
+        MLOGERR("CUSBCDGadget::SendCSW", "*** FAILURE RESPONSE *** status: %d (0=OK,1=FAIL), tag: 0x%08x, residue: %d, sense_key: 0x%02x, asc: 0x%02x - THIS MAY CAUSE SeaBIOS ERROR 0003!", 
+                 m_CSW.bmCSWStatus, m_CSW.dCSWTag, m_CSW.dCSWDataResidue, m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode);
+    } else {
+        MLOGNOTE("CUSBCDGadget::SendCSW", "SUCCESS RESPONSE - status: %d, tag: 0x%08x, residue: %d", 
+                 m_CSW.bmCSWStatus, m_CSW.dCSWTag, m_CSW.dCSWDataResidue);
+    }
     memcpy(&m_InBuffer, &m_CSW, SIZE_CSW);
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn, m_InBuffer, SIZE_CSW);
     m_nState = TCDState::SentCSW;
@@ -760,6 +850,12 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
 //
 //  https://chatgpt.com/share/683ecad4-e250-8012-b9aa-22c76de6e871
 //
+// ENHANCED LOGGING FOR BIOS BOOT DIAGNOSIS:
+// SeaBIOS error code 0003 = "Could not read from CDROM (code 0003)" 
+// This happens when SeaBIOS fails to read Boot Record Volume Descriptor at LBA 0x11
+// The BIOS boot sequence is: TEST UNIT READY -> READ(10) LBA 0x11 -> [parse boot catalog]
+// Critical LBAs: 0x10=Primary Volume Descriptor, 0x11=Boot Record Volume Descriptor
+//
 void CUSBCDGadget::HandleSCSICommand() {
     MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
     
@@ -772,15 +868,15 @@ void CUSBCDGadget::HandleSCSICommand() {
     switch (m_CBW.CBWCB[0]) {
         case 0x0:  // Test unit ready
         {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready - m_CDReady=%d", m_CDReady);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready - m_CDReady=%d [BIOS CRITICAL: failure here causes boot issues]", m_CDReady);
             if (!m_CDReady) {
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
+                MLOGERR("CUSBCDGadget::HandleSCSICommand", "*** Test Unit Ready FAILED *** - CD not ready, will cause BIOS boot failure");
                 bmCSWStatus = CD_CSW_STATUS_FAIL;
                 m_SenseParams.bSenseKey = 2;
                 m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
                 m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
             } else {
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_OK)");
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready SUCCESS - CD ready for BIOS boot");
             }
 	    
             // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
@@ -797,7 +893,8 @@ void CUSBCDGadget::HandleSCSICommand() {
             //bool desc = m_CBW.CBWCB[1] & 0x01;
             u8 blocks = (u8)(m_CBW.CBWCB[4]);
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Request Sense CMD, length = %d", blocks);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Request Sense CMD - BIOS requesting error details: length=%d, sense_key=0x%02x, asc=0x%02x, ascq=0x%02x", 
+                     blocks, m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 
             u8 length = sizeof(TUSBCDRequestSenseReply);
             if (blocks < length)
@@ -842,6 +939,9 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_nState = TCDState::DataIn;
                 m_nnumber_blocks = 0;  // nothing more after this send
                 m_CSW.bmCSWStatus = bmCSWStatus;
+                // Set CSW data residue correctly
+                m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > datalen ? 
+                                       m_CBW.dCBWDataTransferLength - datalen : 0;
             } else {  // EVPD bit is 1: VPD Inquiry
                 // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (VPD Inquiry)");
                 u8 vpdPageCode = m_CBW.CBWCB[2];
@@ -871,6 +971,9 @@ void CUSBCDGadget::HandleSCSICommand() {
                         m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
                         m_CSW.bmCSWStatus = bmCSWStatus;
+                        // Set CSW data residue correctly
+                        m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > datalen ? 
+                                               m_CBW.dCBWDataTransferLength - datalen : 0;
                         break;
                     }
 
@@ -897,6 +1000,9 @@ void CUSBCDGadget::HandleSCSICommand() {
                         m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
                         m_CSW.bmCSWStatus = bmCSWStatus;
+                        // Set CSW data residue correctly
+                        m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > datalen ? 
+                                               m_CBW.dCBWDataTransferLength - datalen : 0;
                         break;
                     }
 
@@ -995,18 +1101,26 @@ void CUSBCDGadget::HandleSCSICommand() {
                 // Number of blocks to read (LBA)
                 m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
 
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read (10) - LBA = %u, blocks = %u", m_nblock_address, m_nnumber_blocks);
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read (10) - LBA = %u, blocks = %u [BIOS CRITICAL: LBA 0x11=%u is Boot Record Volume Descriptor for SeaBIOS boot]", m_nblock_address, m_nnumber_blocks, 0x11);
 
                 // Check if LBA is within valid range
                 u32 maxLBA = GetLeadoutLBA();
                 if (m_nblock_address >= maxLBA) {
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read (10) - LBA %u out of range (max %u)", m_nblock_address, maxLBA);
+                    MLOGERR("CUSBCDGadget::HandleSCSICommand", "Read (10) - LBA %u out of range (max %u) - THIS WILL CAUSE SeaBIOS ERROR 0003!", m_nblock_address, maxLBA);
                     m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                     m_SenseParams.bSenseKey = 0x05;      // ILLEGAL REQUEST
                     m_SenseParams.bAddlSenseCode = 0x21; // LOGICAL BLOCK ADDRESS OUT OF RANGE
                     m_SenseParams.bAddlSenseCodeQual = 0x00;
                     SendCSW();
                     break;
+                }
+
+                // Log critical BIOS boot sectors
+                if (m_nblock_address == 0x11) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** BIOS BOOT CRITICAL *** Reading Boot Record Volume Descriptor at LBA 0x11 - SeaBIOS needs this to boot or will show error 0003");
+                }
+                if (m_nblock_address >= 0x10 && m_nblock_address <= 0x12) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** BIOS BOOT CRITICAL *** Reading boot-related sector LBA %u (0x10=Primary Volume Descriptor, 0x11=Boot Record Volume Descriptor)", m_nblock_address);
                 }
 
                 // will be updated if read fails on any block
@@ -1027,7 +1141,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 }
                 m_nState = TCDState::DataInRead;  // see Update() function
             } else {
-                MLOGNOTE("handleSCSI Read(10)", "failed, %s", m_CDReady ? "ready" : "not ready");
+                MLOGERR("handleSCSI Read(10)", "CD NOT READY - failed, %s - THIS WILL CAUSE SeaBIOS ERROR 0003!", m_CDReady ? "ready" : "not ready");
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                 m_SenseParams.bSenseKey = 0x02;
                 m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
@@ -1964,6 +2078,7 @@ void CUSBCDGadget::Update() {
             int readCount = 0;
             if (m_CDReady) {
                 offset = m_pDevice->Seek(block_size * m_nblock_address);
+                MLOGNOTE("UpdateRead", "Seeking to LBA %u (offset %llu), block_size=%u", m_nblock_address, offset, block_size);
                 if (offset != (u64)(-1)) {
                     // Cap at max 16 blocks. This is what a READ CD request will required
                     u32 blocks_to_read_in_batch = m_nnumber_blocks;
@@ -1979,13 +2094,14 @@ void CUSBCDGadget::Update() {
                     // Calculate total size of the batch read
                     u32 total_batch_size = blocks_to_read_in_batch * block_size;
 
-                    MLOGDEBUG("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes)", blocks_to_read_in_batch, total_batch_size);
+                    MLOGNOTE("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes) at LBA %u - BIOS critical if LBA >= 0x10", blocks_to_read_in_batch, total_batch_size, m_nblock_address);
                     // Perform the single large read
                     readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
-                    MLOGDEBUG("UpdateRead", "Read %d bytes in batch", readCount);
+                    MLOGNOTE("UpdateRead", "Read completed: requested %lu bytes, got %d bytes", total_batch_size, readCount);
 
                     if (readCount < static_cast<int>(total_batch_size)) {
                         // Handle error: partial read
+                        MLOGERR("UpdateRead", "*** CRITICAL READ FAILURE *** Partial read: requested %lu bytes, got %d bytes at LBA %u - THIS CAUSES SeaBIOS ERROR 0003!", total_batch_size, readCount, m_nblock_address);
                         m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                         m_SenseParams.bSenseKey = 0x04;       // hardware error
                         m_SenseParams.bAddlSenseCode = 0x11;  // UNRECOVERED READ ERROR
@@ -1999,11 +2115,29 @@ void CUSBCDGadget::Update() {
 
                     // Iterate through the *read data* in memory
                     for (u32 i = 0; i < blocks_to_read_in_batch; ++i) {
+                        u32 current_lba = (m_nblock_address - blocks_to_read_in_batch) + i; // Calculate actual LBA for this block
+                        
                         // Calculate the starting point for the current block within the m_FileChunk
                         u8* current_block_start = m_FileChunk + (i * block_size);
 
                         // Copy only the portion after skip_bytes into the destination buffer
                         memcpy(dest_ptr, current_block_start + skip_bytes, transfer_block_size);
+                        
+                        // Log critical BIOS boot data for debugging
+                        if (current_lba == 0x11) {
+                            MLOGNOTE("UpdateRead", "*** BIOS BOOT DATA *** LBA 0x11 (Boot Record Volume Descriptor) first 32 bytes: "
+                                     "%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x "
+                                     "%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x",
+                                     dest_ptr[0], dest_ptr[1], dest_ptr[2], dest_ptr[3], 
+                                     dest_ptr[4], dest_ptr[5], dest_ptr[6], dest_ptr[7],
+                                     dest_ptr[8], dest_ptr[9], dest_ptr[10], dest_ptr[11], 
+                                     dest_ptr[12], dest_ptr[13], dest_ptr[14], dest_ptr[15],
+                                     dest_ptr[16], dest_ptr[17], dest_ptr[18], dest_ptr[19], 
+                                     dest_ptr[20], dest_ptr[21], dest_ptr[22], dest_ptr[23],
+                                     dest_ptr[24], dest_ptr[25], dest_ptr[26], dest_ptr[27], 
+                                     dest_ptr[28], dest_ptr[29], dest_ptr[30], dest_ptr[31]);
+                        }
+                        
                         dest_ptr += transfer_block_size;
                         total_copied += transfer_block_size;
                         // m_nblock_address++; // This should be updated based on the *initial* block address + blocks_to_read_in_batch
@@ -2011,7 +2145,7 @@ void CUSBCDGadget::Update() {
                     // Update m_nblock_address after the batch read
                     m_nblock_address += blocks_to_read_in_batch;
 
-                    MLOGDEBUG("UpdateRead", "Total copied is %lu", total_copied);
+                    MLOGNOTE("UpdateRead", "Batch read successful: copied %lu bytes, updated LBA to %u", total_copied, m_nblock_address);
 
                     // Adjust m_nbyteCount based on how many bytes were copied
                     m_nbyteCount -= total_copied;
@@ -2022,8 +2156,8 @@ void CUSBCDGadget::Update() {
                 }
             }
             if (!m_CDReady || offset == (u64)(-1)) {
-                MLOGERR("UpdateRead", "failed, %s, offset=%llu",
-                        m_CDReady ? "ready" : "not ready", offset);
+                MLOGERR("UpdateRead", "*** CRITICAL FAILURE *** CD read failed: CDReady=%s, offset=%llu at LBA %u - THIS CAUSES SeaBIOS ERROR 0003!",
+                        m_CDReady ? "ready" : "not ready", offset, m_nblock_address);
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_PHASE_ERR;
                 m_SenseParams.bSenseKey = 0x02;           // Not Ready
                 m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY

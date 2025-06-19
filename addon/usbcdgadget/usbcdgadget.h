@@ -744,6 +744,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     // u64 m_nDeviceBlocks=0;
     u32 m_nbyteCount;
     boolean m_CDReady = false;
+    u32 m_SuspendResumeCount = 0;  // Track suspend/resume cycles for BIOS enumeration diagnosis
 
     CUEParser cueParser;
 
