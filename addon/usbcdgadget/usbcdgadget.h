@@ -87,9 +87,9 @@ struct TUSBCDCSW  // 13 bytes
 #define CD_CSW_STATUS_PHASE_ERR 2
 
 struct SenseParameters {
-    u8 bSenseKey = 0;
-    u8 bAddlSenseCode = 0;
-    u8 bAddlSenseCodeQual = 0;
+    u8 bSenseKey = 0x06;       // Unit Attention - matches physical device initial state for BIOS compatibility
+    u8 bAddlSenseCode = 0x29;  // Power On, Reset, Or Bus Device Reset Occurred - matches physical device
+    u8 bAddlSenseCodeQual = 0x00;  // matches physical device
 };
 
 // reply to SCSI Request Sense Command 0x3
@@ -544,7 +544,22 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     TUSBCDCBW m_CBW;
     TUSBCDCSW m_CSW;
 
-    TUSBCDInquiryReply m_InqReply{0x05, 0x80, 0x02, 0x02, 0x1F, 0, 0, 0, {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, {'U', 'S', 'B', 'O', 'D', 'E', ' ', 'C', 'D', 'R', 'O', 'M', ' ', ' ', ' ', ' '}, {'1', '.', '0', ' '}};
+    TUSBCDInquiryReply m_InqReply{
+        0x05,    // Peripheral Device Type: CD-ROM (0x05)
+        0x80,    // RMB: Removable (0x80)
+        0x00,    // Version: No Compliance to any Standard (0x00) - matches physical device
+        0x32,    // Response Data Format: 0x32 (SPC-2/SPC-3/SPC-4 with NormACA and HiSup) - matches physical device
+        0x5B,    // Additional Length: 91 bytes follow (0x5B) - matches physical device
+        0x00,    // SCCS: 0
+        0x00,    // BQUEetc: 0
+        0x00,    // RELADRetc: 0
+        // Vendor ID: 8 bytes, space-padded (not null-terminated) - keeping USBODE branding
+        {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '},
+        // Product ID: 16 bytes, space-padded (not null-terminated) - keeping USBODE branding
+        {'U', 'S', 'B', 'O', 'D', 'E', ' ', 'C', 'D', 'R', 'O', 'M', ' ', ' ', ' ', ' '},
+        // Product Revision: 4 bytes, space-padded (not null-terminated) - updated format
+        {'1', '.', '0', '0'}
+    };
     TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
 
     TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};
@@ -555,30 +570,16 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         htonl(2048)};
 
     TUSBCDRequestSenseReply m_ReqSenseReply = {
-        0x70,  // current error
+        0x70,  // current error (matches physical device)
         0x00,  // reserved
-        0x00,  // Sense Key
-               // 0x00: NO SENSE
-               // 0x01: RECOVERED ERROR
-               // 0x02: NOT READY
-               // 0x03: MEDIUM ERROR
-               // 0x04: HARDWARE ERROR
-               // 0x05: ILLEGAL REQUEST
-               // 0x06: UNIT ATTENTION
-               // 0x07: DATA PROTECT
-               // 0x08: BLANK CHECK
-               // 0x09: VENDOR SPECIFIC
-               // 0x0A: COPY ABORTED
-               // 0x0B: ABORTED COMMAND
-               // 0x0D: VOLUME OVERFLOW
-               // 0x0E: MISCOMPARE
+        0x00,  // Sense Key - dynamically set from m_SenseParams
         {0x0, 0x0,
          0x0, 0x0},  // information
-        0x10,        // additional sense length
+        0x0A,        // additional sense length (10 bytes, matches physical device)
         {0x0, 0x0,
          0x0, 0x0},      // command specific information
-        0x00,            // additional sense code qualifier https://www.t10.org/lists/asc-num.htm
-        0x00,            // additional sense code qualifier https://www.t10.org/lists/asc-num.htm
+        0x00,            // additional sense code - dynamically set from m_SenseParams
+        0x00,            // additional sense code qualifier - dynamically set from m_SenseParams
         0x00,            // field replacement unit code
         0x00,            // sksv
         {0x0, 0x0, 0x0}  // sense key specific

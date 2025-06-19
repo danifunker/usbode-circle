@@ -64,8 +64,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1,  // bNumInterfaces
             1,
             0,
-            0xC0,    // bmAttributes (self-powered)
-            0        // bMaxPower (0mA for self-powered)
+            0x80,    // bmAttributes (bus-powered, like working MSD gadget - BIOS compatibility fix)
+            500 / 2  // bMaxPower (500mA - BIOS expects bus-powered devices)
         },
         {
             sizeof(TUSBInterfaceDescriptor),
@@ -103,8 +103,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1,  // bNumInterfaces
             1,
             0,
-            0xC0,    // bmAttributes (self-powered)
-            0        // bMaxPower (0mA for self-powered)
+            0x80,    // bmAttributes (bus-powered, like working MSD gadget - BIOS compatibility fix)
+            500 / 2  // bMaxPower (500mA - BIOS expects bus-powered devices)
         },
         {
             sizeof(TUSBInterfaceDescriptor),
@@ -148,10 +148,15 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpe
       m_nState(TCDState::Init),
       m_CDReady(false)
 {
-    MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "entered %d", isFullSpeed);
+    MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "*** EARLY BOOT TIMING *** Constructor entered, fullSpeed=%d, device=%p", isFullSpeed, pDevice);
     m_IsFullSpeed = isFullSpeed;
-    if (pDevice)
+    if (pDevice) {
+        MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "*** EARLY BOOT TIMING *** Setting device immediately in constructor");
         SetDevice(pDevice);
+    } else {
+        MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "*** EARLY BOOT TIMING *** No device provided in constructor - will be set later");
+    }
+    MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "*** EARLY BOOT TIMING *** Constructor complete, CD ready=%d", m_CDReady);
 }
 
 CUSBCDGadget::~CUSBCDGadget(void) {
@@ -159,7 +164,8 @@ CUSBCDGadget::~CUSBCDGadget(void) {
 }
 
 const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength) {
-    MLOGNOTE("CUSBCDGadget::GetDescriptor", "entered");
+    MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** BIOS CONTACT *** GetDescriptor called - wValue=0x%04x, wIndex=0x%04x, CDReady=%d", 
+             wValue, wIndex, m_CDReady);
     assert(pLength);
 
     u8 uchDescIndex = wValue & 0xFF;
@@ -319,20 +325,20 @@ void CUSBCDGadget::RemoveEndpoints(void) {
 
 // must set device before usb activation
 void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
-    MLOGNOTE("CUSBCDGadget::SetDevice", "entered");
+    MLOGNOTE("CUSBCDGadget::SetDevice", "*** CRITICAL TIMING *** SetDevice called with dev=%p, current m_pDevice=%p", dev, m_pDevice);
  
     // Are we changing the device?
     if (m_pDevice && m_pDevice != dev) {
-        MLOGNOTE("CUSBCDGadget::SetDevice", "Changing device");
+        MLOGNOTE("CUSBCDGadget::SetDevice", "*** DEVICE CHANGE *** Changing device - setting Unit Attention for BIOS");
 
         delete m_pDevice;
         m_pDevice = nullptr;
 
-        // Tell the host the disc has changed
+        // Tell the host the disc has changed - use same ASC/ASCQ as physical device for BIOS compatibility
         bmCSWStatus = CD_CSW_STATUS_FAIL;
-        m_SenseParams.bSenseKey = 0x06;           // Unit Attention
-        m_SenseParams.bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE
-        m_SenseParams.bAddlSenseCodeQual = 0x00;  // MEDIUM MAY HAVE CHANGED
+        m_SenseParams.bSenseKey = 0x06;           // Unit Attention (matches physical device)
+        m_SenseParams.bAddlSenseCode = 0x29;      // Power On, Reset, Or Bus Device Reset Occurred (matches physical device)
+        m_SenseParams.bAddlSenseCodeQual = 0x00;  // (matches physical device)
     }
 
     m_pDevice = dev;
@@ -345,13 +351,15 @@ void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
     data_block_size = GetBlocksize();
 
     m_CDReady = true;
-    MLOGNOTE("CUSBCDGadget::SetDevice", "*** CD NOW READY FOR BIOS BOOT *** Block size is %d, m_CDReady = %d", block_size, m_CDReady);
+    MLOGNOTE("CUSBCDGadget::SetDevice", "*** CD NOW READY FOR BIOS BOOT *** Block size is %d, m_CDReady = %d, device available for SCSI commands", block_size, m_CDReady);
 
     // Hand the device to the CD Player
     CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
     if (cdplayer) {
         cdplayer->SetDevice(dev);
-        MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
+        MLOGNOTE("CUSBCDGadget::SetDevice", "*** CRITICAL TIMING *** Passed CueBinFileDevice to cd player, device fully ready");
+    } else {
+        MLOGNOTE("CUSBCDGadget::SetDevice", "*** WARNING *** No cd player found - device still ready for BIOS");
     }
 }
 
@@ -597,7 +605,14 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData* pSetupData, u8* pData
 }
 
 void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
-    // MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
+    // Enhanced logging for BIOS debugging - track all endpoint activity
+    MLOGNOTE("OnTransferComplete", "*** ENDPOINT ACTIVITY *** state=%d, dir=%s, len=%d", 
+             m_nState, bIn ? "IN" : "OUT", nLength);
+             
+    // This is critical - any OUT transfer when we're in ReceiveCBW state means BIOS is sending SCSI commands
+    if (!bIn && m_nState == TCDState::ReceiveCBW) {
+        MLOGNOTE("OnTransferComplete", "*** POTENTIAL SCSI COMMAND RECEIVED *** Processing CBW from BIOS");
+    }
     
     // Add safety check for endpoint validity during transfer completion
     if (!m_pEP[EPOut] || !m_pEP[EPIn] || 
@@ -768,17 +783,17 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
 
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate() {
-    MLOGNOTE("CD OnActivate", "state = %i", m_nState);
+    MLOGNOTE("CD OnActivate", "*** DEVICE ACTIVATION STARTED *** state = %i", m_nState);
     
     // Ensure endpoints are ready before trying to use them
     if (!m_pEP[EPOut] || !m_pEP[EPIn]) {
-        MLOGNOTE("CD OnActivate", "endpoints not ready, skipping activation");
+        MLOGERR("CD OnActivate", "*** ACTIVATION FAILED *** endpoints not ready, skipping activation");
         return;
     }
     
     // Additional safety check for endpoint validity
     if (!m_pEP[EPOut]->IsValid() || !m_pEP[EPIn]->IsValid()) {
-        MLOGNOTE("CD OnActivate", "endpoints invalid, skipping activation");
+        MLOGERR("CD OnActivate", "*** ACTIVATION FAILED *** endpoints invalid, skipping activation");
         return;
     }
     
@@ -791,10 +806,13 @@ void CUSBCDGadget::OnActivate() {
     m_CDReady = true;
     m_nState = TCDState::ReceiveCBW;
     
+    MLOGNOTE("CD OnActivate", "*** STARTING CBW RECEIVE *** Endpoint OUT=%p, Buffer=%p, Size=%d", 
+             m_pEP[EPOut], m_OutBuffer, SIZE_CBW);
+    
     // Begin transfer with additional error checking 
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
     
-    MLOGNOTE("CD OnActivate", "completed, ready for commands");
+    MLOGNOTE("CD OnActivate", "*** DEVICE READY FOR BIOS COMMANDS *** State=ReceiveCBW, CDReady=%d, waiting for SCSI commands", m_CDReady);
 }
 
 void CUSBCDGadget::SendCSW() {
@@ -885,7 +903,17 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
 // Critical LBAs: 0x10=Primary Volume Descriptor, 0x11=Boot Record Volume Descriptor
 //
 void CUSBCDGadget::HandleSCSICommand() {
-    MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    static bool bFirstCommand = true;
+    if (bFirstCommand) {
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "🎯 *** BIOS CONTACT ESTABLISHED *** 🎯");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** FIRST SCSI COMMAND RECEIVED FROM BIOS ***");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** This confirms BIOS detection is working! ***");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "");
+        bFirstCommand = false;
+    }
+    
+    MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "*** BIOS COMMAND *** SCSI 0x%02x, CDReady=%d", m_CBW.CBWCB[0], m_CDReady);
     
     // Log full CDB for debugging boot issues
     MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Full CDB: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x", 
@@ -966,8 +994,23 @@ void CUSBCDGadget::HandleSCSICommand() {
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY Response: DevType=0x%02x, RMB=0x%02x, Version=0x%02x, Format=0x%02x, Length=0x%02x", 
                          m_InqReply.bPeriphQualDevType, m_InqReply.bRMB, m_InqReply.bVersion, 
                          m_InqReply.bRespDataFormatEtc, m_InqReply.bAddlLength);
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY Vendor: '%.8s' Product: '%.16s' Revision: '%.4s'", 
-                         m_InqReply.bVendorID, m_InqReply.bProdID, m_InqReply.bProdRev);
+                         
+                // Log vendor/product/revision with explicit length limits to avoid display issues
+                char vendorStr[9] = {0}; // 8 + null terminator
+                char productStr[17] = {0}; // 16 + null terminator  
+                char revisionStr[5] = {0}; // 4 + null terminator
+                memcpy(vendorStr, m_InqReply.bVendorID, 8);
+                memcpy(productStr, m_InqReply.bProdID, 16);
+                memcpy(revisionStr, m_InqReply.bProdRev, 4);
+                
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY Vendor: '%s' Product: '%s' Revision: '%s'", 
+                         vendorStr, productStr, revisionStr);
+                         
+                // Log the raw response bytes for detailed debugging
+                u8* respBytes = (u8*)&m_InqReply;
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY raw response: %02x %02x %02x %02x %02x %02x %02x %02x...", 
+                         respBytes[0], respBytes[1], respBytes[2], respBytes[3], 
+                         respBytes[4], respBytes[5], respBytes[6], respBytes[7]);
 
                 memcpy(&m_InBuffer, &m_InqReply, datalen);
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
@@ -2111,12 +2154,21 @@ void CUSBCDGadget::HandleSCSICommand() {
 // this function is called periodically from task level for IO
 //(IO must not be attempted in functions called from IRQ)
 void CUSBCDGadget::Update() {
-    // Log ALL Update() calls to debug why DataInRead isn't being processed
+    // Enhanced logging for early boot period to catch brief BIOS detection window
     static int update_call_count = 0;
+    static bool bEarlyBootPeriod = true;
     update_call_count++;
     
-    // Log every 1000th call for Init state to avoid spam, but log all non-Init states
-    if (m_nState != TCDState::Init || (update_call_count % 1000) == 0) {
+    // During early boot (first 10000 calls), log every 100 calls instead of 1000 to catch BIOS activity
+    // After that, reduce to every 1000 calls to avoid spam
+    int log_interval = bEarlyBootPeriod ? 100 : 1000;
+    if (update_call_count == 10000) {
+        bEarlyBootPeriod = false;
+        MLOGNOTE("CUSBCDGadget::Update", "*** EARLY BOOT PERIOD ENDED *** switching to reduced logging");
+    }
+    
+    // Log at intervals for Init state, but log all non-Init states immediately
+    if (m_nState != TCDState::Init || (update_call_count % log_interval) == 0) {
         MLOGNOTE("CUSBCDGadget::Update", "call #%d, state=%d (0=Init,1=SentCBW,2=DataIn,3=DataOut,4=SentCSW,5=SendReqSenseReply,6=DataOutWrite,7=DataInRead)", 
                  update_call_count, static_cast<int>(m_nState));
     }
