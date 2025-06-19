@@ -279,6 +279,14 @@ void CUSBCDGadget::AddEndpoints(void) {
         MLOGNOTE("CUSBCDGadget::CreateEndpoints", "*** CD READY STATE RESTORED *** Device available for BIOS boot");
     }
     
+    // CRITICAL FIX: Restore saved state if we were in the middle of a BIOS operation
+    if (m_bHasSavedState) {
+        MLOGNOTE("CUSBCDGadget::CreateEndpoints", "*** RESTORING CRITICAL STATE *** %s operation for LBA %u after suspend/resume", 
+                 (m_nSavedState == TCDState::DataInRead) ? "DataInRead" : "Unknown", m_nblock_address);
+        m_nState = m_nSavedState;
+        m_bHasSavedState = false;
+    }
+    
     MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints created successfully - Speed: %s, suspend/resume cycle #%u", 
         m_IsFullSpeed ? "Full" : "High", m_SuspendResumeCount);
 
@@ -534,6 +542,15 @@ void CUSBCDGadget::OnSuspend(void) {
         m_pEP[EPIn] = nullptr;
     }
     
+    // CRITICAL FIX: Save state if we're in the middle of a BIOS-critical operation
+    if (m_nState == TCDState::DataInRead) {
+        MLOGNOTE("CUSBCDGadget::OnSuspend", "*** SAVING CRITICAL STATE *** DataInRead operation in progress for LBA %u - will restore after resume", m_nblock_address);
+        m_nSavedState = m_nState;
+        m_bHasSavedState = true;
+    } else {
+        m_bHasSavedState = false;
+    }
+    
     // Reset state per framework expectations
     m_nState = TCDState::Init;
     // Note: Don't reset m_CDReady here - let CreateEndpoints handle device state restoration
@@ -594,9 +611,11 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
     {
         switch (m_nState) {
             case TCDState::SentCSW: {
+                MLOGNOTE("OnTransferComplete", "*** CSW SENT SUCCESSFULLY *** - BIOS received command response, now ready for next command");
                 m_nState = TCDState::ReceiveCBW;
                 m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
                                             m_OutBuffer, SIZE_CBW);
+                MLOGNOTE("OnTransferComplete", "*** WAITING FOR NEXT BIOS COMMAND *** - if no command comes, BIOS may have enumeration issue");
                 break;
             }
             case TCDState::DataIn: {
@@ -646,6 +665,15 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                     m_pEP[EPIn]->StallRequest(true);
                     break;
                 }
+                
+                // ENHANCED LOGGING: Track CBW reception and command sequence for BIOS debugging
+                MLOGNOTE("ReceiveCBW", "*** NEW SCSI COMMAND *** Tag=0x%08x, Length=%u, LUN=%u, CBLength=%u, Command=0x%02x", 
+                         m_CBW.dCBWTag, m_CBW.dCBWDataTransferLength, m_CBW.bCBWLUN, m_CBW.bCBWCBLength, m_CBW.CBWCB[0]);
+                
+                static u32 commandCount = 0;
+                commandCount++;
+                MLOGNOTE("ReceiveCBW", "BIOS BOOT SEQUENCE: Command #%u - Previous was likely successful if we got here", commandCount);
+                
                 m_CSW.dCSWTag = m_CBW.dCBWTag;
                 m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength; // Initialize to full expected length
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_OK; // Initialize to success, commands will override if needed
@@ -934,6 +962,13 @@ void CUSBCDGadget::HandleSCSICommand() {
 		if (allocationLength < datalen)
 		    datalen = allocationLength;
 
+                // Log the INQUIRY response data for BIOS debugging
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY Response: DevType=0x%02x, RMB=0x%02x, Version=0x%02x, Format=0x%02x, Length=0x%02x", 
+                         m_InqReply.bPeriphQualDevType, m_InqReply.bRMB, m_InqReply.bVersion, 
+                         m_InqReply.bRespDataFormatEtc, m_InqReply.bAddlLength);
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY Vendor: '%.8s' Product: '%.16s' Revision: '%.4s'", 
+                         m_InqReply.bVendorID, m_InqReply.bProdID, m_InqReply.bProdRev);
+
                 memcpy(&m_InBuffer, &m_InqReply, datalen);
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
                 m_nState = TCDState::DataIn;
@@ -942,6 +977,10 @@ void CUSBCDGadget::HandleSCSICommand() {
                 // Set CSW data residue correctly
                 m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > datalen ? 
                                        m_CBW.dCBWDataTransferLength - datalen : 0;
+                                       
+                // CRITICAL: Log successful INQUIRY completion for BIOS debugging
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** INQUIRY SUCCESS *** sent %d bytes, CSW status=0x%02x, BIOS should now send TEST UNIT READY", 
+                         datalen, m_CSW.bmCSWStatus);
             } else {  // EVPD bit is 1: VPD Inquiry
                 // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (VPD Inquiry)");
                 u8 vpdPageCode = m_CBW.CBWCB[2];
@@ -1140,6 +1179,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
                 }
                 m_nState = TCDState::DataInRead;  // see Update() function
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read (10) setup complete - state set to DataInRead, waiting for Update() to process LBA %u", m_nblock_address);
             } else {
                 MLOGERR("handleSCSI Read(10)", "CD NOT READY - failed, %s - THIS WILL CAUSE SeaBIOS ERROR 0003!", m_CDReady ? "ready" : "not ready");
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
@@ -2071,9 +2111,19 @@ void CUSBCDGadget::HandleSCSICommand() {
 // this function is called periodically from task level for IO
 //(IO must not be attempted in functions called from IRQ)
 void CUSBCDGadget::Update() {
-    // MLOGNOTE ("CUSBCDGadget::Update", "entered");
+    // Log ALL Update() calls to debug why DataInRead isn't being processed
+    static int update_call_count = 0;
+    update_call_count++;
+    
+    // Log every 1000th call for Init state to avoid spam, but log all non-Init states
+    if (m_nState != TCDState::Init || (update_call_count % 1000) == 0) {
+        MLOGNOTE("CUSBCDGadget::Update", "call #%d, state=%d (0=Init,1=SentCBW,2=DataIn,3=DataOut,4=SentCSW,5=SendReqSenseReply,6=DataOutWrite,7=DataInRead)", 
+                 update_call_count, static_cast<int>(m_nState));
+    }
+    
     switch (m_nState) {
         case TCDState::DataInRead: {
+            MLOGNOTE("UpdateRead", "*** PROCESSING LBA %u READ *** - this is where BIOS boot data transfer happens", m_nblock_address);
             u64 offset = 0;
             int readCount = 0;
             if (m_CDReady) {

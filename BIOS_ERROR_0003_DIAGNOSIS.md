@@ -1,7 +1,38 @@
-# SeaBIOS Error 0003 Diagnosis and Enhanced Logging
+# SeaBIOS Error 0003 Diagnosis and Critical Fix
 
 ## Problem
 The ITX Llama BIOS shows the error: **"Could not read from CDROM (code 0003)"** when trying to boot from the USBODE USB CD-ROM gadget.
+
+## 🎯 **ROOT CAUSE DISCOVERED AND FIXED**
+
+### **The Critical Bug**
+The USB CD gadget was correctly receiving the BIOS READ (10) command for LBA 0x11 (Boot Record Volume Descriptor) and setting the state to `DataInRead`, but **immediate suspend/resume cycles were resetting the state to `Init` before the `Update()` function could process the data transfer.**
+
+**Sequence of Failure:**
+1. BIOS sends READ (10) for LBA 0x11 → ✅ **Received correctly**
+2. USB CD gadget sets `m_nState = DataInRead` → ✅ **Set correctly** 
+3. **BUG**: `OnSuspend()` immediately resets `m_nState = Init` → ❌ **State lost**
+4. `Update()` function runs with `Init` state → ❌ **No data transfer**
+5. BIOS times out waiting for data → ❌ **SeaBIOS error 0003**
+
+### **The Fix**
+Implemented **state preservation across suspend/resume cycles**:
+
+1. **Save critical state in OnSuspend()**:
+   ```cpp
+   if (m_nState == TCDState::DataInRead) {
+       m_nSavedState = m_nState;
+       m_bHasSavedState = true;
+   }
+   ```
+
+2. **Restore critical state in CreateEndpoints()**:
+   ```cpp
+   if (m_bHasSavedState) {
+       m_nState = m_nSavedState;
+       m_bHasSavedState = false;
+   }
+   ```
 
 ## Root Cause Analysis
 

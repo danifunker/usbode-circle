@@ -536,6 +536,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     };
 
     TCDState m_nState = Init;
+    
+    // State preservation for suspend/resume cycles during BIOS boot
+    TCDState m_nSavedState = Init;  // Save state during suspend to restore on resume
+    bool m_bHasSavedState = false;  // Track if we have a valid saved state
 
     TUSBCDCBW m_CBW;
     TUSBCDCSW m_CSW;
