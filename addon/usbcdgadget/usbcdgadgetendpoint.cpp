@@ -28,7 +28,7 @@
 #include <circle/util.h>
 #include <stddef.h>
 
-#define MLOGNOTE(From,...)		//CLogger::Get ()->Write (From, LogNotice, __VA_ARGS__)
+#define MLOGNOTE(From,...)		CLogger::Get ()->Write (From, LogNotice, __VA_ARGS__)
 
 CUSBCDGadgetEndpoint::CUSBCDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc,
 					      CUSBCDGadget *pGadget)
@@ -38,9 +38,8 @@ CUSBCDGadgetEndpoint::CUSBCDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc,
 	assert (pDesc != nullptr);
 	assert (pGadget != nullptr);
 	
-	MLOGNOTE("CDEndpoint", "Endpoint created - Direction: %s, MaxPacket: %u", 
-		GetDirection() == DirectionOut ? "OUT" : "IN", 
-		GetMaxPacketSize());
+	MLOGNOTE("CDEndpoint", "Endpoint created - Direction: %s", 
+		GetDirection() == DirectionOut ? "OUT" : "IN");
 }
 
 CUSBCDGadgetEndpoint::~CUSBCDGadgetEndpoint (void)
@@ -56,6 +55,9 @@ CUSBCDGadgetEndpoint::~CUSBCDGadgetEndpoint (void)
 void CUSBCDGadgetEndpoint::OnActivate (void)
 {
 	assert (m_pGadget != nullptr);
+	
+	MLOGNOTE("CDEndpoint", "*** FRAMEWORK ACTIVATION *** Endpoint %s activated by framework", 
+		GetDirection() == DirectionOut ? "OUT" : "IN");
 	
 	// Only trigger activation on OUT endpoint to avoid duplicate activations
 	// This follows the pattern where the host initiates communication on the OUT endpoint
@@ -145,9 +147,11 @@ void CUSBCDGadgetEndpoint::BeginTransfer (TCDTransferMode Mode, void *pBuffer, s
 	assert (m_pGadget != nullptr);
 	assert (pBuffer != nullptr || nLength == 0);
 	
+	MLOGNOTE("CDEndpoint", "*** HANG CHECK *** BeginTransfer entered - Mode: %d, Length: %u", (int)Mode, nLength);
+	
 	// Additional safety check before starting transfer
 	if (!IsValid()) {
-		MLOGNOTE("CDEndpoint", "cannot begin transfer - endpoint invalid");
+		MLOGNOTE("CDEndpoint", "*** ERROR *** cannot begin transfer - endpoint invalid");
 		return;
 	}
 	
@@ -155,22 +159,29 @@ void CUSBCDGadgetEndpoint::BeginTransfer (TCDTransferMode Mode, void *pBuffer, s
 	{
 	case TCDTransferMode::TransferCBWOut:
 	case TCDTransferMode::TransferDataOut:
-		MLOGNOTE("CDEndpoint","Begin Transfer OUT - Mode: %s, Length: %u",
+		MLOGNOTE("CDEndpoint","*** HANG CHECK *** Begin Transfer OUT - Mode: %s, Length: %u",
 			Mode == TCDTransferMode::TransferCBWOut ? "CBW" : "Data", nLength);
+		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** About to call CDWUSBGadgetEndpoint::BeginTransfer for OUT");
 		CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode::TransferDataOut, pBuffer, nLength);
+		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** CDWUSBGadgetEndpoint::BeginTransfer OUT completed");
 		break;
 		
 	case TCDTransferMode::TransferDataIn:
 	case TCDTransferMode::TransferCSWIn:
-		MLOGNOTE("CDEndpoint","Begin Transfer IN - Mode: %s, Length: %u",
+		MLOGNOTE("CDEndpoint","*** HANG CHECK *** Begin Transfer IN - Mode: %s, Length: %u",
 			Mode == TCDTransferMode::TransferCSWIn ? "CSW" : "Data", nLength);
+		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** About to call CDWUSBGadgetEndpoint::BeginTransfer for IN");
 		CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode::TransferDataIn, pBuffer, nLength);
+		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** CDWUSBGadgetEndpoint::BeginTransfer IN completed");
 		break;
 		
 	default:
+		MLOGNOTE("CDEndpoint", "*** ERROR *** Invalid transfer mode: %d", (int)Mode);
 		assert(0); // Invalid transfer mode
 		break;
 	}
+	
+	MLOGNOTE("CDEndpoint", "*** HANG CHECK *** BeginTransfer completed successfully");
 }
 
 void CUSBCDGadgetEndpoint::StallRequest(boolean bIn)
