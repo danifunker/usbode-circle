@@ -50,8 +50,8 @@ const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
         // 0x0d01,	// CDROM
         USB_GADGET_VENDOR_ID,
         USB_GADGET_DEVICE_ID_CD,
-        0x000,    // bcdDevice
-        1, 2, 0,  // strings
+        0x0100,   // bcdDevice (v1.0.0, matches Linux gadget)
+        1, 2, 3,  // strings (manufacturer, product, serial)
         1         // num configurations
 };
 
@@ -64,8 +64,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1,  // bNumInterfaces
             1,
             0,
-            0x80,    // bmAttributes (bus-powered)
-            500 / 2  // bMaxPower (500mA)
+            0xC0,    // bmAttributes (self-powered)
+            0        // bMaxPower (0mA for self-powered)
         },
         {
             sizeof(TUSBInterfaceDescriptor),
@@ -103,8 +103,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1,  // bNumInterfaces
             1,
             0,
-            0x80,    // bmAttributes (bus-powered)
-            500 / 2  // bMaxPower (500mA)
+            0xC0,    // bmAttributes (self-powered)
+            0        // bMaxPower (0mA for self-powered)
         },
         {
             sizeof(TUSBInterfaceDescriptor),
@@ -137,7 +137,9 @@ const char* const CUSBCDGadget::s_StringDescriptor[] =
     {
         "\x04\x03\x09\x04",  // Language ID
         "USBODE",
-        "USB Optical Disk Emulator"};
+        "USB Optical Disk Emulator",
+        "1111111111" // Serial number (matches Linux gadget)
+};
 
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpeed, CCueBinFileDevice* pDevice)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
@@ -196,6 +198,10 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
 
 void CUSBCDGadget::AddEndpoints(void) {
     MLOGNOTE("CUSBCDGadget::AddEndpoints", "entered");
+    
+    // Clean up any existing endpoints first to prevent assertion failures
+    RemoveEndpoints();
+    
     assert(!m_pEP[EPOut]);
     if (m_IsFullSpeed)
         m_pEP[EPOut] = new CUSBCDGadgetEndpoint(
@@ -223,6 +229,22 @@ void CUSBCDGadget::AddEndpoints(void) {
     assert(m_pEP[EPIn]);
 
     m_nState = TCDState::Init;
+}
+
+void CUSBCDGadget::RemoveEndpoints(void) {
+    MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "entered");
+    
+    if (m_pEP[EPOut]) {
+        delete m_pEP[EPOut];
+        m_pEP[EPOut] = nullptr;
+    }
+    
+    if (m_pEP[EPIn]) {
+        delete m_pEP[EPIn];
+        m_pEP[EPIn] = nullptr;
+    }
+    
+    MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "endpoints cleaned up");
 }
 
 // must set device before usb activation
@@ -433,17 +455,15 @@ void CUSBCDGadget::CreateDevice(void) {
 }
 
 void CUSBCDGadget::OnSuspend(void) {
-    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered - maintaining device readiness");
+    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered - cleaning up endpoints");
     
-    // Clean up endpoints but don't reset device readiness
-    delete m_pEP[EPOut];
-    m_pEP[EPOut] = nullptr;
-
-    delete m_pEP[EPIn];
-    m_pEP[EPIn] = nullptr;
-
-    // Don't reset to Init - maintain readiness for quick resume
-    // m_nState = TCDState::Init;  // Commented out to maintain state
+    // Properly clean up endpoints during suspend to prevent assertion failures
+    // on subsequent AddEndpoints calls during resume/enumeration
+    RemoveEndpoints();
+    
+    // Reset state to allow proper re-initialization
+    m_nState = TCDState::Init;
+    m_CDReady = false;
 }
 
 const void* CUSBCDGadget::ToStringDescriptor(const char* pString, size_t* pLength) {
@@ -630,9 +650,6 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate() {
     MLOGNOTE("CD OnActivate", "state = %i", m_nState);
-    
-    // Add a delay to ensure USB enumeration stability - critical for BIOS compatibility
-    CScheduler::Get()->MsSleep(100);
     
     m_CDReady = true;
     m_nState = TCDState::ReceiveCBW;

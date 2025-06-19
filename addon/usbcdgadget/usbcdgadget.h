@@ -459,6 +459,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
    private:
     void AddEndpoints(void) override;
+    void RemoveEndpoints(void);
 
     void CreateDevice(void) override;
 
