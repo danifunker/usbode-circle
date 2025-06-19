@@ -39,9 +39,15 @@ public:
 	void OnActivate (void) override;
 
 	void OnTransferComplete (boolean bIn, size_t nLength) override;
+
+	// Called on USB reset for each EP - CRITICAL for BIOS compatibility
+	void OnUSBReset (void) override;
+
+	// Called when device connection has been suspended/removed - CRITICAL for rapid suspend/resume handling
+	void OnSuspend (void) override;
 	
 	// Enhanced state queries for debugging and robustness
-	boolean IsValid (void) const { return m_pGadget != nullptr; }
+	boolean IsValid (void) const { return m_pGadget != nullptr && !m_bSuspended; }
 	CUSBCDGadget *GetGadget (void) const { return m_pGadget; }
 
 private:
@@ -59,8 +65,14 @@ private:
 
 	void StallRequest(boolean bIn);
 
+	// BIOS compatibility recovery method
+	void RecoverFromSuspend(void);
+
 private:
 	CUSBCDGadget *m_pGadget;
+	boolean m_bSuspended;
+	unsigned m_nSuspendCount;
+	unsigned m_nResetCount;
 };
 
 #endif

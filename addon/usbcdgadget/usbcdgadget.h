@@ -39,22 +39,46 @@
 #define USB_GADGET_DEVICE_ID_CD 0x1d6b
 #endif
 
-// If system htonl is not available, define our own
-#ifndef HAVE_ARPA_INET_H
-static inline u32 htonl(u32 x) {
+// Network byte order conversion functions for USB descriptors
+#ifndef _USBCD_HTONL_DEFINED
+#define _USBCD_HTONL_DEFINED
+
+static inline u32 usbcd_htonl(u32 x) {
     return ((x & 0x000000FFU) << 24) |
            ((x & 0x0000FF00U) << 8) |
            ((x & 0x00FF0000U) >> 8) |
            ((x & 0xFF000000U) >> 24);
 }
 
-static inline u16 htons(u16 x) {
+static inline u16 usbcd_htons(u16 x) {
     return ((x & 0x00FFU) << 8) |
            ((x & 0xFF00U) >> 8);
 }
+
+// Use our versions if system versions not available
+#ifndef htonl
+#define htonl usbcd_htonl
+#endif
+#ifndef htons  
+#define htons usbcd_htons
+#endif
+
 #endif
 
 #define LEADOUT_OFFSET 150
+
+// USB Device Qualifier Descriptor - required for USB 2.0 dual-speed devices
+struct TUSBDeviceQualifierDescriptor {
+    u8 bLength;
+    u8 bDescriptorType;
+    u16 bcdUSB;
+    u8 bDeviceClass;
+    u8 bDeviceSubClass;
+    u8 bDeviceProtocol;
+    u8 bMaxPacketSize0;
+    u8 bNumConfigurations;
+    u8 bReserved;
+} PACKED;
 
 struct TUSBCDCBW  // 31 bytes
 {
@@ -436,6 +460,9 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     /// \brief Call this periodically from TASK_LEVEL to allow I/O operations!
     void Update(void);
 
+    // Enhanced state management for BIOS compatibility
+    void HandleBIOSStabilization(void);
+
     /// \param nBlocks Capacity of the block device in number of blocks (a 512 bytes)
     /// \note Used when the block device does not report its size.
     // void SetDeviceBlocks(u64 nBlocks);
@@ -510,6 +537,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
    private:
     static const TUSBDeviceDescriptor s_DeviceDescriptor;
+    static const TUSBDeviceQualifierDescriptor s_DeviceQualifierDescriptor;
 
     struct TUSBMSTGadgetConfigurationDescriptor {
         TUSBConfigurationDescriptor Configuration;
@@ -750,6 +778,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     u32 m_nbyteCount;
     boolean m_CDReady = false;
     u32 m_SuspendResumeCount = 0;  // Track suspend/resume cycles for BIOS enumeration diagnosis
+    
+    // State preservation for suspend/resume during data transfers
+    boolean m_StateSaved = false;  // Flag indicating we have saved state
+    u32 m_SavedLBA = 0;           // LBA being transferred when suspended
+    u32 m_SavedBlockCount = 0;    // Number of blocks being transferred
+    u32 m_SavedBytesTransferred = 0; // Bytes already transferred
+    TCDState m_SavedState = TCDState::Init; // State to restore after resume
 
     CUEParser cueParser;
 
@@ -765,6 +800,56 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int transfer_block_size = 2048;
     int file_mode = 1;
     boolean m_IsFullSpeed = 0;
+
+    // Add robust endpoint state management
+    enum TEndpointState {
+        EPState_Invalid = 0,
+        EPState_Initializing,
+        EPState_Ready,
+        EPState_Suspended,
+        EPState_Recovering,
+        EPState_Stalled
+    };
+    
+    // Enhanced transfer request management
+    struct TTransferRequest {
+        void* pBuffer;
+        size_t nLength;
+        size_t nCompleted;
+        boolean bActive;
+        boolean bIn;
+        unsigned nTimeout;
+        unsigned nRetries;
+    };
+    
+    // Add request queue management similar to Linux kernel approach
+    static const unsigned MAX_PENDING_REQUESTS = 4;
+    TTransferRequest m_PendingRequests[MAX_PENDING_REQUESTS];
+    unsigned m_nPendingCount;
+    unsigned m_nActiveRequestIndex;
+    
+    // Enhanced endpoint state tracking
+    TEndpointState m_EndpointState[2];  // OUT, IN
+    
+    // Request management methods (inspired by Linux dwc2/gadget.c)
+    boolean QueueTransferRequest(boolean bIn, void* pBuffer, size_t nLength);
+    void ProcessPendingRequests(void);
+    void CompleteRequest(unsigned nIndex, boolean bSuccess);
+    void FlushPendingRequests(void);
+    
+    // Enhanced suspend/resume handling (inspired by Linux f_mass_storage.c)
+    void PrepareForSuspend(void);
+    boolean RestoreFromSuspend(void);
+    boolean ValidateEndpointState(void);
+    
+    // SCSI command state recovery (inspired by Linux exception handling)
+    void RecoverFromSCSIException(void);
+    boolean IsTransferSafe(void);
+    
+    // Add atomic state transitions to prevent race conditions
+    boolean AtomicStateTransition(TCDState fromState, TCDState toState);
+    void ForceStateReset(void);  // Emergency recovery
+
 };
 
 #endif

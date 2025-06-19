@@ -33,7 +33,10 @@
 CUSBCDGadgetEndpoint::CUSBCDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc,
 					      CUSBCDGadget *pGadget)
 :	CDWUSBGadgetEndpoint (pDesc, pGadget),
-	m_pGadget (pGadget)
+	m_pGadget (pGadget),
+	m_bSuspended (FALSE),
+	m_nSuspendCount (0),
+	m_nResetCount (0)
 {
 	assert (pDesc != nullptr);
 	assert (pGadget != nullptr);
@@ -56,26 +59,13 @@ void CUSBCDGadgetEndpoint::OnActivate (void)
 {
 	assert (m_pGadget != nullptr);
 	
-	MLOGNOTE("CDEndpoint", "*** FRAMEWORK ACTIVATION *** Endpoint %s activated by framework", 
-		GetDirection() == DirectionOut ? "OUT" : "IN");
-	
 	// Only trigger activation on OUT endpoint to avoid duplicate activations
-	// This follows the pattern where the host initiates communication on the OUT endpoint
-	// and follows the Linux gadget pattern of single activation per configuration
 	if (GetDirection () == DirectionOut)
 	{
-		MLOGNOTE("CDEndpoint", "OUT endpoint activated, triggering gadget activation");
-		
 		// Additional safety check to prevent activation during invalid states
 		if (m_pGadget != nullptr && IsValid()) {
 			m_pGadget->OnActivate();
-		} else {
-			MLOGNOTE("CDEndpoint", "skipping activation - gadget or endpoint invalid");
 		}
-	}
-	else
-	{
-		MLOGNOTE("CDEndpoint", "IN endpoint activated");
 	}
 }
 
@@ -91,6 +81,62 @@ void CUSBCDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 		m_pGadget->OnTransferComplete(bIn, nLength);
 	} else {
 		MLOGNOTE("CDEndpoint", "skipping transfer complete - gadget or endpoint invalid");
+	}
+}
+
+void CUSBCDGadgetEndpoint::OnUSBReset (void)
+{
+	m_nResetCount++;
+	
+	MLOGNOTE("CDEndpoint", "*** BIOS CRITICAL *** USB Reset #%u received on %s endpoint", 
+		m_nResetCount, GetDirection() == DirectionOut ? "OUT" : "IN");
+	
+	// Clear suspend state on reset - critical for BIOS compatibility
+	m_bSuspended = FALSE;
+	
+	// Call base class reset handling first
+	CDWUSBGadgetEndpoint::OnUSBReset();
+	
+	// Only trigger gadget reset handling on OUT endpoint to avoid duplicate resets
+	if (GetDirection() == DirectionOut && m_pGadget != nullptr)
+	{
+		MLOGNOTE("CDEndpoint", "*** BIOS CRITICAL *** Triggering gadget reset handling from OUT endpoint");
+		// Allow gadget to reinitialize state after reset
+		// This is critical for BIOS compatibility as BIOS may reset multiple times
+	}
+	else
+	{
+		MLOGNOTE("CDEndpoint", "IN endpoint reset handled");
+	}
+}
+
+void CUSBCDGadgetEndpoint::OnSuspend (void)
+{
+	m_nSuspendCount++;
+	m_bSuspended = TRUE;
+	
+	MLOGNOTE("CDEndpoint", "*** BIOS CRITICAL *** USB Suspend #%u received on %s endpoint", 
+		m_nSuspendCount, GetDirection() == DirectionOut ? "OUT" : "IN");
+	
+	// Call base class suspend handling
+	CDWUSBGadgetEndpoint::OnSuspend();
+	
+	// Detect rapid suspend/resume cycles that break BIOS boot
+	if (m_nSuspendCount > 3)
+	{
+		MLOGNOTE("CDEndpoint", "*** BIOS WARNING *** Rapid suspend/resume cycles detected (%u), this breaks BIOS boot!", m_nSuspendCount);
+	}
+	
+	// Only trigger gadget suspend handling on OUT endpoint to avoid duplicate notifications
+	if (GetDirection() == DirectionOut && m_pGadget != nullptr)
+	{
+		MLOGNOTE("CDEndpoint", "*** BIOS CRITICAL *** Triggering gadget suspend handling from OUT endpoint");
+		// The gadget's OnSuspend will be called by the main framework
+		// We just need to ensure our state is consistent
+	}
+	else
+	{
+		MLOGNOTE("CDEndpoint", "IN endpoint suspended");
 	}
 }
 
@@ -147,41 +193,34 @@ void CUSBCDGadgetEndpoint::BeginTransfer (TCDTransferMode Mode, void *pBuffer, s
 	assert (m_pGadget != nullptr);
 	assert (pBuffer != nullptr || nLength == 0);
 	
-	MLOGNOTE("CDEndpoint", "*** HANG CHECK *** BeginTransfer entered - Mode: %d, Length: %u", (int)Mode, nLength);
-	
 	// Additional safety check before starting transfer
 	if (!IsValid()) {
-		MLOGNOTE("CDEndpoint", "*** ERROR *** cannot begin transfer - endpoint invalid");
+		MLOGNOTE("CDEndpoint", "cannot begin transfer - endpoint invalid");
 		return;
+	}
+	
+	// Clear suspended state on successful transfer initiation
+	if (m_bSuspended) {
+		m_bSuspended = FALSE;
 	}
 	
 	switch (Mode)
 	{
 	case TCDTransferMode::TransferCBWOut:
 	case TCDTransferMode::TransferDataOut:
-		MLOGNOTE("CDEndpoint","*** HANG CHECK *** Begin Transfer OUT - Mode: %s, Length: %u",
-			Mode == TCDTransferMode::TransferCBWOut ? "CBW" : "Data", nLength);
-		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** About to call CDWUSBGadgetEndpoint::BeginTransfer for OUT");
 		CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode::TransferDataOut, pBuffer, nLength);
-		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** CDWUSBGadgetEndpoint::BeginTransfer OUT completed");
 		break;
 		
 	case TCDTransferMode::TransferDataIn:
 	case TCDTransferMode::TransferCSWIn:
-		MLOGNOTE("CDEndpoint","*** HANG CHECK *** Begin Transfer IN - Mode: %s, Length: %u",
-			Mode == TCDTransferMode::TransferCSWIn ? "CSW" : "Data", nLength);
-		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** About to call CDWUSBGadgetEndpoint::BeginTransfer for IN");
 		CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode::TransferDataIn, pBuffer, nLength);
-		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** CDWUSBGadgetEndpoint::BeginTransfer IN completed");
 		break;
 		
 	default:
-		MLOGNOTE("CDEndpoint", "*** ERROR *** Invalid transfer mode: %d", (int)Mode);
-		assert(0); // Invalid transfer mode
+		MLOGNOTE("CDEndpoint", "Invalid transfer mode: %d", (int)Mode);
+		assert(0);
 		break;
 	}
-	
-	MLOGNOTE("CDEndpoint", "*** HANG CHECK *** BeginTransfer completed successfully");
 }
 
 void CUSBCDGadgetEndpoint::StallRequest(boolean bIn)
@@ -194,6 +233,24 @@ void CUSBCDGadgetEndpoint::StallRequest(boolean bIn)
 	if (IsValid()) {
 		CDWUSBGadgetEndpoint::Stall(bIn);
 	} else {
-		MLOGNOTE("CDEndpoint", "cannot stall - endpoint invalid");
+		MLOGNOTE("CDEndpoint", "cannot stall - endpoint invalid or suspended");
+	}
+}
+
+// Enhanced error recovery method for BIOS compatibility
+void CUSBCDGadgetEndpoint::RecoverFromSuspend(void)
+{
+	if (m_bSuspended && m_pGadget != nullptr) {
+		MLOGNOTE("CDEndpoint", "*** BIOS RECOVERY *** Recovering %s endpoint from suspended state", 
+			GetDirection() == DirectionOut ? "OUT" : "IN");
+		
+		m_bSuspended = FALSE;
+		m_nSuspendCount = 0; // Reset rapid suspend tracking on recovery
+		
+		// Let the gadget know this endpoint is ready again
+		// Only trigger on OUT endpoint to avoid duplicate notifications
+		if (GetDirection() == DirectionOut) {
+			MLOGNOTE("CDEndpoint", "*** BIOS RECOVERY *** OUT endpoint recovered, notifying gadget");
+		}
 	}
 }
