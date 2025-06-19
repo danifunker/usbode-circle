@@ -709,6 +709,13 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
 //
 void CUSBCDGadget::HandleSCSICommand() {
     MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    
+    // Log full CDB for debugging boot issues
+    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Full CDB: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x", 
+             m_CBW.CBWCB[0], m_CBW.CBWCB[1], m_CBW.CBWCB[2], m_CBW.CBWCB[3], 
+             m_CBW.CBWCB[4], m_CBW.CBWCB[5], m_CBW.CBWCB[6], m_CBW.CBWCB[7],
+             m_CBW.CBWCB[8], m_CBW.CBWCB[9], m_CBW.CBWCB[10], m_CBW.CBWCB[11]);
+             
     switch (m_CBW.CBWCB[0]) {
         case 0x0:  // Test unit ready
         {
@@ -914,7 +921,9 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x25:  // Read Capacity (10))
         {
-            m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);  // this value is the Start address of last recorded lead-out minus 1
+            u32 lastLBA = GetLeadoutLBA() - 1;
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Capacity (10) - Last LBA = %u, blocks = %u", lastLBA, lastLBA + 1);
+            m_ReadCapReply.nLastBlockAddr = htonl(lastLBA);  // this value is the Start address of last recorded lead-out minus 1
             memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
             m_nnumber_blocks = 0;  // nothing more after this send
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
@@ -927,15 +936,28 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x28:  // Read (10)
         {
             if (m_CDReady) {
-                // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Read (10)");
-                // will be updated if read fails on any block
-                m_CSW.bmCSWStatus = bmCSWStatus;
-
                 // Where to start reading (LBA)
                 m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 
                 // Number of blocks to read (LBA)
                 m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read (10) - LBA = %u, blocks = %u", m_nblock_address, m_nnumber_blocks);
+
+                // Check if LBA is within valid range
+                u32 maxLBA = GetLeadoutLBA();
+                if (m_nblock_address >= maxLBA) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read (10) - LBA %u out of range (max %u)", m_nblock_address, maxLBA);
+                    m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+                    m_SenseParams.bSenseKey = 0x05;      // ILLEGAL REQUEST
+                    m_SenseParams.bAddlSenseCode = 0x21; // LOGICAL BLOCK ADDRESS OUT OF RANGE
+                    m_SenseParams.bAddlSenseCodeQual = 0x00;
+                    SendCSW();
+                    break;
+                }
+
+                // will be updated if read fails on any block
+                m_CSW.bmCSWStatus = bmCSWStatus;
 
                 // Transfer Block Size is the size of data to return to host
                 // Block Size and Skip Bytes is worked out from cue sheet

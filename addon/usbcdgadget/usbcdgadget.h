@@ -539,7 +539,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     TUSBCDCBW m_CBW;
     TUSBCDCSW m_CSW;
 
-    TUSBCDInquiryReply m_InqReply{0x05, 0x80, 0x00, 0x01, 0x1F, 0, 0, 0, {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, {'U', 'S', 'B', 'O', 'D', 'E', ' ', 'C', 'D', 'R', 'O', 'M', ' ', ' ', ' ', ' '}, {'0', '0', '0', '1'}};
+    TUSBCDInquiryReply m_InqReply{0x05, 0x80, 0x02, 0x02, 0x1F, 0, 0, 0, {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, {'U', 'S', 'B', 'O', 'D', 'E', ' ', 'C', 'D', 'R', 'O', 'M', ' ', ' ', ' ', ' '}, {'1', '.', '0', ' '}};
     TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
 
     TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};
