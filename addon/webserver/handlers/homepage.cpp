@@ -49,7 +49,7 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
 
             std::string full_name(it->name);
 
-            LOGDBG("Read directory index %s", full_name.c_str());
+            //LOGDBG("Read directory index %s", full_name.c_str());
 
             // Define the display name
             size_t dot_pos = full_name.rfind('.');
