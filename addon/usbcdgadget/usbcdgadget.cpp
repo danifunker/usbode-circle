@@ -637,143 +637,32 @@ void CUSBCDGadget::CreateDevice(void) {
 void CUSBCDGadget::OnSuspend(void) {
     m_SuspendResumeCount++;
     
-    // Track suspend timing to detect excessive suspend/resume cycles
-    static u32 last_suspend_time = 0;
-    static u32 rapid_suspend_count = 0;
+    // *** FAST SUSPEND FOR BIOS COMPATIBILITY ***
+    // Minimize suspend processing to make it as fast and transparent as possible
     u32 current_time = CTimer::GetClockTicks();
     
-    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered - framework-driven cleanup, state=%d, CD ready=%d, suspend/resume cycle #%u", m_nState, m_CDReady, m_SuspendResumeCount);
-    
-    // CRITICAL BIOS PROTECTION: Detect if BIOS is actively booting
-    boolean bios_boot_active = false;
-    if (m_LastSCSICommandTime > 0) {
-        u32 time_since_scsi = current_time - m_LastSCSICommandTime;
-        // AGGRESSIVE PROTECTION: If SCSI command within last 60 seconds, BIOS might still be booting
-        if (time_since_scsi < (1000000 * 60)) {
-            bios_boot_active = true;
-            MLOGERR("CUSBCDGadget::OnSuspend", "*** CRITICAL: BIOS BOOT ACTIVE *** SCSI command %u seconds ago - suspend may break boot sequence!", time_since_scsi / 1000000);
-            
-            // ENHANCED BIOS PROTECTION: Provide different protection levels based on timing
-            if (time_since_scsi < (1000000 * 10)) { // If SCSI command within last 10 seconds
-                MLOGERR("CUSBCDGadget::OnSuspend", "*** EMERGENCY BIOS PROTECTION *** SCSI command only %u seconds ago - implementing enhanced protection!", time_since_scsi / 1000000);
-                
-                // Mark that we're actively protecting BIOS boot
-                m_BioseBootInterrupted = true;
-                m_BootInterruptTime = current_time;
-                
-                // Store original state for precise recovery
-                m_PreSuspendState = m_nState;
-                
-                // For very recent SCSI commands (< 3 seconds), try longer delay to give BIOS more time
-                if (time_since_scsi < (1000000 * 3)) {
-                    MLOGNOTE("CUSBCDGadget::OnSuspend", "*** EXTENDED PROTECTION *** Very recent SCSI activity - providing 1 second protection window");
-                    
-                    // Save current SCSI command time to detect new commands during delay
-                    u32 saved_scsi_time = m_LastSCSICommandTime;
-                    
-                    // Mark boot as interrupted but don't add delays that could interfere with timing
-                    m_BioseBootInterrupted = true;
-                    m_BootInterruptTime = current_time;
-                    rapid_suspend_count = 25; // Maximum post-resume stabilization
-                } else {
-                    // No delays - let BIOS continue normally
-                    MLOGNOTE("CUSBCDGadget::OnSuspend", "BIOS timing window - maintaining protection without delays");
-                    m_BioseBootInterrupted = true;
-                    m_BootInterruptTime = current_time;
-                    rapid_suspend_count = 15; // High post-resume stabilization
-                }
-            } else {
-                // No delays for moderate activity
-                MLOGNOTE("CUSBCDGadget::OnSuspend", "Standard protection - no timing delays");
-                m_BioseBootInterrupted = true;
-                m_BootInterruptTime = current_time;
-                rapid_suspend_count = 10; // Moderate post-resume stabilization
-            }
-        } else {
-            // Light protection for older SCSI activity
-            MLOGNOTE("CUSBCDGadget::OnSuspend", "Light protection - older SCSI activity detected");
-            m_BioseBootInterrupted = true;
-            m_BootInterruptTime = current_time;
-            rapid_suspend_count = 5; // Light post-resume stabilization
-        }
+    // Check if suspend prevention is active
+    if (m_PreventSuspend) {
+        MLOGNOTE("CUSBCDGadget::OnSuspend", "*** BIOS PROTECTION ACTIVE *** Suspend during protection window, count #%u", m_SuspendResumeCount);
+        // Don't disable prevention here - let Update() handle timing
+    } else {
+        MLOGNOTE("CUSBCDGadget::OnSuspend", "Standard suspend, count #%u", m_SuspendResumeCount);
     }
     
-    // SPECIAL HANDLING: If BIOS boot is active and this is a rapid suspend, try to minimize impact
-    if (bios_boot_active && last_suspend_time > 0) {
-        u32 time_since_last = current_time - last_suspend_time;
-        if (time_since_last < (1000000 * 5)) { // Less than 5 seconds since last suspend
-            MLOGERR("CUSBCDGadget::OnSuspend", "*** CRITICAL: RAPID SUSPEND DURING BIOS BOOT *** This WILL break boot sequence! time_since_last=%u microseconds", time_since_last);
-            
-            // Try to minimize suspend impact - preserve more state
-            m_BioseBootInterrupted = true;
-            m_BootInterruptTime = current_time;
-            
-            // Force immediate post-resume stabilization
-            rapid_suspend_count = 10; // Trigger maximum stabilization
-        }
-    }
-    
-    // Detect rapid suspend/resume cycles that could confuse BIOS
-    if (last_suspend_time > 0) {
-        u32 time_since_last = current_time - last_suspend_time;
-        if (time_since_last < (1000000 * 3)) { // Less than 3 seconds since last suspend
-            rapid_suspend_count++;
-            MLOGERR("CUSBCDGadget::OnSuspend", "*** RAPID SUSPEND DETECTED *** #%u rapid suspends, time_since_last=%u microseconds - THIS BREAKS BIOS BOOT!", 
-                     rapid_suspend_count, time_since_last);
-            
-            // No delays during suspend - they interfere with BIOS timing
-            if (rapid_suspend_count >= 3) {
-                MLOGNOTE("CUSBCDGadget::OnSuspend", "Excessive rapid suspends detected - count: %u", rapid_suspend_count);
-            }
-        } else {
-            rapid_suspend_count = 0; // Reset if enough time has passed
-        }
-    }
-    
-    last_suspend_time = current_time;
-    
-    // Use enhanced suspend preparation (Linux kernel inspired)
-    PrepareForSuspend();
-    
-    // Follow Circle framework pattern: clean up endpoints during suspend
-    // The framework will call AddEndpoints() again on resume
-    // This is the expected behavior per the base class documentation
-    
-    if (m_pEP[EPOut]) {
-        delete m_pEP[EPOut];
-        m_pEP[EPOut] = nullptr;
-    }
-    
-    if (m_pEP[EPIn]) {
-        delete m_pEP[EPIn];
-        m_pEP[EPIn] = nullptr;
-    }
-    
-    // Mark endpoints as invalid after deletion
-    m_EndpointState[EPOut] = EPState_Invalid;
-    m_EndpointState[EPIn] = EPState_Invalid;
-    
-    // CRITICAL FIX: Save state if we're in the middle of a BIOS-critical operation
+    // CRITICAL: Preserve current state for transparent resume
     if (m_nState == TCDState::DataInRead) {
-        MLOGNOTE("CUSBCDGadget::OnSuspend", "*** SAVING CRITICAL STATE *** DataInRead operation in progress for LBA %u - will restore after resume", m_nblock_address);
-        m_SavedState = m_nState;
+        // Save critical transfer state
+        m_StateSaved = true;
         m_SavedLBA = m_nblock_address;
         m_SavedBlockCount = m_nnumber_blocks;
-        m_SavedBytesTransferred = 0; // TODO: track partial transfers
-        m_StateSaved = true;
-    } else {
-        m_StateSaved = false;
+        m_SavedState = m_nState;
+        MLOGNOTE("CUSBCDGadget::OnSuspend", "*** FAST STATE SAVE *** DataInRead LBA=%u blocks=%u", m_SavedLBA, m_SavedBlockCount);
     }
     
-    // Reset state per framework expectations
-    m_nState = TCDState::Init;
-    // Note: Don't reset m_CDReady here - let CreateEndpoints handle device state restoration
+    // MINIMAL cleanup for fast resume
+    RemoveEndpoints();
     
-    if (m_SuspendResumeCount > 5) {
-        MLOGERR("CUSBCDGadget::OnSuspend", "*** EXCESSIVE SUSPEND/RESUME CYCLES *** Count: %u - This may indicate USB enumeration issues causing BIOS boot failure", m_SuspendResumeCount);
-    }
-    
-    MLOGNOTE("CUSBCDGadget::OnSuspend", "cleanup complete - framework will recreate endpoints on resume, CD ready state preserved");
+    MLOGNOTE("CUSBCDGadget::OnSuspend", "*** FAST SUSPEND COMPLETE *** Ready for transparent resume");
 }
 
 // CRITICAL BIOS COMPATIBILITY: Handle rapid suspend/resume cycles
@@ -1046,69 +935,34 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
 
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate() {
-    MLOGNOTE("CD OnActivate", "*** DEVICE ACTIVATION STARTED *** state = %i", m_nState);
+    // *** FAST ACTIVATION FOR BIOS COMPATIBILITY ***
+    // Minimize activation time to ensure rapid, transparent resume
     
-    // Ensure endpoints are ready before trying to use them
-    if (!m_pEP[EPOut] || !m_pEP[EPIn]) {
-        MLOGERR("CD OnActivate", "*** ACTIVATION FAILED *** endpoints not ready, skipping activation");
+    // Quick endpoint check
+    if (!m_pEP[EPOut] || !m_pEP[EPIn] || !m_pEP[EPOut]->IsValid() || !m_pEP[EPIn]->IsValid()) {
+        MLOGERR("CD OnActivate", "*** FAST ACTIVATION FAILED *** endpoints not ready");
         return;
     }
     
-    // Additional safety check for endpoint validity
-    if (!m_pEP[EPOut]->IsValid() || !m_pEP[EPIn]->IsValid()) {
-        MLOGERR("CD OnActivate", "*** ACTIVATION FAILED *** endpoints invalid, skipping activation");
-        return;
+    // *** FAST STATE RESTORATION ***
+    if (m_StateSaved && m_SavedState == TCDState::DataInRead) {
+        MLOGNOTE("CD OnActivate", "*** FAST RESUME *** DataInRead LBA=%u", m_SavedLBA);
+        m_nblock_address = m_SavedLBA;
+        m_nnumber_blocks = m_SavedBlockCount;
+        m_nState = m_SavedState;
+        m_StateSaved = false;
+        return; // Let Update() handle the rest
     }
     
-    // Handle state restoration after suspend/resume 
-    // Check if we have a saved state that needs to be restored
-    if (m_StateSaved && m_nState != TCDState::Init && m_nState != TCDState::ReceiveCBW) {
-        MLOGNOTE("CD OnActivate", "*** RESTORING SAVED STATE *** state %d preserved from suspend/resume", m_nState);
-        
-        // For data transfer states, we need to handle them specially
-        if (m_nState == TCDState::DataInRead) {
-            MLOGNOTE("CD OnActivate", "*** RESUMING DATA TRANSFER *** DataInRead state, LBA=%u, continuing transfer", m_SavedLBA);
-            // Don't reset state - let Update() handle the transfer continuation
-            m_StateSaved = false; // Clear the saved state flag
-            return; // Exit early - don't start CBW receive
-        }
-        
-        // For other states, we can restore them
-        m_StateSaved = false; // Clear the saved state flag
-    } else if (m_nState != TCDState::Init && m_nState != TCDState::ReceiveCBW) {
-        // Only reset to Init if this is not a state restoration scenario
-        MLOGNOTE("CD OnActivate", "unsafe state %d for activation, resetting to Init", m_nState);
-        m_nState = TCDState::Init;
-    }
-    
+    // Standard fast activation
     m_CDReady = true;
     m_nState = TCDState::ReceiveCBW;
+    m_StateSaved = false;
     
-    MLOGNOTE("CD OnActivate", "*** STARTING CBW RECEIVE *** Endpoint OUT=%p, Buffer=%p, Size=%d", 
-             m_pEP[EPOut], m_OutBuffer, SIZE_CBW);
-    
-    // Begin transfer with additional error checking 
-    MLOGNOTE("CD OnActivate", "*** HANG CHECK *** About to call BeginTransfer - if system hangs here, it's in BeginTransfer");
+    // Start CBW receive immediately
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
-    MLOGNOTE("CD OnActivate", "*** HANG CHECK *** BeginTransfer completed successfully");
     
-    MLOGNOTE("CD OnActivate", "*** DEVICE READY FOR BIOS COMMANDS *** State=ReceiveCBW, CDReady=%d, waiting for SCSI commands", m_CDReady);
-    
-    // Check if this activation follows a BIOS boot interruption
-    if (m_BioseBootInterrupted) {
-        u32 current_time = CTimer::GetClockTicks();
-        u32 time_since_interrupt = current_time - m_BootInterruptTime;
-        MLOGERR("CD OnActivate", "BIOS boot recovery mode - activated %u seconds after suspend interrupt", time_since_interrupt / 1000000);
-        
-        // No delays during recovery - they interfere with BIOS enumeration timing
-        MLOGNOTE("CD OnActivate", "BIOS recovery - no stabilization delays to avoid timing interference");
-    }
-    
-    // Mark the time when we became ready to receive commands
-    // This helps track if BIOS is actually trying to communicate
-    static u32 activation_count = 0;
-    activation_count++;
-    MLOGNOTE("CD OnActivate", "*** ACTIVATION #%u *** Device ready, if BIOS doesn't send commands soon, it may have timing issues", activation_count);
+    MLOGNOTE("CD OnActivate", "*** FAST ACTIVATION COMPLETE *** Ready for BIOS commands");
 }
 
 void CUSBCDGadget::SendCSW() {
@@ -1339,6 +1193,12 @@ void CUSBCDGadget::HandleSCSICommand() {
                     MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY #%d: DevType=0x%02x, Version=0x%02x, Length=%d", 
                              inquiry_count, m_InqReply.bPeriphQualDevType, m_InqReply.bVersion, datalen);
                 }
+
+                // *** BIOS BOOT PROTECTION *** Start suspend prevention after INQUIRY
+                // This gives BIOS time to continue with TEST UNIT READY and READ commands
+                m_BiosBootProtectionTime = CTimer::GetClockTicks();
+                m_PreventSuspend = true;
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** BIOS PROTECTION ACTIVE *** Preventing suspend for 5 seconds after INQUIRY to allow BIOS boot sequence");
 
                 memcpy(&m_InBuffer, &m_InqReply, datalen);
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
@@ -2724,6 +2584,18 @@ void CUSBCDGadget::Update() {
     static int previous_state = -1;
     
     update_call_count++;
+    
+    // *** BIOS SUSPEND PREVENTION *** Check if protection period has expired
+    if (m_PreventSuspend) {
+        u32 current_time = CTimer::GetClockTicks();
+        u32 elapsed_ticks = current_time - m_BiosBootProtectionTime;
+        u32 elapsed_seconds = elapsed_ticks / CLOCKHZ;  // Convert to seconds
+        
+        if (elapsed_seconds >= 5) {  // 5 second protection window
+            m_PreventSuspend = false;
+            MLOGNOTE("CUSBCDGadget::Update", "*** BIOS PROTECTION EXPIRED *** Suspend prevention disabled after %u seconds", elapsed_seconds);
+        }
+    }
     
     // Track state changes to detect if we're stuck in a particular state
     if (static_cast<int>(m_nState) != previous_state) {

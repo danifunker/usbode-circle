@@ -785,6 +785,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     u32 m_BootInterruptTime = 0;       // Time when boot was interrupted
     u8 m_LastSCSICommand = 0xff;       // Track the last SCSI command for boot sequence analysis
     
+    // Suspend prevention during critical BIOS communication window
+    u32 m_BiosBootProtectionTime = 0;   // Time when BIOS boot protection started
+    boolean m_PreventSuspend = false;   // Flag to indicate device should appear busy to prevent suspend
+    
     // State preservation for suspend/resume during data transfers
     boolean m_StateSaved = false;  // Flag indicating we have saved state
     u32 m_SavedLBA = 0;           // LBA being transferred when suspended
