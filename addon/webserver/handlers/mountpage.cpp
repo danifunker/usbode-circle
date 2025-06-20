@@ -46,6 +46,8 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 
 	LOGDBG("Got filename %s from parameter", file_name.c_str());
 
+	//TODO use SCSITBService instead
+
 	// Save current mounted image name
 	m_pProperties->SelectSection("usbode");
         m_pProperties->SetString("current_image", file_name.c_str());

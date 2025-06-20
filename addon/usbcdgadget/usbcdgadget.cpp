@@ -21,6 +21,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include <assert.h>
+#include <scsitbservice/scsitbservice.h>
 #include <cdplayer/cdplayer.h>
 #include <circle/koptions.h>
 #include <circle/logger.h>
@@ -31,6 +32,7 @@
 #include <circle/util.h>
 #include <math.h>
 #include <stddef.h>
+#include <filesystem>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...)  // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
@@ -1560,6 +1562,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             SendCSW();
             break;
         }
+
         case 0x45:  // PLAY AUDIO (10)
         {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10)");
@@ -1852,6 +1855,111 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
+
+	// SCSI TOOLBOX
+        case 0xD9:  // LIST DEVICES
+	{
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB List Devices");
+
+	    // First device is CDROM and the other are not implemented
+	    u8 devices[8] = {0x02,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
+
+            memcpy(m_InBuffer, devices, sizeof(devices));
+
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                       m_InBuffer, sizeof(devices));
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = bmCSWStatus;
+
+	    break;
+	}
+
+        case 0xDA:  // NUMBER OF CDS
+	{
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB Number of CDs");
+
+	    SCSITBService* scsitbservice = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+
+            // SCSITB defines max entries as 100
+            const size_t MAX_ENTRIES = 100;
+	    size_t count = scsitbservice->GetCount();
+	    if (count > MAX_ENTRIES)
+		    count = MAX_ENTRIES;
+
+	    u8 num = (u8)count;
+
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB Discovered %d CDs", num);
+
+            memcpy(m_InBuffer, &num, sizeof(num));
+
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                       m_InBuffer, sizeof(num));
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = bmCSWStatus;
+
+	    break;
+	}
+
+        case 0xD0:  // LIST CDS
+        case 0xD7:  // LIST CDS
+	{
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB List Files/CDs");
+
+	    SCSITBService* scsitbservice = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+
+            // SCSITB defines max entries as 100
+            const size_t MAX_ENTRIES = 100;
+	    size_t count = scsitbservice->GetCount();
+	    if (count > MAX_ENTRIES)
+		    count = MAX_ENTRIES;
+
+	    TUSBCDToolboxFileEntry entries[MAX_ENTRIES];
+	    for (u8 i = 0; i < count; ++i) {
+		    TUSBCDToolboxFileEntry *entry = &entries[i];
+		    entry->index = i;
+		    entry->type = 0; // file type
+
+		    // Copy name capped to 32 chars + NUL
+		    const char* name = scsitbservice->GetName(i);
+		    size_t j = 0;
+		    for (; j < 32 && name[j] != '\0'; ++j) {
+			entry->name[j] = (u8)name[j];
+		    }
+		    entry->name[j] = 0; // null terminate
+
+		    // Get size and store as 40-bit big endian (highest byte zero)
+		    DWORD size = scsitbservice->GetSize(i);
+		    entry->size[0] = 0;
+		    entry->size[1] = (size >> 24) & 0xFF;
+		    entry->size[2] = (size >> 16) & 0xFF;
+		    entry->size[3] = (size >> 8) & 0xFF;
+		    entry->size[4] = size & 0xFF;
+	    }
+
+            memcpy(m_InBuffer, entries, sizeof(entries));
+
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                       m_InBuffer, sizeof(entries));
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = bmCSWStatus;
+
+	    break;
+	}
+
+        case 0xD8:  // SET NEXT CD
+        {
+
+            int index = m_CBW.CBWCB[1];
+	    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SET NEXT CD index %d", index);
+
+	    SCSITBService* scsitbservice = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+	    scsitbservice->SetNextCD(index);
+
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            SendCSW();
+            break;
+        }
+
         default: {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Unknown SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
             m_SenseParams.bSenseKey = 0x5;  // Illegal/not supported
@@ -2008,3 +2116,4 @@ void CUSBCDGadget::Update() {
             break;
     }
 }
+

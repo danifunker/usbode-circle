@@ -28,6 +28,7 @@
 #include <discimage/util.h>
 #include <webserver/webserver.h>
 #include <devicestate/devicestate.h>
+#include <scsitbservice/scsitbservice.h>
 
 #include <circle/time.h>
 
@@ -177,7 +178,7 @@ boolean CKernel::Initialize(void) {
 }
 
 TShutdownMode CKernel::Run(void) {
-	//
+	
     // Initialize the global kernel pointer
     g_pKernel = this;
 
@@ -188,7 +189,9 @@ TShutdownMode CKernel::Run(void) {
                CONFIG_FILE, Properties.GetErrorLine());
         return ShutdownHalt;
     }
+
     Properties.SelectSection("usbode");
+
 
     // Start the file logging service
     const char* logfile = Properties.GetString("logfile", nullptr);
@@ -225,7 +228,7 @@ TShutdownMode CKernel::Run(void) {
 	    if (!cueBinFileDevice) {
 		LOGERR("Failed to load image %s, trying default image", imageName);
 
-		// Save current mounted image name
+		// Save default image name
 		Properties.SelectSection("usbode");
 		Properties.SetString("current_image", DEFAULT_IMAGE_FILENAME);
 		Properties.Save();
@@ -238,17 +241,21 @@ TShutdownMode CKernel::Run(void) {
 		}
 	    }
 	    LOGNOTE("Loaded cue/bin file %s", imageName);
-
+	    
 	    // Initialize USB CD gadget
 	    // TODO get USB speed from Properties
 	    // TODO allow UI to set USB speed
+	    // TODO Wrap this in its own run loop in a CTask
 	    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), cueBinFileDevice);
-	    //m_CDGadget->SetDevice(cueBinFileDevice);
 	    if (!m_CDGadget->Initialize()) {
 		LOGERR("Failed to initialize USB CD gadget");
 		return ShutdownHalt;
 	    }
 	    LOGNOTE("Started USB CD gadget");
+
+	    // Load our SCSITB Service
+	    new SCSITBService(&Properties, m_CDGadget);
+	    LOGNOTE("Started SCSITB service");
 
     } else { // Mass Storage Device Mode
 	     
