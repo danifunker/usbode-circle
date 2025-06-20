@@ -48,13 +48,17 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 
 	// Ask scsitbservice for a list of filenames
         SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
-        if (!svc)
+        if (!svc) {
+	    LOGERR("Couldn't fetch SCSITB Service");
             return HTTPInternalServerError;
+	}
 
-	if (svc->SetNextCDByName(file_name.c_str()))
+	if (svc->SetNextCDByName(file_name.c_str())) {
 		return HTTPOK;
-	else
+	} else {
+	        LOGERR("Got an error from SetNextCDByName");
 		return HTTPInternalServerError;
+	}
 
 	return HTTPNotFound;
 }

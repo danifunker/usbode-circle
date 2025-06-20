@@ -96,13 +96,17 @@ const char* SCSITBService::GetCurrentCDName() {
 
 bool SCSITBService::SetNextCDByName(const char* file_name) {
 
+	LOGNOTE("SCSITBService::SetNextCDByName %s", file_name);
 	int index = 0;
         for (const FileEntry* it = begin(); it != end(); ++it, ++index) {
-                if (file_name == it->name) {
+		//LOGNOTE("SCSITBService::SetNextCDByName testing %s", it->name);
+                if (strcmp(file_name, it->name) == 0) {
+			LOGNOTE("SCSITBService::SetNextCDByName found %s", it->name);
                         return SetNextCD(index);
                 }
         }
 
+	LOGNOTE("SCSITBService::SetNextCDByName not found");
 	return false;
 }
 
