@@ -28,6 +28,7 @@
 #include <circle/sched/scheduler.h>
 #include <circle/timer.h>
 #include <gitinfo/gitinfo.h>
+#include <scsitbservice/scsitbservice.h>
 
 #include "ftpworker.h"
 #include "utility.h"
@@ -781,6 +782,9 @@ bool CFTPWorker::Store(const char* pArgs) {
     f_close(&File);
     delete[] WriteBuffer;
 
+    SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+    svc->RefreshCache();
+
     return true;
 }
 
@@ -796,6 +800,9 @@ bool CFTPWorker::Delete(const char* pArgs) {
     }
     else
         SendStatus(TFTPStatus::FileActionOk, "File deleted.");
+
+    SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+    svc->RefreshCache();
 
     return true;
 }
@@ -1040,6 +1047,9 @@ bool CFTPWorker::RenameTo(const char* pArgs) {
         SendStatus(TFTPStatus::FileActionOk, "File renamed.");
 
     m_RenameFrom = "";
+
+    SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+    svc->RefreshCache();
 
     return false;
 }

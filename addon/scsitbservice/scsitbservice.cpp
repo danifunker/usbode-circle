@@ -1,6 +1,7 @@
 #include <circle/logger.h>
 #include "scsitbservice.h"
 #include <circle/sched/scheduler.h>
+#include <cstdlib>
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
@@ -24,6 +25,12 @@ static bool iequals(const char* a, const char* b) {
         ++a; ++b;
     }
     return *a == *b;
+}
+
+int compareFileEntries(const void* a, const void* b) {
+    const FileEntry* fa = (const FileEntry*)a;
+    const FileEntry* fb = (const FileEntry*)b;
+    return strcasecmp(fa->name, fb->name);
 }
 
 SCSITBService *SCSITBService::s_pThis = 0;
@@ -65,14 +72,50 @@ DWORD SCSITBService::GetSize(size_t index) const {
     return m_FileEntries[index].size;
 }
 
-bool SCSITBService::SetNextCD(int cd) {
-	//TODO bounds checking
+FileEntry* SCSITBService::begin() { return m_FileEntries; }
+FileEntry* SCSITBService::end() { return m_FileEntries + m_FileCount; }
+const FileEntry* SCSITBService::GetFileEntry(size_t index) const {
+    if (index >= m_FileCount)
+        return nullptr;
+    return &m_FileEntries[index];
+}
+
+size_t SCSITBService::GetCurrentCD() {
+	return current_cd;
+}
+
+bool SCSITBService::SetNextCD(size_t cd) {
+    //TODO bounds checking
     next_cd = cd;
     return true;
 }
 
+const char* SCSITBService::GetCurrentCDName() {
+	return GetName(GetCurrentCD());
+}
+
+bool SCSITBService::SetNextCDByName(const char* file_name) {
+
+	int index = 0;
+        for (const FileEntry* it = begin(); it != end(); ++it, ++index) {
+                if (file_name == it->name) {
+                        return SetNextCD(index);
+                }
+        }
+
+	return false;
+}
+
+
 bool SCSITBService::RefreshCache() {
-	LOGNOTE("SCSITBService::RefreshCache() called");
+    LOGNOTE("SCSITBService::RefreshCache() called");
+
+    // Get current loaded image
+    m_pProperties->Load();
+    m_pProperties->SelectSection("usbode");
+    const char* current_image = m_pProperties->GetString("current_image", DEFAULT_IMAGE_FILENAME);
+    LOGNOTE("SCSITBService::RefreshCache() loaded current_image %s from config.txt", current_image);
+
     m_FileCount = 0;
 
     DIR dir;
@@ -82,7 +125,7 @@ bool SCSITBService::RefreshCache() {
         return false;
     }
 
-	LOGNOTE("SCSITBService::RefreshCache() opened directory");
+    LOGNOTE("SCSITBService::RefreshCache() opened directory");
     FILINFO fno;
     while (true) {
         fr = f_readdir(&dir, &fno);
@@ -105,16 +148,29 @@ bool SCSITBService::RefreshCache() {
                 m_FileEntries[m_FileCount].size = fno.fsize;
 
                 m_FileCount++;
+
             }
         }
     }
 
-	LOGNOTE("SCSITBService::RefreshCache() RefreshCache() done");
+    // Sort entries by filename alphabetically
+    qsort(m_FileEntries, m_FileCount, sizeof(m_FileEntries[0]), compareFileEntries);
+
+    // Find the index of current_image in m_FileEntries
+    for (size_t i = 0; i < m_FileCount; ++i) {
+        if (strcmp(m_FileEntries[i].name, current_image) == 0) {
+            current_cd = i;
+	    if (next_cd != current_cd)
+	    	next_cd = i;
+            break;
+        }
+    }
+
+    LOGNOTE("SCSITBService::RefreshCache() RefreshCache() done");
 
     f_closedir(&dir);
     return true;
 }
-
 
 void SCSITBService::Run() {
 	LOGNOTE("SCSITBService::Run started");
@@ -141,6 +197,8 @@ void SCSITBService::Run() {
 			m_pProperties->SelectSection("usbode");
 			m_pProperties->SetString("current_image", imageName);
 			m_pProperties->Save();
+
+			current_cd = next_cd;
 
 			// Mark done
 			next_cd = -1;

@@ -192,7 +192,6 @@ TShutdownMode CKernel::Run(void) {
 
     Properties.SelectSection("usbode");
 
-
     // Start the file logging service
     const char* logfile = Properties.GetString("logfile", nullptr);
     if (logfile) {
@@ -223,30 +222,11 @@ TShutdownMode CKernel::Run(void) {
 		LOGNOTE("Started the CD Player service");
 	    }
 
-	    // Load our current disc image
-	    CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
-	    if (!cueBinFileDevice) {
-		LOGERR("Failed to load image %s, trying default image", imageName);
-
-		// Save default image name
-		Properties.SelectSection("usbode");
-		Properties.SetString("current_image", DEFAULT_IMAGE_FILENAME);
-		Properties.Save();
-
-		// Fall back to default image
-		cueBinFileDevice = loadCueBinFileDevice(DEFAULT_IMAGE_FILENAME);
-		if (!cueBinFileDevice) {
-			LOGERR("Can't load default image either. Shutting down");
-			return ShutdownHalt;
-		}
-	    }
-	    LOGNOTE("Loaded cue/bin file %s", imageName);
-	    
 	    // Initialize USB CD gadget
 	    // TODO get USB speed from Properties
 	    // TODO allow UI to set USB speed
 	    // TODO Wrap this in its own run loop in a CTask
-	    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), cueBinFileDevice);
+	    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed());
 	    if (!m_CDGadget->Initialize()) {
 		LOGERR("Failed to initialize USB CD gadget");
 		return ShutdownHalt;
@@ -254,6 +234,7 @@ TShutdownMode CKernel::Run(void) {
 	    LOGNOTE("Started USB CD gadget");
 
 	    // Load our SCSITB Service
+	    // This also loads our current image into the CD gadget
 	    new SCSITBService(&Properties, m_CDGadget);
 	    LOGNOTE("Started SCSITB service");
 
@@ -1205,6 +1186,7 @@ void CKernel::LoadSelectedISO(void) {
     LOGNOTE("Loading ISO: %s", SelectedISO);
 
     // Let loadCueBinFileDevice handle the path construction
+    /*
     CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(SelectedISO);
     if (CueBinFileDevice == nullptr) {
         LOGERR("Failed to load Image: %s", SelectedISO);
@@ -1241,6 +1223,11 @@ void CKernel::LoadSelectedISO(void) {
 
     // Set the new device in the CD gadget
     m_CDGadget->SetDevice(CueBinFileDevice);
+    */
+
+    SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+    svc->SetNextCDByName(SelectedISO);
+    LOGNOTE("Selected new Image: %s", SelectedISO);
 
     // Return to main screen state first
     m_ScreenState = ScreenStateMain;
