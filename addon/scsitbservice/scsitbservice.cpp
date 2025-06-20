@@ -124,6 +124,12 @@ void SCSITBService::Run() {
 		// Do we have a next cd?
 		if (next_cd > -1) {
 
+			// Check if it's valid
+			if (next_cd > (int)m_FileCount) {
+				next_cd = -1;
+				continue;
+			}
+
 			// Load it
 			char* imageName = m_FileEntries[next_cd].name;
 			CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);

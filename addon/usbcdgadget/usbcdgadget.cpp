@@ -1874,9 +1874,10 @@ void CUSBCDGadget::HandleSCSICommand() {
 	    break;
 	}
 
+        case 0xD2:  // NUMBER OF FILES
         case 0xDA:  // NUMBER OF CDS
 	{
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB Number of CDs");
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB Number of Files/CDs");
 
 	    SCSITBService* scsitbservice = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
 
@@ -1888,7 +1889,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 	    u8 num = (u8)count;
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB Discovered %d CDs", num);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB Discovered %d Files/CDs", num);
 
             memcpy(m_InBuffer, &num, sizeof(num));
 
@@ -1900,7 +1901,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 	    break;
 	}
 
-        case 0xD0:  // LIST CDS
+        case 0xD0:  // LIST FILES
         case 0xD7:  // LIST CDS
 	{
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB List Files/CDs");
@@ -1913,7 +1914,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 	    if (count > MAX_ENTRIES)
 		    count = MAX_ENTRIES;
 
-	    TUSBCDToolboxFileEntry entries[MAX_ENTRIES];
+	    TUSBCDToolboxFileEntry *entries = new TUSBCDToolboxFileEntry[MAX_ENTRIES];
 	    for (u8 i = 0; i < count; ++i) {
 		    TUSBCDToolboxFileEntry *entry = &entries[i];
 		    entry->index = i;
@@ -1936,12 +1937,14 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    entry->size[4] = size & 0xFF;
 	    }
 
-            memcpy(m_InBuffer, entries, sizeof(entries));
+            memcpy(m_InBuffer, entries, count * sizeof(TUSBCDToolboxFileEntry));
 
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       m_InBuffer, sizeof(entries));
+                                       m_InBuffer, count * sizeof(TUSBCDToolboxFileEntry));
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
+
+	    delete[] entries;
 
 	    break;
 	}
@@ -1951,6 +1954,9 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             int index = m_CBW.CBWCB[1];
 	    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SET NEXT CD index %d", index);
+
+	    //TODO set bounds checking here and throw check condition if index is not valid
+	    //currently, it will silently ignore OOB indexes
 
 	    SCSITBService* scsitbservice = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
 	    scsitbservice->SetNextCD(index);
