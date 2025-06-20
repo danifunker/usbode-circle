@@ -574,10 +574,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     TUSBCDInquiryReply m_InqReply{
         0x05,    // Peripheral Device Type: CD-ROM (0x05)
-        0x80,    // RMB: Removable (0x80)
-        0x00,    // Version: No Compliance to any Standard (0x00) - matches physical device
-        0x32,    // Response Data Format: 0x32 (SPC-2/SPC-3/SPC-4 with NormACA and HiSup) - matches physical device
-        0x5B,    // Additional Length: 91 bytes follow (0x5B) - matches physical device
+        0x80,    // RMB: Removable (0x80) 
+        0x02,    // Version: SCSI-2 (0x02) - better BIOS compatibility with older systems
+        0x02,    // Response Data Format: 0x02 (SCSI-2 format) - more BIOS-compatible than 0x32
+        0x20,    // Additional Length: 32 bytes follow (0x20) - standard CD-ROM length
         0x00,    // SCCS: 0
         0x00,    // BQUEetc: 0
         0x00,    // RELADRetc: 0
@@ -779,12 +779,24 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     boolean m_CDReady = false;
     u32 m_SuspendResumeCount = 0;  // Track suspend/resume cycles for BIOS enumeration diagnosis
     
+    // BIOS boot protection - track active boot sequences
+    u32 m_LastSCSICommandTime = 0;     // Time of last SCSI command for BIOS boot detection
+    boolean m_BioseBootInterrupted = false;  // Flag when BIOS boot was interrupted by suspend
+    u32 m_BootInterruptTime = 0;       // Time when boot was interrupted
+    u8 m_LastSCSICommand = 0xff;       // Track the last SCSI command for boot sequence analysis
+    
     // State preservation for suspend/resume during data transfers
     boolean m_StateSaved = false;  // Flag indicating we have saved state
     u32 m_SavedLBA = 0;           // LBA being transferred when suspended
     u32 m_SavedBlockCount = 0;    // Number of blocks being transferred
     u32 m_SavedBytesTransferred = 0; // Bytes already transferred
     TCDState m_SavedState = TCDState::Init; // State to restore after resume
+    TCDState m_PreSuspendState = TCDState::Init; // State before suspend for precise recovery
+    
+    // Add BIOS enumeration stability tracking
+    static u32 s_DeviceResetCount;      // Global device reset counter
+    static u32 s_LastSuccessfulBoot;    // Timestamp of last successful boot sequence
+    static boolean s_BiospersistentReady; // Persistent ready state across BIOS attempts
 
     CUEParser cueParser;
 
@@ -829,7 +841,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     unsigned m_nActiveRequestIndex;
     
     // Enhanced endpoint state tracking
-    TEndpointState m_EndpointState[2];  // OUT, IN
+    TEndpointState m_EndpointState[NumEPs];  // Array sized to match endpoint enum
     
     // Request management methods (inspired by Linux dwc2/gadget.c)
     boolean QueueTransferRequest(boolean bIn, void* pBuffer, size_t nLength);
@@ -849,7 +861,6 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     // Add atomic state transitions to prevent race conditions
     boolean AtomicStateTransition(TCDState fromState, TCDState toState);
     void ForceStateReset(void);  // Emergency recovery
-
 };
 
 #endif

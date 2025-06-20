@@ -41,11 +41,11 @@ const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
     {
         sizeof(TUSBDeviceDescriptor),
         DESCRIPTOR_DEVICE,
-        0x200,  // bcdUSB - USB 2.0 for modern BIOS compatibility (ITX Llama supports USB 2.0)
-        0,      // bDeviceClass
+        0x200,  // bcdUSB - USB 2.0 (keeping USB 2.0 since BIOS detection works)
+        0,      // bDeviceClass (0 = class defined at interface level - SeaBIOS expectation)
         0,      // bDeviceSubClass
         0,      // bDeviceProtocol
-        64,     // bMaxPacketSize0 (correct for USB 2.0 control endpoint)
+        64,     // bMaxPacketSize0 (USB 2.0 control endpoint size)
         // 0x04da, // Panasonic
         // 0x0d01,	// CDROM
         USB_GADGET_VENDOR_ID,
@@ -73,8 +73,9 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (SCSI transparent - ITX Llama BIOS expects this)
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (ATAPI/CD-ROM - caused BIOS enumeration issues)
+            0x08, 0x05, 0x50,  // bInterfaceClass, SubClass, Protocol (ATAPI_8070/CD-ROM - SeaBIOS preferred for optical drives)
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (SCSI transparent - previously used)
+            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (ATAPI_8020 - alternative)
             0                  // iInterface
         },
         {
@@ -112,8 +113,9 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (SCSI transparent - ITX Llama BIOS expects this)
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (ATAPI/CD-ROM - caused BIOS enumeration issues)
+            0x08, 0x05, 0x50,  // bInterfaceClass, SubClass, Protocol (ATAPI_8070/CD-ROM - SeaBIOS preferred for optical drives)
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (SCSI transparent - previously used)
+            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (ATAPI_8020 - alternative)
             0                  // iInterface
         },
         {
@@ -121,7 +123,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             DESCRIPTOR_ENDPOINT,
             0x81,                                                                        // IN number 1
             2,                                                                           // bmAttributes (Bulk)
-            512,  // wMaxPacketSize
+            512,  // wMaxPacketSize - USB 2.0 High Speed maximum for bulk endpoints
             0                                                                            // bInterval
         },
         {
@@ -129,7 +131,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             DESCRIPTOR_ENDPOINT,
             0x02,                                                                        // OUT number 2
             2,                                                                           // bmAttributes (Bulk)
-            512,  // wMaxPacketSize
+            512,  // wMaxPacketSize - USB 2.0 High Speed maximum for bulk endpoints
             0                                                                            // bInterval
         }};
 
@@ -193,17 +195,25 @@ CUSBCDGadget::~CUSBCDGadget(void) {
 }
 
 const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength) {
-    // Track when BIOS first contacts us to detect rapid re-enumeration
-    static u32 first_contact_time = 0;
-    static bool first_contact = true;
+    // Minimal logging during enumeration to avoid timing interference with BIOS
+    static u32 boot_attempt_number = 0;
+    static u32 last_boot_attempt_time = 0;
+    static bool boot_attempt_logged = false;
     
-    MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** BIOS CONTACT *** GetDescriptor called - wValue=0x%04x, wIndex=0x%04x, CDReady=%d", 
-             wValue, wIndex, m_CDReady);
+    u32 current_time = CTimer::GetClockTicks();
     
-    if (first_contact) {
-        first_contact_time = CTimer::GetClockTicks();
-        first_contact = false;
-        MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** FIRST BIOS CONTACT *** Recording baseline time for enumeration stability");
+    // Detect new boot attempts (more than 3 seconds since last contact) - log only once per attempt
+    if (!boot_attempt_logged || (current_time - last_boot_attempt_time) > (3 * CLOCKHZ)) {
+        boot_attempt_number++;
+        boot_attempt_logged = true;
+        last_boot_attempt_time = current_time;
+        // Only log boot attempt number - no verbose logging during enumeration
+        MLOGNOTE("CUSBCDGadget::GetDescriptor", "BIOS boot attempt #%u", boot_attempt_number);
+    }
+    
+    // Force device readiness on first contact for BIOS consistency (no logging to avoid timing issues)
+    if (boot_attempt_number == 1 && !m_CDReady && m_pDevice) {
+        m_CDReady = true;
     }
     
     assert(pLength);
@@ -212,62 +222,56 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
 
     switch (wValue >> 8) {
         case DESCRIPTOR_DEVICE:
-            MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** CRITICAL *** BIOS requesting DEVICE descriptor - this triggers USB enumeration");
+            // No verbose logging - timing critical for BIOS enumeration
             if (!uchDescIndex) {
                 *pLength = sizeof s_DeviceDescriptor;
-                MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** CRITICAL *** Returning device descriptor, size=%zu", *pLength);
                 return &s_DeviceDescriptor;
             }
             break;
 
         case DESCRIPTOR_CONFIGURATION:
-            MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** CRITICAL *** BIOS requesting CONFIGURATION descriptor - USB enumeration continuing");
+            // No verbose logging - timing critical for BIOS enumeration
             if (!uchDescIndex) {
                 *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
-                MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** CRITICAL *** Returning config descriptor, size=%zu, speed=%s", 
-                         *pLength, m_IsFullSpeed ? "FullSpeed" : "HighSpeed");
 		return m_IsFullSpeed?&s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
             }
             break;
 
         case DESCRIPTOR_STRING:
-            MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** CRITICAL *** BIOS requesting STRING descriptor %d", uchDescIndex);
+            // No verbose logging - timing critical for BIOS enumeration
             if (!uchDescIndex) {
                 *pLength = (u8)s_StringDescriptor[0][0];
-                MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** CRITICAL *** Returning string descriptor 0, size=%zu", *pLength);
                 return s_StringDescriptor[0];
             } else if (uchDescIndex < sizeof s_StringDescriptor / sizeof s_StringDescriptor[0]) {
-                MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** CRITICAL *** Returning string descriptor %d", uchDescIndex);
                 return ToStringDescriptor(s_StringDescriptor[uchDescIndex], pLength);
             }
             break;
 
         case 6: // DESCRIPTOR_DEVICE_QUALIFIER
-            MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** USB 2.0 *** BIOS requesting DEVICE QUALIFIER descriptor - dual-speed capability");
+            // No verbose logging - timing critical for BIOS enumeration
             if (!uchDescIndex) {
                 *pLength = sizeof s_DeviceQualifierDescriptor;
-                MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** USB 2.0 *** Returning device qualifier descriptor, size=%zu", *pLength);
                 return &s_DeviceQualifierDescriptor;
             }
             break;
 
         case 7: // DESCRIPTOR_OTHER_SPEED_CONFIGURATION  
-            MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** USB 2.0 *** BIOS requesting OTHER SPEED CONFIGURATION descriptor");
+            // No verbose logging - timing critical for BIOS enumeration
             if (!uchDescIndex) {
                 *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
-                MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** USB 2.0 *** Returning other-speed config descriptor, size=%zu, current_speed=%s", 
-                         *pLength, m_IsFullSpeed ? "FullSpeed" : "HighSpeed");
                 // Return the opposite speed configuration 
                 return m_IsFullSpeed ? &s_ConfigurationDescriptorHighSpeed : &s_ConfigurationDescriptorFullSpeed;
             }
             break;
 
         default:
-            MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** WARNING *** Unknown descriptor type 0x%02x", wValue >> 8);
+            // Only log unknown descriptors for debugging (but keep it minimal)
+            if (boot_attempt_number <= 2) {  // Only log for first 2 attempts to avoid spam
+                MLOGNOTE("CUSBCDGadget::GetDescriptor", "Unknown descriptor type 0x%02x", wValue >> 8);
+            }
             break;
     }
 
-    MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** WARNING *** Descriptor not found, returning nullptr");
     return nullptr;
 }
 
@@ -362,6 +366,19 @@ void CUSBCDGadget::AddEndpoints(void) {
     
     MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints created successfully - Speed: %s, suspend/resume cycle #%u", 
         m_IsFullSpeed ? "Full" : "High", m_SuspendResumeCount);
+
+    // ENHANCED BIOS PROTECTION: Check if we interrupted a BIOS boot sequence
+    if (m_BioseBootInterrupted && m_BootInterruptTime > 0) {
+        u32 current_time = CTimer::GetClockTicks();
+        u32 time_since_interrupt = current_time - m_BootInterruptTime;
+        
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "BIOS boot recovery - interrupted boot %u seconds ago", 
+                 time_since_interrupt / 1000000);
+        
+        // Clear interrupt flag after recovery - no delays to avoid timing interference
+        m_BioseBootInterrupted = false;
+        m_BootInterruptTime = 0;
+    }
 
     // CRITICAL FIX: The USB framework is not automatically calling OnActivate()
     // We need to manually trigger activation to start listening for SCSI commands
@@ -614,6 +631,75 @@ void CUSBCDGadget::OnSuspend(void) {
     
     MLOGNOTE("CUSBCDGadget::OnSuspend", "entered - framework-driven cleanup, state=%d, CD ready=%d, suspend/resume cycle #%u", m_nState, m_CDReady, m_SuspendResumeCount);
     
+    // CRITICAL BIOS PROTECTION: Detect if BIOS is actively booting
+    boolean bios_boot_active = false;
+    if (m_LastSCSICommandTime > 0) {
+        u32 time_since_scsi = current_time - m_LastSCSICommandTime;
+        // AGGRESSIVE PROTECTION: If SCSI command within last 60 seconds, BIOS might still be booting
+        if (time_since_scsi < (1000000 * 60)) {
+            bios_boot_active = true;
+            MLOGERR("CUSBCDGadget::OnSuspend", "*** CRITICAL: BIOS BOOT ACTIVE *** SCSI command %u seconds ago - suspend may break boot sequence!", time_since_scsi / 1000000);
+            
+            // ENHANCED BIOS PROTECTION: Provide different protection levels based on timing
+            if (time_since_scsi < (1000000 * 10)) { // If SCSI command within last 10 seconds
+                MLOGERR("CUSBCDGadget::OnSuspend", "*** EMERGENCY BIOS PROTECTION *** SCSI command only %u seconds ago - implementing enhanced protection!", time_since_scsi / 1000000);
+                
+                // Mark that we're actively protecting BIOS boot
+                m_BioseBootInterrupted = true;
+                m_BootInterruptTime = current_time;
+                
+                // Store original state for precise recovery
+                m_PreSuspendState = m_nState;
+                
+                // For very recent SCSI commands (< 3 seconds), try longer delay to give BIOS more time
+                if (time_since_scsi < (1000000 * 3)) {
+                    MLOGNOTE("CUSBCDGadget::OnSuspend", "*** EXTENDED PROTECTION *** Very recent SCSI activity - providing 1 second protection window");
+                    
+                    // Save current SCSI command time to detect new commands during delay
+                    u32 saved_scsi_time = m_LastSCSICommandTime;
+                    
+                    // Mark boot as interrupted but don't add delays that could interfere with timing
+                    m_BioseBootInterrupted = true;
+                    m_BootInterruptTime = current_time;
+                    rapid_suspend_count = 25; // Maximum post-resume stabilization
+                } else {
+                    // No delays - let BIOS continue normally
+                    MLOGNOTE("CUSBCDGadget::OnSuspend", "BIOS timing window - maintaining protection without delays");
+                    m_BioseBootInterrupted = true;
+                    m_BootInterruptTime = current_time;
+                    rapid_suspend_count = 15; // High post-resume stabilization
+                }
+            } else {
+                // No delays for moderate activity
+                MLOGNOTE("CUSBCDGadget::OnSuspend", "Standard protection - no timing delays");
+                m_BioseBootInterrupted = true;
+                m_BootInterruptTime = current_time;
+                rapid_suspend_count = 10; // Moderate post-resume stabilization
+            }
+        } else {
+            // Light protection for older SCSI activity
+            MLOGNOTE("CUSBCDGadget::OnSuspend", "Light protection - older SCSI activity detected");
+            m_BioseBootInterrupted = true;
+            m_BootInterruptTime = current_time;
+            rapid_suspend_count = 5; // Light post-resume stabilization
+        }
+    }
+    
+    // SPECIAL HANDLING: If BIOS boot is active and this is a rapid suspend, try to minimize impact
+    if (bios_boot_active && last_suspend_time > 0) {
+        u32 time_since_last = current_time - last_suspend_time;
+        if (time_since_last < (1000000 * 5)) { // Less than 5 seconds since last suspend
+            MLOGERR("CUSBCDGadget::OnSuspend", "*** CRITICAL: RAPID SUSPEND DURING BIOS BOOT *** This WILL break boot sequence! time_since_last=%u microseconds", time_since_last);
+            
+            // Try to minimize suspend impact - preserve more state
+            m_BioseBootInterrupted = true;
+            m_BootInterruptTime = current_time;
+            
+            // Force immediate post-resume stabilization
+            rapid_suspend_count = 10; // Trigger maximum stabilization
+        }
+    }
+    
     // Detect rapid suspend/resume cycles that could confuse BIOS
     if (last_suspend_time > 0) {
         u32 time_since_last = current_time - last_suspend_time;
@@ -622,10 +708,9 @@ void CUSBCDGadget::OnSuspend(void) {
             MLOGERR("CUSBCDGadget::OnSuspend", "*** RAPID SUSPEND DETECTED *** #%u rapid suspends, time_since_last=%u microseconds - THIS BREAKS BIOS BOOT!", 
                      rapid_suspend_count, time_since_last);
             
-            // CRITICAL FIX: For excessive rapid suspends, add a small delay to help stabilize USB negotiation
+            // No delays during suspend - they interfere with BIOS timing
             if (rapid_suspend_count >= 3) {
-                MLOGNOTE("CUSBCDGadget::OnSuspend", "*** BIOS RECOVERY *** Adding stabilization delay for excessive rapid suspends");
-                CTimer::SimpleMsDelay(50); // Small delay to let USB hardware settle
+                MLOGNOTE("CUSBCDGadget::OnSuspend", "Excessive rapid suspends detected - count: %u", rapid_suspend_count);
             }
         } else {
             rapid_suspend_count = 0; // Reset if enough time has passed
@@ -703,8 +788,7 @@ void CUSBCDGadget::HandleBIOSStabilization(void) {
         if (m_pEP[EPOut] && m_pEP[EPIn] && m_CDReady && m_nState == TCDState::Init) {
             MLOGNOTE("CUSBCDGadget::HandleBIOSStabilization", "Forcing device back to ReceiveCBW state");
             
-            // Small delay to let USB hardware settle before reactivation
-            CTimer::SimpleMsDelay(10);
+            // No delays during BIOS stabilization - they interfere with timing
             
             // Force reactivation - but only if really necessary
             OnActivate();
@@ -993,6 +1077,16 @@ void CUSBCDGadget::OnActivate() {
     
     MLOGNOTE("CD OnActivate", "*** DEVICE READY FOR BIOS COMMANDS *** State=ReceiveCBW, CDReady=%d, waiting for SCSI commands", m_CDReady);
     
+    // Check if this activation follows a BIOS boot interruption
+    if (m_BioseBootInterrupted) {
+        u32 current_time = CTimer::GetClockTicks();
+        u32 time_since_interrupt = current_time - m_BootInterruptTime;
+        MLOGERR("CD OnActivate", "BIOS boot recovery mode - activated %u seconds after suspend interrupt", time_since_interrupt / 1000000);
+        
+        // No delays during recovery - they interfere with BIOS enumeration timing
+        MLOGNOTE("CD OnActivate", "BIOS recovery - no stabilization delays to avoid timing interference");
+    }
+    
     // Mark the time when we became ready to receive commands
     // This helps track if BIOS is actually trying to communicate
     static u32 activation_count = 0;
@@ -1098,47 +1192,79 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
 // Critical LBAs: 0x10=Primary Volume Descriptor, 0x11=Boot Record Volume Descriptor
 //
 void CUSBCDGadget::HandleSCSICommand() {
+    // Track SCSI command timing for BIOS boot protection
+    m_LastSCSICommandTime = CTimer::GetClockTicks();
+    
+    // If boot was previously interrupted, note the recovery
+    if (m_BioseBootInterrupted) {
+        u32 time_since_interrupt = m_LastSCSICommandTime - m_BootInterruptTime;
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "BIOS boot recovery after %u seconds", time_since_interrupt / 1000000);
+        m_BioseBootInterrupted = false; // Clear the flag
+    }
+    
     static bool bFirstCommand = true;
+    static u32 command_count = 0;
+    static u32 last_command = 0xFF;
+    
+    command_count++;
+    u32 current_command = m_CBW.CBWCB[0];
+    
     if (bFirstCommand) {
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "");
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "🎯 *** BIOS CONTACT ESTABLISHED *** 🎯");
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** FIRST SCSI COMMAND RECEIVED FROM BIOS ***");
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** This confirms BIOS detection is working! ***");
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "🎯 BIOS CONTACT ESTABLISHED - First SCSI command received");
         bFirstCommand = false;
     }
     
-    MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "*** BIOS COMMAND *** SCSI 0x%02x, CDReady=%d", m_CBW.CBWCB[0], m_CDReady);
+    // Track BIOS boot command sequence for diagnosis - but with minimal logging
+    if (command_count <= 10) {  // Only log first 10 commands to avoid spam
+        const char* cmd_names[] = {
+            "TEST_UNIT_READY", "REZERO_UNIT", "RESERVED", "REQUEST_SENSE", "FORMAT_UNIT", "READ_BLOCK_LIMITS", "RESERVED", "REASSIGN_BLOCKS",
+            "READ_6", "RESERVED", "WRITE_6", "SEEK_6", "RESERVED", "RESERVED", "RESERVED", "RESERVED",
+            "INQUIRY", "RESERVED", "RECOVER_BUFFERED_DATA", "MODE_SELECT", "RESERVE", "RELEASE", "COPY", "ERASE",
+            "MODE_SENSE", "START_STOP", "RECEIVE_DIAGNOSTIC", "SEND_DIAGNOSTIC", "PREVENT_ALLOW_MEDIUM_REMOVAL", "RESERVED", "RESERVED", "RESERVED",
+            "READ_FORMAT_CAPACITIES", "RESERVED", "RESERVED", "RESERVED", "RESERVED", "RESERVED", "RESERVED", "RESERVED",
+            "READ_10", "RESERVED", "WRITE_10", "SEEK_10", "RESERVED", "RESERVED", "RESERVED", "RESERVED"
+        };
+        
+        const char* cmd_name = (current_command < sizeof(cmd_names)/sizeof(cmd_names[0])) ? cmd_names[current_command] : "UNKNOWN";
+        
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "BIOS cmd #%u: 0x%02x (%s)", 
+                 command_count, current_command, cmd_name);
+                 
+        // Track expected BIOS boot progression for diagnosis
+        if (command_count == 1 && current_command == 0x12) {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY first - normal BIOS behavior");
+        } else if (command_count == 2 && current_command == 0x00) {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "TEST UNIT READY after INQUIRY - good progression");
+        } else if (current_command == 0x28 || current_command == 0x08) {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ command - BIOS attempting to boot!");
+        }
+    }
     
-    // Log full CDB for debugging boot issues
-    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Full CDB: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x", 
-             m_CBW.CBWCB[0], m_CBW.CBWCB[1], m_CBW.CBWCB[2], m_CBW.CBWCB[3], 
-             m_CBW.CBWCB[4], m_CBW.CBWCB[5], m_CBW.CBWCB[6], m_CBW.CBWCB[7],
-             m_CBW.CBWCB[8], m_CBW.CBWCB[9], m_CBW.CBWCB[10], m_CBW.CBWCB[11]);
-    
-    // HANG DETECTION: Add logging before each command handler
-    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** HANG CHECK *** About to enter switch for command 0x%02x", m_CBW.CBWCB[0]);
+    last_command = current_command;
              
     switch (m_CBW.CBWCB[0]) {
         case 0x0:  // Test unit ready
         {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** HANG CHECK *** Processing TEST UNIT READY");
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready - m_CDReady=%d [BIOS CRITICAL: failure here causes boot issues]", m_CDReady);
+            // Minimal logging to avoid timing interference during BIOS enumeration
+            static int test_unit_ready_count = 0;
+            test_unit_ready_count++;
+            
+            if (test_unit_ready_count <= 3) {  // Only log first 3 TEST UNIT READY commands to avoid spam
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "TEST UNIT READY #%d - CDReady=%d", test_unit_ready_count, m_CDReady);
+            }
+            
             if (!m_CDReady) {
-                MLOGERR("CUSBCDGadget::HandleSCSICommand", "*** Test Unit Ready FAILED *** - CD not ready, will cause BIOS boot failure");
+                if (test_unit_ready_count <= 3) {
+                    MLOGERR("CUSBCDGadget::HandleSCSICommand", "TEST UNIT READY FAILED - CD not ready");
+                }
                 bmCSWStatus = CD_CSW_STATUS_FAIL;
                 m_SenseParams.bSenseKey = 0x06;           // Unit Attention (matches physical device)
                 m_SenseParams.bAddlSenseCode = 0x29;      // Power On, Reset, Or Bus Device Reset Occurred (matches physical device)
                 m_SenseParams.bAddlSenseCodeQual = 0x00;  // (matches physical device)
-            } else {
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready SUCCESS - CD ready for BIOS boot");
             }
 	    
-            // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
             m_CSW.bmCSWStatus = bmCSWStatus;
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** HANG CHECK *** About to call SendCSW for TEST UNIT READY");
             SendCSW();
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** HANG CHECK *** SendCSW completed for TEST UNIT READY");
             break;
         }
 
@@ -1180,38 +1306,22 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x12:  // Inquiry
         {
             int allocationLength = (m_CBW.CBWCB[3] << 8) | m_CBW.CBWCB[4];
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry EVPD=%d, PageCode=0x%02x, allocation length %d", 
-                     (m_CBW.CBWCB[1] & 0x01), m_CBW.CBWCB[2], allocationLength);
-
+            // Minimal logging to avoid timing interference during BIOS enumeration
+            
             if ((m_CBW.CBWCB[1] & 0x01) == 0) {  // EVPD bit is 0: Standard Inquiry
-                // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
 		
 		// Set response length
 		int datalen = SIZE_INQR;
 		if (allocationLength < datalen)
 		    datalen = allocationLength;
 
-                // Log the INQUIRY response data for BIOS debugging
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY Response: DevType=0x%02x, RMB=0x%02x, Version=0x%02x, Format=0x%02x, Length=0x%02x", 
-                         m_InqReply.bPeriphQualDevType, m_InqReply.bRMB, m_InqReply.bVersion, 
-                         m_InqReply.bRespDataFormatEtc, m_InqReply.bAddlLength);
-                         
-                // Log vendor/product/revision with explicit length limits to avoid display issues
-                char vendorStr[9] = {0}; // 8 + null terminator
-                char productStr[17] = {0}; // 16 + null terminator  
-                char revisionStr[5] = {0}; // 4 + null terminator
-                memcpy(vendorStr, m_InqReply.bVendorID, 8);
-                memcpy(productStr, m_InqReply.bProdID, 16);
-                memcpy(revisionStr, m_InqReply.bProdRev, 4);
-                
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY Vendor: '%s' Product: '%s' Revision: '%s'", 
-                         vendorStr, productStr, revisionStr);
-                         
-                // Log the raw response bytes for detailed debugging
-                u8* respBytes = (u8*)&m_InqReply;
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY raw response: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x", 
-                         respBytes[0], respBytes[1], respBytes[2], respBytes[3], 
-                         respBytes[4], respBytes[5], respBytes[6], respBytes[7]);
+                // Only log essential INQUIRY success - no verbose data dumps
+                static int inquiry_count = 0;
+                inquiry_count++;
+                if (inquiry_count <= 3) {  // Only log first 3 INQUIRY commands to avoid spam
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY #%d: DevType=0x%02x, Version=0x%02x, Length=%d", 
+                             inquiry_count, m_InqReply.bPeriphQualDevType, m_InqReply.bVersion, datalen);
+                }
 
                 memcpy(&m_InBuffer, &m_InqReply, datalen);
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
@@ -1219,12 +1329,8 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_nnumber_blocks = 0;  // nothing more after this send
                 m_CSW.bmCSWStatus = bmCSWStatus;
                 // Set CSW data residue correctly
-                m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > datalen ? 
-                                       m_CBW.dCBWDataTransferLength - datalen : 0;
-                                       
-                // CRITICAL: Log successful INQUIRY completion for BIOS debugging
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** INQUIRY SUCCESS *** sent %d bytes, CSW status=0x%02x, BIOS should now send TEST UNIT READY", 
-                         datalen, m_CSW.bmCSWStatus);
+                m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > static_cast<u32>(datalen) ? 
+                                       m_CBW.dCBWDataTransferLength - static_cast<u32>(datalen) : 0;
             } else {  // EVPD bit is 1: VPD Inquiry
                 // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (VPD Inquiry)");
                 u8 vpdPageCode = m_CBW.CBWCB[2];
@@ -1255,8 +1361,8 @@ void CUSBCDGadget::HandleSCSICommand() {
                         m_nnumber_blocks = 0;  // nothing more after this send
                         m_CSW.bmCSWStatus = bmCSWStatus;
                         // Set CSW data residue correctly
-                        m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > datalen ? 
-                                               m_CBW.dCBWDataTransferLength - datalen : 0;
+                        m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > static_cast<u32>(datalen) ? 
+                                               m_CBW.dCBWDataTransferLength - static_cast<u32>(datalen) : 0;
                         break;
                     }
 
@@ -1284,8 +1390,8 @@ void CUSBCDGadget::HandleSCSICommand() {
                         m_nnumber_blocks = 0;  // nothing more after this send
                         m_CSW.bmCSWStatus = bmCSWStatus;
                         // Set CSW data residue correctly
-                        m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > datalen ? 
-                                               m_CBW.dCBWDataTransferLength - datalen : 0;
+                        m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength > static_cast<u32>(datalen) ? 
+                                               m_CBW.dCBWDataTransferLength - static_cast<u32>(datalen) : 0;
                         break;
                     }
 
@@ -2586,32 +2692,27 @@ void CUSBCDGadget::ForceStateReset(void) {
 
 // Enhanced Update method inspired by Linux kernel continuous processing
 void CUSBCDGadget::Update() {
-    // Enhanced Update method inspired by Linux kernel continuous processing
+    // Minimal Update method - avoid excessive logging that interferes with USB timing
     static int update_call_count = 0;
-    static bool bEarlyBootPeriod = true;
-    static int last_logged_call = 0;
-    update_call_count++;
-    
-    // HANG DETECTION: If Update() stops being called, we'll know from the logs
-    static int hang_detection_counter = 0;
-    static int last_hang_check = 0;
     static int last_state_change = 0;
     static int previous_state = -1;
     
-    hang_detection_counter++;
+    update_call_count++;
     
     // Track state changes to detect if we're stuck in a particular state
     if (static_cast<int>(m_nState) != previous_state) {
-        // This logging is already handled by the improved logging above
         previous_state = static_cast<int>(m_nState);
         last_state_change = update_call_count;
+        // Only log state changes - no periodic spam
+        MLOGNOTE("CUSBCDGadget::Update", "State change to %d at update #%d", 
+                 static_cast<int>(m_nState), update_call_count);
     }
     
     // Detect if we're stuck in TRANSIENT states for too long (potential hang)
     // ReceiveCBW is NOT a hang - it's normal to wait there for BIOS commands
     if (m_nState != TCDState::Init && 
         m_nState != TCDState::ReceiveCBW && 
-        (update_call_count - last_state_change) > 20000) {  // Only for non-waiting states
+        (update_call_count - last_state_change) > 50000) {  // Much higher threshold - only for real hangs
         MLOGERR("CUSBCDGadget::Update", "Potential hang detected - state %d for %d updates", 
                 static_cast<int>(m_nState), update_call_count - last_state_change);
         // Trigger recovery
@@ -2619,64 +2720,25 @@ void CUSBCDGadget::Update() {
         last_state_change = update_call_count;  // Reset counter after recovery
     }
     
-    // Reduce hang check frequency significantly
-    if ((hang_detection_counter % 10000) == 0) {  // Every 10000 instead of 1000
-        MLOGNOTE("CUSBCDGadget::Update", "Hang check - update count=%d, state=%d", 
+    // Only log occasionally for monitoring - much less frequent than before
+    if ((update_call_count % 50000) == 0) {  // Every 50000 instead of 1000/10000
+        MLOGNOTE("CUSBCDGadget::Update", "Health check - updates=%d, state=%d", 
                  update_call_count, static_cast<int>(m_nState));
-        last_hang_check = hang_detection_counter;
     }
     
-    // During early boot (first 10000 calls), log every 100 calls instead of 1000 to catch BIOS activity
-    // After that, reduce to every 1000 calls to avoid spam
-    int log_interval = bEarlyBootPeriod ? 
-        (m_nState == TCDState::ReceiveCBW ? 500 : 100) : // Less logging when waiting for BIOS commands
-        1000;
-    if (update_call_count == 10000) {
-        bEarlyBootPeriod = false;
-        MLOGNOTE("CUSBCDGadget::Update", "Early boot period ended - switching to reduced logging");
-    }
-    
-    // Only log when state changes or at much longer intervals to reduce spam
-    static int last_logged_state = -1;
-    static int last_periodic_log = 0;
-    
-    boolean should_log = false;
-    
-    // Always log state changes
-    if (static_cast<int>(m_nState) != last_logged_state) {
-        should_log = true;
-        last_logged_state = static_cast<int>(m_nState);
-    }
-    // For Init state, log much less frequently (every 10000 calls = ~10 seconds)
-    else if (m_nState == TCDState::Init && (update_call_count - last_periodic_log) >= 10000) {
-        should_log = true;
-        last_periodic_log = update_call_count;
-    }
-    // For other states, log occasionally but not every call
-    else if (m_nState != TCDState::Init && (update_call_count % 1000) == 0) {
-        should_log = true;
-    }
-    
-    if (should_log) {
-        MLOGNOTE("CUSBCDGadget::Update", "state=%d, call #%d", 
-                 static_cast<int>(m_nState), update_call_count);
-    }
-    
-    // CRITICAL BIOS COMPATIBILITY: Handle rapid suspend/resume cycles and process pending requests
-    // Call every 30000 updates (roughly every 30 seconds) to check for stabilization needs
-    // Reduced frequency to avoid interfering with BIOS enumeration
-    if ((update_call_count % 30000) == 0) {
+    // Minimal BIOS stabilization - much less frequent to avoid timing interference
+    if ((update_call_count % 100000) == 0) {  // Every 100000 updates instead of 30000
         HandleBIOSStabilization();
     }
     
     // Process pending transfer requests (Linux kernel inspired)
     ProcessPendingRequests();
     
-    // Check if transfers are safe before continuing (reduce logging frequency)
+    // Check if transfers are safe before continuing - reduced logging
     if (!IsTransferSafe()) {
         static int unsafe_count = 0;
         unsafe_count++;
-        if ((unsafe_count % 5000) == 0) {  // Log every 5000 calls instead of 1000
+        if ((unsafe_count % 50000) == 0) {  // Log every 50000 calls instead of 5000
             MLOGERR("CUSBCDGadget::Update", "Transfer unsafe, count: %d, suspends: %u", 
                     unsafe_count, m_SuspendResumeCount);
         }

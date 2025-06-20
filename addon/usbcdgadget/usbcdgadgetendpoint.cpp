@@ -103,6 +103,11 @@ void CUSBCDGadgetEndpoint::OnUSBReset (void)
 		MLOGNOTE("CDEndpoint", "*** BIOS CRITICAL *** Triggering gadget reset handling from OUT endpoint");
 		// Allow gadget to reinitialize state after reset
 		// This is critical for BIOS compatibility as BIOS may reset multiple times
+		
+		// HANG PROTECTION: Add timeout protection for reset handling
+		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** About to call ForceStateReset - if system hangs here, reset handler has issues");
+		m_pGadget->ForceStateReset();
+		MLOGNOTE("CDEndpoint", "*** HANG CHECK *** ForceStateReset completed successfully");
 	}
 	else
 	{
