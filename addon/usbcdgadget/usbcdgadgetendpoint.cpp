@@ -223,7 +223,8 @@ void CUSBCDGadgetEndpoint::BeginTransfer (TCDTransferMode Mode, void *pBuffer, s
 		
 	default:
 		MLOGNOTE("CDEndpoint", "Invalid transfer mode: %d", (int)Mode);
-		assert(0);
+		// Don't crash on invalid transfer mode - log error and return
+		return;
 		break;
 	}
 }

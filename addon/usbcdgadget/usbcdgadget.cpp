@@ -191,7 +191,8 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpe
 }
 
 CUSBCDGadget::~CUSBCDGadget(void) {
-    assert(0);
+    MLOGNOTE("CUSBCDGadget::~CUSBCDGadget", "Destructor called - cleaning up USB CD gadget");
+    // Don't crash on destruction - just clean up gracefully
 }
 
 const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength) {
@@ -432,6 +433,12 @@ void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
 
     m_pDevice = dev;
 
+    // Add null pointer check before using m_pDevice
+    if (!m_pDevice) {
+        MLOGERR("CUSBCDGadget::SetDevice", "*** ERROR: Device is null! ***");
+        return;
+    }
+
     cueParser = CUEParser(m_pDevice->GetCueSheet());  // FIXME. Ensure cuesheet is not null or empty
 
     MLOGNOTE("CUSBCDGadget::SetDevice", "entered");
@@ -587,7 +594,13 @@ u32 CUSBCDGadget::GetLeadoutLBA() {
         data_start = trackInfo->data_start;
     }
 
-    u32 deviceSize = (u32)m_pDevice->GetSize();
+    u32 deviceSize = 0;
+    if (m_pDevice) {
+        deviceSize = (u32)m_pDevice->GetSize();
+    } else {
+        MLOGERR("CUSBCDGadget::GetLeadoutLBA", "*** ERROR: Device is null! ***");
+        return 0;
+    }
 
     // We know the start position of the last track, and we know its sector length
     // and we know the file size, so we can work out the LBA of the end of the last track
@@ -901,7 +914,9 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
             }
             default: {
                 MLOGERR("onXferCmplt", "*** ERROR *** dir=in, unhandled state = %i", m_nState);
-                assert(0);
+                // Don't crash - just log error and try to recover
+                MLOGERR("onXferCmplt", "*** RECOVERY *** Attempting to recover from unexpected state");
+                RecoverFromSCSIException();
                 break;
             }
         }
@@ -974,7 +989,9 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
 
             default: {
                 MLOGERR("onXferCmplt", "dir=out, unhandled state = %i", m_nState);
-                assert(0);
+                // Don't crash - just log error and try to recover
+                MLOGERR("onXferCmplt", "*** RECOVERY *** Attempting to recover from unexpected OUT state");
+                RecoverFromSCSIException();
                 break;
             }
         }
@@ -1748,6 +1765,15 @@ void CUSBCDGadget::HandleSCSICommand() {
             // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d, msf = %u, subq = %u, parameter_list = 0x%02x, track_number = %u", allocationLength, msf, subq, parameter_list, track_number);
 
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+            if (!cdplayer) {
+                MLOGERR("CUSBCDGadget::HandleSCSICommand", "*** ERROR: CDPlayer not found for READ SUB-CHANNEL ***");
+                m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL; // Command Failed
+                m_SenseParams.bSenseKey = 0x02; // Not Ready
+                m_SenseParams.bAddlSenseCode = 0x3A; // Medium not present
+                m_SenseParams.bAddlSenseCodeQual = 0x00;
+                length = 0;
+                break;
+            }
 
 
 	    if (parameter_list == 0x00 )
