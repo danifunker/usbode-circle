@@ -1,6 +1,7 @@
 "\t<h3>Mounting File</h3>\n"
 "\t<div class=\"info-box\">\n"
 "\t\t<p>Successfully mounted: <strong>{{image_name}}</strong></p>\n"
+"\t\t<p>Returning to homepage in {{meta_refresh_timeout}} seconds</p>\n"
 "\t</div>\n"
 "\n"
 "\t<div>\n"

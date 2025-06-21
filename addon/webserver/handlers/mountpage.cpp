@@ -44,6 +44,7 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 
 	std::string file_name = params["file"];
 	context.set("image_name", file_name);
+	context.set("meta_refresh_url", "/");
 
 	LOGDBG("Got filename %s from parameter", file_name.c_str());
 

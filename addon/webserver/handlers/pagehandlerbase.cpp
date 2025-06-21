@@ -37,6 +37,9 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 	// Set up context
         mustache::data context;
 
+	// Set up context defaults
+	context.set("meta_refresh_timeout", "5");
+
 	// Fetch the page content from the subclass
 	mustache::partial part{[this]() {
 	    return GetHTML();
