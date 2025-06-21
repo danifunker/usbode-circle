@@ -431,7 +431,7 @@ int CUSBCDGadget::GetLastTrackNumber() {
 
 void CUSBCDGadget::CreateDevice(void) {
     MLOGNOTE("CUSBCDGadget::GetDescriptor", "entered");
-    //assert(m_pDevice);
+    assert(m_pDevice);
 }
 
 void CUSBCDGadget::OnSuspend(void) {
