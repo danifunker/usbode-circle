@@ -50,16 +50,18 @@ CDROMService::CDROMService()
 void CDROMService::SetDevice(CCueBinFileDevice* pBinFileDevice) {
     LOGNOTE("CDROM setting device");
     m_CDGadget->SetDevice(pBinFileDevice);
+    if (!isInitialized) {
+	bool ok = m_CDGadget->Initialize();
+	assert(ok == true && "Failed to initialize CD Gadget");
+    	LOGNOTE("Initialized USB CD gadget");
+	isInitialized = true;
+    }
 }
 
 boolean CDROMService::Initialize() {
     LOGNOTE("CDROM Initializing");
     CInterruptSystem* m_Interrupt = CInterruptSystem::Get();
     m_CDGadget = new CUSBCDGadget(m_Interrupt, CKernelOptions::Get()->GetUSBFullSpeed());
-    if (!m_CDGadget->Initialize()) {
-        LOGERR("Failed to initialize USB CD gadget");
-        return false;
-    }
     LOGNOTE("Started USB CD gadget");
     return true;
 }

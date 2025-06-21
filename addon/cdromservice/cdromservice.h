@@ -45,6 +45,7 @@ class CDROMService : public CTask {
    private:
     CUSBCDGadget* m_CDGadget = nullptr;
     static CDROMService *s_pThis;
+    bool isInitialized = false;
 };
 
 #endif
