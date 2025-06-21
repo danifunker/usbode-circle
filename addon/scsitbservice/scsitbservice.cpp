@@ -57,9 +57,8 @@ int compareFileEntries(const void* a, const void* b) {
 
 SCSITBService *SCSITBService::s_pThis = 0;
 
-SCSITBService::SCSITBService(CPropertiesFatFsFile *pProperties, CUSBCDGadget *pCDGadget) 
+SCSITBService::SCSITBService(CPropertiesFatFsFile *pProperties)
 : 	m_pProperties (pProperties),
-	m_pCDGadget (pCDGadget),
 	m_FileCount(0) 
 {
     LOGNOTE("SCSITBService::SCSITBService() called");
@@ -67,6 +66,9 @@ SCSITBService::SCSITBService(CPropertiesFatFsFile *pProperties, CUSBCDGadget *pC
     // I am the one and only!
     assert(s_pThis == 0);
     s_pThis = this;
+
+    cdromservice = static_cast<CDROMService*>(CScheduler::Get()->GetTask("cdromservice"));
+    assert(cdromservice != nullptr && "Failed to get cdromservice");
 
     m_FileEntries = new FileEntry[MAX_FILES];
     bool ok = RefreshCache();
@@ -217,7 +219,7 @@ void SCSITBService::Run() {
 			CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
 			
 			// Set the new device in the CD gadget
-    			m_pCDGadget->SetDevice(cueBinFileDevice);
+    			cdromservice->SetDevice(cueBinFileDevice);
 
 			// Save current mounted image name
 			m_pProperties->SelectSection("usbode");

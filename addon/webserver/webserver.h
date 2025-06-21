@@ -21,6 +21,7 @@
 #define _webserver_h
 
 #include <Properties/propertiesfatfsfile.h>
+#include <circle/sched/scheduler.h>
 #include <circle/actled.h>
 #include <circle/net/httpdaemon.h>
 #include <usbcdgadget/usbcdgadget.h>
@@ -29,6 +30,7 @@
 #include <linux/kernel.h>
 #include <circle/koptions.h>
 #include <discimage/util.h>
+#include <cdromservice/cdromservice.h>
 
 #ifndef TSHUTDOWNMODE
 #define TSHUTDOWNMODE
@@ -41,7 +43,7 @@ enum TShutdownMode {
 
 class CWebServer : public CHTTPDaemon {
    public:
-    CWebServer(CNetSubSystem *pNetSubSystem, CUSBCDGadget *pCDGadget, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket = 0);
+    CWebServer(CNetSubSystem *pNetSubSystem, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket = 0);
     ~CWebServer(void);
 
     // from CHTTPDaemon
@@ -60,6 +62,7 @@ private:
     CUSBCDGadget *m_pCDGadget;
     u8 *m_pContentBuffer;  // Added content buffer as class member
     CPropertiesFatFsFile *m_pProperties;
+    CDROMService *cdromservice = nullptr;
 
 public:
 };

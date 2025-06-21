@@ -43,6 +43,7 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 		return HTTPBadRequest;
 
 	std::string file_name = params["file"];
+	context.set("image_name", file_name);
 
 	LOGDBG("Got filename %s from parameter", file_name.c_str());
 
@@ -59,6 +60,7 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 	        LOGERR("Got an error from SetNextCDByName");
 		return HTTPInternalServerError;
 	}
+
 
 	return HTTPNotFound;
 }

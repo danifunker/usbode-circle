@@ -37,7 +37,7 @@
 #include <circle/serial.h>
 #include <circle/timer.h>
 #include <circle/types.h>
-#include <usbcdgadget/usbcdgadget.h>
+//#include <usbcdgadget/usbcdgadget.h>
 #include <usbmsdgadget/usbmsdgadget.h>
 #include <circle/sound/soundbasedevice.h>
 #include <discimage/cuebinfile.h>
@@ -50,6 +50,9 @@
 #include <circle/gpiopin.h>
 #include <display/displaymanager.h>
 #include <gpiobuttonmanager/gpiobuttonmanager.h>
+#include <scsitbservice/scsitbservice.h>
+#include <cdromservice/cdromservice.h>
+
 
 #ifndef TSHUTDOWNMODE
 #define TSHUTDOWNMODE
@@ -91,7 +94,7 @@ private:
         CWPASupplicant          m_WPASupplicant;
 
 	// CD Gadget
-	CUSBCDGadget*		m_CDGadget = nullptr;
+	//CUSBCDGadget*		m_CDGadget = nullptr;
 	
 	// MSD Gadget
 	CUSBMMSDGadget*		m_MMSDGadget = nullptr;

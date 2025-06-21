@@ -7,6 +7,7 @@
 #include <circle/sched/task.h>
 #include <usbcdgadget/usbcdgadget.h>
 #include <Properties/propertiesfatfsfile.h>
+#include <cdromservice/cdromservice.h>
 
 #define MAX_FILES 2048
 #define MAX_FILENAME_LEN 255
@@ -18,7 +19,7 @@ struct FileEntry {
 
 class SCSITBService : public CTask {
 public:
-    SCSITBService(CPropertiesFatFsFile *pProperties, CUSBCDGadget *pCDGadget);
+    SCSITBService(CPropertiesFatFsFile *pProperties);
     ~SCSITBService();
     size_t GetCount() const;
     const char* GetName(size_t index) const;
@@ -39,7 +40,7 @@ private:
 
     static SCSITBService *s_pThis;
     CPropertiesFatFsFile *m_pProperties;
-    CUSBCDGadget *m_pCDGadget;
+    CDROMService *cdromservice = nullptr;
     FileEntry *m_FileEntries;
     size_t m_FileCount;
     int next_cd = -1;

@@ -28,7 +28,6 @@
 #include <discimage/util.h>
 #include <webserver/webserver.h>
 #include <devicestate/devicestate.h>
-#include <scsitbservice/scsitbservice.h>
 
 #include <circle/time.h>
 
@@ -222,20 +221,14 @@ TShutdownMode CKernel::Run(void) {
 		LOGNOTE("Started the CD Player service");
 	    }
 
-	    // Initialize USB CD gadget
+	    // Initialize USB CD Service
 	    // TODO get USB speed from Properties
 	    // TODO allow UI to set USB speed
-	    // TODO Wrap this in its own run loop in a CTask
-	    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed());
-	    if (!m_CDGadget->Initialize()) {
-		LOGERR("Failed to initialize USB CD gadget");
-		return ShutdownHalt;
-	    }
-	    LOGNOTE("Started USB CD gadget");
+	    new CDROMService();
+	    LOGNOTE("Started CDROM service");
 
 	    // Load our SCSITB Service
-	    // This also loads our current image into the CD gadget
-	    new SCSITBService(&Properties, m_CDGadget);
+	    new SCSITBService(&Properties);
 	    LOGNOTE("Started SCSITB service");
 
     } else { // Mass Storage Device Mode
@@ -302,15 +295,10 @@ TShutdownMode CKernel::Run(void) {
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
         // Update USB transfers
-    	if (m_CDGadget) {
-        	m_CDGadget->UpdatePlugAndPlay();
-       		m_CDGadget->Update();
-    	}
-
-	    if (m_MMSDGadget) {
-	       m_MMSDGadget->UpdatePlugAndPlay ();
-               m_MMSDGadget->Update ();
-	    }
+	if (m_MMSDGadget) {
+	    m_MMSDGadget->UpdatePlugAndPlay ();
+            m_MMSDGadget->Update ();
+	}
 
         // CRITICAL: Process network tasks even in ISO selection mode
         if (m_Net.IsRunning()) {
@@ -320,7 +308,7 @@ TShutdownMode CKernel::Run(void) {
         // Start the Web Server
         if (m_Net.IsRunning() && !pCWebServer) {
             // Create the web server
-            pCWebServer = new CWebServer(&m_Net, m_CDGadget, &m_ActLED, &Properties);
+            pCWebServer = new CWebServer(&m_Net, &m_ActLED, &Properties);
 
             LOGNOTE("Started Webserver service");
         }
