@@ -1,6 +1,7 @@
 #ifndef PAGE_HANDLER_BASE_H
 #define PAGE_HANDLER_BASE_H
 #include "pagehandler.h"
+#include <circle/sched/scheduler.h>
 #include <mustache/mustache.hpp>
 
 class PageHandlerBase : public IPageHandler {

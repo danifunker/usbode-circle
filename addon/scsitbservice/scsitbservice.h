@@ -22,12 +22,18 @@ public:
     ~SCSITBService();
     size_t GetCount() const;
     const char* GetName(size_t index) const;
+    const char* GetCurrentCDName();
     DWORD GetSize(size_t index) const;
+    const FileEntry* GetFileEntry(size_t index) const;
+    FileEntry* begin();
+    FileEntry* end();
 
     bool RefreshCache();
 
     void Run(void);
-    bool SetNextCD(int index);
+    bool SetNextCD(size_t index);
+    bool SetNextCDByName(const char* file_name);
+    size_t GetCurrentCD();
 
 private:
 
@@ -37,6 +43,7 @@ private:
     FileEntry *m_FileEntries;
     size_t m_FileCount;
     int next_cd = -1;
+    int current_cd = -1;
 };
 
 #endif

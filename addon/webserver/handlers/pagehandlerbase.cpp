@@ -2,6 +2,7 @@
 #include <circle/util.h>
 #include <circle/net/httpdaemon.h>
 #include <mustache/mustache.hpp>
+#include <scsitbservice/scsitbservice.h>
 #include <circle/koptions.h>
 #include <fatfs/ff.h>
 #include <vector>
@@ -50,15 +51,23 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 		return status;
 	
 	// Get current loaded image
+        SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+        if (!svc)
+            return HTTPInternalServerError;
+
+        // Get current loaded image
+        std::string current_image = svc->GetCurrentCDName();
+
+	// Load our properties
         m_pProperties->Load();
         m_pProperties->SelectSection("usbode");
-        std::string current_image = m_pProperties->GetString("current_image", DEFAULT_IMAGE_FILENAME);
-	context.set("image_name", current_image);
 
-        // Get the current "mode"
+	// Get the current mode
+	// TODO add this to devicestate
         context.set("cdrom", !m_pProperties->GetNumber("mode", 0));
 
         // Get the current USB mode
+	// TODO add this to devicestate
         boolean is_full_speed = CKernelOptions::Get()->GetUSBFullSpeed();
         context.set("usb_mode", is_full_speed?"FullSpeed":"HighSpeed");
 
