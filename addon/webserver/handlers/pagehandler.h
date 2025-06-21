@@ -1,6 +1,7 @@
 #ifndef IPAGE_HANDLER_H
 #define IPAGE_HANDLER_H
 
+#include <circle/sched/scheduler.h>
 #include <Properties/propertiesfatfsfile.h>
 #include <usbcdgadget/usbcdgadget.h>
 

@@ -41,10 +41,10 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(USBODEHOME)/addon/cdplayer/libcdplayer.a \
 	$(USBODEHOME)/addon/gpiobuttonmanager/libgpiobuttonmanager.a \
 	$(USBODEHOME)/addon/scsitbservice/libscsitbservice.a \
+	$(USBODEHOME)/addon/cdromservice/libcdromservice.a \
 	$(USBODEHOME)/addon/display/libdisplay.a \
 	$(USBODEHOME)/addon/shutdown/libshutdown.a \
 	$(USBODEHOME)/addon/gitinfo/libgitinfo.a
-
 	#
 %.h: %.html
 	@echo "  GEN   $@"

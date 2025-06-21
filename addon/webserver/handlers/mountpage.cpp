@@ -2,6 +2,7 @@
 #include <circle/util.h>
 #include <circle/net/httpdaemon.h>
 #include <mustache/mustache.hpp>
+#include <scsitbservice/scsitbservice.h>
 #include <circle/koptions.h>
 #include <fatfs/ff.h>
 #include <vector>
@@ -46,23 +47,19 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 
 	LOGDBG("Got filename %s from parameter", file_name.c_str());
 
-	//TODO use SCSITBService instead
+	// Ask scsitbservice for a list of filenames
+        SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+        if (!svc) {
+	    LOGERR("Couldn't fetch SCSITB Service");
+            return HTTPInternalServerError;
+	}
 
-	// Save current mounted image name
-	m_pProperties->SelectSection("usbode");
-        m_pProperties->SetString("current_image", file_name.c_str());
-        m_pProperties->Save();
-
-        // Load the image
-        CCueBinFileDevice *cueBinFileDevice = loadCueBinFileDevice(file_name.c_str());
-        if (!cueBinFileDevice) {
-                LOGERR("Failed to get cueBinFileDevice");
-                return HTTPInternalServerError;
-        }
-
-	// Set the new device in the CD gadget
-        pCDGadget->SetDevice(cueBinFileDevice);
-        LOGDBG("CD gadget updated with new image: %s", file_name.c_str());
+	if (svc->SetNextCDByName(file_name.c_str())) {
+		return HTTPOK;
+	} else {
+	        LOGERR("Got an error from SetNextCDByName");
+		return HTTPInternalServerError;
+	}
 
 	return HTTPOK;
 }
