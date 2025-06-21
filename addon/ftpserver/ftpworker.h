@@ -135,7 +135,7 @@ class CFTPWorker : protected CTask {
     // Command/data buffers
     char m_CommandBuffer[FRAME_BUFFER_SIZE];
     BYTE* WriteBuffer;
-    BYTE* m_DataBuffer;
+    alignas(512) BYTE* m_DataBuffer;
 
     // Session state
     CString m_User;

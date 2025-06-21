@@ -748,13 +748,13 @@ bool CFTPWorker::Store(const char* pArgs) {
                     break;
                 }
                 WriteBufferUsed = 0;
+        	CScheduler::Get()->Yield();
             }
         }
 
         if (!bSuccess)
             break;
 
-        CScheduler::Get()->Yield();
         nTimeout = pTimer->GetTicks();
     }
 
