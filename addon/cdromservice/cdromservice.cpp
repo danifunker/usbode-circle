@@ -50,6 +50,8 @@ CDROMService::CDROMService()
 void CDROMService::SetDevice(CCueBinFileDevice* pBinFileDevice) {
     LOGNOTE("CDROM setting device");
     m_CDGadget->SetDevice(pBinFileDevice);
+
+    // We defer initialization of the CD Gadget until the first CD image is loaded
     if (!isInitialized) {
 	bool ok = m_CDGadget->Initialize();
 	assert(ok == true && "Failed to initialize CD Gadget");

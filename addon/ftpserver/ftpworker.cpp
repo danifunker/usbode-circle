@@ -696,8 +696,6 @@ bool CFTPWorker::Store(const char* pArgs) {
 
     CTimer* const pTimer = CTimer::Get();
     unsigned int nTimeout = pTimer->GetTicks();
-
-    //alignas(512) BYTE* WriteBuffer = new (HEAP_LOW) BYTE[WRITE_BUFFER_SIZE];
     unsigned int WriteBufferUsed = 0;
 
     while (true) {

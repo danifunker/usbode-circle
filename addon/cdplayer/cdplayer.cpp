@@ -106,7 +106,7 @@ u8 CCDPlayer::GetVolume() {
 }
 
 boolean CCDPlayer::SetVolume(u8 vol) {
-	LOGNOTE("Setting volume to 0x%02x", vol);
+    LOGNOTE("Setting volume to 0x%02x", vol);
     volumeByte = vol;
     return true;
 }
