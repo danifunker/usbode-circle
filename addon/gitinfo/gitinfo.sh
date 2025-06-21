@@ -3,7 +3,7 @@
 # Get git information
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-#DIRTY=$(git diff --quiet 2>/dev/null || echo "-dirty")
+DIRTY=$(git diff --quiet 2>/dev/null || echo "-dirty")
 
 # Path to version.txt file (relative to repository root)
 VERSION_FILE="../../version.txt"
