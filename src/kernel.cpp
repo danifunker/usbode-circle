@@ -177,7 +177,7 @@ boolean CKernel::Initialize(void) {
 }
 
 TShutdownMode CKernel::Run(void) {
-	//
+	
     // Initialize the global kernel pointer
     g_pKernel = this;
 
@@ -188,6 +188,7 @@ TShutdownMode CKernel::Run(void) {
                CONFIG_FILE, Properties.GetErrorLine());
         return ShutdownHalt;
     }
+
     Properties.SelectSection("usbode");
 
     // Start the file logging service
@@ -220,35 +221,15 @@ TShutdownMode CKernel::Run(void) {
 		LOGNOTE("Started the CD Player service");
 	    }
 
-	    // Load our current disc image
-	    CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
-	    if (!cueBinFileDevice) {
-		LOGERR("Failed to load image %s, trying default image", imageName);
-
-		// Save current mounted image name
-		Properties.SelectSection("usbode");
-		Properties.SetString("current_image", DEFAULT_IMAGE_FILENAME);
-		Properties.Save();
-
-		// Fall back to default image
-		cueBinFileDevice = loadCueBinFileDevice(DEFAULT_IMAGE_FILENAME);
-		if (!cueBinFileDevice) {
-			LOGERR("Can't load default image either. Shutting down");
-			return ShutdownHalt;
-		}
-	    }
-	    LOGNOTE("Loaded cue/bin file %s", imageName);
-
-	    // Initialize USB CD gadget
+	    // Initialize USB CD Service
 	    // TODO get USB speed from Properties
 	    // TODO allow UI to set USB speed
-	    m_CDGadget = new CUSBCDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), cueBinFileDevice);
-	    //m_CDGadget->SetDevice(cueBinFileDevice);
-	    if (!m_CDGadget->Initialize()) {
-		LOGERR("Failed to initialize USB CD gadget");
-		return ShutdownHalt;
-	    }
-	    LOGNOTE("Started USB CD gadget");
+	    new CDROMService();
+	    LOGNOTE("Started CDROM service");
+
+	    // Load our SCSITB Service
+	    new SCSITBService(&Properties);
+	    LOGNOTE("Started SCSITB service");
 
     } else { // Mass Storage Device Mode
 	     
@@ -314,15 +295,10 @@ TShutdownMode CKernel::Run(void) {
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
         // Update USB transfers
-    	if (m_CDGadget) {
-        	m_CDGadget->UpdatePlugAndPlay();
-       		m_CDGadget->Update();
-    	}
-
-	    if (m_MMSDGadget) {
-	       m_MMSDGadget->UpdatePlugAndPlay ();
-               m_MMSDGadget->Update ();
-	    }
+	if (m_MMSDGadget) {
+	    m_MMSDGadget->UpdatePlugAndPlay ();
+            m_MMSDGadget->Update ();
+	}
 
         // CRITICAL: Process network tasks even in ISO selection mode
         if (m_Net.IsRunning()) {
@@ -332,7 +308,7 @@ TShutdownMode CKernel::Run(void) {
         // Start the Web Server
         if (m_Net.IsRunning() && !pCWebServer) {
             // Create the web server
-            pCWebServer = new CWebServer(&m_Net, m_CDGadget, &m_ActLED, &Properties);
+            pCWebServer = new CWebServer(&m_Net, &m_ActLED, &Properties);
 
             LOGNOTE("Started Webserver service");
         }
@@ -1198,6 +1174,7 @@ void CKernel::LoadSelectedISO(void) {
     LOGNOTE("Loading ISO: %s", SelectedISO);
 
     // Let loadCueBinFileDevice handle the path construction
+    /*
     CCueBinFileDevice* CueBinFileDevice = loadCueBinFileDevice(SelectedISO);
     if (CueBinFileDevice == nullptr) {
         LOGERR("Failed to load Image: %s", SelectedISO);
@@ -1234,6 +1211,11 @@ void CKernel::LoadSelectedISO(void) {
 
     // Set the new device in the CD gadget
     m_CDGadget->SetDevice(CueBinFileDevice);
+    */
+
+    SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+    svc->SetNextCDByName(SelectedISO);
+    LOGNOTE("Selected new Image: %s", SelectedISO);
 
     // Return to main screen state first
     m_ScreenState = ScreenStateMain;

@@ -36,15 +36,17 @@
 
 LOGMODULE("webserver");
 
-CWebServer::CWebServer (CNetSubSystem *pNetSubSystem, CUSBCDGadget *pCDGadget, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket)
+CWebServer::CWebServer (CNetSubSystem *pNetSubSystem, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket)
 :       CHTTPDaemon (pNetSubSystem, pSocket, MAX_CONTENT_SIZE),
         m_pActLED (pActLED),
-        m_pCDGadget (pCDGadget),
         m_pContentBuffer(new u8[MAX_CONTENT_SIZE]),
         m_pProperties(pProperties)
 {
     // Select the correct section for all property operations
     m_pProperties->SelectSection("usbode");
+
+    cdromservice = static_cast<CDROMService*>(CScheduler::Get()->GetTask("cdromservice"));
+    assert(cdromservice != nullptr && "Failed to get cdromservice");
 }
 
 CWebServer::~CWebServer (void)
@@ -55,7 +57,7 @@ CWebServer::~CWebServer (void)
 
 CHTTPDaemon *CWebServer::CreateWorker (CNetSubSystem *pNetSubSystem, CSocket *pSocket)
 {
-        return new CWebServer (pNetSubSystem, m_pCDGadget, m_pActLED, m_pProperties, pSocket);
+        return new CWebServer (pNetSubSystem, m_pActLED, m_pProperties, pSocket);
 }
 
 THTTPStatus CWebServer::GetContent (const char  *pPath,

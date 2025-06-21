@@ -33,7 +33,7 @@ THTTPStatus ModePageHandler::PopulateContext(kainjow::mustache::data& context,
                                    CPropertiesFatFsFile *m_pProperties,
                                    CUSBCDGadget *pCDGadget)
 {
-	LOGNOTE("Mode page called");
+	LOGDBG("Mode page called");
 
 	auto params = parse_query_params(pParams);
 
@@ -53,7 +53,7 @@ THTTPStatus ModePageHandler::PopulateContext(kainjow::mustache::data& context,
 
 	// Compare to current mode & proceed if necessary
 	int mode = m_pProperties->GetNumber("mode", 0);
-	LOGNOTE("Mode parameter is %d", mode);
+	LOGDBG("Mode parameter is %d", mode);
 
 	if (mode != qmode) {
 

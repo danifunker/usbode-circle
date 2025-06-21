@@ -28,6 +28,7 @@ include $(CIRCLEHOME)/Rules.mk
 CFLAGS += -I ../../addon -I ./pages -I ./assets -I .
 CFLAGS += -D_TIME_T_DECLARED
 
+handlers/pagehandlerbase.o: pages/template.h
 handlers/mountpage.o: pages/mount.h
 handlers/modepage.o: pages/mode.h
 handlers/homepage.o: pages/index.h

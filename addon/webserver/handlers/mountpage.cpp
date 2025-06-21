@@ -2,8 +2,8 @@
 #include <circle/util.h>
 #include <circle/net/httpdaemon.h>
 #include <mustache/mustache.hpp>
+#include <scsitbservice/scsitbservice.h>
 #include <circle/koptions.h>
-#include <fatfs/ff.h>
 #include <vector>
 #include <string>
 #include <map>
@@ -35,7 +35,7 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
                                    CPropertiesFatFsFile *m_pProperties,
                                    CUSBCDGadget *pCDGadget)
 {
-	LOGNOTE("Mount page called");
+	LOGDBG("Mount page called");
 
 	auto params = parse_query_params(pParams);
 
@@ -43,24 +43,25 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 		return HTTPBadRequest;
 
 	std::string file_name = params["file"];
+	context.set("image_name", file_name);
+	context.set("meta_refresh_url", "/");
 
-	LOGNOTE("Got filename %s from parameter", file_name.c_str());
+	LOGDBG("Got filename %s from parameter", file_name.c_str());
 
-	// Save current mounted image name
-	m_pProperties->SelectSection("usbode");
-        m_pProperties->SetString("current_image", file_name.c_str());
-        m_pProperties->Save();
+	// Ask scsitbservice for a list of filenames
+        SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+        if (!svc) {
+	    LOGERR("Couldn't fetch SCSITB Service");
+            return HTTPInternalServerError;
+	}
 
-        // Load the image
-        CCueBinFileDevice *cueBinFileDevice = loadCueBinFileDevice(file_name.c_str());
-        if (!cueBinFileDevice) {
-                LOGERR("Failed to get cueBinFileDevice");
-                return HTTPInternalServerError;
-        }
+	if (svc->SetNextCDByName(file_name.c_str())) {
+		return HTTPOK;
+	} else {
+	        LOGERR("Got an error from SetNextCDByName");
+		return HTTPInternalServerError;
+	}
 
-	// Set the new device in the CD gadget
-        pCDGadget->SetDevice(cueBinFileDevice);
-        LOGNOTE("CD gadget updated with new image: %s", file_name.c_str());
 
-	return HTTPOK;
+	return HTTPNotFound;
 }

@@ -4,6 +4,7 @@
 [submodule "circle-stdlib"]
 	path = circle-stdlib
 	url = https://github.com/smuehlst/circle-stdlib.git
+	ignore = dirty
 [submodule "addon/webserver/Jinja2Cpp"]
 	path = addon/webserver/Jinja2Cpp
 	url = https://github.com/jinja2cpp/Jinja2Cpp.git

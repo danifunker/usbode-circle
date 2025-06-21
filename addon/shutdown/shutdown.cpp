@@ -1,9 +1,9 @@
 //
-// A Media player
+// A Scheduled shutdown service to allow parts of USBODE to schedule a
+// shutdown or reboot at some point in the future, to give time for
+// log file writing, web pages to return, etc
 //
-//
-// Circle - A C++ bare metal environment for Raspberry Pi
-// Copyright (C) 2020-2021  R. Stange <rsta2@o2online.de>
+// Copyright (C) 2025 Ian Cass
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ CShutdown::CShutdown(TShutdownMode mode, int msdelay)
 	m_msdelay(msdelay)
 {
 
-    SetName("shutdown");
+    SetName("shutdownservice");
     LOGNOTE("Shutdown scheduler called (%d scheduled in %dms)", mode, msdelay);
 }
 

@@ -411,6 +411,13 @@ struct TUSBCDSubChannel01CurrentPositionReply {
 } PACKED;
 #define SIZE_SUBCHANNEL_01_DATA_REPLY 12
 
+struct TUSBCDToolboxFileEntry {
+    u8 index;   /* byte 00: file index in directory */
+    u8 type;    /* byte 01: type 0 = file, 1 = directory */
+    u8 name[33];         /* byte 02-34: filename (32 byte max) + space for NUL terminator */
+    u8 size[5]; /* byte 35-39: file size (40 bit big endian unsigned) */
+} PACKED;
+
 class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 {
    public:
