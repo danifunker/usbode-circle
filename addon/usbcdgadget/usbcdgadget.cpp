@@ -408,7 +408,7 @@ u32 CUSBCDGadget::GetLeadoutLBA() {
     // not be consistent (e.g. multi-mode cd where track 1 is 2048
     u32 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
     u32 ret = data_start + lastTrackBlocks;
-    MLOGNOTE("CUSBCDGadget::GetLeadoutLBA", "device size is %lu, last track file offset is %lu, last track sector_length is %lu, last track data_start is %lu, lastTrackBlocks = %lu, returning = %lu", deviceSize, file_offset, sector_length, data_start, lastTrackBlocks, ret);
+    //MLOGNOTE("CUSBCDGadget::GetLeadoutLBA", "device size is %lu, last track file offset is %lu, last track sector_length is %lu, last track data_start is %lu, lastTrackBlocks = %lu, returning = %lu", deviceSize, file_offset, sector_length, data_start, lastTrackBlocks, ret);
 
     // Some corrupted cd images might have a cue that references track that are
     // outside the bin.
@@ -1153,7 +1153,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    delete[] tocEntries;
 
             } else {
-                MLOGNOTE("handleSCSI READ CD", "failed, %s", m_CDReady ? "ready" : "not ready");
+                MLOGNOTE("handleSCSI READ TOC", "failed, %s", m_CDReady ? "ready" : "not ready");
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                 m_SenseParams.bSenseKey = 0x02;
                 m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
