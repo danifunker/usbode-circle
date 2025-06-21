@@ -1,6 +1,7 @@
 /*
  * Simple CUE sheet parser suitable for embedded systems.
  *
+ * Copyright (c) 2025 Ian Cass - bundled for USBODE
  * Copyright (c) 2023 Rabbit Hole Computing
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
