@@ -366,13 +366,11 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             if (action == "save_reboot") {
                 success_message = "Configuration saved successfully. Rebooting in 3 seconds...";
                 // Schedule a reboot in 3 seconds
-                CShutdown *pShutdown = new CShutdown(ShutdownReboot, 3000);
-                pShutdown->Start();
+                new CShutdown(ShutdownReboot, 3000);
             } else if (action == "save_shutdown") {
                 success_message = "Configuration saved successfully. Shutting down in 3 seconds...";
                 // Schedule a shutdown in 3 seconds
-                CShutdown *pShutdown = new CShutdown(ShutdownHalt, 3000);
-                pShutdown->Start();
+                new CShutdown(ShutdownHalt, 3000);
             } else {
                 success_message = "Configuration saved successfully. Reboot required for changes to take effect.";
             }

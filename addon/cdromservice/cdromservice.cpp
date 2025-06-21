@@ -26,11 +26,16 @@
 #include <circle/synchronize.h>
 #include <circle/util.h>
 
+//TODO reduce stack size of USBCDGadget
+#define CDROM_STACK_SIZE TASK_STACK_SIZE * 1.5
+
 LOGMODULE("cdrom");
 
 CDROMService *CDROMService::s_pThis = 0;
 
-CDROMService::CDROMService() {
+CDROMService::CDROMService()
+: CTask (CDROM_STACK_SIZE)
+{
       
     // I am the one and only!
     assert(s_pThis == 0);
