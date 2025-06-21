@@ -487,6 +487,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
    private:
     void AddEndpoints(void) override;
     void RemoveEndpoints(void);
+    
+    // USB Framework Suspend Control for BIOS compatibility
+    void DisableUSBSuspendInterrupt();
+    void EnableUSBSuspendInterrupt();
 
     void CreateDevice(void) override;
 
@@ -576,8 +580,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         0x05,    // Peripheral Device Type: CD-ROM (0x05)
         0x80,    // RMB: Removable (0x80) 
         0x02,    // Version: SCSI-2 (0x02) - better BIOS compatibility with older systems
-        0x02,    // Response Data Format: 0x02 (SCSI-2 format) - more BIOS-compatible than 0x32
-        0x20,    // Additional Length: 32 bytes follow (0x20) - standard CD-ROM length
+        0x32,    // Response Data Format: 0x32 (SCSI-2 format with hierarchical support) - try more modern format
+        0x1F,    // Additional Length: 31 bytes follow (0x1F) - try standard 36-byte total length
         0x00,    // SCCS: 0
         0x00,    // BQUEetc: 0
         0x00,    // RELADRetc: 0
@@ -788,6 +792,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     // Suspend prevention during critical BIOS communication window
     u32 m_BiosBootProtectionTime = 0;   // Time when BIOS boot protection started
     boolean m_PreventSuspend = false;   // Flag to indicate device should appear busy to prevent suspend
+    static boolean s_GlobalSuspendDisabled; // Global flag to disable USB suspend interrupts during BIOS boot
     
     // State preservation for suspend/resume during data transfers
     boolean m_StateSaved = false;  // Flag indicating we have saved state
@@ -801,6 +806,9 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     static u32 s_DeviceResetCount;      // Global device reset counter
     static u32 s_LastSuccessfulBoot;    // Timestamp of last successful boot sequence
     static boolean s_BiospersistentReady; // Persistent ready state across BIOS attempts
+    
+    // Framework suspend control for BIOS compatibility
+    static boolean s_DisableSuspend;    // Global flag to disable USB suspend interrupts
 
     CUEParser cueParser;
 

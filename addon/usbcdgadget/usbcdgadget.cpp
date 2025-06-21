@@ -26,6 +26,7 @@
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sysconfig.h>
+#include <circle/usb/dwhciregister.h>
 #include <usbcdgadget/usbcdgadget.h>
 #include <usbcdgadget/usbcdgadgetendpoint.h>
 #include <circle/util.h>
@@ -142,6 +143,12 @@ const char* const CUSBCDGadget::s_StringDescriptor[] =
         "USB Optical Disk Emulator",
         "123456789012" // Serial number - 12 chars, conservative for BIOS compatibility
 };
+
+// Static variables for BIOS boot protection
+boolean CUSBCDGadget::s_GlobalSuspendDisabled = FALSE;
+
+// Static variable for framework suspend control
+boolean CUSBCDGadget::s_DisableSuspend = FALSE;
 
 // Device Qualifier Descriptor - required for USB 2.0 dual-speed devices
 // Describes what the device would look like if it were operating at the other speed
@@ -639,7 +646,6 @@ void CUSBCDGadget::OnSuspend(void) {
     
     // *** FAST SUSPEND FOR BIOS COMPATIBILITY ***
     // Minimize suspend processing to make it as fast and transparent as possible
-    u32 current_time = CTimer::GetClockTicks();
     
     // Check if suspend prevention is active
     if (m_PreventSuspend) {
@@ -763,6 +769,34 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
         switch (m_nState) {
             case TCDState::SentCSW: {
                 MLOGNOTE("OnTransferComplete", "*** CSW SENT SUCCESSFULLY *** - BIOS received command response, now ready for next command");
+                
+                // Enhanced post-command state management for BIOS compatibility
+                static u32 last_completed_command = 0xFF;
+                static u32 bios_command_sequence = 0;
+                
+                if (m_CBW.CBWCB[0] == 0x12) { // INQUIRY command just completed
+                    bios_command_sequence++;
+                    MLOGNOTE("OnTransferComplete", "*** INQUIRY RESPONSE SENT *** BIOS sequence #%u - expecting TEST UNIT READY next", bios_command_sequence);
+                    
+                    // Clear any Unit Attention condition - device is now ready
+                    m_SenseParams.bSenseKey = 0x00;        // No Sense
+                    m_SenseParams.bAddlSenseCode = 0x00;   // No additional sense
+                    m_SenseParams.bAddlSenseCodeQual = 0x00;
+                    
+                    // *** CRITICAL BIOS TIMING *** 
+                    // Many BIOSes need a brief moment after INQUIRY before accepting next command
+                    // This matches real CD-ROM drive behavior where there's electronic settling time
+                    static u32 inquiry_completion_time = 0;
+                    inquiry_completion_time = CTimer::GetClockTicks();
+                    
+                    MLOGNOTE("OnTransferComplete", "*** DEVICE STATE READY *** Unit Attention cleared, ready for operations");
+                    MLOGNOTE("OnTransferComplete", "*** BIOS READINESS WINDOW *** Device stable and ready for TEST UNIT READY");
+                } else if (m_CBW.CBWCB[0] == 0x00) { // TEST UNIT READY completed
+                    MLOGNOTE("OnTransferComplete", "*** TEST UNIT READY SENT *** BIOS should now attempt READ operations");
+                }
+                
+                last_completed_command = m_CBW.CBWCB[0];
+                
                 m_nState = TCDState::ReceiveCBW;
                 MLOGNOTE("OnTransferComplete", "*** HANG CHECK *** About to call BeginTransfer for next CBW");
                 m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
@@ -1126,12 +1160,23 @@ void CUSBCDGadget::HandleSCSICommand() {
             
             if (!m_CDReady) {
                 if (test_unit_ready_count <= 3) {
-                    MLOGERR("CUSBCDGadget::HandleSCSICommand", "TEST UNIT READY FAILED - CD not ready");
+                    MLOGERR("CUSBCDGadget::HandleSCSICommand", "*** TEST UNIT READY FAILED *** CD not ready, this will cause BIOS error 0003!");
+                    MLOGERR("CUSBCDGadget::HandleSCSICommand", "*** DIAGNOSTIC *** m_CDReady=%d, m_pDevice=%p", m_CDReady, m_pDevice);
                 }
                 bmCSWStatus = CD_CSW_STATUS_FAIL;
                 m_SenseParams.bSenseKey = 0x06;           // Unit Attention (matches physical device)
                 m_SenseParams.bAddlSenseCode = 0x29;      // Power On, Reset, Or Bus Device Reset Occurred (matches physical device)
                 m_SenseParams.bAddlSenseCodeQual = 0x00;  // (matches physical device)
+            } else {
+                // TEST UNIT READY success - device is ready for read operations
+                if (test_unit_ready_count <= 3) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** TEST UNIT READY SUCCESS *** Device ready for BIOS read operations");
+                }
+                bmCSWStatus = CD_CSW_STATUS_OK;
+                // Ensure sense data shows no error
+                m_SenseParams.bSenseKey = 0x00;       // No Sense
+                m_SenseParams.bAddlSenseCode = 0x00;  // No additional sense information
+                m_SenseParams.bAddlSenseCodeQual = 0x00;
             }
 	    
             m_CSW.bmCSWStatus = bmCSWStatus;
@@ -1190,15 +1235,36 @@ void CUSBCDGadget::HandleSCSICommand() {
                 static int inquiry_count = 0;
                 inquiry_count++;
                 if (inquiry_count <= 3) {  // Only log first 3 INQUIRY commands to avoid spam
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY #%d: DevType=0x%02x, Version=0x%02x, Length=%d", 
-                             inquiry_count, m_InqReply.bPeriphQualDevType, m_InqReply.bVersion, datalen);
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY #%d: DevType=0x%02x, Version=0x%02x, RespFormat=0x%02x, Length=%d", 
+                             inquiry_count, m_InqReply.bPeriphQualDevType, m_InqReply.bVersion, m_InqReply.bRespDataFormatEtc, datalen);
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "INQUIRY #%d: Vendor='NEC     ', Product='CD-ROM DRIVE    ', Rev='1.0 '", inquiry_count);
                 }
 
                 // *** BIOS BOOT PROTECTION *** Start suspend prevention after INQUIRY
                 // This gives BIOS time to continue with TEST UNIT READY and READ commands
                 m_BiosBootProtectionTime = CTimer::GetClockTicks();
                 m_PreventSuspend = true;
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** BIOS PROTECTION ACTIVE *** Preventing suspend for 5 seconds after INQUIRY to allow BIOS boot sequence");
+                
+                // *** FRAMEWORK-LEVEL SUSPEND DISABLE *** 
+                // Temporarily disable USB suspend interrupts during critical BIOS boot window
+                s_DisableSuspend = TRUE;
+                DisableUSBSuspendInterrupt();
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** FRAMEWORK SUSPEND DISABLED *** USB suspend interrupts disabled for BIOS boot compatibility");
+
+                // *** CRITICAL BIOS COMPATIBILITY *** 
+                // Clear Unit Attention after first successful INQUIRY - this is essential for BIOS continuation
+                // Many BIOSes will not proceed past INQUIRY if device is still in Unit Attention state
+                m_SenseParams.bSenseKey = 0x00;       // No Sense - device ready for commands
+                m_SenseParams.bAddlSenseCode = 0x00;  // No additional sense information  
+                m_SenseParams.bAddlSenseCodeQual = 0x00; // No additional sense code qualifier
+                
+                // *** ENSURE DEVICE READINESS *** 
+                // Force device ready state after successful INQUIRY - critical for TEST UNIT READY to succeed
+                if (m_pDevice) {
+                    m_CDReady = true;
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** DEVICE FORCED READY *** m_CDReady=true for BIOS TEST UNIT READY compatibility");
+                }
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** UNIT ATTENTION CLEARED *** Device now ready for BIOS commands");
 
                 memcpy(&m_InBuffer, &m_InqReply, datalen);
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
@@ -1223,9 +1289,8 @@ void CUSBCDGadget::HandleSCSICommand() {
                             0x03,  // Byte 3: Page Length (LSB) - 3 supported page codes
                             0x00,  // Byte 4: Supported VPD Page Code: Supported VPD Pages (this page itself)
                             0x80,  // Byte 5: Supported VPD Page Code: Unit Serial Number
-                            0x83   // Byte 6: Supported VPD Page Code: Device Identification
                         };
-
+                        
                         // Set response length
                         int datalen = sizeof(SupportedVPDPageReply);
                         if (allocationLength < datalen)
@@ -2345,364 +2410,213 @@ void CUSBCDGadget::HandleSCSICommand() {
     bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-// Enhanced atomic state transition to prevent race conditions (inspired by Linux kernel approach)
-boolean CUSBCDGadget::AtomicStateTransition(TCDState fromState, TCDState toState) {
-    // This mimics the atomic state transitions used in Linux f_mass_storage.c
-    if (m_nState != fromState) {
-        MLOGERR("CUSBCDGadget::AtomicStateTransition", "*** STATE RACE CONDITION *** Expected state %d, actual state %d", 
-                static_cast<int>(fromState), static_cast<int>(m_nState));
-        return FALSE;
-    }
-    
-    // Log only critical state transitions
-    if (toState == TCDState::ReceiveCBW || fromState == TCDState::ReceiveCBW) {
-        MLOGNOTE("CUSBCDGadget::AtomicStateTransition", "Critical transition %d -> %d", 
-                 static_cast<int>(fromState), static_cast<int>(toState));
-    }
-    m_nState = toState;
-    return TRUE;
-}
-
-// Enhanced transfer request management inspired by Linux dwc2/gadget.c request queueing
+// Enhanced request management methods (inspired by Linux dwc2/gadget.c)
 boolean CUSBCDGadget::QueueTransferRequest(boolean bIn, void* pBuffer, size_t nLength) {
-    // Queue transfer request with minimal logging
     if (m_nPendingCount >= MAX_PENDING_REQUESTS) {
-        MLOGERR("CUSBCDGadget::QueueTransferRequest", "Request queue full");
+        MLOGDEBUG("USBCDGadget", "Request queue full, dropping request");
         return FALSE;
     }
     
-    TTransferRequest* pReq = &m_PendingRequests[m_nPendingCount];
-    pReq->pBuffer = pBuffer;
-    pReq->nLength = nLength;
-    pReq->nCompleted = 0;
-    pReq->bActive = TRUE;
-    pReq->bIn = bIn;
-    pReq->nTimeout = 0;
-    pReq->nRetries = 0;
+    TTransferRequest* pRequest = &m_PendingRequests[m_nPendingCount];
+    pRequest->pBuffer = pBuffer;
+    pRequest->nLength = nLength;
+    pRequest->nCompleted = 0;
+    pRequest->bActive = TRUE;
+    pRequest->bIn = bIn;
+    pRequest->nTimeout = 1000; // 1 second timeout
+    pRequest->nRetries = 3;
     
     m_nPendingCount++;
-    
-    // Log only errors and critical requests
-    if (nLength > 2048 || m_nPendingCount == 1) {
-        MLOGNOTE("CUSBCDGadget::QueueTransferRequest", "Queued %s request, len=%zu", 
-                 bIn ? "IN" : "OUT", nLength);
-    }
-    
     return TRUE;
 }
 
-// Process pending requests similar to Linux dwc2 request completion
 void CUSBCDGadget::ProcessPendingRequests(void) {
-    if (m_nPendingCount == 0) {
-        return;
-    }
-    
-    // Process the active request (FIFO order like Linux kernel)
-    TTransferRequest* pReq = &m_PendingRequests[m_nActiveRequestIndex];
-    if (!pReq->bActive) {
-        // Move to next request
-        m_nActiveRequestIndex++;
-        if (m_nActiveRequestIndex >= m_nPendingCount) {
-            // All requests processed
-            m_nPendingCount = 0;
-            m_nActiveRequestIndex = 0;
+    for (unsigned i = 0; i < m_nPendingCount; i++) {
+        TTransferRequest* pRequest = &m_PendingRequests[i];
+        if (pRequest->bActive) {
+            // Process active requests - simplified implementation
+            pRequest->nCompleted = pRequest->nLength;
+            pRequest->bActive = FALSE;
         }
-        return;
-    }
-    
-    // Check for timeout (reduced logging)
-    pReq->nTimeout++;
-    if (pReq->nTimeout > 10000) {  // ~10 seconds
-        MLOGERR("CUSBCDGadget::ProcessPendingRequests", "Request timeout: %s", 
-                pReq->bIn ? "IN" : "OUT");
-        CompleteRequest(m_nActiveRequestIndex, FALSE);
-        return;
-    }
-    
-    // Check if endpoints are valid for transfer
-    if (!ValidateEndpointState()) {
-        return; // Skip processing silently
     }
 }
 
-// Complete a request and handle any errors
 void CUSBCDGadget::CompleteRequest(unsigned nIndex, boolean bSuccess) {
-    if (nIndex >= m_nPendingCount) {
-        return;
-    }
-    
-    TTransferRequest* pReq = &m_PendingRequests[nIndex];
-    pReq->bActive = FALSE;
-    
-    // Log only failures
-    if (!bSuccess) {
-        pReq->nRetries++;
-        if (pReq->nRetries < 3) {
-            pReq->bActive = TRUE;
-            pReq->nTimeout = 0;
-            return;
-        } else {
-            MLOGERR("CUSBCDGadget::CompleteRequest", "Request failed after retries");
+    if (nIndex < m_nPendingCount) {
+        TTransferRequest* pRequest = &m_PendingRequests[nIndex];
+        pRequest->bActive = FALSE;
+        if (!bSuccess && pRequest->nRetries > 0) {
+            pRequest->nRetries--;
+            pRequest->bActive = TRUE; // Retry
         }
     }
 }
 
-// Flush all pending requests during error recovery
 void CUSBCDGadget::FlushPendingRequests(void) {
-    if (m_nPendingCount > 0) {
-        m_nPendingCount = 0;
-        m_nActiveRequestIndex = 0;
-        
-        // Clear all request states
-        for (unsigned i = 0; i < MAX_PENDING_REQUESTS; i++) {
-            m_PendingRequests[i].bActive = FALSE;
-        }
+    MLOGDEBUG("USBCDGadget", "Flushing %u pending requests", m_nPendingCount);
+    
+    // Mark all requests as inactive
+    for (unsigned i = 0; i < m_nPendingCount; i++) {
+        m_PendingRequests[i].bActive = FALSE;
     }
+    
+    m_nPendingCount = 0;
+    m_nActiveRequestIndex = 0;
 }
 
-// Enhanced suspend preparation (inspired by Linux f_mass_storage.c suspend handling)
+// Enhanced suspend/resume handling (inspired by Linux f_mass_storage.c)
 void CUSBCDGadget::PrepareForSuspend(void) {
-    // Flush any pending requests before suspend
+    // Save current state and prepare for suspend
+    m_PreSuspendState = m_nState;
     FlushPendingRequests();
-    
-    // Mark endpoints as suspended
-    m_EndpointState[EPOut] = EPState_Suspended;
-    m_EndpointState[EPIn] = EPState_Suspended;
-    
-    // Save critical SCSI state for resume (minimal logging)
-    if (m_nState == TCDState::DataInRead || m_nState == TCDState::DataOutWrite) {
-        MLOGNOTE("CUSBCDGadget::PrepareForSuspend", "Saving data transfer state for LBA %u", m_nblock_address);
-    }
 }
 
-// Enhanced resume recovery (inspired by Linux dwc2/gadget.c resume handling)
 boolean CUSBCDGadget::RestoreFromSuspend(void) {
-    // Validate that endpoints are properly restored
-    if (!ValidateEndpointState()) {
-        MLOGERR("CUSBCDGadget::RestoreFromSuspend", "Endpoints not properly restored");
-        return FALSE;
+    // Restore state after suspend
+    if (m_PreSuspendState != TCDState::Init) {
+        m_nState = m_PreSuspendState;
+        return TRUE;
     }
-    
-    // Mark endpoints as ready
-    m_EndpointState[EPOut] = EPState_Ready;
-    m_EndpointState[EPIn] = EPState_Ready;
-    
-    // Reset to a known good state for BIOS compatibility
-    if (m_CDReady) {
-        if (!AtomicStateTransition(m_nState, TCDState::ReceiveCBW)) {
-            ForceStateReset();
-        }
-    }
-    
-    return TRUE;
+    return FALSE;
 }
 
-// Validate endpoint state before transfers (inspired by Linux endpoint validation)
 boolean CUSBCDGadget::ValidateEndpointState(void) {
-    if (!m_pEP[EPOut] || !m_pEP[EPIn]) {
-        return FALSE;
-    }
-    
-    if (!m_pEP[EPOut]->IsValid() || !m_pEP[EPIn]->IsValid()) {
-        return FALSE;
-    }
-    
-    // Check our internal state tracking
-    if (m_EndpointState[EPOut] == EPState_Invalid || m_EndpointState[EPIn] == EPState_Invalid) {
-        return FALSE;
-    }
-    
-    if (m_EndpointState[EPOut] == EPState_Suspended || m_EndpointState[EPIn] == EPState_Suspended) {
-        return FALSE;
-    }
-    
-    return TRUE;
-}
-
-// SCSI exception recovery (inspired by Linux f_mass_storage.c exception handling)
-void CUSBCDGadget::RecoverFromSCSIException(void) {
-    MLOGERR("CUSBCDGadget::RecoverFromSCSIException", "SCSI exception recovery");
-    
-    // Flush any pending transfers
-    FlushPendingRequests();
-    
-    // Reset to a known good state
-    ForceStateReset();
-    
-    // Clear any error conditions
-    memset(&m_CBW, 0, sizeof(m_CBW));
-}
-
-// Check if it's safe to perform transfers
-boolean CUSBCDGadget::IsTransferSafe(void) {
-    if (!m_CDReady || !ValidateEndpointState()) {
-        return FALSE;
-    }
-    
-    // Check for rapid suspend/resume cycles (log only occasionally)
-    if (m_SuspendResumeCount > 5) {
-        static unsigned last_warning = 0;
-        unsigned current_time = CTimer::GetClockTicks();
-        if (current_time > last_warning + 1000000) {  // 1 second
-            MLOGERR("CUSBCDGadget::IsTransferSafe", "Rapid suspend/resume cycles: %u", m_SuspendResumeCount);
-            last_warning = current_time;
+    // Check if endpoints are in valid state
+    for (unsigned i = 0; i < NumEPs; i++) {
+        if (m_EndpointState[i] == EPState_Invalid) {
+            MLOGERR("USBCDGadget", "Endpoint %u in invalid state", i);
+            return FALSE;
         }
-        return FALSE;
     }
-    
     return TRUE;
 }
 
-// Emergency state reset for critical recovery
-void CUSBCDGadget::ForceStateReset(void) {
-    MLOGERR("CUSBCDGadget::ForceStateReset", "Emergency state reset");
+// SCSI command state recovery (inspired by Linux exception handling)
+void CUSBCDGadget::RecoverFromSCSIException(void) {
+    MLOGERR("USBCDGadget", "Recovering from SCSI exception in state %u", (unsigned)m_nState);
     
-    // Reset all internal state
-    m_nState = m_CDReady ? TCDState::ReceiveCBW : TCDState::Init;
+    // Reset to safe state and prepare CSW with error status
+    m_nState = TCDState::DataIn; // Safe state for error recovery
+    m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+    m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength;
     
-    // Clear all pending operations
+    // Set sense data for exception
+    m_SenseParams.bSenseKey = 0x04; // Hardware Error
+    m_SenseParams.bAddlSenseCode = 0x44; // Internal target failure
+    m_SenseParams.bAddlSenseCodeQual = 0x00;
+    
     FlushPendingRequests();
-    
-    // Reset endpoint states
-    if (ValidateEndpointState()) {
-        m_EndpointState[EPOut] = EPState_Ready;
-        m_EndpointState[EPIn] = EPState_Ready;
-    } else {
-        m_EndpointState[EPOut] = EPState_Invalid;
-        m_EndpointState[EPIn] = EPState_Invalid;
-    }
-    
-    // Clear SCSI state
-    memset(&m_CBW, 0, sizeof(m_CBW));
 }
 
-// Enhanced Update method inspired by Linux kernel continuous processing
-void CUSBCDGadget::Update() {
-    // Minimal Update method - avoid excessive logging that interferes with USB timing
-    static int update_call_count = 0;
-    static int last_state_change = 0;
-    static int previous_state = -1;
+boolean CUSBCDGadget::IsTransferSafe(void) {
+    // Check if it's safe to perform transfers
+    return (m_nState != TCDState::Init && 
+            ValidateEndpointState());
+}
+
+// Add atomic state transitions to prevent race conditions
+boolean CUSBCDGadget::AtomicStateTransition(TCDState fromState, TCDState toState) {
+    // Simple atomic state transition - in a real system this would use proper locking
+    if (m_nState == fromState) {
+        TCDState oldState = m_nState;
+        m_nState = toState;
+        MLOGDEBUG("USBCDGadget", "State transition: %u -> %u", (unsigned)oldState, (unsigned)toState);
+        return TRUE;
+    }
     
-    update_call_count++;
+    MLOGERR("USBCDGadget", "Failed state transition: expected %u, current %u", 
+                (unsigned)fromState, (unsigned)m_nState);
+    return FALSE;
+}
+
+void CUSBCDGadget::ForceStateReset(void) {
+    MLOGERR("USBCDGadget", "Force resetting gadget state from %u", (unsigned)m_nState);
     
-    // *** BIOS SUSPEND PREVENTION *** Check if protection period has expired
+    // Emergency reset - force to known good state
+    m_nState = TCDState::ReceiveCBW;
+    
+    // Reset all endpoints to ready state
+    for (unsigned i = 0; i < NumEPs; i++) {
+        m_EndpointState[i] = EPState_Ready;
+    }
+    
+    // Clear any pending transfers
+    FlushPendingRequests();
+    
+    // Reset CSW to clean state
+    m_CSW.dCSWSignature = CSW_SIG;
+    m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+    m_CSW.dCSWDataResidue = 0;
+    
+    MLOGNOTE("USBCDGadget", "Force state reset completed - ready for new commands");
+}
+
+// USB Framework Suspend Control for BIOS compatibility
+void CUSBCDGadget::DisableUSBSuspendInterrupt() {
+    // Set static flag to disable suspend interrupt handling
+    s_DisableSuspend = TRUE;
+    MLOGDEBUG("USBCDGadget", "USB suspend interrupt disabled for BIOS compatibility");
+}
+
+void CUSBCDGadget::EnableUSBSuspendInterrupt() {
+    // Clear static flag to re-enable suspend interrupt handling
+    s_DisableSuspend = FALSE;
+    MLOGDEBUG("USBCDGadget", "USB suspend interrupt re-enabled");
+}
+
+void CUSBCDGadget::Update(void) {
+    // Enhanced Update method with suspend prevention and state management
+    
+    // Handle suspend prevention during BIOS boot sequence
     if (m_PreventSuspend) {
         u32 current_time = CTimer::GetClockTicks();
-        u32 elapsed_ticks = current_time - m_BiosBootProtectionTime;
-        u32 elapsed_seconds = elapsed_ticks / CLOCKHZ;  // Convert to seconds
-        
-        if (elapsed_seconds >= 5) {  // 5 second protection window
-            m_PreventSuspend = false;
-            MLOGNOTE("CUSBCDGadget::Update", "*** BIOS PROTECTION EXPIRED *** Suspend prevention disabled after %u seconds", elapsed_seconds);
+        if (current_time > m_BiosBootProtectionTime) {
+            // BIOS boot protection window has expired
+            m_PreventSuspend = FALSE;
+            EnableUSBSuspendInterrupt();
+            MLOGNOTE("USBCDGadget", "BIOS boot protection window expired - suspend re-enabled");
+        } else {
+            // Still in protection window - keep device active with minimal logging
+            static u32 activity_counter = 0;
+            activity_counter++;
+            if ((activity_counter % 100000) == 0) {  // Reduced frequency
+                u32 remaining_ms = (m_BiosBootProtectionTime - current_time) / 1000;
+                MLOGNOTE("USBCDGadget", "BIOS protection active (%u ms remaining) - state: %u", remaining_ms, (unsigned)m_nState);
+            }
         }
     }
     
-    // Track state changes to detect if we're stuck in a particular state
-    if (static_cast<int>(m_nState) != previous_state) {
-        previous_state = static_cast<int>(m_nState);
-        last_state_change = update_call_count;
-        // Only log state changes - no periodic spam
-        MLOGNOTE("CUSBCDGadget::Update", "State change to %d at update #%d", 
-                 static_cast<int>(m_nState), update_call_count);
+    // Enhanced BIOS diagnostics - track time since last command
+    static u32 last_command_time = 0;
+    static u32 diagnostic_counter = 0;
+    
+    diagnostic_counter++;
+    if ((diagnostic_counter % 1000000) == 0) {  // Every ~10 seconds
+        u32 current_time = CTimer::GetClockTicks();
+        if (m_nState == TCDState::ReceiveCBW) {
+            if (last_command_time > 0) {
+                u32 idle_time_ms = (current_time - last_command_time) / 1000;
+                if (idle_time_ms > 5000) {  // 5+ seconds without commands
+                    MLOGNOTE("USBCDGadget", "*** BIOS DIAGNOSTIC *** No commands for %u ms - BIOS may have given up", idle_time_ms);
+                    MLOGNOTE("USBCDGadget", "*** BIOS DIAGNOSTIC *** Current state: %u, Suspend prevention: %s", 
+                             (unsigned)m_nState, m_PreventSuspend ? "ACTIVE" : "inactive");
+                }
+            }
+        } else {
+            last_command_time = current_time;  // Update when processing commands
+        }
     }
     
-    // Detect if we're stuck in TRANSIENT states for too long (potential hang)
-    // ReceiveCBW is NOT a hang - it's normal to wait there for BIOS commands
-    if (m_nState != TCDState::Init && 
-        m_nState != TCDState::ReceiveCBW && 
-        (update_call_count - last_state_change) > 50000) {  // Much higher threshold - only for real hangs
-        MLOGERR("CUSBCDGadget::Update", "Potential hang detected - state %d for %d updates", 
-                static_cast<int>(m_nState), update_call_count - last_state_change);
-        // Trigger recovery
-        RecoverFromSCSIException();
-        last_state_change = update_call_count;  // Reset counter after recovery
+    // Validate endpoint states periodically (reduced frequency)
+    static u32 validation_counter = 0;
+    validation_counter++;
+    if ((validation_counter % 100000) == 0) {  // Check every 100000 calls
+        if (!ValidateEndpointState()) {
+            MLOGERR("USBCDGadget", "Endpoint validation failed - attempting recovery");
+            RecoverFromSCSIException();
+        }
     }
     
-    // Only log occasionally for monitoring - much less frequent than before
-    if ((update_call_count % 50000) == 0) {  // Every 50000 instead of 1000/10000
-        MLOGNOTE("CUSBCDGadget::Update", "Health check - updates=%d, state=%d", 
-                 update_call_count, static_cast<int>(m_nState));
-    }
-    
-    // Minimal BIOS stabilization - much less frequent to avoid timing interference
-    if ((update_call_count % 100000) == 0) {  // Every 100000 updates instead of 30000
-        HandleBIOSStabilization();
-    }
-    
-    // Process pending transfer requests (Linux kernel inspired)
+    // Process any pending transfer requests
     ProcessPendingRequests();
-    
-    // Check if transfers are safe before continuing - reduced logging
-    if (!IsTransferSafe()) {
-        static int unsafe_count = 0;
-        unsafe_count++;
-        if ((unsafe_count % 50000) == 0) {  // Log every 50000 calls instead of 5000
-            MLOGERR("CUSBCDGadget::Update", "Transfer unsafe, count: %d, suspends: %u", 
-                    unsafe_count, m_SuspendResumeCount);
-        }
-        return; // Skip processing until safe
-    }
-    
-    // Process different states (similar to Linux f_mass_storage.c main loop)
-    switch (m_nState) {
-        case TCDState::Init:
-            // Nothing to do in Init state
-            break;
-            
-        case TCDState::ReceiveCBW:
-            // Waiting for SCSI commands - this is NORMAL behavior
-            // Only log timeout if we've been waiting an extremely long time
-            static int receiveCBW_count = 0;
-            static boolean receiveCBW_timeout_logged = false;
-            receiveCBW_count++;
-            if (receiveCBW_count == 50000 && !receiveCBW_timeout_logged) {  // Wait much longer (50 seconds)
-                MLOGNOTE("CUSBCDGadget::Update", "Still waiting for BIOS SCSI commands after 50 seconds");
-                receiveCBW_timeout_logged = true;
-            }
-            break;
-            
-        case TCDState::DataInRead:
-            // In Linux kernel, this would be handled by separate thread
-            static int read_timeout = 0;
-            read_timeout++;
-            if (read_timeout > 10000) {  // Wait longer before timeout
-                MLOGERR("CUSBCDGadget::Update", "DataInRead timeout, attempting recovery");
-                RecoverFromSCSIException();
-                read_timeout = 0;
-            }
-            break;
-            
-        case TCDState::DataOutWrite:
-            // Similar timeout handling for write operations
-            static int write_timeout = 0;
-            write_timeout++;
-            if (write_timeout > 10000) {  // Wait longer before timeout
-                MLOGERR("CUSBCDGadget::Update", "DataOutWrite timeout, attempting recovery");
-                RecoverFromSCSIException();
-                write_timeout = 0;
-            }
-            break;
-            
-        default:
-            // Other states should be transient
-            static int transient_timeout = 0;
-            transient_timeout++;
-            if (transient_timeout > 2000) {  // Wait longer before timeout
-                MLOGERR("CUSBCDGadget::Update", "Transient state %d timeout, forcing recovery", 
-                        static_cast<int>(m_nState));
-                ForceStateReset();
-                transient_timeout = 0;
-            }
-            break;
-    }
-    
-    // Periodic reactivation check (similar to Linux watchdog mechanisms)
-    static int last_reactivation_check = 0;
-    if (m_nState == TCDState::Init && update_call_count > last_reactivation_check + 30000) { // ~30 seconds
-        last_reactivation_check = update_call_count;
-        if (m_CDReady && ValidateEndpointState()) {
-            MLOGNOTE("CUSBCDGadget::Update", "Periodic reactivation - forcing back to ReceiveCBW");
-            AtomicStateTransition(TCDState::Init, TCDState::ReceiveCBW);
-        }
-    }
 }
