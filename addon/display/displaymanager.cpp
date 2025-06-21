@@ -1497,8 +1497,8 @@ void CDisplayManager::ShowBuildInfoScreen(const char* pVersionInfo, const char* 
             
             // Add git hash at the bottom of the content area (before navigation bar)
             char hash_line[64];
-            char short_hash[9] = {0};  // 8 chars + null terminator
-            strncpy(short_hash, pGitCommit, 8);
+            char short_hash[16] = {0};  // 8 chars + null terminator
+            strncpy(short_hash, pGitCommit, 15);
             snprintf(hash_line, sizeof(hash_line), "Commit: %s", short_hash);
             graphics.DrawText(left_margin, 175, COLOR2D(0, 0, 140), hash_line, C2DGraphics::AlignLeft);
             
