@@ -456,12 +456,9 @@ TShutdownMode CKernel::Run(void) {
 		*/
         }
 
-	// Give tasks a chance to run
-    
+	// Give other tasks a chance to run
 	m_Scheduler.Yield();
 
-	// Small delay to prevent CPU hogging
-	// CTimer::SimpleMsDelay(10);
     }
 
     LOGNOTE("ShutdownHalt");

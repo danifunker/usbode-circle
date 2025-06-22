@@ -224,16 +224,45 @@ struct TUSBCDReadCapacityReply  // 8 bytes
 } PACKED;
 #define SIZE_READCAPREP 8
 
-struct TUSBCDEventStatusReply  // 8 bytes
+struct TUSBCDEventStatusReplyHeader 
 {
     u16 eventDataLength;   // 2 bytes: length of remaining data
     u8 notificationClass;  // Media class
-    u8 supportedEvents;    // No events supported
-    u8 eventClass;         // Media event
-    u8 mediaStatus;        // 0x02 = Media present
-    u8 reserved[2];        // Reserved
+    u8 supportedEventClass;    // No events supported
 } PACKED;
-#define SIZE_EVENT_STATUS_REPLY 8
+#define SIZE_EVENT_STATUS_REPLY_HEADER 4
+
+struct TUSBCDEventStatusReplyEvent
+{
+	u8 eventCode;
+	u8 data[3]; 
+} PACKED;
+#define SIZE_EVENT_STATUS_REPLY_EVENT 4
+
+struct TUSBCDTrackInformationBlock
+{
+	u16 dataLength;
+	u8 logicalTrackNumberLSB;
+	u8 sessionNumberLSB;
+	u8 reserved1;
+	u8 trackMode;
+	u8 dataMode;
+	u8 LRANWA;
+	u32 logicalTrackStartAddress;
+	u32 nextWriteableAddres;
+	u32 freeBlocks;
+	u32 fixedPacketSize;
+	u32 logicalTrackSize;
+	u32 lastRecordedAddress;
+	u8 logicalTrackNumberMSB;
+	u8 sessionNumberMSB;
+	u8 reserved2;
+	u8 reserved3;
+	u32 readCompatibilityLBA;
+	u32 nextLayerJumpAddress;
+	u32 lastLayerJumpAddress;
+} PACKED;
+
 
 struct TUSBCDReadTOCReply  // 12 bytes
 {
@@ -480,6 +509,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     void SendCSW();
     const CUETrackInfo *GetTrackInfoForLBA(u32 lba);
+    const CUETrackInfo *GetTrackInfoForTrack(int track);
     int GetSkipbytesForTrack(const CUETrackInfo *trackInfo);
     int GetSkipbytes();
     int GetMediumType();
@@ -577,15 +607,6 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         0x00,            // field replacement unit code
         0x00,            // sksv
         {0x0, 0x0, 0x0}  // sense key specific
-    };
-
-    TUSBCDEventStatusReply m_EventStatusReply = {
-        htons(0x06),  // Event data length
-        0x02,         // Notification class (Media)
-        0x00,         // Supported events
-        0x02,         // Event class (Media)
-        0x02,         // Media status = Present
-        {0x00, 0x00}  // Reserved
     };
 
     // static for now
@@ -751,6 +772,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int transfer_block_size = 2048;
     int file_mode = 1;
     boolean m_IsFullSpeed = 0;
+    boolean discChanged = false;
 };
 
 #endif
