@@ -42,5 +42,5 @@ CShutdown::~CShutdown(void) {
 void CShutdown::Run(void) {
 	LOGNOTE("Sleeping for %d ms", m_msdelay);
 	CScheduler::Get()->MsSleep(m_msdelay);
-	DeviceState::Get().setShutdownMode(ShutdownReboot);
+	DeviceState::Get().setShutdownMode(m_mode);
 }

@@ -348,13 +348,23 @@ TShutdownMode CKernel::Run(void) {
         // Check if we should shutdown or halt
 	if (DeviceState::Get().getShutdownMode() != ShutdownNone) {
 		// Prepare display for shutdown (powers off Pirate Audio display)
+		LOGNOTE("Shutting down the display");
 		if (m_pDisplayManager) {
 			m_pDisplayManager->PrepareForShutdown();
 		}
 
 		// Unmount & flush before we reboot or shutdown
+		LOGNOTE("Flushing SD card writes");
 		f_mount(0, DRIVE, 1);
-		return DeviceState::Get().getShutdownMode();
+
+		// Do it!
+		if (DeviceState::Get().getShutdownMode() == ShutdownHalt) {
+			LOGNOTE("Shut down - it's now safe to remove USBODE");
+			return ShutdownHalt;
+		} else {
+			LOGNOTE("Rebooting...");
+			return ShutdownReboot;
+		}
 	}
 
         // Process display timeouts once per second using the timer
