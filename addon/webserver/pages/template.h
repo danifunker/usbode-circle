@@ -50,6 +50,7 @@
 "                <p>USB Mode: {{ usb_mode }}</p>\n"
 "                <div style=\"margin-top: 10px; text-align: center;\">\n"
 "                    <a href=\"/config\" class=\"button\">Configuration</a>\n"
+"                    <a href=\"/log\" class=\"button\">Log Viewer</a>\n"
 "                </div>\n"
 "        </div>\n"
 "        <div class=\"footer\">\n"

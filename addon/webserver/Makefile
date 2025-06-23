@@ -15,6 +15,7 @@ OBJS    = webserver.o \
 	handlers/modepage.o \
 	handlers/homepage.o \
 	handlers/configpage.o \
+	handlers/logpage.o \
 	handlers/asset.o 
 
 libwebserver.a: $(OBJS)
@@ -33,6 +34,7 @@ handlers/mountpage.o: pages/mount.h
 handlers/modepage.o: pages/mode.h
 handlers/homepage.o: pages/index.h
 handlers/configpage.o: pages/config.h
+handlers/logpage.o: pages/log.h
 handlers/asset.o: assets/logo.h
 handlers/asset.o: assets/favicon.h
 
