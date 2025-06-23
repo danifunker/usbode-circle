@@ -990,23 +990,6 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0xBE:  // READ CD
         {
             if (m_CDReady) {
-                // example
-                // 0000   1b 00 20 6a 5d d4 82 a9 ff ff 00 00 00 00 09 00   .. j]...........
-                // 0010   00 04 00 1b 00 02 03 1f 00 00 00 55 53 42 43 20   ...........USBC
-                // 0020   6a 5d d4 00 93 00 00 80 00 0c be 04 00 01 cb 70   j].............p
-                // 0030   00 00 10 f0 00 00 00 00 00 00                     ..........
-                //
-                // 04 = 100 = expected sector type 1 = cd-da
-                // 00 01 cd 70 = LBA
-                // 00 00 10 = transfer length (LBA blocks to return)
-                // f0 = 1111  1  0  0  1
-                //    1111 = SYNC, header codes, user data, edc/ecc
-                //           Return all data
-                //    00 = C2 error (don't fabricate audio)
-                //    1 = reserved
-                //
-                //    For now, we're implementing bare minimum for
-                //    audio playback
 
                 // will be updated if read fails on any block
                 m_CSW.bmCSWStatus = bmCSWStatus;
