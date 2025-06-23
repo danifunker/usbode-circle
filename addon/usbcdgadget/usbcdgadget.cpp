@@ -239,10 +239,7 @@ void CUSBCDGadget::SetDevice(CCueBinFileDevice* dev) {
         m_pDevice = nullptr;
 
         // Tell the host the disc has changed
-        //bmCSWStatus = CD_CSW_STATUS_FAIL;
-        //m_SenseParams.bSenseKey = 0x06;           // Unit Attention
-        //m_SenseParams.bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE
-        //m_SenseParams.bAddlSenseCodeQual = 0x00;  // MEDIUM MAY HAVE CHANGED
+	// TODO: implement a state engine to manage this transition
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         m_SenseParams.bSenseKey = 0x02;           // Not Ready
         m_SenseParams.bAddlSenseCode = 0x3a;      // MEDIUM NOT PRESENT
@@ -769,13 +766,14 @@ void CUSBCDGadget::HandleSCSICommand() {
             m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
             m_nState = TCDState::SendReqSenseReply;
 
-            // Reset response params after send
-	    if (m_SenseParams.bSenseKey == 0x06) {
+	    // If we were "Not Ready", switch to Unit Attention
+	    if (m_SenseParams.bSenseKey == 0x02) { 
 	        bmCSWStatus = CD_CSW_STATUS_FAIL;
         	m_SenseParams.bSenseKey = 0x06;           // Unit Attention
         	m_SenseParams.bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE
         	m_SenseParams.bAddlSenseCodeQual = 0x00;  // MEDIUM MAY HAVE CHANGED
 	    } else {
+                // Reset response params after send
 	    	bmCSWStatus = CD_CSW_STATUS_OK;
             	m_SenseParams.bSenseKey = 0; // NO SENSE
             	m_SenseParams.bAddlSenseCode = 0; // NO ADDITIONAL SENSE INFORMATION
