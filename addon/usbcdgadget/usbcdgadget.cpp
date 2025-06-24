@@ -151,16 +151,16 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpe
       m_pEP{nullptr, nullptr, nullptr},
       m_nState(TCDState::Init),
       m_CDReady(false),
-      m_SuspendResumeCount(0),              // Add this
-      m_LastSCSICommandTime(0),             // Add this
-      m_BioseBootInterrupted(false),        // Add this
-      m_BootInterruptTime(0),               // Add this
-      m_BiosBootProtectionTime(0),          // Add this
-      m_PreventSuspend(false),              // Add this
-      m_StateSaved(false),                  // Add this
-      m_SavedLBA(0),                        // Add this
-      m_SavedBlockCount(0),                 // Add this
-      m_SavedState(TCDState::Init)          // Add this
+      m_LastSCSICommandTime(0),             // Move this before m_SuspendResumeCount
+      m_BioseBootInterrupted(false),        
+      m_BootInterruptTime(0),               
+      m_BiosBootProtectionTime(0),          
+      m_PreventSuspend(false),              
+      m_StateSaved(false),                  
+      m_SavedLBA(0),                        
+      m_SavedBlockCount(0),                 
+      m_SavedState(TCDState::Init),
+      m_SuspendResumeCount(0)               // Move this to match header order
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "entered %d", isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
@@ -223,13 +223,7 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
                 *pLength = (u8)m_StringDescriptor[0][0];
                 return m_StringDescriptor[0];
             } else if (uchDescIndex < 4) {  // We have 4 string descriptors (0-3)
-                const char* desc_name = "";
-                switch(uchDescIndex) {
-                    case 1: desc_name = "Manufacturer"; break;
-                    case 2: desc_name = "Product"; break; 
-                    case 3: desc_name = "Serial Number"; break;
-                    default: desc_name = "Unknown"; break;
-                }
+                // Remove the unused desc_name variable and switch statement
                 return ToStringDescriptor(m_StringDescriptor[uchDescIndex], pLength);
             }
             break;
@@ -1467,13 +1461,14 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x52:  // READ TRACK INFORMATION
         {
 
-	    u8 open = (m_CBW.CBWCB[1] >> 2) & 0x01;
-	    u8 addressType = m_CBW.CBWCB[1] & 0x03;
-	    u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-            u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-	    u8 control = m_CBW.CBWCB[9];
+        // Remove unused variables
+        // u8 open = (m_CBW.CBWCB[1] >> 2) & 0x01;
+        u8 addressType = m_CBW.CBWCB[1] & 0x03;
+        u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+        u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
+        // u8 control = m_CBW.CBWCB[9];
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Track Information");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Track Information");
 
 	    TUSBCDTrackInformationBlock response;
 	    memset(&response, 0, sizeof(TUSBCDTrackInformationBlock));
