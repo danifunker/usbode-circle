@@ -101,6 +101,9 @@ for arch in "${supported_rasppi[@]}"; do
     cd ${projectRoot}/addon/gitinfo
     make clean
     make 
+    cd ${projectRoot}/addon/sdcardservice
+    make clean
+    make 
     cd ${projectRoot}/addon/cdromservice
     make clean
     make 
