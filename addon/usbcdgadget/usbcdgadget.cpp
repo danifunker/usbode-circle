@@ -33,6 +33,8 @@
 #include <math.h>
 #include <stddef.h>
 #include <filesystem>
+#include <circle/bcmpropertytags.h>
+
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...)  // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
@@ -53,7 +55,7 @@ const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
         USB_GADGET_VENDOR_ID,
         USB_GADGET_DEVICE_ID_CD,
         0x000,    // bcdDevice
-        1, 2, 0,  // strings
+        1, 2, 3,  // strings
         1         // num configurations
 };
 
@@ -135,11 +137,13 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0                                                                            // bInterval
         }};
 
-const char* const CUSBCDGadget::s_StringDescriptor[] =
+const char* const CUSBCDGadget::s_StringDescriptorTemplate[] =
     {
         "\x04\x03\x09\x04",  // Language ID
         "USBODE",
-        "USB Optical Disk Emulator"};
+        "USB Optical Disk Emulator",  // Product (index 2)
+        "USBODE00001"         // Template Serial Number (index 3) - will be replaced with hardware serial
+    };
 
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpeed, CCueBinFileDevice* pDevice)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
@@ -148,6 +152,28 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpe
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "entered %d", isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
+    // Fetch hardware serial number for unique USB device identification
+    CBcmPropertyTags Tags;
+    TPropertyTagSerial Serial;
+    if (Tags.GetTag(PROPTAG_GET_BOARD_SERIAL, &Serial, sizeof(Serial)))
+    {
+        // Format hardware serial number as "USBODE-XXXXXXXX" using the lower 32 bits
+        snprintf(m_HardwareSerialNumber, sizeof(m_HardwareSerialNumber), "USBODE-%08X", Serial.Serial[0]);
+        MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "Using hardware serial: %s (from %08X%08X)", 
+                 m_HardwareSerialNumber, Serial.Serial[1], Serial.Serial[0]);
+    }
+    else
+    {
+        // Fallback to default serial number if hardware fetch fails
+        strcpy(m_HardwareSerialNumber, "USBODE-00000001");
+        MLOGERR("CUSBCDGadget::CUSBCDGadget", "Failed to get hardware serial, using fallback: %s", m_HardwareSerialNumber);
+    }
+    
+    // Initialize string descriptors with hardware serial number
+    m_StringDescriptor[0] = s_StringDescriptorTemplate[0];  // Language ID
+    m_StringDescriptor[1] = s_StringDescriptorTemplate[1];  // Manufacturer
+    m_StringDescriptor[2] = s_StringDescriptorTemplate[2];  // Product
+    m_StringDescriptor[3] = m_HardwareSerialNumber;         // Hardware-based serial number    
     if (pDevice)
         SetDevice(pDevice);
 }
@@ -180,12 +206,19 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
             break;
 
         case DESCRIPTOR_STRING:
-            MLOGNOTE("CUSBCDGadget::GetDescriptor", "DESCRIPTOR_STRING %02x", uchDescIndex);
+            // String descriptors - log for debugging
             if (!uchDescIndex) {
-                *pLength = (u8)s_StringDescriptor[0][0];
-                return s_StringDescriptor[0];
-            } else if (uchDescIndex < sizeof s_StringDescriptor / sizeof s_StringDescriptor[0]) {
-                return ToStringDescriptor(s_StringDescriptor[uchDescIndex], pLength);
+                *pLength = (u8)m_StringDescriptor[0][0];
+                return m_StringDescriptor[0];
+            } else if (uchDescIndex < 4) {  // We have 4 string descriptors (0-3)
+                const char* desc_name = "";
+                switch(uchDescIndex) {
+                    case 1: desc_name = "Manufacturer"; break;
+                    case 2: desc_name = "Product"; break; 
+                    case 3: desc_name = "Serial Number"; break;
+                    default: desc_name = "Unknown"; break;
+                }
+                return ToStringDescriptor(m_StringDescriptor[uchDescIndex], pLength);
             }
             break;
 
