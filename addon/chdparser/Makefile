@@ -15,9 +15,9 @@ CFLAGS += -I "../.." -I "$(CIRCLEHOME)" -I "$(STDLIBHOME)/include" -I "$(NEWLIBD
 CPPFLAGS += -I "../.." -I "$(CIRCLEHOME)" -I "$(STDLIBHOME)/include" -I "$(NEWLIBDIR)/include" 
 
 libchdparser.a: $(OBJS)
-    @echo "  AR    $@"
-    @rm -f $@
-    @$(AR) cr $@ $(OBJS)
+	@echo "  AR    $@"
+	@rm -f $@
+	@$(AR) cr $@ $(OBJS)
 
 include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
