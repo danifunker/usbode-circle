@@ -148,7 +148,19 @@ const char* const CUSBCDGadget::s_StringDescriptorTemplate[] =
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpeed, CCueBinFileDevice* pDevice)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_pDevice(pDevice),
-      m_pEP{nullptr, nullptr, nullptr}
+      m_pEP{nullptr, nullptr, nullptr},
+      m_nState(TCDState::Init),
+      m_CDReady(false),
+      m_SuspendResumeCount(0),              // Add this
+      m_LastSCSICommandTime(0),             // Add this
+      m_BioseBootInterrupted(false),        // Add this
+      m_BootInterruptTime(0),               // Add this
+      m_BiosBootProtectionTime(0),          // Add this
+      m_PreventSuspend(false),              // Add this
+      m_StateSaved(false),                  // Add this
+      m_SavedLBA(0),                        // Add this
+      m_SavedBlockCount(0),                 // Add this
+      m_SavedState(TCDState::Init)          // Add this
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "entered %d", isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
@@ -258,6 +270,55 @@ void CUSBCDGadget::AddEndpoints(void) {
     assert(m_pEP[EPIn]);
 
     m_nState = TCDState::Init;
+
+    // CRITICAL FIX: Restore saved state if we were in the middle of a BIOS operation
+    if (m_StateSaved) {
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "*** RESTORING CRITICAL STATE *** %s operation for LBA %u after suspend/resume", 
+                 (m_SavedState == TCDState::DataInRead) ? "DataInRead" : "Unknown", m_SavedLBA);
+        m_nState = m_SavedState;
+        m_nblock_address = m_SavedLBA;
+        m_nnumber_blocks = m_SavedBlockCount;
+        m_StateSaved = false;
+    }
+    
+    MLOGNOTE("CUSBCDGadget::AddEndpoints", "endpoints created successfully - suspend/resume cycle #%u", m_SuspendResumeCount);
+
+    // Check if we interrupted a BIOS boot sequence
+    if (m_BioseBootInterrupted && m_BootInterruptTime > 0) {
+        u32 current_time = CTimer::GetClockTicks();
+        u32 time_since_interrupt = current_time - m_BootInterruptTime;
+        
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "BIOS boot recovery - interrupted boot %u seconds ago", 
+                 time_since_interrupt / 1000000);
+        
+        m_BioseBootInterrupted = false;
+        m_BootInterruptTime = 0;
+    }
+
+    // CRITICAL FIX: Manual activation trigger
+    MLOGNOTE("CUSBCDGadget::AddEndpoints", "*** MANUAL ACTIVATION TRIGGER *** Framework didn't call OnActivate, calling manually");
+    OnActivate();
+}
+
+void CUSBCDGadget::RemoveEndpoints(void) {
+    MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "*** BIOS SUSPEND *** Removing endpoints for suspend");
+    
+    // Clean up endpoints in reverse order of creation
+    if (m_pEP[EPIn]) {
+        delete m_pEP[EPIn];
+        m_pEP[EPIn] = nullptr;
+        MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "IN endpoint removed");
+    }
+    
+    if (m_pEP[EPOut]) {
+        delete m_pEP[EPOut];
+        m_pEP[EPOut] = nullptr;
+        MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "OUT endpoint removed");
+    }
+    
+    // Reset state to Init - critical for BIOS recovery
+    m_nState = TCDState::Init;
+    MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "*** ENDPOINT CLEANUP COMPLETE *** State reset to Init");
 }
 
 // must set device before usb activation
@@ -480,14 +541,37 @@ void CUSBCDGadget::CreateDevice(void) {
 }
 
 void CUSBCDGadget::OnSuspend(void) {
-    MLOGNOTE("CUSBCDGadget::OnSuspend", "entered");
-    delete m_pEP[EPOut];
-    m_pEP[EPOut] = nullptr;
-
-    delete m_pEP[EPIn];
-    m_pEP[EPIn] = nullptr;
-
-    m_nState = TCDState::Init;
+    m_SuspendResumeCount++;
+    
+    // Check if suspend prevention is active
+    if (m_PreventSuspend) {
+        MLOGNOTE("CUSBCDGadget::OnSuspend", "*** BIOS PROTECTION ACTIVE *** Suspend during protection window, count #%u", m_SuspendResumeCount);
+    } else {
+        MLOGNOTE("CUSBCDGadget::OnSuspend", "Standard suspend, count #%u", m_SuspendResumeCount);
+    }
+    
+    // CRITICAL: Preserve current state for transparent resume
+    if (m_nState == TCDState::DataInRead) {
+        m_StateSaved = true;
+        m_SavedLBA = m_nblock_address;
+        m_SavedBlockCount = m_nnumber_blocks;
+        m_SavedState = m_nState;
+        MLOGNOTE("CUSBCDGadget::OnSuspend", "*** FAST STATE SAVE *** DataInRead LBA=%u blocks=%u", m_SavedLBA, m_SavedBlockCount);
+    }
+    
+    // Track boot interruption for recovery
+    if (m_LastSCSICommandTime > 0) {
+        u32 current_time = CTimer::GetClockTicks();
+        u32 time_since_command = current_time - m_LastSCSICommandTime;
+        if (time_since_command < (5 * 1000000)) {  // Less than 5 seconds since last command
+            m_BioseBootInterrupted = true;
+            m_BootInterruptTime = current_time;
+            MLOGNOTE("CUSBCDGadget::OnSuspend", "*** BIOS BOOT INTERRUPTED *** Command was %u seconds ago", time_since_command / 1000000);
+        }
+    }
+    
+    RemoveEndpoints();
+    MLOGNOTE("CUSBCDGadget::OnSuspend", "*** FAST SUSPEND COMPLETE *** Ready for transparent resume");
 }
 
 const void* CUSBCDGadget::ToStringDescriptor(const char* pString, size_t* pLength) {
@@ -756,6 +840,42 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
 //
 void CUSBCDGadget::HandleSCSICommand() {
     // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    // Track SCSI command timing for BIOS boot protection
+    m_LastSCSICommandTime = CTimer::GetClockTicks();
+
+    // If boot was previously interrupted, note the recovery
+    if (m_BioseBootInterrupted) {
+        u32 time_since_interrupt = m_LastSCSICommandTime - m_BootInterruptTime;
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "BIOS boot recovery after %u seconds", time_since_interrupt / 1000000);
+        m_BioseBootInterrupted = false;
+    }
+    
+    static bool bFirstCommand = true;
+    static u32 command_count = 0;
+    
+    command_count++;
+    u32 current_command = m_CBW.CBWCB[0];
+    
+    if (bFirstCommand) {
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "🎯 BIOS CONTACT ESTABLISHED - First SCSI command received");
+        bFirstCommand = false;
+    }
+
+    // Track BIOS boot command sequence for diagnosis
+    if (command_count <= 10) {
+        const char* cmd_names[] = {
+            "TEST_UNIT_READY", "REZERO_UNIT", "RESERVED", "REQUEST_SENSE", 
+            "FORMAT_UNIT", "READ_BLOCK_LIMITS", "RESERVED", "REASSIGN_BLOCKS",
+            "READ_6", "RESERVED", "WRITE_6", "SEEK_6", 
+            "RESERVED", "RESERVED", "RESERVED", "RESERVED",
+            "INQUIRY", "RESERVED", "RECOVER_BUFFERED_DATA", "MODE_SELECT"
+        };
+        
+        const char* cmd_name = (current_command < 20) ? cmd_names[current_command] : "UNKNOWN";
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "BIOS cmd #%u: 0x%02x (%s)", 
+                 command_count, current_command, cmd_name);
+    }
+
     switch (m_CBW.CBWCB[0]) {
         case 0x0:  // Test unit ready
         {
@@ -831,6 +951,26 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    datalen = allocationLength;
 
                 memcpy(&m_InBuffer, &m_InqReply, datalen);
+        
+                // *** BIOS BOOT PROTECTION *** Add protection logic here
+                m_BiosBootProtectionTime = CTimer::GetClockTicks() + (3 * 1000000);  // 3 second protection
+                m_PreventSuspend = true;
+        
+                s_DisableSuspend = TRUE;
+                DisableUSBSuspendInterrupt();
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** FRAMEWORK SUSPEND DISABLED *** USB suspend interrupts disabled for BIOS boot compatibility");
+
+                // Clear Unit Attention after first successful INQUIRY
+                m_SenseParams.bSenseKey = 0x00;
+                m_SenseParams.bAddlSenseCode = 0x00;
+                m_SenseParams.bAddlSenseCodeQual = 0x00;
+        
+                if (m_pDevice) {
+                    m_CDReady = true;
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** DEVICE FORCED READY *** m_CDReady=true for BIOS compatibility");
+                }
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** UNIT ATTENTION CLEARED *** Device now ready for BIOS commands");
+        
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
                 m_nState = TCDState::DataIn;
                 m_nnumber_blocks = 0;  // nothing more after this send
@@ -1004,6 +1144,15 @@ void CUSBCDGadget::HandleSCSICommand() {
                 skip_bytes = data_skip_bytes;  // set at SetDevice;
 
                 m_nbyteCount = m_CBW.dCBWDataTransferLength;
+
+                // Log critical BIOS boot sectors
+                if (m_nblock_address == 0x11) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** BIOS BOOT CRITICAL *** Reading Boot Record Volume Descriptor at LBA 0x11 - SeaBIOS needs this to boot or will show error 0003");
+                }
+                if (m_nblock_address >= 0x10 && m_nblock_address <= 0x12) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** BIOS BOOT CRITICAL *** Reading boot-related sector LBA %u (0x10=Primary Volume Descriptor, 0x11=Boot Record Volume Descriptor)", m_nblock_address);
+                }
+
 
                 // What is this?
                 if (m_nnumber_blocks == 0) {
@@ -2333,6 +2482,19 @@ void CUSBCDGadget::HandleSCSICommand() {
 // this function is called periodically from task level for IO
 //(IO must not be attempted in functions called from IRQ)
 void CUSBCDGadget::Update() {
+    // Handle suspend prevention during BIOS boot sequence
+    if (m_PreventSuspend) {
+        u32 current_time = CTimer::GetClockTicks();
+        if (current_time > m_BiosBootProtectionTime) {
+            m_PreventSuspend = FALSE;
+            EnableUSBSuspendInterrupt();
+            MLOGNOTE("USBCDGadget", "BIOS boot protection window expired - suspend re-enabled");
+        }
+    }
+    
+    // Call BIOS stabilization if needed
+    HandleBIOSStabilization();
+    
     // MLOGNOTE ("CUSBCDGadget::Update", "entered");
     switch (m_nState) {
         case TCDState::DataInRead: {
@@ -2469,6 +2631,47 @@ void CUSBCDGadget::Update() {
 
         default:
             break;
+    }
+}
+
+// USB Framework Suspend Control for BIOS compatibility
+void CUSBCDGadget::DisableUSBSuspendInterrupt() {
+    s_DisableSuspend = TRUE;
+    MLOGNOTE("USBCDGadget", "USB suspend interrupt disabled for BIOS compatibility");
+}
+
+void CUSBCDGadget::EnableUSBSuspendInterrupt() {
+    s_DisableSuspend = FALSE;
+    MLOGNOTE("USBCDGadget", "USB suspend interrupt re-enabled");
+}
+
+void CUSBCDGadget::HandleBIOSStabilization(void) {
+    static u32 last_stabilization_time = 0;
+    static u32 stabilization_attempts = 0;
+    
+    u32 current_time = CTimer::GetClockTicks();
+    
+    if (m_SuspendResumeCount >= 10) {
+        if (last_stabilization_time > 0 && (current_time - last_stabilization_time) < (1000000 * 30)) {
+            return;
+        }
+        
+        stabilization_attempts++;
+        last_stabilization_time = current_time;
+        
+        MLOGNOTE("CUSBCDGadget::HandleBIOSStabilization", "BIOS stability intervention #%u after %u suspend/resume cycles", 
+                 stabilization_attempts, m_SuspendResumeCount);
+        
+        if (m_pEP[EPOut] && m_pEP[EPIn] && m_CDReady && m_nState == TCDState::Init) {
+            MLOGNOTE("CUSBCDGadget::HandleBIOSStabilization", "Forcing device back to ReceiveCBW state");
+            OnActivate();
+            
+            if (stabilization_attempts >= 2) {
+                MLOGNOTE("CUSBCDGadget::HandleBIOSStabilization", "Resetting suspend/resume counter");
+                m_SuspendResumeCount = 0;
+                stabilization_attempts = 0;
+            }
+        }
     }
 }
 
