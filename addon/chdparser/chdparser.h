@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "../cueparser/cueparser.h"
+#include <cueparser/cueparser.h>
 
 // CHD metadata tags
 #define CDROM_TRACK_METADATA_TAG   'TRACK'
