@@ -163,6 +163,12 @@ mkdir -p ${destDir}/system
 cp ${projectRoot}/sdcard/test.pcm.gz ${destDir}/system
 gunzip ${destDir}/system/test.pcm.gz
 mkdir -p ${destDir}/firmware
+if $(which chdman >/dev/null 2>&1); then
+    echo "Using chdman to convert CHD files"
+    chdman extractcd -i ${projectRoot}/sdcard/usbode-audio-test.chd -o ${destDir}/images/usbode-audio-sampler.cue
+else
+    echo "chdman not found, skipping CHD conversion"
+fi
 cp ${projectRoot}/circle-stdlib/libs/circle/addon/wlan/firmware/* ${destDir}/firmware
 rm ${destDir}/firmware/Makefile
 cp ${projectRoot}/circle-stdlib/libs/circle/boot/bootcode.bin ${destDir}
