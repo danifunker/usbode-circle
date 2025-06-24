@@ -9,8 +9,6 @@ CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
 OBJS = chdparser.o
 
-include $(CIRCLEHOME)/Rules.mk
-
 CFLAGS += -I "../.." -I "$(CIRCLEHOME)" -I "$(STDLIBHOME)/include" -I "$(NEWLIBDIR)/include"
 CPPFLAGS += -I "../.." -I "$(CIRCLEHOME)" -I "$(STDLIBHOME)/include" -I "$(NEWLIBDIR)/include" 
 
