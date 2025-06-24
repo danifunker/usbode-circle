@@ -17,8 +17,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-#ifndef _ccdromservice_h
-#define _ccdromservice_h
+#ifndef _ssdcardservice_h
+#define _ssdcardservice_h
 
 #include <circle/machineinfo.h>
 #include <circle/sched/task.h>
@@ -30,20 +30,20 @@
 #include <circle/util.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
-#include <usbcdgadget/usbcdgadget.h>
+#include <usbmsdgadget/usbmsdgadget.h>
 
-class CDROMService : public CTask {
+class SDCARDService : public CTask {
    public:
-    CDROMService();
-    ~CDROMService(void);
+    SDCARDService(CDevice *pDevice);
+    ~SDCARDService(void);
     boolean Initialize();
-    void SetDevice(CCueBinFileDevice* pBinFileDevice);
     void Run(void);
 
    private:
    private:
-    CUSBCDGadget* m_CDGadget = nullptr;
-    static CDROMService *s_pThis;
+    CDevice *m_pDevice;
+    CUSBMMSDGadget* m_MSDGadget = nullptr;
+    static SDCARDService *s_pThis;
     bool isInitialized = false;
 };
 

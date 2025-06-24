@@ -75,8 +75,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             0                  // iInterface
         },
         {
@@ -114,8 +114,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             0                  // iInterface
         },
         {
@@ -492,7 +492,7 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData* pSetupData, u8* pData
 }
 
 void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
-    // MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
+    MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
     assert(m_nState != TCDState::Init);
     if (bIn)  // packet to host has been transferred
     {
@@ -1083,9 +1083,10 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
-        case 0x2F:  // Verify, not implemented but don't tell host
+	// These commands are not implemented so we lie about it
+        case 0x2F: // Verify
         {
-            m_CSW.bmCSWStatus = bmCSWStatus;
+            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
             SendCSW();
             break;
         }
@@ -1407,49 +1408,59 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
-        case 0xAD:  // READ DISC STRUCTURE
+        case 0xAD:  // READ DISC STRUCTURE aka "The Command I Was Avoiding"
         {
-            u16 allocationLength = m_CBW.CBWCB[9] << 8 | (m_CBW.CBWCB[10]);
+
+	    // We don't advertise any "features" which should require this command
+	    // but certain versions of Windows e.g. Win2k sulk for a while if they
+	    // don't get a response. So, we're implementing bare minimum here to
+	    // keep them happy
+
+	    u8 mediaType = m_CBW.CBWCB[2] && 0x0f;
+            u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+	    u8 layer = m_CBW.CBWCB[6];
+	    u8 format = m_CBW.CBWCB[7];
+            u16 allocationLength = m_CBW.CBWCB[8] << 8 | (m_CBW.CBWCB[9]);
+	    u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;
+	    u8 control = m_CBW.CBWCB[12];
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, allocation length is %lu", allocationLength);
 
-            u8 cd_physical_format_response_data[] = {
-                // Byte 0-1: Data Length (MSB first, Big-Endian)
-                // Value: 0x0012 (18 bytes following this field)
-                0x00, 0x12,
+	    int length = 0;
+	    switch (format) {
+		    
+		    case 0x01: // Copyright Information
+		    {
+                    	TUSBCDReadDiscStructureHeader header;
+                    	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
+                    	header.dataLength = 6;
+			memcpy(m_InBuffer, &header, sizeof(TUSBCDReadDiscStructureHeader));
+			length += sizeof(TUSBCDReadDiscStructureHeader);
 
-                // Byte 2: Reserved
-                0x00,
+			u8 payload[] = {
+				0x00, // Copyright system type = none
+				0x00, // 1 bit per region. 0x00 is region free
+				0x00, // reserved
+				0x00  // reserved
+			};
+			memcpy(m_InBuffer + sizeof(TUSBCDReadDiscStructureHeader), &payload, sizeof(payload));
+			length += sizeof(payload);
+			break;
+		    }
 
-                // Byte 3: Disc Status
-                // Bit 7: Reserved
-                // Bits 6-0: Disc Status (e.g., 0x00 = empty, 0x01 = appendable, 0x02 = complete)
-                // 0x02 typically means a completed CD-ROM session.
-                0x02,
-
-                // Byte 4-7: First Track Number in Last Session (MSB first, Big-Endian)
-                // 0x00000001 = Track 1 (common for single-session discs)
-                0x0, 0x0, 0x0, 0x1,
-
-                // Byte 8-11: Number of Sessions (MSB first, Big-Endian)
-                // 0x00000001 = 1 session (common for CD-ROM)
-                0x0, 0x0, 0x0, 0x1,
-
-                // Byte 12-15: Last Address of Lead-in (MSB first, Big-Endian, LBA)
-                // This will vary, but 0x00000000 is a common default for no lead-in defined here explicitly.
-                // Real discs would have a valid LBA.
-                0x00, 0x00, 0x00, 0x00,
-
-                // Byte 16-19: Last Address of Lead-out (MSB first, Big-Endian, LBA)
-                // This will vary, but 0x00000000 is a common default.
-                // Real discs would have a valid LBA.
-                0x00, 0x00, 0x00, 0x00};
+		    default: // Empty payload
+		    {
+                    	TUSBCDReadDiscStructureHeader header;
+                    	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
+                    	header.dataLength = 2; // just the header
+			memcpy(m_InBuffer, &header, sizeof(TUSBCDReadDiscStructureHeader));
+			length += sizeof(TUSBCDReadDiscStructureHeader);
+			break;
+		    }
+	    }
 
             // Set response length
-            int length = sizeof(cd_physical_format_response_data);
             if (allocationLength < length)
                 length = allocationLength;
-
-            memcpy(m_InBuffer, &cd_physical_format_response_data, length);
 
             m_nnumber_blocks = 0;  // nothing more after this send
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
@@ -1815,8 +1826,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memset(&reply_header, 0, sizeof(reply_header));
 			    reply_header.modeDataLength = SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X01 - 1;
 			    reply_header.mediumType = GetMediumType();
-			    reply_header.deviceSpecificParameter = 0xC0;
-			    reply_header.blockDescriptorLength = 0x00;
 
 			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x01 response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
 
@@ -1839,8 +1848,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memset(&reply_header, 0, sizeof(reply_header));
 			    reply_header.modeDataLength = SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 1;
 			    reply_header.mediumType = GetMediumType();
-			    reply_header.deviceSpecificParameter = 0xC0;
-			    reply_header.blockDescriptorLength = 0x00;
 
 			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2a response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
 
@@ -1864,8 +1871,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memset(&reply_header, 0, sizeof(reply_header));
 			    reply_header.modeDataLength = SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 1;
 			    reply_header.mediumType = GetMediumType();
-			    reply_header.deviceSpecificParameter = 0xC0;
-			    reply_header.blockDescriptorLength = 0x00;
 
 			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2a response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
 
@@ -1910,8 +1915,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memset(&reply_header, 0, sizeof(reply_header));
 			    reply_header.modeDataLength = SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X0E - 1;
 			    reply_header.mediumType = GetMediumType();
-			    reply_header.deviceSpecificParameter = 0xC0;
-			    reply_header.blockDescriptorLength = 0x00;
 
 			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x0e response - modDataLength = %d, mediumType = 0x%02x, volume = 0x%02x", SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType(), volume);
 
@@ -1992,8 +1995,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memset(&reply_header, 0, sizeof(reply_header));
 			    reply_header.modeDataLength = htons(SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X01 - 2);
 			    reply_header.mediumType = GetMediumType();
-			    reply_header.deviceSpecificParameter = 0xC0;
-			    reply_header.blockDescriptorLength = htonl(0x00000000);
 
 			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x01 response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
 
@@ -2016,8 +2017,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memset(&reply_header, 0, sizeof(reply_header));
 			    reply_header.modeDataLength = htons(SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2);
 			    reply_header.mediumType = GetMediumType();
-			    reply_header.deviceSpecificParameter = 0xC0;
-			    reply_header.blockDescriptorLength = htonl(0x00000000);
 
 			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
 
@@ -2041,8 +2040,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memset(&reply_header, 0, sizeof(reply_header));
 			    reply_header.modeDataLength = htons(SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2);
 			    reply_header.mediumType = GetMediumType();
-			    reply_header.deviceSpecificParameter = 0xC0;
-			    reply_header.blockDescriptorLength = htonl(0x00000000);
 
 			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
 
@@ -2087,8 +2084,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memset(&reply_header, 0, sizeof(reply_header));
 			    reply_header.modeDataLength = htons(SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X0E - 2);
 			    reply_header.mediumType = GetMediumType();
-			    reply_header.deviceSpecificParameter = 0xC0;
-			    reply_header.blockDescriptorLength = htonl(0x00000000);
 
 			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x0e response - modDataLength = %d, mediumType = 0x%02x, volume = 0x%02x", SIZE_MODE_SENSE10_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType(), volume);
 
@@ -2162,13 +2157,30 @@ void CUSBCDGadget::HandleSCSICommand() {
         }
 
 
+        case 0xa4:  // Weird thing from Windows 2000
+	{
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "A4 from Win2k");
+
+	    // Response copied from an ASUS CDROM drive. It seems to know
+	    // what this is, so let's just copy it
+	    u8 response[] = {0x0, 0x6, 0x0, 0x0, 0x25, 0xff, 0x1, 0x0};
+
+            memcpy(m_InBuffer, response, sizeof(response));
+
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                       m_InBuffer, sizeof(response));
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+	    break;
+	}
+
 	// SCSI TOOLBOX
         case 0xD9:  // LIST DEVICES
 	{
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "SCSITB List Devices");
 
 	    // First device is CDROM and the other are not implemented
-	    u8 devices[8] = {0x02,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
+	    u8 devices[] = {0x02,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
 
             memcpy(m_InBuffer, devices, sizeof(devices));
 

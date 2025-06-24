@@ -225,6 +225,13 @@ struct TUSBCDModeSenseReply  // 4 bytes
 } PACKED;
 #define SIZE_MODEREP 4
 
+// Read Disc Structure header
+struct TUSBCDReadDiscStructureHeader
+{
+    u16 dataLength;
+    u8 reserved[2];
+} PACKED;
+
 // reply to SCSI Read Capacity 0x25
 struct TUSBCDReadCapacityReply  // 8 bytes
 {
@@ -578,7 +585,19 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     TUSBCDCBW m_CBW;
     TUSBCDCSW m_CSW;
 
-    TUSBCDInquiryReply m_InqReply{0x05, 0x80, 0x00, 0x01, 0x1F, 0, 0, 0, {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, {'U', 'S', 'B', 'O', 'D', 'E', ' ', 'C', 'D', 'R', 'O', 'M', ' ', ' ', ' ', ' '}, {'0', '0', '0', '1'}};
+    TUSBCDInquiryReply m_InqReply{
+	 0x05, // Peripheral type = CD/DVD
+	 0x80, // RMB set = removable media 
+	 0x05, // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
+	 0x02, // Response Data Format = This response is SPC3 format
+	 0x1F, // Additional Length
+	 0x00, // SCCS ACC TPGS 3PC Reserved PROTECT
+	 0x00, // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
+	 0x00, // Obsolete Obsolete WBUS16a SYNCa LINKED Obsolete CMDQUE VS
+	 {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, // Vendor Identification
+	 {'C', 'D', 'R', 'O', 'M', ' ', 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', ' ', ' '},
+	 {'0', '0', '0', '1'}
+    };
     TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
 
     TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};

@@ -27,7 +27,6 @@
 #include <circle/exceptionhandler.h>
 #include <circle/interrupt.h>
 #include <circle/koptions.h>
-#include <circle/logger.h>
 #include <circle/net/mdnspublisher.h>
 #include <circle/net/netsubsystem.h>
 #include <circle/net/ntpclient.h>  // Add this line for NTP client
@@ -52,6 +51,7 @@
 #include <gpiobuttonmanager/gpiobuttonmanager.h>
 #include <scsitbservice/scsitbservice.h>
 #include <cdromservice/cdromservice.h>
+#include <sdcardservice/sdcardservice.h>
 
 
 #ifndef TSHUTDOWNMODE
@@ -97,7 +97,7 @@ private:
 	//CUSBCDGadget*		m_CDGadget = nullptr;
 	
 	// MSD Gadget
-	CUSBMMSDGadget*		m_MMSDGadget = nullptr;
+	//CUSBMMSDGadget*		m_MMSDGadget = nullptr;
 
 	// SPI and display components
 	CSPIMaster* m_pSPIMaster;

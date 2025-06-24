@@ -1,9 +1,7 @@
 //
 // A CDROM Emulator Service
 //
-//
-// Circle - A C++ bare metal environment for Raspberry Pi
-// Copyright (C) 2020-2021  R. Stange <rsta2@o2online.de>
+// Copyright (C) 2025 Ian Cass
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,6 +23,7 @@
 #include <circle/string.h>
 #include <circle/synchronize.h>
 #include <circle/util.h>
+#include <circle/logger.h>
 
 //TODO reduce stack size of USBCDGadget
 #define CDROM_STACK_SIZE TASK_STACK_SIZE * 1.5

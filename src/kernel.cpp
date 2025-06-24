@@ -28,6 +28,7 @@
 #include <discimage/util.h>
 #include <webserver/webserver.h>
 #include <devicestate/devicestate.h>
+#include <circle/logger.h>
 
 #include <circle/time.h>
 
@@ -232,13 +233,9 @@ TShutdownMode CKernel::Run(void) {
 	    LOGNOTE("Started SCSITB service");
 
     } else { // Mass Storage Device Mode
-	     
-	    m_MMSDGadget = new CUSBMMSDGadget(&m_Interrupt, m_Options.GetUSBFullSpeed(), &m_EMMC);
-	    if (!m_MMSDGadget->Initialize()) {
-		LOGERR("Failed to initialize USB MSD gadget");
-		return ShutdownHalt;
-	    }
-	    LOGNOTE("Started USB MSD gadget");
+	    // Start our SD Card Service
+	    new SDCARDService(&m_EMMC);
+	    LOGNOTE("Started SDCARD Service");
     }
 
     // Display configuration
@@ -294,11 +291,6 @@ TShutdownMode CKernel::Run(void) {
 
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
-        // Update USB transfers
-	if (m_MMSDGadget) {
-	    m_MMSDGadget->UpdatePlugAndPlay ();
-            m_MMSDGadget->Update ();
-	}
 
         // CRITICAL: Process network tasks even in ISO selection mode
         if (m_Net.IsRunning()) {

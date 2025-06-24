@@ -188,8 +188,10 @@ bool SCSITBService::RefreshCache() {
     for (size_t i = 0; i < m_FileCount; ++i) {
         if (strcmp(m_FileEntries[i].name, current_image) == 0) {
             current_cd = i;
-	    if (next_cd != current_cd)
-	    	next_cd = i;
+	    
+	    // Why do we need this?
+	    //if (next_cd != current_cd)
+	    //	next_cd = i;
             break;
         }
     }
