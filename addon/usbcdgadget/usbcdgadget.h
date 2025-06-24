@@ -530,6 +530,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int GetSkipbytes();
     int GetMediumType();
     u32 msf_to_lba(u8 minutes, u8 seconds, u8 frames);
+    static const char *const s_StringDescriptorTemplate[];
+    const char *m_StringDescriptor[4];
 
     int GetBlocksize();
     int GetBlocksizeForTrack(const CUETrackInfo *trackInfo);
@@ -801,6 +803,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int file_mode = 1;
     boolean m_IsFullSpeed = 0;
     boolean discChanged = false;
+
+    // Hardware serial number for USB device identification
+    char m_HardwareSerialNumber[20];   // Format: "USBODE-XXXXXXXX"
+
 };
 
 #endif
