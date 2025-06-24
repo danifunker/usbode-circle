@@ -956,10 +956,10 @@ void CUSBCDGadget::HandleSCSICommand() {
                 DisableUSBSuspendInterrupt();
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "*** FRAMEWORK SUSPEND DISABLED *** USB suspend interrupts disabled for BIOS boot compatibility");
 
-                // Clear Unit Attention after first successful INQUIRY
-                m_SenseParams.bSenseKey = 0x00;
-                m_SenseParams.bAddlSenseCode = 0x00;
-                m_SenseParams.bAddlSenseCodeQual = 0x00;
+                // // Clear Unit Attention after first successful INQUIRY
+                // m_SenseParams.bSenseKey = 0x00;
+                // m_SenseParams.bAddlSenseCode = 0x00;
+                // m_SenseParams.bAddlSenseCodeQual = 0x00;
         
                 if (m_pDevice) {
                     m_CDReady = true;
