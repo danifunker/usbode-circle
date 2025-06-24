@@ -145,6 +145,8 @@ const char* const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "USBODE00001"         // Template Serial Number (index 3) - will be replaced with hardware serial
     };
 
+boolean CUSBCDGadget::s_DisableSuspend = FALSE;
+
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpeed, CCueBinFileDevice* pDevice)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_pDevice(pDevice),
