@@ -109,6 +109,15 @@ struct TUSBCDRequestSenseReply  // 14 bytes
 } PACKED;
 #define SIZE_RSR 14
 
+// SCSI Mode Sense(6) Response Structure
+struct ModeSense6Header {
+    u8 modeDataLength;
+    u8 mediumType;
+    u8 deviceSpecificParameter;
+    u8 blockDescriptorLength;
+} PACKED;
+#define SIZE_MODE_SENSE6_HEADER 4
+
 // SCSI Mode Sense(10) Response Structures
 struct ModeSense10Header {
     u16 modeDataLength;

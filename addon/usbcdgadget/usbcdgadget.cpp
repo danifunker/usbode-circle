@@ -768,12 +768,14 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 	    // If we were "Not Ready", switch to Unit Attention
 	    if (m_SenseParams.bSenseKey == 0x02) { 
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Moving sense state to Unit Attention, Medium have have changed");
 	        bmCSWStatus = CD_CSW_STATUS_FAIL;
         	m_SenseParams.bSenseKey = 0x06;           // Unit Attention
         	m_SenseParams.bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE
         	m_SenseParams.bAddlSenseCodeQual = 0x00;  // MEDIUM MAY HAVE CHANGED
 	    } else {
                 // Reset response params after send
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Moving sense state to OK");
 	    	bmCSWStatus = CD_CSW_STATUS_OK;
             	m_SenseParams.bSenseKey = 0; // NO SENSE
             	m_SenseParams.bAddlSenseCode = 0; // NO ADDITIONAL SENSE INFORMATION
@@ -1784,14 +1786,191 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
+	/*
+	case 0x1a: // Mode Sense (6)
+	{
+		MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6)");
+		//int DBD = (m_CBW.CBWCB[1] >> 3) & 0x01; // We don't implement block descriptors
+		int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
+		int page = m_CBW.CBWCB[2] & 0x3f;
+		//int sub_page_code = m_CBW.CBWCB[3];
+		int allocationLength = m_CBW.CBWCB[4];
+		int control = m_CBW.CBWCB[5];
+
+		int length = SIZE_MODE_SENSE6_HEADER;
+
+		// We don't support saved values
+		if (page_control == 0x03) {
+			bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
+			m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
+			m_SenseParams.bAddlSenseCode = 0x39;      // Saving parameters not supported
+			m_SenseParams.bAddlSenseCodeQual = 0x00;  
+		} else {
+		    switch (page) {
+			case 0x01: {
+			    // Mode Page 0x01 (Read/Write Error Recovery Parameters Mode Page)
+
+			    // Define our response
+			    ModeSense6Header reply_header;
+			    memset(&reply_header, 0, sizeof(reply_header));
+			    reply_header.modeDataLength = SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X01 - 1;
+			    reply_header.mediumType = GetMediumType();
+			    reply_header.deviceSpecificParameter = 0xC0;
+			    reply_header.blockDescriptorLength = 0x00;
+
+			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x01 response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
+
+			    // Define our Code Page
+			    ModePage0x01Data codepage;
+			    memset(&codepage, 0, sizeof(codepage));
+
+			    length += SIZE_MODE_SENSE10_PAGE_0X01;
+
+			    // Copy the header & Code Page
+			    memcpy(m_InBuffer, &reply_header, SIZE_MODE_SENSE6_HEADER);
+			    memcpy(m_InBuffer + SIZE_MODE_SENSE6_HEADER, &codepage, SIZE_MODE_SENSE10_PAGE_0X01);
+			    break;
+			}
+			case 0x1a: {
+			    // Mode Page 0x1A (Power Condition)
+
+			    // Define our response
+			    ModeSense6Header reply_header;
+			    memset(&reply_header, 0, sizeof(reply_header));
+			    reply_header.modeDataLength = SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 1;
+			    reply_header.mediumType = GetMediumType();
+			    reply_header.deviceSpecificParameter = 0xC0;
+			    reply_header.blockDescriptorLength = 0x00;
+
+			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2a response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
+
+			    // Define our Code Page
+			    ModePage0x1AData codepage;
+			    memset(&codepage, 0, sizeof(codepage));
+			    codepage.pageCodeAndPS = 0x1a;
+			    codepage.pageLength = 0x0a;
+			    length += SIZE_MODE_SENSE10_PAGE_0X1A;
+
+			    // Copy the header & Code Page
+			    memcpy(m_InBuffer, &reply_header, SIZE_MODE_SENSE6_HEADER);
+			    memcpy(m_InBuffer + SIZE_MODE_SENSE6_HEADER, &codepage, SIZE_MODE_SENSE10_PAGE_0X1A);
+			    break;
+			}
+			case 0x2a: {
+			    // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
+
+			    // Define our response
+			    ModeSense6Header reply_header;
+			    memset(&reply_header, 0, sizeof(reply_header));
+			    reply_header.modeDataLength = SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 1;
+			    reply_header.mediumType = GetMediumType();
+			    reply_header.deviceSpecificParameter = 0xC0;
+			    reply_header.blockDescriptorLength = 0x00;
+
+			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2a response - modDataLength = %d, mediumType = 0x%02x", SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType());
+
+			    // Define our Code Page
+			    ModePage0x2AData codepage;
+			    memset(&codepage, 0, sizeof(codepage));
+			    codepage.pageCodeAndPS = 0x2a;
+			    codepage.pageLength = 18;
+			    codepage.capabilityBits[0] = 0x01;  // Can read CD-R
+			    codepage.capabilityBits[1] = 0x00;  // Can't write
+			    codepage.capabilityBits[2] = 0x01;  // AudioPlay
+			    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
+			    codepage.capabilityBits[4] = 0x20;  // tray loading mechanism
+			    codepage.capabilityBits[5] = 0x00;
+			    codepage.maxSpeed = htons(706);  // 4x
+			    codepage.numVolumeLevels = htons(0x00ff);
+			    codepage.bufferSize = htons(0);
+			    codepage.currentSpeed = htons(706);
+
+			    length += SIZE_MODE_SENSE10_PAGE_0X2A;
+
+			    // Copy the header & Code Page
+			    memcpy(m_InBuffer, &reply_header, SIZE_MODE_SENSE6_HEADER);
+			    memcpy(m_InBuffer + SIZE_MODE_SENSE6_HEADER, &codepage, SIZE_MODE_SENSE10_PAGE_0X2A);
+			    break;
+			}
+
+			case 0x0e: {
+			    // Mode Page 0x0E (CD Audio Control Page)
+
+			    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+			    u8 volume = 0xff;
+			    if (cdplayer) {
+			        // When we return real volume, games that allow volume control don't send proper volume levels
+			        // but when we hard code this to 0xff, everything seems to work fine. Weird.
+				//volume = cdplayer->GetVolume();
+				volume = 0xff;
+			    }
+
+			    // Define our response
+			    ModeSense6Header reply_header;
+			    memset(&reply_header, 0, sizeof(reply_header));
+			    reply_header.modeDataLength = SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X0E - 1;
+			    reply_header.mediumType = GetMediumType();
+			    reply_header.deviceSpecificParameter = 0xC0;
+			    reply_header.blockDescriptorLength = 0x00;
+
+			    // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x0e response - modDataLength = %d, mediumType = 0x%02x, volume = 0x%02x", SIZE_MODE_SENSE6_HEADER + SIZE_MODE_SENSE10_PAGE_0X2A - 2, GetMediumType(), volume);
+
+			    // Define our Code Page
+			    ModePage0x0EData codepage;
+			    memset(&codepage, 0, sizeof(codepage));
+			    codepage.pageCodeAndPS = 0x0e;
+			    codepage.pageLength = 16;
+			    codepage.IMMEDAndSOTC = 0x04;
+			    codepage.CDDAOutput0Select = 0x01;  // audio channel 0
+			    codepage.Output0Volume = volume;  
+			    codepage.CDDAOutput1Select = 0x02;  // audio channel 1
+			    codepage.Output1Volume = volume;
+			    codepage.CDDAOutput2Select = 0x00;  // none
+			    codepage.Output2Volume = 0x00;      // muted
+			    codepage.CDDAOutput3Select = 0x00;  // none
+			    codepage.Output3Volume = 0x00;      // muted
+
+			    length += SIZE_MODE_SENSE10_PAGE_0X0E;
+
+			    // Copy the header & Code Page
+			    memcpy(m_InBuffer, &reply_header, SIZE_MODE_SENSE6_HEADER);
+			    memcpy(m_InBuffer + SIZE_MODE_SENSE6_HEADER, &codepage, SIZE_MODE_SENSE10_PAGE_0X0E);
+			    break;
+			}
+
+			default: {
+				// We don't support this code page
+				bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
+				m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
+				m_SenseParams.bAddlSenseCode = 0x24;      // INVALID FIELD IN COMMAND PACKET
+				m_SenseParams.bAddlSenseCodeQual = 0x00;  
+				break;
+			}
+		    }
+	    }
+
+            // Trim the reply length according to what the host requested
+            if (allocationLength < length)
+                length = allocationLength;
+
+            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6), Sending response with length %d", length);
+
+            m_nnumber_blocks = 0;  // nothing more after this send
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = bmCSWStatus;
+		break;
+	}
+    */
+
         case 0x5a:  // Mode Sense (10)
         {
             // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
 
             //int LLBAA = (m_CBW.CBWCB[1] >> 7) & 0x01; // We don't support this
-            //int DBD = (m_CBW.CBWCB[1] >> 6) & 0x01; // Nor this
+            //int DBD = (m_CBW.CBWCB[1] >> 6) & 0x01; // TODO: Implement this!
             int page = m_CBW.CBWCB[2] & 0x3F;
-            int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;  // We'll ignore this for now
+            int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
             u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
             // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = %02x, allocationLength = %lu", LLBAA, DBD, page, allocationLength);
 
@@ -2103,7 +2282,7 @@ void CUSBCDGadget::HandleSCSICommand() {
     }
 
     // Reset the status
-    bmCSWStatus = CD_CSW_STATUS_OK;
+    //bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
 // this function is called periodically from task level for IO
