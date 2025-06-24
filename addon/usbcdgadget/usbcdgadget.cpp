@@ -206,12 +206,19 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
             break;
 
         case DESCRIPTOR_STRING:
-            MLOGNOTE("CUSBCDGadget::GetDescriptor", "DESCRIPTOR_STRING %02x", uchDescIndex);
+            // String descriptors - log for debugging
             if (!uchDescIndex) {
-                *pLength = (u8)s_StringDescriptor[0][0];
-                return s_StringDescriptor[0];
-            } else if (uchDescIndex < sizeof s_StringDescriptor / sizeof s_StringDescriptor[0]) {
-                return ToStringDescriptor(s_StringDescriptor[uchDescIndex], pLength);
+                *pLength = (u8)m_StringDescriptor[0][0];
+                return m_StringDescriptor[0];
+            } else if (uchDescIndex < 4) {  // We have 4 string descriptors (0-3)
+                const char* desc_name = "";
+                switch(uchDescIndex) {
+                    case 1: desc_name = "Manufacturer"; break;
+                    case 2: desc_name = "Product"; break; 
+                    case 3: desc_name = "Serial Number"; break;
+                    default: desc_name = "Unknown"; break;
+                }
+                return ToStringDescriptor(m_StringDescriptor[uchDescIndex], pLength);
             }
             break;
 
