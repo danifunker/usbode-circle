@@ -9,6 +9,7 @@ CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
 OBJS = chdparser.o
 
+INCLUDE += -I $(USBODEHOME)/include -I $(USBODEHOME)/addon
 CFLAGS += -I "../.." -I "$(CIRCLEHOME)" -I "$(STDLIBHOME)/include" -I "$(NEWLIBDIR)/include"
 CPPFLAGS += -I "../.." -I "$(CIRCLEHOME)" -I "$(STDLIBHOME)/include" -I "$(NEWLIBDIR)/include" 
 
