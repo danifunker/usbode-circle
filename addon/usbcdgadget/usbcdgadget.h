@@ -497,7 +497,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
    private:
     void AddEndpoints(void) override;
-
+    void RemoveEndpoints(void);
     void CreateDevice(void) override;
 
     void OnSuspend(void) override;
@@ -788,6 +788,31 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     // Hardware serial number for USB device identification
     char m_HardwareSerialNumber[20];   // Format: "USBODE-XXXXXXXX"
 
+    // BIOS boot protection - track active boot sequences
+    u32 m_LastSCSICommandTime = 0;
+    boolean m_BioseBootInterrupted = false;
+    u32 m_BootInterruptTime = 0;
+
+    // Suspend prevention during critical BIOS communication window
+    u32 m_BiosBootProtectionTime = 0;
+    boolean m_PreventSuspend = false;
+
+    // State preservation for suspend/resume during data transfers
+    boolean m_StateSaved = false;
+    u32 m_SavedLBA = 0;
+    u32 m_SavedBlockCount = 0;
+    TCDState m_SavedState = TCDState::Init;
+
+    // Suspend/resume cycle tracking
+    u32 m_SuspendResumeCount = 0;
+
+    // Framework suspend control for BIOS compatibility
+    static boolean s_DisableSuspend;
+
+    // Add these method declarations:
+    void DisableUSBSuspendInterrupt();
+    void EnableUSBSuspendInterrupt();
+    void HandleBIOSStabilization(void);
 };
 
 #endif
