@@ -3,6 +3,7 @@
 
 enum class FileType {
     ISO,
-    CUEBIN
+    CUEBIN,
+    CHD
 };
 #endif

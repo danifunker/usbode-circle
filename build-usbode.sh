@@ -122,6 +122,9 @@ for arch in "${supported_rasppi[@]}"; do
     cd ${projectRoot}/addon/cueparser
     make clean
     make
+    cd ${projectRoot}/addon/chdparser
+    make clean
+    make
     cd ${projectRoot}/addon/filelogdaemon
     make clean
     make
