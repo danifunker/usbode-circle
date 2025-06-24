@@ -10,5 +10,6 @@ char tolower(char c);
 bool hasBinExtension(const char* imageName);
 void change_extension_to_cue(char* fullPath);
 CCueBinFileDevice* loadCueBinFileDevice(const char* imageName);
+bool hasChd(const char* imageName);
 
 #endif  // UTIL_H

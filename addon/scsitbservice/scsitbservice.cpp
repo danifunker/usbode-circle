@@ -166,7 +166,7 @@ bool SCSITBService::RefreshCache() {
 	//LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
         const char* ext = strrchr(fno.fname, '.');
         if (ext != nullptr) {
-            if (iequals(ext, ".iso") || iequals(ext, ".bin")) {
+            if (iequals(ext, ".iso") || iequals(ext, ".bin") || iequals(ext, ".chd")) {
 		if (m_FileCount >= MAX_FILES)
                     break;
                 size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);

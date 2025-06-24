@@ -5,23 +5,19 @@
 #include <fatfs/ff.h>
 #include "filetype.h"
 #include "../chdparser/chdparser.h"
+#include "cuebinfile.h"
 
-class CCHDFileDevice : public CDevice {
+class CCHDFileDevice : public CCueBinFileDevice {
 public:
-    CCHDFileDevice(FIL* pFile);
+    CCHDFileDevice(FIL *pFile);
     ~CCHDFileDevice(void);
 
-    int Read(void* pBuffer, size_t nCount);
-    int Write(const void* pBuffer, size_t nCount);
-    u64 Seek(u64 ullOffset);
-    u64 GetSize(void) const;
-    const char* GetCueSheet() const;
+    // Override base class methods as needed
+    int Read(void* pBuffer, size_t nCount) override;
+    u64 Seek(u64 ullOffset) override;
 
 private:
-    FIL* m_pFile;
     CHDParser m_chdParser;
-    char* m_cueStr;
-    u64 m_currentPosition;
-    u64 m_totalSize;
 };
+
 #endif

@@ -27,13 +27,28 @@ CHDParser::~CHDParser()
 bool CHDParser::initialize(void* fileHandle)
 {
     m_fileHandle = fileHandle;
-    // Initial implementation
-    return false;
+    
+    // For initial testing, just return true so the code path works
+    // This will let you test if CHD files show up in the UI
+    return true;
 }
 
 const char* CHDParser::generateCueSheet()
 {
-    return nullptr;
+    // Create a basic cue sheet for testing
+    if (!m_cueSheet) {
+        const char* defaultCue = 
+            "FILE \"image.iso\" BINARY\n"
+            "  TRACK 01 MODE1/2048\n"
+            "    INDEX 01 00:00:00\n";
+        
+        size_t len = strlen(defaultCue);
+        m_cueSheet = new char[len + 1];
+        strcpy(m_cueSheet, defaultCue);
+        m_numTracks = 1;
+    }
+    
+    return m_cueSheet;
 }
 
 bool CHDParser::readSector(uint32_t lba, void* buffer, uint32_t sectorSize)

@@ -21,6 +21,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "util.h"
+#include "chdfile.h"
 
 LOGMODULE("cueparser-util");
 
@@ -62,6 +63,18 @@ bool hasIsoExtension(const char* imageName) {
                tolower(ext[1]) == 'i' &&
                tolower(ext[2]) == 's' &&
                tolower(ext[3]) == 'o';
+    }
+    return false;
+}
+
+bool hasChd(const char* imageName) {
+    size_t len = strlen(imageName);
+    if (len >= 4) {
+        const char* ext = imageName + len - 4;
+        return tolower(ext[0]) == '.' &&
+               tolower(ext[1]) == 'c' &&
+               tolower(ext[2]) == 'h' &&
+               tolower(ext[3]) == 'd';
     }
     return false;
 }
@@ -125,6 +138,23 @@ CCueBinFileDevice* loadCueBinFileDevice(const char* imageName) {
 
     FIL* imageFile = new FIL();
     char* cue_str = nullptr;
+
+    // Is this a CHD file?
+    if (hasChd(fullPath)) {
+        LOGNOTE("This is a CHD file, loading directly");
+
+        // Load the image
+        FRESULT Result = f_open(imageFile, fullPath, FA_READ);
+        if (Result != FR_OK) {
+            LOGERR("Cannot open CHD image file for reading");
+            delete imageFile;
+            return nullptr;
+        }
+        LOGNOTE("Opened CHD image file %s", fullPath);
+
+        // Create CHD device
+        return new CCHDFileDevice(imageFile);
+    }
 
     // Is this a bin?
     if (hasBinExtension(fullPath)) {

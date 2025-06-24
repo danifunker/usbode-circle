@@ -1082,6 +1082,7 @@ void CKernel::ScanForISOFiles(void) {
                 continue;
 
             if (strcasecmp(Extension, ".iso") == 0 ||
+                strcasecmp(Extension, ".chd") == 0 ||
                 strcasecmp(Extension, ".cue") == 0 ||
                 strcasecmp(Extension, ".bin") == 0) {
                 // Check if we have space left
