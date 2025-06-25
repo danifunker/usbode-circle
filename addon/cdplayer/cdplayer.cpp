@@ -208,6 +208,11 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
 // DACs don't support volume control, so we scale the data
 // accordingly instead
 void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
+
+    // Do we even have anything to do?
+    if (volumeByte = 0xff)
+	    return;
+
     // Compute fixed-point Q12 scale dynamically (0–4096)
     u16 scale = volumeByte << 4;
 
@@ -245,7 +250,8 @@ void CCDPlayer::Run(void) {
             }
         }
 
-        while (state == PLAYING) {
+        //while (state == PLAYING) {
+        if (state == PLAYING) {
             // Get available queue size in stereo frames
             unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
 
@@ -266,8 +272,7 @@ void CCDPlayer::Run(void) {
                 }
 
                 // Scale the volume
-                if (volumeByte != 0xff)
-                    ScaleVolume(m_FileChunk, readCount);
+                ScaleVolume(m_FileChunk, readCount);
 
                 // Write to sound device
                 int writeCount = m_pSound->Write(m_FileChunk, readCount);
@@ -289,9 +294,9 @@ void CCDPlayer::Run(void) {
                 }
             }
 
-            // Let other tasks have cpu time
-            CScheduler::Get()->Yield();
+            //CScheduler::Get()->Yield();
         }
+        // Let other tasks have cpu time
         CScheduler::Get()->Yield();
     }
 }
