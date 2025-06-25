@@ -560,17 +560,17 @@ void CUSBCDGadget::CreateDevice(void) {
 }
 
 void CUSBCDGadget::UpdateBIOSProtection() {
-    if (m_PreventSuspend && > 0) {
-        u32 elapsed_ms = (CTimer::GetClockTicks() - m_BIOSProtectionStartTime) / 1000;
+    if (m_PreventSuspend && m_BiosBootProtectionTime > 0) {
+        u32 current_time = CTimer::GetClockTicks();
         
-        if (elapsed_ms > 10000) {  // 10 second protection window
+        // Check if current time has passed the expiration time
+        if (current_time > m_BiosBootProtectionTime) {
             MLOGNOTE("CUSBCDGadget::UpdateBIOSProtection", "*** BIOS PROTECTION EXPIRED *** Re-enabling suspend after 10 seconds");
             m_PreventSuspend = false;
-            m_BIOSProtectionStartTime = 0;
+            m_BiosBootProtectionTime = 0;
         }
     }
 }
-
 void CUSBCDGadget::OnSuspend() {
     
     // Check if suspend prevention is active

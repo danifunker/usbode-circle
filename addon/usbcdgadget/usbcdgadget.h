@@ -486,7 +486,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     // void SetDeviceBlocks(u64 nBlocks);
     /// \return Capacity of the block device in number of blocks (a 512 bytes)
     // u64 GetBlocks (void) const;
-
+    void UpdateBIOSProtection();
    protected:
     /// \brief Get device-specific descriptor
     /// \param wValue Parameter from setup packet (descriptor type (MSB) and index (LSB))
