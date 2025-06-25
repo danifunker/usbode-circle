@@ -949,7 +949,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 memcpy(&m_InBuffer, &m_InqReply, datalen);
         
                 // *** BIOS BOOT PROTECTION *** Add protection logic here
-                m_BiosBootProtectionTime = CTimer::GetClockTicks() + (3 * 1000000);  // 3 second protection
+                m_BiosBootProtectionTime = CTimer::GetClockTicks() + (5 * 1000000);  // 5 second protection
                 m_PreventSuspend = true;
         
                 s_DisableSuspend = TRUE;
