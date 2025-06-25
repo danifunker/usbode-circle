@@ -250,7 +250,6 @@ void CCDPlayer::Run(void) {
             }
         }
 
-        //while (state == PLAYING) {
         if (state == PLAYING) {
             // Get available queue size in stereo frames
             unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
@@ -294,7 +293,6 @@ void CCDPlayer::Run(void) {
                 }
             }
 
-            //CScheduler::Get()->Yield();
         }
         // Let other tasks have cpu time
         CScheduler::Get()->Yield();
