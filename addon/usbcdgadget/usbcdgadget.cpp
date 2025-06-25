@@ -69,7 +69,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1,
             0,
             0x80,    // bmAttributes (bus-powered)
-            500 / 2  // bMaxPower (500mA)
+            1  // bMaxPower (500mA)
         },
         {
             sizeof(TUSBInterfaceDescriptor),
@@ -77,8 +77,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            //0x08, 0x2, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             0                  // iInterface
         },
         {
@@ -108,7 +108,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1,
             0,
             0x80,    // bmAttributes (bus-powered)
-            500 / 2  // bMaxPower (500mA)
+            1  // bMaxPower (500mA)
         },
         {
             sizeof(TUSBInterfaceDescriptor),
@@ -116,8 +116,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             0                  // iInterface
         },
         {
@@ -211,13 +211,16 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
             }
             break;
 
-        case DESCRIPTOR_CONFIGURATION:
-            MLOGNOTE("CUSBCDGadget::GetDescriptor", "DESCRIPTOR_CONFIGURATION %02x", uchDescIndex);
-            if (!uchDescIndex) {
-                *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
-		return m_IsFullSpeed?&s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
-            }
-            break;
+    case DESCRIPTOR_CONFIGURATION:
+        MLOGNOTE("CUSBCDGadget::GetDescriptor", "*** BIOS CONFIGURATION REQUEST ***");
+        if (!uchDescIndex) {
+            *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
+            
+            // Use BIOS-compatible descriptor with SubClass 0x06
+            MLOGNOTE("CUSBCDGadget::GetDescriptor", "Sending BIOS-compatible config: SubClass=0x06 (SCSI)");
+            return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
+        }
+        break;
 
         case DESCRIPTOR_STRING:
             // String descriptors - log for debugging
@@ -296,10 +299,26 @@ void CUSBCDGadget::AddEndpoints(void) {
     OnActivate();
 }
 
-void CUSBCDGadget::RemoveEndpoints(void) {
+// Modify RemoveEndpoints to preserve state during BIOS operation
+
+// Fix RemoveEndpoints - remove the incorrect RemoveFromScheduler() calls
+
+void CUSBCDGadget::RemoveEndpoints() {
     MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "*** BIOS SUSPEND *** Removing endpoints for suspend");
     
-    // Clean up endpoints in reverse order of creation
+    // CRITICAL: Preserve state during BIOS operation
+    TCDState saved_state = m_nState;
+    bool bios_active = (saved_state == TCDState::ReceiveCBW || saved_state == TCDState::DataInRead);
+    
+    if (bios_active) {
+        MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "*** BIOS PROTECTION *** Preserving state during suspend");
+        m_StateSaved = true;
+        m_SavedState = saved_state;
+        m_SavedLBA = m_nblock_address;
+        m_SavedBlockCount = m_nnumber_blocks;
+    }
+    
+    // Remove endpoints - just delete them, they handle their own cleanup
     if (m_pEP[EPIn]) {
         delete m_pEP[EPIn];
         m_pEP[EPIn] = nullptr;
@@ -312,9 +331,13 @@ void CUSBCDGadget::RemoveEndpoints(void) {
         MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "OUT endpoint removed");
     }
     
-    // Reset state to Init - critical for BIOS recovery
-    m_nState = TCDState::Init;
-    MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "*** ENDPOINT CLEANUP COMPLETE *** State reset to Init");
+    // Only reset to Init if BIOS is not active
+    if (!bios_active) {
+        m_nState = TCDState::Init;
+        MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "*** ENDPOINT CLEANUP COMPLETE *** State reset to Init");
+    } else {
+        MLOGNOTE("CUSBCDGadget::RemoveEndpoints", "*** BIOS PROTECTION *** State preserved during suspend");
+    }
 }
 
 // must set device before usb activation
@@ -536,15 +559,28 @@ void CUSBCDGadget::CreateDevice(void) {
     assert(m_pDevice);
 }
 
-void CUSBCDGadget::OnSuspend(void) {
-    m_SuspendResumeCount++;
+void CUSBCDGadget::UpdateBIOSProtection() {
+    if (m_PreventSuspend && > 0) {
+        u32 elapsed_ms = (CTimer::GetClockTicks() - m_BIOSProtectionStartTime) / 1000;
+        
+        if (elapsed_ms > 10000) {  // 10 second protection window
+            MLOGNOTE("CUSBCDGadget::UpdateBIOSProtection", "*** BIOS PROTECTION EXPIRED *** Re-enabling suspend after 10 seconds");
+            m_PreventSuspend = false;
+            m_BIOSProtectionStartTime = 0;
+        }
+    }
+}
+
+void CUSBCDGadget::OnSuspend() {
     
     // Check if suspend prevention is active
     if (m_PreventSuspend) {
         MLOGNOTE("CUSBCDGadget::OnSuspend", "*** BIOS PROTECTION ACTIVE *** Suspend during protection window, count #%u", m_SuspendResumeCount);
-    } else {
-        MLOGNOTE("CUSBCDGadget::OnSuspend", "Standard suspend, count #%u", m_SuspendResumeCount);
+        return;  // Prevent suspend if BIOS protection is active
     }
+
+    m_SuspendResumeCount++;
+
     
     // CRITICAL: Preserve current state for transparent resume
     if (m_nState == TCDState::DataInRead) {
@@ -753,9 +789,24 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
 
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate() {
+    MLOGNOTE("CUSBCDGadget::OnActivate", "*** USB STATE TRANSITION *** Device moving to CONFIGURED state");
     MLOGNOTE("CD OnActivate", "state = %i", m_nState);
+
+    // CRITICAL: Start BIOS protection immediately when USB is ready
+    m_PreventSuspend = true;
+    m_BiosBootProtectionTime = CTimer::GetClockTicks() + (10 * 1000000);  // 10 seconds from now
+    
+    MLOGNOTE("CUSBCDGadget::OnActivate", "*** BIOS PROTECTION STARTED *** Active for 10 seconds");
+    MLOGNOTE("CUSBCDGadget::OnActivate", "USB suspend: DISABLED until protection expires");
+    MLOGNOTE("CUSBCDGadget::OnActivate", "Host should now send SCSI commands within 1-2 seconds");
+
+    // Set device ready state
     m_CDReady = true;
+    
+    // Set proper USB state for receiving SCSI commands
     m_nState = TCDState::ReceiveCBW;
+    
+    // Begin listening for SCSI commands
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
 }
 
