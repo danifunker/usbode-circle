@@ -146,6 +146,8 @@ bool SCSITBService::RefreshCache() {
 
     m_FileCount = 0;
 
+    // Read our directory of images
+    // and populate m_FileEntries
     DIR dir;
     FRESULT fr = f_opendir(&dir, "/images");
     if (fr != FR_OK) {
@@ -181,20 +183,26 @@ bool SCSITBService::RefreshCache() {
         }
     }
 
-    // Sort entries by filename alphabetically
+    // Sort m_FileEntries by filename alphabetically
     qsort(m_FileEntries, m_FileCount, sizeof(m_FileEntries[0]), compareFileEntries);
 
     // Find the index of current_image in m_FileEntries
     for (size_t i = 0; i < m_FileCount; ++i) {
         if (strcmp(m_FileEntries[i].name, current_image) == 0) {
-            current_cd = i;
 	    
-	    // Why do we need this?
-	    //if (next_cd != current_cd)
-	    //	next_cd = i;
+	    // If we don't yet have a current_cd e.g. we've 
+	    // just booted, then mount it
+	    if (current_cd < 0) 
+		next_cd = i;
+	    else
+            	current_cd = i;
+		    
             break;
         }
     }
+
+    //TODO handle case where we can't find the CD in the last, fall back to 
+    //the default image
 
     LOGNOTE("SCSITBService::RefreshCache() RefreshCache() done");
 
