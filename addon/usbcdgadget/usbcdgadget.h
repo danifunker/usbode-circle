@@ -774,9 +774,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int numTracks = 0;
     // TUSBTOCData m_TOCData;
 
-    static const size_t MaxInMessageSize = 37632;  // 2352 sector * 16 blocks
+    static const size_t MaxBlocksToRead = 64;
     static const size_t MaxOutMessageSize = 2048;
     static const size_t MaxSectorSize = 2352;
+    static const size_t MaxInMessageSize = MaxBlocksToRead * MaxSectorSize;
     u8 *m_FileChunk = new (HEAP_LOW) u8[MaxInMessageSize];
     // u8* m_OneSector = new (HEAP_LOW) u8[MaxSectorSize];
     DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);

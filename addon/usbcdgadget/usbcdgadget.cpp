@@ -2341,11 +2341,11 @@ void CUSBCDGadget::Update() {
             if (m_CDReady) {
                 offset = m_pDevice->Seek(block_size * m_nblock_address);
                 if (offset != (u64)(-1)) {
-                    // Cap at max 16 blocks. This is what a READ CD request will required
+                    // Cap at MAX_BLOCKS_READ blocks. This is what a READ CD request will required
                     u32 blocks_to_read_in_batch = m_nnumber_blocks;
-                    if (blocks_to_read_in_batch > 16) {
-                        blocks_to_read_in_batch = 16;
-                        m_nnumber_blocks -= 16;  // Update remaining for subsequent reads if needed
+                    if (blocks_to_read_in_batch > MaxBlocksToRead) {
+                        blocks_to_read_in_batch = MaxBlocksToRead;
+                        m_nnumber_blocks -= MaxBlocksToRead;  // Update remaining for subsequent reads if needed
                         MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is %lu", blocks_to_read_in_batch, m_nnumber_blocks);
                     } else {
                         MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is now zero", blocks_to_read_in_batch);
