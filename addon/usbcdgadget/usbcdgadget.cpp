@@ -335,16 +335,16 @@ int CUSBCDGadget::GetSkipbytes() {
 int CUSBCDGadget::GetSkipbytesForTrack(const CUETrackInfo* trackInfo) {
     switch (trackInfo->track_mode) {
         case CUETrack_MODE1_2048:
-            MLOGNOTE("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2048");
+            //MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2048");
             return 0;
         case CUETrack_MODE1_2352:
-            MLOGNOTE("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2352");
+            //MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2352");
             return 16;
         case CUETrack_MODE2_2352:
-            MLOGNOTE("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE2_2352");
+            //MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE2_2352");
             return 24;
         case CUETrack_AUDIO:
-            MLOGNOTE("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_AUDIO");
+            //MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_AUDIO");
             return 0;
         default:
             MLOGERR("CUSBCDGadget::GetSkipbytesForTrack", "Track mode %d not handled", trackInfo->track_mode);
