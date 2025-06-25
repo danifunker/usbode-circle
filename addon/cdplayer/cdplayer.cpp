@@ -191,8 +191,8 @@ boolean CCDPlayer::SoundTest() {
             }
         }
 
-        CScheduler::Get()->Yield();
     }
+    CScheduler::Get()->Yield();
     f_close(&file);
     return false;
 }
