@@ -71,10 +71,19 @@ int CCueBinFileDevice::Write(const void *pBuffer, size_t nSize) {
     return -1;
 }
 
+u64 CCueBinFileDevice::Tell() {
+    if (!m_pFile) {
+        LOGERR("Tell !m_pFile");
+        return static_cast<u64>(-1);
+    }
+
+    return f_tell(m_pFile);
+}
+
 u64 CCueBinFileDevice::Seek(u64 nOffset) {
     if (!m_pFile) {
         LOGERR("Seek !m_pFile");
-        return -1;
+        return static_cast<u64>(-1);
     }
 
     FRESULT result = f_lseek(m_pFile, nOffset);

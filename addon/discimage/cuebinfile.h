@@ -24,6 +24,7 @@ class CCueBinFileDevice : public CDevice {
     int Write(const void* pBuffer, size_t nCount);
     u64 Seek(u64 ullOffset);
     u64 GetSize(void) const;
+    u64 Tell();
     const char* GetCueSheet() const;
 
    private:
