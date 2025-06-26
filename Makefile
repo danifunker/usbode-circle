@@ -21,7 +21,7 @@ PREFIX := $(shell \
 )
 SUPPORTED_RASPPI := $(shell \
 	if [ -f "$(BUILD_CONF)" ]; then \
-		grep '^supported_rasppi=' "$(BUILD_CONF)" 2>/dev/null | sed 's/supported_rasppi=(//' | sed 's/)//' | tr -d ' '; \
+		grep '^supported_rasppi=' "$(BUILD_CONF)" 2>/dev/null | sed 's/supported_rasppi=(//' | sed 's/)//'; \
 	fi \
 )
 # Fallback if PREFIX is empty
