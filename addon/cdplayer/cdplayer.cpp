@@ -210,7 +210,7 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
 void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
 
     // Do we even have anything to do?
-    if (volumeByte = 0xff)
+    if (volumeByte == 0xff)
 	    return;
 
     // Compute fixed-point Q12 scale dynamically (0–4096)
@@ -312,7 +312,7 @@ void CCDPlayer::Run(void) {
                 bytes_to_process -= (bytes_to_process % BYTES_PER_FRAME);
 
                 if (bytes_to_process > 0) {
-                    // Manual copy from read buffer to write chunk.
+                    // copy from read buffer to write chunk.
                     for (unsigned int i = 0; i < bytes_to_process; ++i) {
                         m_WriteChunk[i] = m_ReadBuffer[m_BufferReadPos + i];
                     }
