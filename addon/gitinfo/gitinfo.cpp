@@ -87,11 +87,11 @@ void CGitInfo::UpdateFormattedVersions(void)
     CString baseVersion;
     baseVersion.Format("%s.%s.%s", m_MajorVersion, m_MinorVersion, m_PatchVersion);
     
-    // Add build number if present
+    // Add build number if present (with dash for display)
     if (strlen(m_BuildNumber) > 0)
     {
         CString versionWithBuild;
-        versionWithBuild.Format("%s%s", (const char*)baseVersion, m_BuildNumber);
+        versionWithBuild.Format("%s-%s", (const char*)baseVersion, m_BuildNumber);
         baseVersion = versionWithBuild;
     }
     
@@ -137,7 +137,7 @@ void CGitInfo::UpdateFormattedVersions(void)
     if (strlen(m_BuildNumber) > 0)
     {
         CString shortVersionWithBuild;
-        shortVersionWithBuild.Format("%s%s", (const char*)shortVersionBase, m_BuildNumber);
+        shortVersionWithBuild.Format("%s-%s", (const char*)shortVersionBase, m_BuildNumber);
         shortVersionBase = shortVersionWithBuild;
     }
     

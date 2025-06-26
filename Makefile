@@ -1,11 +1,11 @@
 # Configuration
-MAKEFLAGS += -j$(getconf _NPROCESSORS_ONLN) # Use all available CPU cores
+MAKEFLAGS += -j8 # Use all available CPU cores
 RASPPI ?= 1
 USBODEHOME = .
 STDLIBHOME = $(USBODEHOME)/circle-stdlib
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 DEBUG_FLAGS ?=
-DEBUG_CONFIGURE_FLAGS = $(addprefix -d ,$(DEBUG_FLAGS))
+DEBUG_CONFIGURE_FLAGS = $(if $(DEBUG_FLAGS),$(addprefix -d ,$(DEBUG_FLAGS)))
 DIST_DIR = dist
 BASE_VERSION = $(shell cat version.txt | head -n 1 | tr -d '\n\r')
 BUILD_NUMBER ?= 
@@ -13,6 +13,10 @@ BUILD_VERSION = $(if $(BUILD_NUMBER),$(BASE_VERSION)-$(BUILD_NUMBER),$(BASE_VERS
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 ZIP_NAME = usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT).zip
+#If BUILD_NUMBER is set, set it as the env var required for gitinfo.sh
+ifneq ($(BUILD_NUMBER),)
+export USBODE_BUILD_NUMBER = $(BUILD_NUMBER)
+endif
 
 # Include Circle's configuration and rules
 include $(CIRCLEHOME)/Config.mk
@@ -29,14 +33,14 @@ CIRCLE_ADDONS = linux Properties
 # Module-specific CPPFLAGS
 USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0x0d01
 
-.PHONY: all clean-all configure circle-stdlib circle-deps circle-addons usbode-addons kernel dist-files
+.PHONY: all clean-all clean-dist configure circle-stdlib circle-deps circle-addons usbode-addons kernel dist-files
 .PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS)
 
 all: configure circle-deps circle-addons usbode-addons kernel
 
 # Configure Circle for target architecture
 configure:
-	@echo "Configuring for RASPPI=$(RASPPI)"
+	@echo "Configuring for RASPPI=$(RASPPI)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
 	cd $(STDLIBHOME) && \
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
@@ -84,9 +88,8 @@ kernel: usbode-addons
 	@echo "Building final kernel..."
 	cd src && $(MAKE) clean && $(MAKE)
 
-dist-single: kernel
+dist-single: kernel clean-dist
 	@echo "Creating single-architecture distribution package for RASPPI=$(RASPPI)..."
-	@mkdir -p $(DIST_DIR)
 	
 	# Copy kernel files for current RASPPI architecture
 	cp src/kernel*.img $(DIST_DIR)/
@@ -97,7 +100,6 @@ dist-single: kernel
 dist-files:
 	@echo "Creating distribution package..."
 	@echo "Platform Specific Builds Complete Successfully, copying general files to $(DIST_DIR)"
-	
 	@mkdir -p $(DIST_DIR)
 	# Copy configuration files
 	cp sdcard/wpa_supplicant.conf $(DIST_DIR)/
@@ -163,13 +165,18 @@ clean-all:
 # Override Circle's clean to call our clean-all
 clean: clean-all
 
+# Clean distribution files and prepare fresh dist directory
+clean-dist:
+	@echo "Cleaning distribution directory..."
+	@rm -rf $(DIST_DIR)
+	@rm -f usbode*.zip
+	@mkdir -p $(DIST_DIR)
+
 # Multi-architecture build (matches your build script)
 SUPPORTED_RASPPI = 1 2 3
-multi-arch: 
-	@mkdir -p $(DIST_DIR)
-	@rm -f usbode*.zip
+multi-arch: clean-dist
 	@for arch in $(SUPPORTED_RASPPI); do \
-		echo "Building for RASPPI=$$arch with debug flags: $(DEBUG_FLAGS)"; \
+		echo "Building for RASPPI=$$arch$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
 		$(MAKE) RASPPI=$$arch DEBUG_FLAGS="$(DEBUG_FLAGS)" all; \
 		cp src/kernel*.img $(DIST_DIR)/ 2>/dev/null || true; \
 	done
