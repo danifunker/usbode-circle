@@ -36,8 +36,6 @@
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
 
-#define SYSLOG_VERSION 1
-#define SYSLOG_PORT 514
 #define SECTOR_SIZE 2352
 #define BATCH_SIZE 16 
 #define BYTES_PER_FRAME 4
@@ -53,6 +51,8 @@
 
 #define VOLUME_SCALE_BITS 12 // 1.0 = 4096
 #define VOLUME_STEPS 16
+
+#define AUDIO_BUFFER_SIZE  4 * BUFFER_SIZE_FRAMES * BYTES_PER_FRAME
 
 class CCDPlayer : public CTask {
    public:
@@ -70,6 +70,8 @@ class CCDPlayer : public CTask {
     boolean Seek(u32 lba);
     boolean Play(u32 lba, u32 num_blocks);
     boolean SoundTest();
+    size_t buffer_available();
+    size_t buffer_free_space();
     void Run(void);
 
     enum PlayState {
@@ -97,6 +99,12 @@ class CCDPlayer : public CTask {
     PlayState state;
     u8 *m_FileChunk = new (HEAP_LOW) u8[BUFFER_SIZE_BYTES];
     u8 volumeByte = 255;
+
+    u8 *m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+    u8 *m_WriteChunk;
+    unsigned int m_BufferBytesValid = 0;
+    unsigned int m_BufferReadPos = 0;
+    unsigned int m_BytesProcessedInSector = 0;
 };
 
 #endif

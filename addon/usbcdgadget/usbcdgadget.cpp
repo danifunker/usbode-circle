@@ -394,14 +394,14 @@ const CUETrackInfo* CUSBCDGadget::GetTrackInfoForLBA(u32 lba) {
 
     // Iterate to find our track
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-        // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Iterating: Current Track %d data_start is %lu", trackInfo->track_number, trackInfo->data_start);
+        // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Iterating: Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
         //  Shortcut for when our LBA is the start address of this track
-        if (trackInfo->data_start == lba) {
-            // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut data_start == lba, returning track %d", trackInfo->track_number);
+        if (trackInfo->track_start == lba) {
+            // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut track_start == lba, returning track %d", trackInfo->track_number);
             return trackInfo;
         }
 
-        if (lba < trackInfo->data_start) {
+        if (lba < trackInfo->track_start) {
             // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Found LBA %lu in track %d", lba, lastTrackNum);
             found = true;
             break;
@@ -435,14 +435,14 @@ u32 CUSBCDGadget::GetLeadoutLBA() {
     const CUETrackInfo* trackInfo = nullptr;
     u32 file_offset = 0;
     u32 sector_length = 0;
-    u32 data_start = 0;
+    u32 track_start = 0;
 
     // Find the last track
     cueParser.restart();
     while ((trackInfo = cueParser.next_track()) != nullptr) {
         file_offset = trackInfo->file_offset;
         sector_length = trackInfo->sector_length;
-        data_start = trackInfo->data_start;
+        track_start = trackInfo->track_start;
     }
 
     u32 deviceSize = (u32)m_pDevice->GetSize();
@@ -452,13 +452,13 @@ u32 CUSBCDGadget::GetLeadoutLBA() {
     // We can't just divide the file size by sector size because sectors lengths might
     // not be consistent (e.g. multi-mode cd where track 1 is 2048
     u32 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
-    u32 ret = data_start + lastTrackBlocks;
-    //MLOGNOTE("CUSBCDGadget::GetLeadoutLBA", "device size is %lu, last track file offset is %lu, last track sector_length is %lu, last track data_start is %lu, lastTrackBlocks = %lu, returning = %lu", deviceSize, file_offset, sector_length, data_start, lastTrackBlocks, ret);
+    u32 ret = track_start + lastTrackBlocks;
+    //MLOGNOTE("CUSBCDGadget::GetLeadoutLBA", "device size is %lu, last track file offset is %lu, last track sector_length is %lu, last track track_start is %lu, lastTrackBlocks = %lu, returning = %lu", deviceSize, file_offset, sector_length, track_start, lastTrackBlocks, ret);
 
     // Some corrupted cd images might have a cue that references track that are
     // outside the bin.
     if (deviceSize < file_offset)
-        return data_start;
+        return track_start;
 
     return ret;
 }
@@ -1157,14 +1157,14 @@ void CUSBCDGadget::HandleSCSICommand() {
 			while ((trackInfo = cueParser.next_track()) != nullptr) {
 			    if (trackInfo->track_number < startingTrack)
 				continue;
-			    // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, data_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->data_start, GetAddress(trackInfo->data_start, msf));
+			    // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, track_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->track_start, GetAddress(trackInfo->track_start, msf));
 			    tocEntries[index].ADR_Control = 0x14;
 			    if (trackInfo->track_mode == CUETrack_AUDIO)
 				tocEntries[index].ADR_Control = 0x10;
 			    tocEntries[index].reserved = 0x00;
 			    tocEntries[index].TrackNumber = trackInfo->track_number;
 			    tocEntries[index].reserved2 = 0x00;
-			    tocEntries[index].address = GetAddress(trackInfo->data_start, msf);
+			    tocEntries[index].address = GetAddress(trackInfo->track_start, msf);
 			    datalen += SIZE_TOC_ENTRY;
 			    numtracks++;
 			    index++;
@@ -1271,7 +1271,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                         if (trackInfo) {
                             data.trackNumber = trackInfo->track_number;
                             data.indexNumber = 0x01;  // Assume no pregap. Perhaps we need to handle pregap?
-                            data.relativeAddress = GetAddress(address - trackInfo->data_start, msf, true);
+                            data.relativeAddress = GetAddress(address - trackInfo->track_start, msf, true);
                         }
                     }
 
@@ -1350,7 +1350,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 			response.dataMode = 0x01; // mode 1
 			if (trackInfo)
-				response.logicalTrackStartAddress = htonl(trackInfo->data_start);
+				response.logicalTrackStartAddress = htonl(trackInfo->track_start);
 			break;
 		}
 		case 0x02:
@@ -1706,15 +1706,16 @@ void CUSBCDGadget::HandleSCSICommand() {
             	    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CD Player found, sending command");
 		    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 		    if (cdplayer) {
-			if (start_lba == 0xFFFFFFFF)
+			if (start_lba == 0xFFFFFFFF) {
             	    		MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CD Player found, Resume");
 				cdplayer->Resume();
-			else if (start_lba == end_lba)
+			} else if (start_lba == end_lba) {
             	    		MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CD Player found, Pause");
 				cdplayer->Pause();
-			else
+			} else {
             	    		MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CD Player found, Play");
 				cdplayer->Play(start_lba, num_blocks);
+			}
 		    }
 	    } else {
 		   MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO MSF: Not an audio track");
@@ -1798,7 +1799,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    if (trackInfo->track_mode == CUETrack_AUDIO) {
 			CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 			if (cdplayer) {
-			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
+			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12) Play command sent");
 			    if (m_nblock_address == 0xffffffff)
 				cdplayer->Resume();
 			    else
