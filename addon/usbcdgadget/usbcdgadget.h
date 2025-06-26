@@ -774,12 +774,12 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int numTracks = 0;
     // TUSBTOCData m_TOCData;
 
-    static const size_t MaxBlocksToRead = 64;
     static const size_t MaxOutMessageSize = 2048;
+    static const size_t MaxBlocksToRead = 16; // WARNING increasing this overflow some buffer. Not sure why because we size the buffer correctly
     static const size_t MaxSectorSize = 2352;
     static const size_t MaxInMessageSize = MaxBlocksToRead * MaxSectorSize;
-    u8 *m_FileChunk = new (HEAP_LOW) u8[MaxInMessageSize];
-    // u8* m_OneSector = new (HEAP_LOW) u8[MaxSectorSize];
+    u8 *m_FileChunk = new u8[MaxInMessageSize];
+
     DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);
     DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize);
 
@@ -793,9 +793,6 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     u8 bmCSWStatus = 0;
     SenseParameters m_SenseParams;
-    //u8 bSenseKey = 0;
-    //u8 bAddlSenseCode = 0;
-    //u8 bAddlSenseCodeQual = 0;
     int data_skip_bytes = 0;
     int data_block_size = 2048;
     int skip_bytes = 0;
