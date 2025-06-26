@@ -480,6 +480,9 @@ void CUSBCDGadget::CreateDevice(void) {
 }
 
 void CUSBCDGadget::OnSuspend(void) {
+    MLOGNOTE("CUSBCDGadget::OnSuspend", "USB suspend event - BIOS may be timing out on SCSI command");
+    MLOGNOTE("CUSBCDGadget::OnSuspend", "Last SCSI command was: 0x%02x", m_CBW.CBWCB[0]);
+
     MLOGNOTE("CUSBCDGadget::OnSuspend", "entered");
     delete m_pEP[EPOut];
     m_pEP[EPOut] = nullptr;
@@ -759,12 +762,16 @@ void CUSBCDGadget::HandleSCSICommand() {
     switch (m_CBW.CBWCB[0]) {
         case 0x00:  // Test unit ready
         {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "TEST_UNIT_READY command received");
             if (!m_CDReady) {
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
                 bmCSWStatus = CD_CSW_STATUS_FAIL;
                 m_SenseParams.bSenseKey = 2;
                 m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
                 m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+            }
+            else {
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_OK)");
             }
 	    
             // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
@@ -973,6 +980,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x25:  // Read Capacity (10))
         {
+            LOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ_CAPACITY command received");
+            u32 lastLBA = GetLeadoutLBA() - 1;
+            u32 blockSize = 2048; // Your block size
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ_CAPACITY returning: Last LBA=%u, Block size=%u", lastLBA, blockSize);
+
             m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);  // this value is the Start address of last recorded lead-out minus 1
             memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
             m_nnumber_blocks = 0;  // nothing more after this send
@@ -995,6 +1007,17 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                 // Number of blocks to read (LBA)
                 m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10) command - LBA: %u, Length: %u blocks", m_nblock_address, m_nnumber_blocks);
+
+                // Special attention to boot-related sectors
+                if (m_nblock_address == 0) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10) - Reading boot sector (LBA 0)");
+                }
+                if (m_nblock_address == 17) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10) - Reading El Torito boot record (LBA 17)");
+                }
+
 
                 // Transfer Block Size is the size of data to return to host
                 // Block Size and Skip Bytes is worked out from cue sheet
