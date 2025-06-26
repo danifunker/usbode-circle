@@ -755,9 +755,9 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
 //  https://chatgpt.com/share/683ecad4-e250-8012-b9aa-22c76de6e871
 //
 void CUSBCDGadget::HandleSCSICommand() {
-    // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
     switch (m_CBW.CBWCB[0]) {
-        case 0x0:  // Test unit ready
+        case 0x00:  // Test unit ready
         {
             if (!m_CDReady) {
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
@@ -773,7 +773,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
-        case 0x3:  // Request sense CMD
+        case 0x03:  // Request sense CMD
         {
             // This command is the host asking why the last command generated a check condition
             // We'll clear the reason after we've communicated it. If it's still an issue, we'll
@@ -781,7 +781,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             //bool desc = m_CBW.CBWCB[1] & 0x01;
             u8 blocks = (u8)(m_CBW.CBWCB[4]);
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Request Sense CMD, length = %d", blocks);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Request Sense CMD: bSenseKey 0x%02x, bAddlSenseCode 0x%02x, bAddlSenseCodeQual 0x%02x ", m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 
             u8 length = sizeof(TUSBCDRequestSenseReply);
             if (blocks < length)
@@ -820,10 +820,10 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x12:  // Inquiry
         {
             int allocationLength = (m_CBW.CBWCB[3] << 8) | m_CBW.CBWCB[4];
-            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry %0x, allocation length %d", m_CBW.CBWCB[1], allocationLength);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry %0x, allocation length %d", m_CBW.CBWCB[1], allocationLength);
 
             if ((m_CBW.CBWCB[1] & 0x01) == 0) {  // EVPD bit is 0: Standard Inquiry
-                // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
 		
 		// Set response length
 		int datalen = SIZE_INQR;
@@ -837,7 +837,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 //m_CSW.bmCSWStatus = bmCSWStatus;
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
             } else {  // EVPD bit is 1: VPD Inquiry
-                // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (VPD Inquiry)");
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (VPD Inquiry)");
                 u8 vpdPageCode = m_CBW.CBWCB[2];
                 switch (vpdPageCode) {
                     case 0x00:  // Supported VPD Pages
@@ -871,7 +871,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                     case 0x80:  // Unit Serial Number Page
                     {
-                        // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unit Serial number Page)");
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unit Serial number Page)");
 
                         u8 UnitSerialNumberReply[] = {
                             0x05,  // Byte 0: Peripheral Device Type (Optical Memory Device)
@@ -929,7 +929,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     }
 
                     default:  // Unsupported VPD Page
-                        // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unsupported Page)");
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unsupported Page)");
                         //  m_nState = TCDState::DataIn;
                         m_nnumber_blocks = 0;  // nothing more after this send
 
@@ -1703,16 +1703,21 @@ void CUSBCDGadget::HandleSCSICommand() {
 	    const CUETrackInfo* trackInfo = GetTrackInfoForLBA(start_lba);
 	    if (trackInfo->track_mode == CUETrack_AUDIO) {
 		    // Play the audio
+            	    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CD Player found, sending command");
 		    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 		    if (cdplayer) {
 			if (start_lba == 0xFFFFFFFF)
+            	    		MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CD Player found, Resume");
 				cdplayer->Resume();
 			else if (start_lba == end_lba)
+            	    		MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CD Player found, Pause");
 				cdplayer->Pause();
 			else
+            	    		MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CD Player found, Play");
 				cdplayer->Play(start_lba, num_blocks);
 		    }
 	    } else {
+		   MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO MSF: Not an audio track");
 		   bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
                    m_SenseParams.bSenseKey = 0x05;
                    m_SenseParams.bAddlSenseCode = 0x64;      // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM

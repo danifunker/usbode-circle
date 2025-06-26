@@ -244,9 +244,8 @@ void CCDPlayer::Run(void) {
                     state = STOPPED_OK;
                 }
             } else {
-                LOGNOTE("Error seeking to byte position %u", address * SECTOR_SIZE);
+                LOGNOTE("Error seeking to byte position %u, state is %d", address * SECTOR_SIZE, state);
                 state = STOPPED_ERROR;
-                break;
             }
         }
 
@@ -259,6 +258,18 @@ void CCDPlayer::Run(void) {
 
             // If we have queue space, fill it with some bytes
             if (bytes_to_read) {
+
+		// If the last iteration was PLAYING, somethign else running in the
+		// yield might have moved the file pointer, so we need to seek back
+		// to where we want to be
+		// TODO conditional based on whether we just seeked at the top of this
+		// loop or not
+                u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
+                if (offset == (u64)(-1)) {
+                    LOGNOTE("Error seeking to byte position %u, state is %d", address * SECTOR_SIZE, state);
+                    state = STOPPED_ERROR;
+		}
+
                 // LOGNOTE("Reading %u bytes", bytes_to_read);
                 int readCount = m_pBinFileDevice->Read(m_FileChunk, bytes_to_read);
                 // LOGDBG("Read %d bytes", readCount);
@@ -267,7 +278,6 @@ void CCDPlayer::Run(void) {
                 if (readCount < bytes_to_read) {
                     LOGERR("Partial read");
                     state = STOPPED_ERROR;
-                    break;
                 }
 
                 // Scale the volume
@@ -278,7 +288,6 @@ void CCDPlayer::Run(void) {
                 if (writeCount != readCount) {
                     LOGERR("Truncated write, audio dropped");
                     state = STOPPED_ERROR;
-                    break;
                 }
 
                 // LOGNOTE("We are at %u", address);
@@ -289,8 +298,8 @@ void CCDPlayer::Run(void) {
                 if (address >= end_address) {
                     LOGNOTE("Finished playing");
                     state = STOPPED_OK;
-                    break;
                 }
+
             }
 
         }
