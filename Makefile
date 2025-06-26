@@ -1,6 +1,5 @@
 # Configuration
 MAKEFLAGS += -j8 --quiet # Use all available CPU cores
-RASPPI ?= 1
 USBODEHOME = .
 STDLIBHOME = $(USBODEHOME)/circle-stdlib
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
@@ -13,14 +12,31 @@ BUILD_VERSION = $(if $(BUILD_NUMBER),$(BASE_VERSION)-$(BUILD_NUMBER),$(BASE_VERS
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 ZIP_NAME = usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT).zip
+# Read configuration from build-usbode.conf
+BUILD_CONF = $(HOME)/build-usbode.conf
+PREFIX := $(shell \
+	if [ -f "$(BUILD_CONF)" ]; then \
+		source "$(BUILD_CONF)" 2>/dev/null && echo "$$PathPrefix"; \
+	fi \
+)
+SUPPORTED_RASPPI := $(shell \
+	if [ -f "$(BUILD_CONF)" ]; then \
+		source "$(BUILD_CONF)" 2>/dev/null && echo "$${supported_rasppi[@]}"; \
+	fi \
+)
+# Fallback if PREFIX is empty
+ifeq ($(PREFIX),)
+PREFIX = arm-none-eabi-
+endif
+RASPPI ?= $(if $(SUPPORTED_RASPPI),$(word 1,$(SUPPORTED_RASPPI)),1)
+# Fallback if empty
+ifeq ($(SUPPORTED_RASPPI),)
+SUPPORTED_RASPPI = 1 2 3
+endif
 #If BUILD_NUMBER is set, set it as the env var required for gitinfo.sh
 ifneq ($(BUILD_NUMBER),)
 export USBODE_BUILD_NUMBER = $(BUILD_NUMBER)
 endif
-
-# Include Circle's configuration and rules
-include $(CIRCLEHOME)/Config.mk
-include $(CIRCLEHOME)/Rules.mk
 
 # Define USBODE addon modules (from /addon directory)
 USBODE_ADDONS = gitinfo sdcardservice cdromservice scsitbservice usbcdgadget \
@@ -33,8 +49,10 @@ CIRCLE_ADDONS = linux Properties
 # Module-specific CPPFLAGS
 USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0x0d01
 
-.PHONY: all clean-all clean-dist configure circle-stdlib circle-deps circle-addons usbode-addons kernel dist-files
-.PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS)
+.PHONY: all clean-all clean-dist check-config check-vars configure circle-stdlib\
+	 circle-deps circle-addons usbode-addons kernel dist-files
+.PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS) dist-single multi-arch package release\
+	 show-build-info rebuild show-config
 
 all: clean-all clean-dist configure circle-deps circle-addons usbode-addons kernel dist-files
 
@@ -44,9 +62,18 @@ check-vars:
 		exit 1; \
 	fi
 
+check-config:
+	@if [ ! -f "$(BUILD_CONF)" ]; then \
+		echo "Warning: $(BUILD_CONF) not found, using default PREFIX=$(PREFIX)"; \
+	else \
+		echo "Using PREFIX=$(PREFIX) from $(BUILD_CONF)"; \
+	fi
+
 # Configure Circle for target architecture
-configure: check-vars
+configure: check-vars check-config
 	@echo "Configuring for RASPPI=$(RASPPI)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
+	@echo "Using PREFIX=$(PREFIX)"
+	git submodule update --init --recursive
 	cd $(STDLIBHOME) && \
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
@@ -179,7 +206,6 @@ clean-dist:
 	@mkdir -p $(DIST_DIR)
 
 # Multi-architecture build (matches your build script)
-SUPPORTED_RASPPI = 1 2 3
 multi-arch: clean-dist
 	@for arch in $(SUPPORTED_RASPPI); do \
 		echo "Building for RASPPI=$$arch$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
@@ -211,7 +237,8 @@ rebuild: clean-all all
 
 # Show what we're building
 show-config:
-	@echo "RASPPI = $(RASPPI)"
+	@echo "Current RASPPI = $(RASPPI)"
+	@echo "SUPPORTED_RASPPI = $(SUPPORTED_RASPPI)"
 	@echo "PREFIX = $(PREFIX)"
 	@echo "DEBUG_FLAGS = $(DEBUG_FLAGS)"
 	@echo "CIRCLE_ADDONS = $(CIRCLE_ADDONS)"

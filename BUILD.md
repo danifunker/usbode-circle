@@ -5,6 +5,20 @@
 4. Run `make multi-arch` to compile a build for all supported architectures.
 5. Output will be located in the `dist/` folder.
 
+(Optional)
+Create a file `$(HOME)/build-usbode.conf`
+which should contain contents that look similar to:
+```
+supported_rasppi=(1 2)
+PathPrefix=arm-none-eabi-
+```
+
+If there are custom paths that need setup, or you can add or remove devices to support easily, then when executing
+
+`make dist-single` 
+
+It will automatically take the first in the supported_rasppi list
+
 ## Build Examples:
 To build for a single architecture:
 `make RASPPI=2 dist-single`
