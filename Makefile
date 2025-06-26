@@ -1,5 +1,5 @@
 # Configuration
-MAKEFLAGS += -j8 # Use all available CPU cores
+MAKEFLAGS += -j8 --quiet # Use all available CPU cores
 RASPPI ?= 1
 USBODEHOME = .
 STDLIBHOME = $(USBODEHOME)/circle-stdlib
@@ -36,10 +36,16 @@ USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0
 .PHONY: all clean-all clean-dist configure circle-stdlib circle-deps circle-addons usbode-addons kernel dist-files
 .PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS)
 
-all: configure circle-deps circle-addons usbode-addons kernel
+all: clean-all clean-dist configure circle-deps circle-addons usbode-addons kernel dist-files
+
+check-vars:
+	@if [ -n "$(RASSPI)" ]; then \
+		echo "ERROR: Did you mean RASPPI=$(RASSPI) instead of RASSPI=$(RASSPI)?"; \
+		exit 1; \
+	fi
 
 # Configure Circle for target architecture
-configure:
+configure: check-vars
 	@echo "Configuring for RASPPI=$(RASPPI)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
 	cd $(STDLIBHOME) && \
 	rm -rf build && \
@@ -88,7 +94,7 @@ kernel: usbode-addons
 	@echo "Building final kernel..."
 	cd src && $(MAKE) clean && $(MAKE)
 
-dist-single: kernel clean-dist
+dist-single: check-vars kernel clean-dist
 	@echo "Creating single-architecture distribution package for RASPPI=$(RASPPI)..."
 	
 	# Copy kernel files for current RASPPI architecture
@@ -177,7 +183,7 @@ SUPPORTED_RASPPI = 1 2 3
 multi-arch: clean-dist
 	@for arch in $(SUPPORTED_RASPPI); do \
 		echo "Building for RASPPI=$$arch$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
-		$(MAKE) RASPPI=$$arch DEBUG_FLAGS="$(DEBUG_FLAGS)" all; \
+		$(MAKE) RASPPI=$$arch DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; \
 		cp src/kernel*.img $(DIST_DIR)/ 2>/dev/null || true; \
 	done
 	@$(MAKE) dist-files
