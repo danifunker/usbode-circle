@@ -16,12 +16,12 @@ ZIP_NAME = usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT).zip
 BUILD_CONF = $(HOME)/build-usbode.conf
 PREFIX := $(shell \
 	if [ -f "$(BUILD_CONF)" ]; then \
-		source "$(BUILD_CONF)" 2>/dev/null && echo "$$PathPrefix"; \
+		grep '^PathPrefix=' "$(BUILD_CONF)" 2>/dev/null | cut -d'=' -f2; \
 	fi \
 )
 SUPPORTED_RASPPI := $(shell \
 	if [ -f "$(BUILD_CONF)" ]; then \
-		source "$(BUILD_CONF)" 2>/dev/null && echo "$${supported_rasppi[@]}"; \
+		grep '^supported_rasppi=' "$(BUILD_CONF)" 2>/dev/null | sed 's/supported_rasppi=(//' | sed 's/)//' | tr -d ' '; \
 	fi \
 )
 # Fallback if PREFIX is empty
