@@ -758,7 +758,7 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
 //  https://chatgpt.com/share/683ecad4-e250-8012-b9aa-22c76de6e871
 //
 void CUSBCDGadget::HandleSCSICommand() {
-    //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
     switch (m_CBW.CBWCB[0]) {
         case 0x00:  // Test unit ready
         {
@@ -980,7 +980,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x25:  // Read Capacity (10))
         {
-            LOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ_CAPACITY command received");
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ_CAPACITY command received");
             u32 lastLBA = GetLeadoutLBA() - 1;
             u32 blockSize = 2048; // Your block size
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ_CAPACITY returning: Last LBA=%u, Block size=%u", lastLBA, blockSize);
@@ -992,6 +992,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                                        m_InBuffer, SIZE_READCAPREP);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
+                CTimer::Get()->usDelay(500);
             break;
         }
 
@@ -1116,6 +1117,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                             skip_bytes = GetSkipbytesForTrack(trackInfo);
                             block_size = GetBlocksizeForTrack(trackInfo);
                             transfer_block_size = 2324;
+                            CTimer::Get()->usDelay(100);
                             break;
                         }
                 }
@@ -1128,6 +1130,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 }
                 m_nState = TCDState::DataInRead;  // see Update() function
                 m_CSW.bmCSWStatus = bmCSWStatus;
+                CTimer::Get()->usDelay(500);
             } else {
                 MLOGNOTE("handleSCSI READ CD", "failed, %s", m_CDReady ? "ready" : "not ready");
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
@@ -2357,6 +2360,17 @@ void CUSBCDGadget::HandleSCSICommand() {
 
     // Reset the status
     //bmCSWStatus = CD_CSW_STATUS_OK;
+
+    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Sending CSW response for command 0x%02x", m_CBW.CBWCB[0]);
+    
+    // Send the CSW
+    // ...existing CSW sending code...
+    
+    // Add a small delay to ensure the BIOS has time to process the response
+    // This mimics what the debug logging was doing
+    //CTimer::Get()->usDelay(50); // 1ms delay
+    
+    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CSW sent, device ready for next command");
 }
 
 // this function is called periodically from task level for IO
