@@ -36,7 +36,7 @@ fi
 # Check for build number from environment variable (set by build script)
 BUILD_NUMBER=""
 if [ -n "$USBODE_BUILD_NUMBER" ]; then
-    BUILD_NUMBER="-${USBODE_BUILD_NUMBER}"
+    BUILD_NUMBER="${USBODE_BUILD_NUMBER}"
     echo "Using build number: $USBODE_BUILD_NUMBER"
 fi
 
