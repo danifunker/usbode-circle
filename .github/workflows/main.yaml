@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: make release BUILD_NUMBER ${{ github.run_number }}
+      run: make release BUILD_NUMBER=${{ github.run_number }}
 
     - name: Get filename
       id: get-filename
