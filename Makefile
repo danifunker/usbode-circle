@@ -195,7 +195,7 @@ release:
 		echo "Error: BUILD_NUMBER not set. Use: make release BUILD_NUMBER=123"; \
 		exit 1; \
 	fi
-	@$(MAKE) multi-arch BUILD_NUMBER="$(BUILD_NUMBER)""
+	@$(MAKE) multi-arch BUILD_NUMBER="$(BUILD_NUMBER)"
 
 show-build-info:
 	@echo "BASE_VERSION = $(BASE_VERSION)"
