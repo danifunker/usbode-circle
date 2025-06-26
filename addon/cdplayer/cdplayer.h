@@ -40,8 +40,8 @@
 #define BATCH_SIZE 16 
 #define BYTES_PER_FRAME 4
 #define FRAMES_PER_SECTOR (SECTOR_SIZE / BYTES_PER_FRAME)
-#define BUFFER_SIZE_FRAMES (FRAMES_PER_SECTOR * BATCH_SIZE)
-#define BUFFER_SIZE_BYTES (BUFFER_SIZE_FRAMES * BYTES_PER_FRAME)
+#define DAC_BUFFER_SIZE_FRAMES (FRAMES_PER_SECTOR * BATCH_SIZE)
+#define DAC_BUFFER_SIZE_BYTES (DAC_BUFFER_SIZE_FRAMES * BYTES_PER_FRAME)
 
 #define SOUND_CHUNK_SIZE      (384 * 10)
 #define SAMPLE_RATE 44100
@@ -52,7 +52,7 @@
 #define VOLUME_SCALE_BITS 12 // 1.0 = 4096
 #define VOLUME_STEPS 16
 
-#define AUDIO_BUFFER_SIZE  4 * BUFFER_SIZE_FRAMES * BYTES_PER_FRAME
+#define AUDIO_BUFFER_SIZE  4 * DAC_BUFFER_SIZE_FRAMES * BYTES_PER_FRAME
 
 class CCDPlayer : public CTask {
    public:
@@ -97,7 +97,6 @@ class CCDPlayer : public CTask {
     u32 address;
     u32 end_address;
     PlayState state;
-    u8 *m_FileChunk = new (HEAP_LOW) u8[BUFFER_SIZE_BYTES];
     u8 volumeByte = 255;
 
     u8 *m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];

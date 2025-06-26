@@ -84,8 +84,8 @@ boolean CCDPlayer::Initialize() {
     */
 
     // configure sound device
-    LOGNOTE("CD Player Initializing. Allocating queue size %d frames", BUFFER_SIZE_FRAMES);
-    if (!m_pSound->AllocateQueueFrames(BUFFER_SIZE_FRAMES)) {
+    LOGNOTE("CD Player Initializing. Allocating queue size %d frames", DAC_BUFFER_SIZE_FRAMES);
+    if (!m_pSound->AllocateQueueFrames(DAC_BUFFER_SIZE_FRAMES)) {
         LOGERR("Cannot allocate sound queue");
         // TODO: handle error condition
     }
@@ -174,7 +174,7 @@ boolean CCDPlayer::SoundTest() {
         int bytes_to_read = available_queue_size * BYTES_PER_FRAME;  // 2 bytes per sample, 2 samples per frame
 
         if (bytes_to_read) {
-            if (f_read(&file, m_FileChunk, bytes_to_read, &bytesRead) != FR_OK) {
+            if (f_read(&file, m_ReadBuffer, bytes_to_read, &bytesRead) != FR_OK) {
                 LOGERR("Sound Test: Failed to read audio data");
                 break;
             }
@@ -184,7 +184,7 @@ boolean CCDPlayer::SoundTest() {
                 break;
             }
 
-            int nResult = m_pSound->Write(m_FileChunk, bytesRead);
+            int nResult = m_pSound->Write(m_ReadBuffer, bytesRead);
             if (nResult != (int)bytesRead) {
                 LOGERR("Sound Test: data dropped");
                 break;
@@ -258,7 +258,7 @@ void CCDPlayer::Run(void) {
         }
 
         if (state == PLAYING) {
-            // Step 1: Fill the read buffer if it has been consumed.
+            // Fill the read buffer if it has been consumed.
             if (m_BufferReadPos >= m_BufferBytesValid) {
                 m_BufferReadPos = 0; // Reset read position
 
@@ -282,7 +282,7 @@ void CCDPlayer::Run(void) {
                     continue; // Re-evaluate state in the next loop iteration.
                 }
 
-                // LOGDBG("Buffer exhausted. Reading %d bytes from file.", bytes_to_read);
+                //LOGDBG("Buffer exhausted. Reading %d bytes from file.", bytes_to_read);
                 int readCount = m_pBinFileDevice->Read(m_ReadBuffer, bytes_to_read);
 
                 if (readCount < 0) {
@@ -301,7 +301,7 @@ void CCDPlayer::Run(void) {
                 }
             }
 
-            // Step 2: Feed the sound device from our buffer, if we have valid data.
+            // Feed the sound device from our buffer, if we have valid data.
             if (m_BufferBytesValid > 0 && state == PLAYING) {
                 unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
                 unsigned int bytes_for_sound_device = available_queue_size * BYTES_PER_FRAME;
