@@ -46,7 +46,7 @@ CDROMService::CDROMService()
     assert(ok == true);
 }
 
-void CDROMService::SetDevice(CCueBinFileDevice* pBinFileDevice) {
+void CDROMService::SetDevice(ICueDevice* pBinFileDevice) {
     LOGNOTE("CDROM setting device");
     m_CDGadget->SetDevice(pBinFileDevice);
 

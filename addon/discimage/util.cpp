@@ -118,7 +118,7 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
     return true;
 }
 
-CCueBinFileDevice* loadCueBinFileDevice(const char* imageName) {
+ICueDevice* loadCueBinFileDevice(const char* imageName) {
     // Construct full path
     char fullPath[255];  // FIXME limits
     snprintf(fullPath, sizeof(fullPath), "SD:/images/%s", imageName);
@@ -157,7 +157,7 @@ CCueBinFileDevice* loadCueBinFileDevice(const char* imageName) {
     LOGNOTE("Opened image file %s", fullPath);
 
     // Create our device
-    CCueBinFileDevice* ccueBinFileDevice = new CCueBinFileDevice(imageFile, cue_str);
+    ICueDevice* ccueBinFileDevice = new CCueBinFileDevice(imageFile, cue_str);
 
     // Cleanup
     if (cue_str != nullptr)

@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <discimage/cuebinfile.h>
+#include <discimage/cuedevice.h>
 #include <discimage/util.h>
 
 LOGMODULE("scsitbservice");
@@ -226,7 +227,7 @@ void SCSITBService::Run() {
 
 			// Load it
 			char* imageName = m_FileEntries[next_cd].name;
-			CCueBinFileDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
+			ICueDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
 			
 			// Set the new device in the CD gadget
     			cdromservice->SetDevice(cueBinFileDevice);

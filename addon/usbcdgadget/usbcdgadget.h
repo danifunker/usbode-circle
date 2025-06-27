@@ -470,13 +470,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
     /// \note pDevice must be initialized yet, when it is specified here.
     /// \note SetDevice() has to be called later, when pDevice is not specified here.
-    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, CCueBinFileDevice *pDevice = nullptr);
+    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, ICueDevice *pDevice = nullptr);
 
     ~CUSBCDGadget(void);
 
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
     /// \note Call this, if pDevice has not been specified in the constructor.
-    void SetDevice(CCueBinFileDevice *pDevice);
+    void SetDevice(ICueDevice *pDevice);
 
     /// \brief Call this periodically from TASK_LEVEL to allow I/O operations!
     void Update(void);
@@ -543,7 +543,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     u32 lba_to_msf(u32 lba, boolean relative = false);
 
    private:
-    CCueBinFileDevice *m_pDevice;
+    ICueDevice *m_pDevice;
 
     enum TEPNumber {
         EPIn = 1,

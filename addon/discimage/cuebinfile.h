@@ -1,5 +1,5 @@
-#ifndef _LOOPBACKFILEDEVICE_H
-#define _LOOPBACKFILEDEVICE_H
+#ifndef _CUEBINDEVICE_H
+#define _CUEBINDEVICE_H
 
 #include <circle/device.h>
 #include <circle/fs/partitionmanager.h>
@@ -12,10 +12,11 @@
 #include <linux/kernel.h>
 
 #include "filetype.h"
+#include "cuedevice.h"
 
 #define DEFAULT_IMAGE_FILENAME "image.iso"
 
-class CCueBinFileDevice : public CDevice {
+class CCueBinFileDevice : public ICueDevice {
    public:
     CCueBinFileDevice(FIL* pFile, char* cue_str = nullptr);
     ~CCueBinFileDevice(void);
@@ -24,7 +25,7 @@ class CCueBinFileDevice : public CDevice {
     int Write(const void* pBuffer, size_t nCount);
     u64 Seek(u64 ullOffset);
     u64 GetSize(void) const;
-    u64 Tell();
+    u64 Tell() const;
     const char* GetCueSheet() const;
 
    private:

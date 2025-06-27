@@ -71,7 +71,7 @@ int CCueBinFileDevice::Write(const void *pBuffer, size_t nSize) {
     return -1;
 }
 
-u64 CCueBinFileDevice::Tell() {
+u64 CCueBinFileDevice::Tell() const {
     if (!m_pFile) {
         LOGERR("Tell !m_pFile");
         return static_cast<u64>(-1);
