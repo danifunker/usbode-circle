@@ -70,7 +70,7 @@ THTTPStatus CWebServer::GetContent (const char  *pPath,
     IPageHandler* handler = PageHandlerRegistry::getHandler(pPath);
 
     if (handler)
-	    return handler->GetContent(pPath, pParams, pFormData, pBuffer, pLength, ppContentType, m_pProperties, m_pCDGadget);
+	    return handler->GetContent(pPath, pParams, pFormData, pBuffer, pLength, ppContentType, m_pProperties);
 
     return HTTPInternalServerError;
 }

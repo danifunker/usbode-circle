@@ -32,8 +32,7 @@ THTTPStatus AssetHandler::GetContent (const char  *pPath,
                                    u8          *pBuffer,
                                    unsigned    *pLength,
                                    const char **ppContentType,
-				   CPropertiesFatFsFile *m_pProperties,
-				   CUSBCDGadget *m_pCDGadget)
+				   CPropertiesFatFsFile *m_pProperties)
 {
 
     // Sanity checking

@@ -15,8 +15,7 @@ public:
                                    u8          *pBuffer,
                                    unsigned    *pLength,
                                    const char **ppContentType,
-				   CPropertiesFatFsFile *m_pProperties,
-				   CUSBCDGadget *pCDGadget) = 0;
+				   CPropertiesFatFsFile *m_pProperties) = 0;
 };
 
 #endif // IPAGE_HANDLER_H

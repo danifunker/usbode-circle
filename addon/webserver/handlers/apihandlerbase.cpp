@@ -20,12 +20,11 @@ THTTPStatus APIHandlerBase::GetContent(const char *pPath,
                    u8 *pBuffer,
                    unsigned *pLength,
                    const char **ppContentType,
-                   CPropertiesFatFsFile *m_pProperties,
-                   CUSBCDGadget *pCDGadget)
+                   CPropertiesFatFsFile *m_pProperties)
 {
         // Call subclass hook to add page specific context
         json j;
-        THTTPStatus status = GetJson(j, pPath, pParams, pFormData, m_pProperties, pCDGadget);
+        THTTPStatus status = GetJson(j, pPath, pParams, pFormData, m_pProperties);
 
         // Return HTTP error if necessary
         if (status != HTTPOK)

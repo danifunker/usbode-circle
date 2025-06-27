@@ -26,8 +26,7 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 		   u8 *pBuffer,
 		   unsigned *pLength,
 		   const char **ppContentType,
-		   CPropertiesFatFsFile *m_pProperties,
-		   CUSBCDGadget *pCDGadget)
+		   CPropertiesFatFsFile *m_pProperties)
 {
 	// Set up Mustache Template Engine
         mustache::mustache tmpl{s_Template};
@@ -47,7 +46,7 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 	context.set("content", mustache::data{part});
 	
 	// Call subclass hook to add page specific context
-	THTTPStatus status = PopulateContext(context, pPath, pParams, pFormData, m_pProperties, pCDGadget);
+	THTTPStatus status = PopulateContext(context, pPath, pParams, pFormData, m_pProperties);
 
 	// Return HTTP error if necessary
 	if (status != HTTPOK)

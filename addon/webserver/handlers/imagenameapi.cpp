@@ -15,8 +15,7 @@ THTTPStatus ImageNameAPIHandler::GetJson(nlohmann::json& j,
                 const char *pPath,
                 const char *pParams,
                 const char *pFormData,
-                CPropertiesFatFsFile *m_pProperties,
-                CUSBCDGadget *pCDGadget) 
+                CPropertiesFatFsFile *m_pProperties)
 {
 
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));

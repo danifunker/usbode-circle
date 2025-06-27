@@ -15,8 +15,7 @@ THTTPStatus MountAPIHandler::GetJson(nlohmann::json& j,
                 const char *pPath,
                 const char *pParams,
                 const char *pFormData,
-                CPropertiesFatFsFile *m_pProperties,
-                CUSBCDGadget *pCDGadget) 
+                CPropertiesFatFsFile *m_pProperties)
 {
 
     auto params = parse_query_params(pParams);

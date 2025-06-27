@@ -12,15 +12,13 @@ public:
                            u8 *pBuffer,
                            unsigned *pLength,
                            const char **ppContentType,
-                           CPropertiesFatFsFile *m_pProperties,
-                           CUSBCDGadget *pCDGadget) override;
+                           CPropertiesFatFsFile *m_pProperties) override;
 
 protected:
     virtual THTTPStatus GetJson(nlohmann::json& j,
                             const char *pPath,
                             const char *pParams,
                             const char *pFormData,
-                            CPropertiesFatFsFile *m_pProperties,
-                            CUSBCDGadget *pCDGadget) = 0;
+                            CPropertiesFatFsFile *m_pProperties) = 0;
 };
 #endif
