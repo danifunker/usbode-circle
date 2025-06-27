@@ -19,6 +19,7 @@ OBJS    = webserver.o \
 	handlers/logpage.o \
 	handlers/asset.o \
 	handlers/mountapi.o \
+	handlers/shutdownapi.o \
 	handlers/listapi.o
 
 libwebserver.a: $(OBJS)
