@@ -14,6 +14,10 @@
 #include "handlers/logpage.h"
 #include "handlers/asset.h"
 
+// includes for your api handlers
+#include "handlers/mountapi.h"
+#include "handlers/listapi.h"
+
 // instances of your page handlers
 static HomePageHandler s_homePageHandler;
 static MountPageHandler s_mountPageHandler;
@@ -22,14 +26,22 @@ static ConfigPageHandler s_configPageHandler;
 static LogPageHandler s_logPageHandler;
 static AssetHandler s_assetHandler;
 
-// routes for your page handlers
+// instances of your API handlers
+static MountAPIHandler s_mountAPIHandler;
+static ListAPIHandler s_listAPIHandler;
+
+// routes for your handlers
 static const std::map<std::string, IPageHandler*> g_pageHandlers = {
+    // Pages
     { "/",      &s_homePageHandler },
     { "/mount", &s_mountPageHandler },
     { "/switchmode", &s_modePageHandler },
     { "/config", &s_configPageHandler },
     { "/log", &s_logPageHandler },
-    // More routes can be added here
+
+    // API
+    { "/api/mount", &s_mountAPIHandler },
+    { "/api/list", &s_listAPIHandler },
 };
 
 IPageHandler* PageHandlerRegistry::getHandler(const char* path) {

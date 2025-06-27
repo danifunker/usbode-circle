@@ -63,6 +63,7 @@ class CCDPlayer : public CTask {
     boolean Pause();
     boolean Resume();
     boolean SetVolume(u8 vol);
+    boolean SetDefaultVolume(u8 vol);
     u8 GetVolume();
     unsigned int GetState();
     boolean HadError();
@@ -98,6 +99,7 @@ class CCDPlayer : public CTask {
     u32 end_address;
     PlayState state;
     u8 volumeByte = 255;
+    u8 defaultVolumeByte = 255;
 
     u8 *m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
     u8 *m_WriteChunk;

@@ -105,6 +105,12 @@ u8 CCDPlayer::GetVolume() {
     return volumeByte;
 }
 
+boolean CCDPlayer::SetDefaultVolume(u8 vol) {
+    LOGNOTE("Setting default volume to 0x%02x", vol);
+    defaultVolumeByte = vol;
+    return true;
+}
+
 boolean CCDPlayer::SetVolume(u8 vol) {
     LOGNOTE("Setting volume to 0x%02x", vol);
     volumeByte = vol;
@@ -208,6 +214,26 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
 // DACs don't support volume control, so we scale the data
 // accordingly instead
 void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
+    if (volumeByte == 0xff && defaultVolumeByte == 0xff)
+        return;
+
+    // Convert both to Q12 scale
+    u16 defaultScale = (defaultVolumeByte == 0xff) ? 4096 : (defaultVolumeByte << 4);  // max = 0xff << 4 = 4080
+    u16 volumeScale  = (volumeByte == 0xff)         ? 4096 : (volumeByte << 4);
+
+    // Combine both: result is Q12 * Q12 >> 12 = Q12 again
+    u16 finalScale = (defaultScale * volumeScale) >> 12;
+
+    for (u32 i = 0; i < byteCount; i += 2) {
+        short sample = (short)((buffer[i + 1] << 8) | buffer[i]);
+        int scaled = (sample * finalScale) >> 12;
+        buffer[i] = (u8)(scaled & 0xFF);
+        buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
+    }
+}
+
+/*
+void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
 
     // Do we even have anything to do?
     if (volumeByte == 0xff)
@@ -225,6 +251,7 @@ void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
         buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
     }
 }
+*/
 
 void CCDPlayer::Run(void) {
 

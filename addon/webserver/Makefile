@@ -11,12 +11,15 @@ OBJS    = webserver.o \
 	util.o \
 	pagehandlerregistry.o \
 	handlers/pagehandlerbase.o \
+	handlers/apihandlerbase.o \
 	handlers/mountpage.o \
 	handlers/modepage.o \
 	handlers/homepage.o \
 	handlers/configpage.o \
 	handlers/logpage.o \
-	handlers/asset.o 
+	handlers/asset.o \
+	handlers/mountapi.o \
+	handlers/listapi.o
 
 libwebserver.a: $(OBJS)
 	@echo "  AR    $@"

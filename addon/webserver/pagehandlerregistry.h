@@ -5,7 +5,7 @@
 #include <circle/net/httpdaemon.h>
 #include <circle/util.h>
 
-#include "handlers/pagehandler.h" // Make sure this header is included
+#include "handlers/pagehandler.h"
 
 // Structure to hold a path-handler pair
 // This replaces the role of a std::map entry
