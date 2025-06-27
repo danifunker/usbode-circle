@@ -86,6 +86,10 @@ u64 CCueBinFileDevice::Seek(u64 nOffset) {
         return static_cast<u64>(-1);
     }
 
+    // Don't seek if we're already there
+    if (Tell() == nOffset)
+	    return nOffset;
+
     FRESULT result = f_lseek(m_pFile, nOffset);
     if (result != FR_OK) {
         LOGERR("Seek to offset %llu is not ok, err %d", nOffset, result);

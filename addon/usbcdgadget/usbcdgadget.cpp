@@ -37,7 +37,7 @@
 
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
-#define MLOGDEBUG(From, ...)  // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
+#define MLOGDEBUG(From, ...)  //CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
 #define MLOGERR(From, ...) CLogger::Get()->Write(From, LogError, __VA_ARGS__)
 #define DEFAULT_BLOCKS 16000
 
@@ -2201,6 +2201,7 @@ void CUSBCDGadget::Update() {
             u64 offset = 0;
             int readCount = 0;
             if (m_CDReady) {
+
                 offset = m_pDevice->Seek(block_size * m_nblock_address);
                 if (offset != (u64)(-1)) {
                     // Cap at MAX_BLOCKS_READ blocks. This is what a READ CD request will required
