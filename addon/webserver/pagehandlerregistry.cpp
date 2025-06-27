@@ -18,6 +18,7 @@
 #include "handlers/mountapi.h"
 #include "handlers/listapi.h"
 #include "handlers/shutdownapi.h"
+#include "handlers/imagenameapi.h"
 
 // instances of your page handlers
 static HomePageHandler s_homePageHandler;
@@ -31,6 +32,7 @@ static AssetHandler s_assetHandler;
 static MountAPIHandler s_mountAPIHandler;
 static ListAPIHandler s_listAPIHandler;
 static ShutdownAPIHandler s_shutdownAPIHandler;
+static ImageNameAPIHandler s_imageNameAPIHandler;
 
 // routes for your handlers
 static const std::map<std::string, IPageHandler*> g_pageHandlers = {
@@ -46,6 +48,7 @@ static const std::map<std::string, IPageHandler*> g_pageHandlers = {
     { "/api/list", &s_listAPIHandler },
     { "/api/shutdown", &s_shutdownAPIHandler },
     { "/api/reboot", &s_shutdownAPIHandler },
+    { "/api/imagename", &s_imageNameAPIHandler },
 };
 
 IPageHandler* PageHandlerRegistry::getHandler(const char* path) {
