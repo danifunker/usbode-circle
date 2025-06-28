@@ -31,7 +31,6 @@ CCDPlayer *CCDPlayer::s_pThis = 0;
 CCDPlayer::CCDPlayer(const char *pSoundDevice)
     : m_pSoundDevice(pSoundDevice),
       m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), TRUE) {
-    assert(m_pSound != 0);
 
     // I am the one and only!
     assert(s_pThis == 0);
@@ -231,27 +230,6 @@ void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
         buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
     }
 }
-
-/*
-void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
-
-    // Do we even have anything to do?
-    if (volumeByte == 0xff)
-	    return;
-
-    // Compute fixed-point Q12 scale dynamically (0–4096)
-    u16 scale = volumeByte << 4;
-
-    for (u32 i = 0; i < byteCount; i += 2) {
-        short sample = (short)((buffer[i + 1] << 8) | buffer[i]);
-
-        int scaled = (sample * scale) >> 12;  // Q12 shift
-
-        buffer[i] = (u8)(scaled & 0xFF);
-        buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
-    }
-}
-*/
 
 void CCDPlayer::Run(void) {
 

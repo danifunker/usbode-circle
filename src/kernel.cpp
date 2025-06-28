@@ -218,8 +218,10 @@ TShutdownMode CKernel::Run(void) {
 	    
 	    //Currently supporting PWM and I2S sound devices. HDMI needs more work.
 	    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
-		new CCDPlayer(pSoundDevice);
-		LOGNOTE("Started the CD Player service");
+    		u8 volume = Properties.GetNumber("default_volume", 0xff);
+		CCDPlayer *player = new CCDPlayer(pSoundDevice);
+		player->SetDefaultVolume(volume);
+		LOGNOTE("Started the CD Player service. Default volume is %d", volume);
 	    }
 
 	    // Initialize USB CD Service
