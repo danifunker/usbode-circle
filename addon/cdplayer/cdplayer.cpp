@@ -30,7 +30,8 @@ CCDPlayer *CCDPlayer::s_pThis = 0;
 
 CCDPlayer::CCDPlayer(const char *pSoundDevice)
     : m_pSoundDevice(pSoundDevice),
-      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), TRUE) {
+      //m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), TRUE) {
+      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE) {
 
     // I am the one and only!
     assert(s_pThis == 0);
