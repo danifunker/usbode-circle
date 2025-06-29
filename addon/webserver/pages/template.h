@@ -11,7 +11,7 @@
 "        h1, h2, h3 {color: #1E4D8C;}\n"
 "        a {color: #0066CC;}\n"
 "        a:visited {color: #0066CC;}\n"
-"        .container {width: 100%; max-width: 800px; margin: 0; padding: 0;}\n"
+"        .container {width: 100%; margin: 0; padding: 0;}\n"
 "        .header {background-color: #3A7CA5; padding: 10px; height: 80px; text-align: center; color: #FFFFFF;}\n"
 "        .header h1, .header h2 {color: #FFFFFF; margin: 5px 0;}\n"
 "        .content {padding: 10px; background-color: #FFFFFF; min-height: 300px;}\n"
