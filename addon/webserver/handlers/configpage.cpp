@@ -402,10 +402,11 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["current_displayhat"] = current_displayhat;
     context["current_screen_timeout"] = current_screen_timeout;
     context["current_logfile"] = current_logfile.empty() ? "disabled" : current_logfile;
+    context["current_default_volume"] = current_default_volume.empty() ? "255" : current_default_volume;
     context["current_sounddev"] = current_sounddev;
     context["current_loglevel"] = current_loglevel;
     context["current_usbspeed"] = current_usbspeed;
-    
+
     // Set form values
     context["screen_timeout"] = current_screen_timeout;
     context["logfile"] = current_logfile;
