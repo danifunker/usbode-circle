@@ -38,8 +38,8 @@ jobs:
       id: create-release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v${{ steps.get-filename.outputs.filename }}
-        release_name: USBODE v${{ steps.get-filename.outputs.filename }}
+        tag_name: build-${{ github.run_number }}
+        name: USBODE build-${{ github.run_number }}
         files: dist/*
         prerelease: true
       env:
