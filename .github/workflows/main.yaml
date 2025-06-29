@@ -37,7 +37,7 @@ jobs:
         include-hidden-files: false
 
     - name: Create Release (on main only)
-      if: github.ref == 'refs/heads/auto-releases'
+      if: github.ref == 'refs/heads/main'
       id: create-release
       uses: softprops/action-gh-release@v1
       with:
