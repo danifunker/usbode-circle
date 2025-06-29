@@ -1026,26 +1026,26 @@ void CUSBCDGadget::HandleSCSICommand() {
         {
             if (m_CDReady) {
 
-                // will be updated if read fails on any block
-                m_CSW.bmCSWStatus = bmCSWStatus;
+                // Expected Sector Type. We can use this to derive
+                // sector size and offset in most cases
+                int expectedSectorType = (m_CBW.CBWCB[1] & 0x1C) >> 2;
 
                 // Where to start reading (LBA)
                 m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 
                 // Number of blocks to read (LBA)
-                m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+                m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 16) | (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
 
-                // Expected Sector Type. We can use this to derive
-                // sector size and offset in most cases
-                int expectedSectorType = (m_CBW.CBWCB[1] & 0x1C) >> 2;
-                // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "READ CD for %lu blocks at LBA %lu of type %02x", m_nnumber_blocks, m_nblock_address, expectedSectorType);
+                //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "READ CD for %lu blocks at LBA %lu of type %02x", m_nnumber_blocks, m_nblock_address, expectedSectorType);
                 switch (expectedSectorType) {
                     case 0x000: {
                         // All types
                         const CUETrackInfo* trackInfo = GetTrackInfoForLBA(m_nblock_address);
                         skip_bytes = GetSkipbytesForTrack(trackInfo);
                         block_size = GetBlocksizeForTrack(trackInfo);
-                        transfer_block_size = GetBlocksize();
+                        transfer_block_size = 2352;
+			if (GetMediumType() == 0x01)
+				transfer_block_size = 2048;
                         break;
                     }
                     case 0x001: {
@@ -1097,12 +1097,14 @@ void CUSBCDGadget::HandleSCSICommand() {
                         }
                 }
 
-                m_nbyteCount = m_CBW.dCBWDataTransferLength;
+                MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "READ CD for %lu blocks at LBA %lu of type %02x, block_size = %d, skip_bytes = %d, transfer_block_ssize = %d", m_nnumber_blocks, m_nblock_address, expectedSectorType, block_size, skip_bytes, transfer_block_size);
 
                 // What is this?
+                m_nbyteCount = m_CBW.dCBWDataTransferLength;
                 if (m_nnumber_blocks == 0) {
                     m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;  // fixme?
                 }
+
                 m_nState = TCDState::DataInRead;  // see Update() function
                 m_CSW.bmCSWStatus = bmCSWStatus;
             } else {
