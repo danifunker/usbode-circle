@@ -37,7 +37,7 @@
 
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
-#define MLOGDEBUG(From, ...)  CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
+#define MLOGDEBUG(From, ...)  // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
 #define MLOGERR(From, ...) CLogger::Get()->Write(From, LogError, __VA_ARGS__)
 #define DEFAULT_BLOCKS 16000
 
