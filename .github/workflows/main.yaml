@@ -43,7 +43,7 @@ jobs:
       with:
         tag_name: build-${{ github.run_number }}
         name: USBODE build-${{ github.run_number }}
-        files: ${{ steps.get-filename.outputs.filename }}
+        files: ${{ steps.get-filename.outputs.filename }}.zip
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
