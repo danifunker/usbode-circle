@@ -1044,7 +1044,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                         skip_bytes = GetSkipbytesForTrack(trackInfo);
                         block_size = GetBlocksizeForTrack(trackInfo);
                         transfer_block_size = 2352;
-			if (GetMediumType() == 0x01)
+			if (trackInfo->track_mode != CUETrack_AUDIO)
 				transfer_block_size = 2048;
                         break;
                     }
