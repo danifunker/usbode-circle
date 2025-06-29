@@ -1,5 +1,8 @@
 name: USBODE CI Build
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ "*" ]
@@ -32,3 +35,15 @@ jobs:
         compression-level: 6
         overwrite: true
         include-hidden-files: false
+
+    - name: Create Release (on main only)
+      if: github.ref == 'refs/heads/main'
+      id: create-release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: build-${{ github.run_number }}
+        name: USBODE build-${{ github.run_number }}
+        files: dist/*
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
