@@ -524,9 +524,9 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     void HandleSCSICommand();
 
     void SendCSW();
-    const CUETrackInfo *GetTrackInfoForLBA(u32 lba);
-    const CUETrackInfo *GetTrackInfoForTrack(int track);
-    int GetSkipbytesForTrack(const CUETrackInfo *trackInfo);
+    CUETrackInfo GetTrackInfoForLBA(u32 lba);
+    CUETrackInfo GetTrackInfoForTrack(int track);
+    int GetSkipbytesForTrack(CUETrackInfo trackInfo);
     int GetSkipbytes();
     int GetMediumType();
     u32 msf_to_lba(u8 minutes, u8 seconds, u8 frames);
@@ -534,7 +534,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     const char *m_StringDescriptor[4];
 
     int GetBlocksize();
-    int GetBlocksizeForTrack(const CUETrackInfo *trackInfo);
+    int GetBlocksizeForTrack(CUETrackInfo trackInfo);
 
     void InitDeviceSize(u64 blocks);
     u32 GetLeadoutLBA();

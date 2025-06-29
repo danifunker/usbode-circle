@@ -37,7 +37,7 @@
 
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
-#define MLOGDEBUG(From, ...)  //CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
+#define MLOGDEBUG(From, ...)  CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
 #define MLOGERR(From, ...) CLogger::Get()->Write(From, LogError, __VA_ARGS__)
 #define DEFAULT_BLOCKS 16000
 
@@ -303,11 +303,11 @@ void CUSBCDGadget::SetDevice(ICueDevice* dev) {
 int CUSBCDGadget::GetBlocksize() {
     cueParser.restart();
     const CUETrackInfo* trackInfo = cueParser.next_track();
-    return GetBlocksizeForTrack(trackInfo);
+    return GetBlocksizeForTrack(*trackInfo);
 }
 
-int CUSBCDGadget::GetBlocksizeForTrack(const CUETrackInfo* trackInfo) {
-    switch (trackInfo->track_mode) {
+int CUSBCDGadget::GetBlocksizeForTrack(CUETrackInfo trackInfo) {
+    switch (trackInfo.track_mode) {
         case CUETrack_MODE1_2048:
             MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE1_2048");
             return 2048;
@@ -321,7 +321,7 @@ int CUSBCDGadget::GetBlocksizeForTrack(const CUETrackInfo* trackInfo) {
             MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_AUDIO");
             return 2352;
         default:
-            MLOGERR("CUSBCDGadget::GetBlocksizeForTrack", "Track mode %d not handled", trackInfo->track_mode);
+            MLOGERR("CUSBCDGadget::GetBlocksizeForTrack", "Track mode %d not handled", trackInfo.track_mode);
             return 0;
     }
 }
@@ -329,25 +329,25 @@ int CUSBCDGadget::GetBlocksizeForTrack(const CUETrackInfo* trackInfo) {
 int CUSBCDGadget::GetSkipbytes() {
     cueParser.restart();
     const CUETrackInfo* trackInfo = cueParser.next_track();
-    return GetSkipbytesForTrack(trackInfo);
+    return GetSkipbytesForTrack(*trackInfo);
 }
 
-int CUSBCDGadget::GetSkipbytesForTrack(const CUETrackInfo* trackInfo) {
-    switch (trackInfo->track_mode) {
+int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo) {
+    switch (trackInfo.track_mode) {
         case CUETrack_MODE1_2048:
-            //MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2048");
+            MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2048");
             return 0;
         case CUETrack_MODE1_2352:
-            //MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2352");
+            MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2352");
             return 16;
         case CUETrack_MODE2_2352:
-            //MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE2_2352");
+            MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE2_2352");
             return 24;
         case CUETrack_AUDIO:
-            //MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_AUDIO");
+            MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_AUDIO");
             return 0;
         default:
-            MLOGERR("CUSBCDGadget::GetSkipbytesForTrack", "Track mode %d not handled", trackInfo->track_mode);
+            MLOGERR("CUSBCDGadget::GetSkipbytesForTrack", "Track mode %d not handled", trackInfo.track_mode);
             return 0;
     }
 }
@@ -369,66 +369,61 @@ int CUSBCDGadget::GetMediumType() {
     return 0x01;
 }
 
-const CUETrackInfo* CUSBCDGadget::GetTrackInfoForTrack(int track) {
+CUETrackInfo CUSBCDGadget::GetTrackInfoForTrack(int track) {
     const CUETrackInfo* trackInfo = nullptr;
     cueParser.restart();
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-	    if (trackInfo->track_number == track)
-		    return trackInfo;
+        if (trackInfo->track_number == track) {
+            return *trackInfo; // Safe copy — all fields are POD
+        }
     }
-    return trackInfo;
+
+    CUETrackInfo invalid = {};
+    invalid.track_number = -1;
+    return invalid;
 }
 
-const CUETrackInfo* CUSBCDGadget::GetTrackInfoForLBA(u32 lba) {
-    const CUETrackInfo* trackInfo = nullptr;
-    int lastTrackNum = 0;
-    bool found = false;
-    // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Searching for LBA %u", lba);
+CUETrackInfo CUSBCDGadget::GetTrackInfoForLBA(u32 lba) {
+    const CUETrackInfo* trackInfo;
+    MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Searching for LBA %u", lba);
+
     cueParser.restart();
 
     // Shortcut for LBA zero
     if (lba == 0) {
-        // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut lba == 0 returning first track");
-        return cueParser.next_track();  // Return the first track
+        MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut lba == 0 returning first track");
+        const CUETrackInfo* firstTrack = cueParser.next_track();  // Return the first track
+	if (firstTrack != nullptr) {
+            return *firstTrack;
+        } else {
+            CUETrackInfo invalid = {};
+            invalid.track_number = -1;
+            return invalid;
+        }
     }
 
     // Iterate to find our track
+    CUETrackInfo lastTrack = {};
+    lastTrack.track_number = -1;
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-        // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Iterating: Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
+        MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Iterating: Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
+
         //  Shortcut for when our LBA is the start address of this track
         if (trackInfo->track_start == lba) {
-            // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut track_start == lba, returning track %d", trackInfo->track_number);
-            return trackInfo;
+            MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut track_start == lba, returning track %d", trackInfo->track_number);
+            return *trackInfo;
         }
 
         if (lba < trackInfo->track_start) {
-            // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Found LBA %lu in track %d", lba, lastTrackNum);
-            found = true;
-            break;
+            MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Found LBA %lu in track %d", lba, lastTrack.track_number);
+            return lastTrack;
         }
 
-        lastTrackNum = trackInfo->track_number;
+	lastTrack = *trackInfo;
     }
 
-    if (found) {
-        cueParser.restart();
-        while ((trackInfo = cueParser.next_track()) != nullptr) {
-            if (trackInfo->track_number == lastTrackNum) {
-                // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Returning trackInfo for track %d", trackInfo->track_number);
-                return trackInfo;
-            }
-        }
-    } else {
-        // We didn't find it, but it might still be in the last track
-        if (lba <= GetLeadoutLBA()) {
-            // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut track was last track, returning track %d", trackInfo->track_number);
-            return trackInfo;
-        }
-    }
-
-    // MLOGNOTE("CUSBCDGadget::GetTrackInfoForLBA", "Didn't find LBA %lu", lba);
-    //  Not found
-    return nullptr;
+    MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Returning last track");
+    return lastTrack;
 }
 
 u32 CUSBCDGadget::GetLeadoutLBA() {
@@ -1040,12 +1035,12 @@ void CUSBCDGadget::HandleSCSICommand() {
                 switch (expectedSectorType) {
                     case 0x000: {
                         // All types
-                        const CUETrackInfo* trackInfo = GetTrackInfoForLBA(m_nblock_address);
+                        CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
                         skip_bytes = GetSkipbytesForTrack(trackInfo);
                         block_size = GetBlocksizeForTrack(trackInfo);
-                        transfer_block_size = 2352;
-			if (trackInfo->track_mode != CUETrack_AUDIO)
-				transfer_block_size = 2048;
+                        transfer_block_size = 2048;
+			if (trackInfo.track_mode == CUETrack_AUDIO)
+				transfer_block_size = 2352;
                         break;
                     }
                     case 0x001: {
@@ -1057,7 +1052,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     }
                     case 0x010: {
                         // Mode 1
-                        const CUETrackInfo* trackInfo = GetTrackInfoForLBA(m_nblock_address);
+                        CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
                         skip_bytes = GetSkipbytesForTrack(trackInfo);
                         block_size = GetBlocksizeForTrack(trackInfo);
                         transfer_block_size = 2048;
@@ -1072,7 +1067,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     }
                     case 0x100: {
                         // Mode 2 form 1
-                        const CUETrackInfo* trackInfo = GetTrackInfoForLBA(m_nblock_address);
+                        CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
                         skip_bytes = GetSkipbytesForTrack(trackInfo);
                         block_size = GetBlocksizeForTrack(trackInfo);
                         transfer_block_size = 2048;
@@ -1089,7 +1084,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                         // Reserved
                         // Should error here!
                         {
-                            const CUETrackInfo* trackInfo = GetTrackInfoForLBA(m_nblock_address);
+                            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
                             skip_bytes = GetSkipbytesForTrack(trackInfo);
                             block_size = GetBlocksizeForTrack(trackInfo);
                             transfer_block_size = 2324;
@@ -1189,7 +1184,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    //} else if (format == 0x01) { // Read TOC Data Format (With Format Field = 01b)
 		    } else {
 						 
-			    const CUETrackInfo* trackInfo = GetTrackInfoForTrack(1);
+			    CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
 
 			    // Header
 			    m_TOCData.FirstTrack = 0x01;
@@ -1203,7 +1198,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    tocEntries[0].reserved = 0x00;
 			    tocEntries[0].TrackNumber = 1;
 			    tocEntries[0].reserved2 = 0x00;
-			    tocEntries[0].address = GetAddress(trackInfo->track_start, msf);
+			    tocEntries[0].address = GetAddress(trackInfo.track_start, msf);
 			    datalen += SIZE_TOC_ENTRY;
 			    numtracks = 1;
 		    /*
@@ -1307,11 +1302,11 @@ void CUSBCDGadget::HandleSCSICommand() {
                     if (cdplayer) {
                         address = cdplayer->GetCurrentAddress();
                         data.absoluteAddress = GetAddress(address, msf);
-                        const CUETrackInfo* trackInfo = GetTrackInfoForLBA(address);
-                        if (trackInfo) {
-                            data.trackNumber = trackInfo->track_number;
+                        CUETrackInfo trackInfo = GetTrackInfoForLBA(address);
+                        if (trackInfo.track_number != -1) {
+                            data.trackNumber = trackInfo.track_number;
                             data.indexNumber = 0x01;  // Assume no pregap. Perhaps we need to handle pregap?
-                            data.relativeAddress = GetAddress(address - trackInfo->track_start, msf, true);
+                            data.relativeAddress = GetAddress(address - trackInfo.track_start, msf, true);
                         }
                     }
 
@@ -1380,17 +1375,17 @@ void CUSBCDGadget::HandleSCSICommand() {
 		case 0x01:
 		{
 			// Logical Track Number
-			const CUETrackInfo* trackInfo = GetTrackInfoForTrack(int(address));
+			CUETrackInfo trackInfo = GetTrackInfoForTrack(int(address));
 			response.logicalTrackNumberLSB = address & 0xff;
 			response.sessionNumberLSB = 0x01; // no sessions
-			if (trackInfo && trackInfo->track_mode == CUETrack_AUDIO)
+			if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
 				response.trackMode = 0x02; // audio
 			else
 				response.trackMode = 0x06; // data
 
 			response.dataMode = 0x01; // mode 1
-			if (trackInfo)
-				response.logicalTrackStartAddress = htonl(trackInfo->track_start);
+			if (trackInfo.track_number != -1)
+				response.logicalTrackStartAddress = htonl(trackInfo.track_start);
 			break;
 		}
 		case 0x02:
@@ -1740,8 +1735,8 @@ void CUSBCDGadget::HandleSCSICommand() {
             int num_blocks = end_lba - start_lba;
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO MSF. Start MSF %d:%d:%d, End MSF: %d:%d:%d, start LBA %u, end LBA %u", SM, SS, SF, EM, ES, EF, start_lba, end_lba);
 
-	    const CUETrackInfo* trackInfo = GetTrackInfoForLBA(start_lba);
-	    if (trackInfo->track_mode == CUETrack_AUDIO) {
+	    CUETrackInfo trackInfo = GetTrackInfoForLBA(start_lba);
+	    if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO) {
 		    // Play the audio
             	    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CD Player found, sending command");
 		    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
@@ -1798,8 +1793,8 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 	    // Play the audio, but only if length > 0
 	    if (m_nnumber_blocks > 0) {
-		    const CUETrackInfo* trackInfo = GetTrackInfoForLBA(m_nblock_address);
-		    if (trackInfo->track_mode == CUETrack_AUDIO) {
+		    CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+		    if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO) {
 			CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 			if (cdplayer) {
 			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
@@ -1835,8 +1830,8 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 	    // Play the audio, but only if length > 0
 	    if (m_nnumber_blocks > 0) {
-		    const CUETrackInfo* trackInfo = GetTrackInfoForLBA(m_nblock_address);
-		    if (trackInfo->track_mode == CUETrack_AUDIO) {
+		    CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+		    if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO) {
 			CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 			if (cdplayer) {
 			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12) Play command sent");
@@ -2368,19 +2363,19 @@ void CUSBCDGadget::Update() {
                     if (blocks_to_read_in_batch > MaxBlocksToRead) {
                         blocks_to_read_in_batch = MaxBlocksToRead;
                         m_nnumber_blocks -= MaxBlocksToRead;  // Update remaining for subsequent reads if needed
-                        MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is %lu", blocks_to_read_in_batch, m_nnumber_blocks);
+                        //MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is %lu", blocks_to_read_in_batch, m_nnumber_blocks);
                     } else {
-                        MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is now zero", blocks_to_read_in_batch);
+                        //MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is now zero", blocks_to_read_in_batch);
                         m_nnumber_blocks = 0;
                     }
 
                     // Calculate total size of the batch read
                     u32 total_batch_size = blocks_to_read_in_batch * block_size;
 
-                    MLOGDEBUG("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes)", blocks_to_read_in_batch, total_batch_size);
+                    //MLOGDEBUG("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes)", blocks_to_read_in_batch, total_batch_size);
                     // Perform the single large read
                     readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
-                    MLOGDEBUG("UpdateRead", "Read %d bytes in batch", readCount);
+                    //MLOGDEBUG("UpdateRead", "Read %d bytes in batch", readCount);
 
                     if (readCount < static_cast<int>(total_batch_size)) {
                         // Handle error: partial read
