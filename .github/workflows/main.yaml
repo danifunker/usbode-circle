@@ -32,3 +32,15 @@ jobs:
         compression-level: 6
         overwrite: true
         include-hidden-files: false
+
+    - name: Create Release (on main only)
+      if: github.ref == 'refs/heads/auto-releases'
+      id: create-release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.get-filename.outputs.filename }}
+        release_name: USBODE v${{ steps.get-filename.outputs.filename }}
+        files: dist/*
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
