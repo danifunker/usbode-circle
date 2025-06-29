@@ -1,5 +1,8 @@
 name: USBODE CI Build
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ "*" ]
