@@ -322,6 +322,10 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             } else {
                 config_updates["logfile"] = ""; // Will remove the line
             }
+            if (form_params.count("default_volume"))
+            { 
+                config_updates["default_volume"] = form_params["default_volume"];
+            }
         }
         
         // Prepare cmdline.txt updates
@@ -384,6 +388,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string current_displayhat = config_data.count("displayhat") ? config_data["displayhat"] : "none";
     std::string current_screen_timeout = config_data.count("screen_timeout") ? config_data["screen_timeout"] : "5";
     std::string current_logfile = config_data.count("logfile") ? config_data["logfile"] : "";
+    std::string current_default_volume = config_data.count("default_volume") ? config_data["default_volume"] : "255";
     std::string current_sounddev = cmdline_data.count("sounddev") ? cmdline_data["sounddev"] : "sndpwm";
     std::string current_loglevel = cmdline_data.count("loglevel") ? cmdline_data["loglevel"] : "4";
     std::string current_usbspeed = cmdline_data.count("usbspeed") ? "full" : "high";

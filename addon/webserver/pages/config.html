@@ -45,6 +45,12 @@
                         </select>
                     </div>
                 </div>
+                <div class="form-group">
+                    <label for="default_volume">CD Audio Out Volume:</label>
+                    <div class="current-value">Current: {{current_default_volume}}</div>
+                    <input type="number" id="default_volume" name="default_volume" min="0" max="255" value="{{default_volume}}">
+                    <div class="current-value">Set to 0 for silent, 255 maximum (255 is default)</div>
+                </div>
 
                 <div class="form-section">
                     <h3>USB Configuration</h3>
