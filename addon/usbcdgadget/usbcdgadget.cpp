@@ -1024,6 +1024,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 transfer_block_size = 2048;
                 block_size = data_block_size;  // set at SetDevice
                 skip_bytes = data_skip_bytes;  // set at SetDevice;
+		mcs = 0;
 
                 m_nbyteCount = m_CBW.dCBWDataTransferLength;
 
@@ -1050,44 +1051,27 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                 // Expected Sector Type. We can use this to derive
                 // sector size and offset in most cases
-                int expectedSectorType = (m_CBW.CBWCB[1] & 0x1C) >> 2;
+                int expectedSectorType = (m_CBW.CBWCB[1] >> 2) & 0x07;
 
                 // Where to start reading (LBA)
                 m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
-                // Number of blocks to read (LBA)
+// Number of blocks to read (LBA)
                 m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 16) | (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
 
-		uint8_t mcs = (m_CBW.CBWCB[9] >> 3) & 0x1F;
+		mcs = (m_CBW.CBWCB[9] >> 3) & 0x1F;
 
-                //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "READ CD for %lu blocks at LBA %lu of type %02x", m_nnumber_blocks, m_nblock_address, expectedSectorType);
+                // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "READ CD for %lu blocks at LBA %lu of type %02x", m_nnumber_blocks, m_nblock_address, expectedSectorType);
                 switch (expectedSectorType) {
-                    case 0x000: {
-                        // All types
-			CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-			if (trackInfo.track_mode == CUETrack_AUDIO) {
-				block_size = 2352;
-				transfer_block_size = 2352;
-				skip_bytes = 0;
-			} else {
-				// This gives us a horrible situation where we might be using a
-				// ISO file with block sizes of 2048 but host requests block size
-				// of 2352, so the Update function at the end needs to synthesize
-				// some bytes to keep the host happy
-				block_size = GetBlocksizeForTrack(trackInfo);
-				transfer_block_size = GetSectorLengthFromMCS(mcs);
-				skip_bytes = GetSkipBytesFromMCS(mcs);
-			}
-                        break;
-                    }
-                    case 0x001: {
+                    case 0x01: 
+		    {
                         // CD-DA
                         block_size = 2352;
                         transfer_block_size = 2352;
                         skip_bytes = 0;
                         break;
                     }
-                    case 0x010: {
+                    case 0x02: 
+		    {
                         // Mode 1
                         CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
                         skip_bytes = GetSkipbytesForTrack(trackInfo);
@@ -1095,41 +1079,57 @@ void CUSBCDGadget::HandleSCSICommand() {
                         transfer_block_size = 2048;
                         break;
                     }
-                    case 0x011: {
+                    case 0x03:
+		    {
                         // Mode 2 formless
                         skip_bytes = 16;
                         block_size = 2352;
                         transfer_block_size = 2336;
                         break;
                     }
-                    case 0x100: {
-                        // Mode 2 form 1
+                    case 0x04:
+		    {
+			// Mode 2 form 1
                         CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
                         skip_bytes = GetSkipbytesForTrack(trackInfo);
                         block_size = GetBlocksizeForTrack(trackInfo);
                         transfer_block_size = 2048;
                         break;
                     }
-                    case 0x101: {
+                    case 0x05: 
+		    {
                         // Mode 2 form 2
                         block_size = 2352;
                         skip_bytes = 24;
                         transfer_block_size = 2048;
                         break;
                     }
-                    default:
-                        // Reserved
-                        // Should error here!
-                        {
-                            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-                            skip_bytes = GetSkipbytesForTrack(trackInfo);
-                            block_size = GetBlocksizeForTrack(trackInfo);
-                            transfer_block_size = 2324;
-                            break;
-                        }
+                    case 0x00:
+                    default: 
+		    {
+                        // Client doesn't tell us what data type he's expecting. He expects us
+			// to work it out based on the MCS flags
+			CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+
+			// Audio tracks have no concept of MCS, so we just return all 2352 bytes
+			if (trackInfo.track_mode == CUETrack_AUDIO) {
+				block_size = 2352;
+				transfer_block_size = 2352;
+				skip_bytes = 0;
+			} else {
+				// This gives us a horrible situation where we might be using a
+				// underlying image file with block sizes of 2048 but host requests 
+				// block size of 2352, so the Update function at the end needs to 
+				// synthesize some bytes to make up for the difference
+				block_size = GetBlocksizeForTrack(trackInfo);
+				transfer_block_size = GetSectorLengthFromMCS(mcs);
+				skip_bytes = GetSkipBytesFromMCS(mcs);
+			}
+                        break;
+                    }
                 }
 
-                MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "READ CD for %lu blocks at LBA %lu of type %02x, block_size = %d, skip_bytes = %d, transfer_block_ssize = %d", m_nnumber_blocks, m_nblock_address, expectedSectorType, block_size, skip_bytes, transfer_block_size);
+                MLOGDEBUG ("CUSBCDGadget::HandleSCSICommand", "READ CD for %lu blocks at LBA %lu of type %02x, block_size = %d, skip_bytes = %d, transfer_block_ssize = %d", m_nnumber_blocks, m_nblock_address, expectedSectorType, block_size, skip_bytes, transfer_block_size);
 
                 // What is this?
                 m_nbyteCount = m_CBW.dCBWDataTransferLength;
@@ -2394,6 +2394,7 @@ void CUSBCDGadget::Update() {
             int readCount = 0;
             if (m_CDReady) {
 
+                MLOGDEBUG("UpdateRead", "Seek to %lu", block_size * m_nblock_address);
                 offset = m_pDevice->Seek(block_size * m_nblock_address);
                 if (offset != (u64)(-1)) {
                     // Cap at MAX_BLOCKS_READ blocks. This is what a READ CD request will
@@ -2402,19 +2403,19 @@ void CUSBCDGadget::Update() {
                     if (blocks_to_read_in_batch > MaxBlocksToRead) {
                         blocks_to_read_in_batch = MaxBlocksToRead;
                         m_nnumber_blocks -= MaxBlocksToRead;  // Update remaining for subsequent reads if needed
-                        //MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is %lu", blocks_to_read_in_batch, m_nnumber_blocks);
+                        MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is %lu", blocks_to_read_in_batch, m_nnumber_blocks);
                     } else {
-                        //MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is now zero", blocks_to_read_in_batch);
+                        MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is now zero", blocks_to_read_in_batch);
                         m_nnumber_blocks = 0;
                     }
 
                     // Calculate total size of the batch read
                     u32 total_batch_size = blocks_to_read_in_batch * block_size;
 
-                    //MLOGDEBUG("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes)", blocks_to_read_in_batch, total_batch_size);
+                    MLOGDEBUG("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes)", blocks_to_read_in_batch, total_batch_size);
                     // Perform the single large read
                     readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
-                    //MLOGDEBUG("UpdateRead", "Read %d bytes in batch", readCount);
+                    MLOGDEBUG("UpdateRead", "Read %d bytes in batch", readCount);
 
                     if (readCount < static_cast<int>(total_batch_size)) {
                         // Handle error: partial read
@@ -2430,15 +2431,67 @@ void CUSBCDGadget::Update() {
                     u32 total_copied = 0;
 
                     // Iterate through the *read data* in memory
+		    // TODO Optimization, if transfer_block_size and block_size are the same, and 
+		    // skip_bytes is zero, we can just copy without looping
                     for (u32 i = 0; i < blocks_to_read_in_batch; ++i) {
-                        // Calculate the starting point for the current block within the m_FileChunk
-                        u8 *current_block_start = m_FileChunk + (i * block_size);
+			if (transfer_block_size > block_size) {
+				// We've been asked to return more bytes than we've read from
+				// the underlying image. We have to generate some bytes
+				//
+				// This is all a bit shonky for now :O
 
-                        // Copy only the portion after skip_bytes into the destination buffer
-                        memcpy(dest_ptr, current_block_start + skip_bytes, transfer_block_size);
-                        dest_ptr += transfer_block_size;
-                        total_copied += transfer_block_size;
-                        // m_nblock_address++; // This should be updated based on the *initial* block address + blocks_to_read_in_batch
+				u8 sector2352[2352] = {0};
+				
+				int offset = 0;
+
+				// SYNC (12 bytes)
+				if (mcs & 0x10) {
+					memset(sector2352 + offset, 0x00, 1);           // 0x00
+					memset(sector2352 + offset + 1, 0xFF, 10);      // 0xFF * 10
+					sector2352[offset + 11] = 0x00;                 // 0x00
+					offset += 12;
+				}
+
+				// HEADER (4 bytes)
+				if (mcs & 0x08) {
+					u32 lba = m_nblock_address + i;
+					lba += 150; // the 2 sec nonesense
+					u8 minutes = lba / (75 * 60);
+    					u8 seconds = (lba / 75) % 60;
+    					u8 frames = lba % 75;
+
+					sector2352[offset + 0] = minutes;  // MSF Minute
+					sector2352[offset + 1] = seconds;  // MSF Second
+					sector2352[offset + 2] = frames;  // MSF Frame
+					sector2352[offset + 3] = 0x01;  // Mode 1
+					offset += 4;
+				}
+
+				// USER DATA (2048 bytes)
+				if (mcs & 0x04) {
+					u8 *current_block_start = m_FileChunk + (i * block_size);
+					memcpy(sector2352 + offset, current_block_start, 2048);
+					offset += 2048;
+				}
+
+				// EDC/ECC (remaining bytes)
+				if (mcs & 0x02) {
+					// Mode 1 has 288 ECC bytes at end. For now
+					// we'll send zeros and hope the host ignores it
+					memset(sector2352 + offset, 0x00, 288);
+					offset += 288;
+				}
+
+				memcpy(dest_ptr, sector2352 + skip_bytes, transfer_block_size);
+			} else {
+				// Calculate the starting point for the current block within the m_FileChunk
+				u8 *current_block_start = m_FileChunk + (i * block_size);
+
+				// Copy only the portion after skip_bytes into the destination buffer
+				memcpy(dest_ptr, current_block_start + skip_bytes, transfer_block_size);
+			}
+			dest_ptr += transfer_block_size;
+			total_copied += transfer_block_size;
                     }
                     // Update m_nblock_address after the batch read
                     m_nblock_address += blocks_to_read_in_batch;

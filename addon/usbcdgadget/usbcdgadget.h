@@ -803,6 +803,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int file_mode = 1;
     boolean m_IsFullSpeed = 0;
     boolean discChanged = false;
+    uint8_t mcs = 0;
 
     // Hardware serial number for USB device identification
     char m_HardwareSerialNumber[20];   // Format: "USBODE-XXXXXXXX"
