@@ -711,6 +711,33 @@ u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
     return htonl(address);
 }
 
+int CUSBCDGadget::GetSectorLengthFromMCS(uint8_t mainChannelSelection) {
+    int total = 0;
+    if (mainChannelSelection & 0x10) total += 12;   // SYNC
+    if (mainChannelSelection & 0x08) total += 4;    // HEADER
+    if (mainChannelSelection & 0x04) total += 2048; // USER DATA
+    if (mainChannelSelection & 0x02) total += 288;  // EDC + ECC
+
+    return total;
+}
+
+int CUSBCDGadget::GetSkipBytesFromMCS(uint8_t mainChannelSelection) {
+    int offset = 0;
+
+    // Skip SYNC if not requested
+    if (!(mainChannelSelection & 0x10)) offset += 12;
+
+    // Skip HEADER if not requested
+    if (!(mainChannelSelection & 0x08)) offset += 4;
+
+    // USER DATA is next; if also not requested, skip 2048
+    if (!(mainChannelSelection & 0x04)) offset += 2048;
+
+    // EDC/ECC is always at the end, so no skipping here — it doesn't affect offset
+    //
+    return offset;
+}
+
 // TODO: This entire method is a monster. Break up into a Function table of static methods
 //
 //  Each command lives in its own .cpp file with a class that has a static Handle() function.
@@ -1031,16 +1058,26 @@ void CUSBCDGadget::HandleSCSICommand() {
                 // Number of blocks to read (LBA)
                 m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 16) | (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
 
+		uint8_t mcs = (m_CBW.CBWCB[9] >> 3) & 0x1F;
+
                 //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "READ CD for %lu blocks at LBA %lu of type %02x", m_nnumber_blocks, m_nblock_address, expectedSectorType);
                 switch (expectedSectorType) {
                     case 0x000: {
                         // All types
-                        CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-                        skip_bytes = GetSkipbytesForTrack(trackInfo);
-                        block_size = GetBlocksizeForTrack(trackInfo);
-                        transfer_block_size = 2048;
-			if (trackInfo.track_mode == CUETrack_AUDIO)
+			CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+			if (trackInfo.track_mode == CUETrack_AUDIO) {
+				block_size = 2352;
 				transfer_block_size = 2352;
+				skip_bytes = 0;
+			} else {
+				// This gives us a horrible situation where we might be using a
+				// ISO file with block sizes of 2048 but host requests block size
+				// of 2352, so the Update function at the end needs to synthesize
+				// some bytes to keep the host happy
+				block_size = GetBlocksizeForTrack(trackInfo);
+				transfer_block_size = GetSectorLengthFromMCS(mcs);
+				skip_bytes = GetSkipBytesFromMCS(mcs);
+			}
                         break;
                     }
                     case 0x001: {
@@ -2359,7 +2396,8 @@ void CUSBCDGadget::Update() {
 
                 offset = m_pDevice->Seek(block_size * m_nblock_address);
                 if (offset != (u64)(-1)) {
-                    // Cap at MAX_BLOCKS_READ blocks. This is what a READ CD request will required
+                    // Cap at MAX_BLOCKS_READ blocks. This is what a READ CD request will
+		    // require any excess blocks will be read next time around this loop
                     u32 blocks_to_read_in_batch = m_nnumber_blocks;
                     if (blocks_to_read_in_batch > MaxBlocksToRead) {
                         blocks_to_read_in_batch = MaxBlocksToRead;

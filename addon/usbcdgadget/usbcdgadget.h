@@ -541,6 +541,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     int GetLastTrackNumber();
     u32 GetAddress(u32 lba, int msf, boolean relative = false);
     u32 lba_to_msf(u32 lba, boolean relative = false);
+    int GetSectorLengthFromMCS(uint8_t mainChannelSelection);
+    int GetSkipBytesFromMCS(uint8_t mainChannelSelection);
 
    private:
     ICueDevice *m_pDevice;
