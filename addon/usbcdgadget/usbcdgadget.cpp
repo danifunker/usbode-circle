@@ -1114,6 +1114,7 @@ void CUSBCDGadget::HandleSCSICommand() {
         }
 
 	// These commands are not implemented so we lie about it
+	case 0xBB: // Set CDROM Speed
         case 0x2F: // Verify
         {
             m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
