@@ -14,7 +14,7 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 ## Requirements:
 1. A Raspberry Pi Zero W or Zero 2 W.
 2. A Wi-Fi network. The Pi will need to connect to one so that it can be controlled over the web interface. Your retro computer does not have to be connected to it, unless you want to operate the web interface from it.
-3. A MicroSD card up to 256 GB (see [Initial Setup](#Initial-Setup) for workarounds). Cards marked A1 or A2 will perform better.
+3. A MicroSD card up to 256 GB (see [Card Size Limitations](#Card-Size-Limitations) for workarounds). Cards marked A1 or A2 will perform better.
 4. A computer to perform the initial setup. It needs to be running any modern OS (Windows, Mac, Linux) and have a MicroSD card reader or an adapter.
 3. A [Micro USB](https://en.wikipedia.org/wiki/USB_hardware#/media/File:MicroB_USB_Plug.jpg) cable (not [Mini USB](https://en.wikipedia.org/wiki/USB_hardware#/media/File:Cable_Mini_USB.jpg)) that can transfer data along with power.
 4. The latest [USB-ODE Circle Release]([url](https://github.com/danifunker/usbode-circle/releases)).
@@ -25,9 +25,7 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 - The PirateAudio HAT also enables CD audio. An aux cable going into your sound card's Line In port will play that audio over your computer's speakers. Additionally, enterprising users have created 8mm-to-4-pin converter cables, allowing them to connect their Pi to their sound card's internal Line In port. You'll need to know your sound card's pinout to make one for yourself, as they vary between models. 
 
 ## Initial Setup
-1. Mount the MicroSD card on the setup computer. Format it using FAT32.
-   - Cards larger than 32 GB will have issues on versions of Windows prior to 11. The default formatting utility will act like 32 GB is the limit. Thankfully, this [is merely a limitation of the UI]((https://youtu.be/bikbJPI-7Kg?t=398)), and can be easily bypassed using the [Raspberry Pi Imager](https://www.raspberrypi.com/software/), [FAT32FormatterGUI](https://www.softpedia.com/get/System/Hard-Disk-Utils/FAT32format-GUI.shtml), or if you're comfortable with it, the built-in DISKPART utility.
-   - Cards larger than 256 GB will not boot on the Pi. We are investigating better workarounds, but making a partition no larger than 256 GB will get it working (obviously without the full capacity of the card available).
+1. Mount the MicroSD card on the setup computer. Format it using FAT32 (See [Card Size Limitations](#Card-Size-Limitations) if you need to do this on a card larger than 32 GB).
 2. Open the USBODE ZIP file that was downloaded previously. Extract the files within to the root of the MicroSD card.
 3. On the MicroSD card, open the file labeled “wpa_supplicant.conf”.
 4. Under `country=GB`, replace “GB” with the [two digit code for your country](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#Officially_assigned_code_elements) if needed. Different countries use different WiFi frequencies; if you are in the US, the device will not connect to US wifi unless you change this line to `country=US`.
@@ -67,6 +65,10 @@ USBODE stores images on the MicroSD card in a folder labeled Images. You'll need
 
 ### BIN/CUE Limitations
 BIN/CUE images with multiple .BIN files do not yet work correctly. There is a workaround, however: [CDFix](https://web.archive.org/web/20240112090553/https://krikzz.com/pub/support/mega-everdrive/pro-series/cdfix/) will merge all of the .BIN files into one. Remember to make a backup of the image files before running this utility.
+
+### Card Size Limitations
+ - Cards larger than 32 GB will have issues on versions of Windows prior to 11. The Windows GUI format utility and the DISKPART command line utility will refuse to make FAT32 partitions larger than 32 GB. To bypass this, we recommend using the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) or [FAT32FormatterGUI](https://www.softpedia.com/get/System/Hard-Disk-Utils/FAT32format-GUI.shtml).
+ - Cards larger than 256 GB will not boot on the Pi, and we do not currently have a good workaround. If a card of that capacity is your only option, you must create a primary partition smaller than 256 GB. USBODE cannot yet navigate to different partitions, so this effectively leaves half or more of your card unusable, but it will at least boot.
 
 ### Using FTP: 
 1. Open the FTP client of your choice.
