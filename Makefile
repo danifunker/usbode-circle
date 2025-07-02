@@ -166,8 +166,12 @@ dist-files:
 	# Copy boot files
 	mkdir -p $(DIST_DIR)/overlays
 	cp $(CIRCLEHOME)/boot/bootcode.bin $(DIST_DIR)/
-	cp $(CIRCLEHOME)/boot/start{,4}.elf $(DIST_DIR)/
-	cp $(CIRCLEHOME)/boot/fixup{,4}.dat $(DIST_DIR)/
+	@for f in start.elf start4.elf; do \
+        if [ -f "$(CIRCLEHOME)/boot/$$f" ]; then cp "$(CIRCLEHOME)/boot/$$f" $(DIST_DIR)/; fi; \
+    done
+	@for f in fixup.dat fixup4.dat; do \
+        if [ -f "$(CIRCLEHOME)/boot/$$f" ]; then cp "$(CIRCLEHOME)/boot/$$f" $(DIST_DIR)/; fi; \
+    done
 	cp $(CIRCLEHOME)/boot/bcm*.dtb $(DIST_DIR)/
 	cp $(CIRCLEHOME)/boot/bcm*.dtbo $(DIST_DIR)/overlays
 	cp $(CIRCLEHOME)/boot/LICENCE.broadcom $(DIST_DIR)/
