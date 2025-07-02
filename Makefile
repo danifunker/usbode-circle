@@ -165,8 +165,13 @@ dist-files:
 	
 	# Copy boot files
 	cp $(CIRCLEHOME)/boot/bootcode.bin $(DIST_DIR)/
-	cp $(CIRCLEHOME)/boot/start.elf $(DIST_DIR)/
-	
+	cp $(CIRCLEHOME)/boot/start{,4}.elf $(DIST_DIR)/
+	cp $(CIRCLEHOME)/boot/fixup{,4}.dat $(DIST_DIR)/
+	cp $(CIRCLEHOME)/boot/bcm*.dtb* $(DIST_DIR)/
+	cp $(CIRCLEHOME)/boot/bcm*.dtb* $(DIST_DIR)/
+	cp $(CIRCLEHOME)/boot/LICENCE.broadcom $(DIST_DIR)/
+	cp $(CIRCLEHOME)/boot/COPYING.linux $(DIST_DIR)/firmware/
+
 	# Create config.txt (hardcoded to 32-bit for now)
 	cp $(CIRCLEHOME)/boot/config32.txt $(DIST_DIR)/config.txt
 	cat sdcard/config-usbode.txt >> $(DIST_DIR)/config.txt
