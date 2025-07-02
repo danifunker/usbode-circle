@@ -12,7 +12,7 @@ Ever wanted a GoTek for CDs? If you have a Raspberry Pi Zero W or 2 W, USBODE tu
 Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 
 ## Requirements:
-1. A Raspberry Pi Zero W or Zero 2 W.
+1. A Raspberry Pi Zero W or Zero 2 W, Raspberry Pi 3A+ (needs USB-A to USB-A cable), Raspberry Pi 4B+ (Use the USB-C connector to connect to the computer)*. Pi4 support is currently in testing
 2. A Wi-Fi network. The Pi will need to connect to one so that it can be controlled over the web interface. Your retro computer does not have to be connected to it, unless you want to operate the web interface from it.
 3. A MicroSD card up to 256 GB (see [Card Size Limitations](#Card-Size-Limitations) for workarounds). Cards marked A1 or A2 will perform better.
 4. A computer to perform the initial setup. It needs to be running any modern OS (Windows, Mac, Linux) and have a MicroSD card reader or an adapter.
@@ -25,7 +25,11 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 - The PirateAudio HAT also enables CD audio. An aux cable going into your sound card's Line In port will play that audio over your computer's speakers. Additionally, enterprising users have created 8mm-to-4-pin converter cables, allowing them to connect their Pi to their sound card's internal Line In port. You'll need to know your sound card's pinout to make one for yourself, as they vary between models. 
 
 ## Initial Setup
-1. Mount the MicroSD card on the setup computer. Format it using FAT32 (See [Card Size Limitations](#Card-Size-Limitations) if you need to do this on a card larger than 32 GB).
+1. Mount the MicroSD card on the setup computer. Format it using FAT32 (See [Card Size Limitations](#Card-Size-Limitations) if you need to do this on a card larger than 32 GB). The developers recommend using the Raspberry Pi Imager to format the SDCard as FAT32. To perform this: 
+   a. Open the Raspberry Pi Imager
+   b. Under Raspberry Pi Device choose No Filtering
+   c. Under Operating System, choose Erase
+   d. Select the SD card you would like to format.
 2. Open the USBODE ZIP file that was downloaded previously. Extract the files within to the root of the MicroSD card.
 3. On the MicroSD card, open the file labeled “wpa_supplicant.conf”.
 4. Under `country=GB`, replace “GB” with the [two digit code for your country](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#Officially_assigned_code_elements) if needed. Different countries use different WiFi frequencies; if you are in the US, the device will not connect to US wifi unless you change this line to `country=US`.
