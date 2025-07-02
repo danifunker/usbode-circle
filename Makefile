@@ -179,6 +179,8 @@ dist-files:
 
 	# Create config.txt (hardcoded to 32-bit for now)
 	cp $(CIRCLEHOME)/boot/config32.txt $(DIST_DIR)/config.txt
+	# Remove problematic lines from pi4 config.txt
+	sed -i.bak -e 's/^\(armstub=armstub7-rpi4\.bin\)/#\1/' -e 's/^\(max_framebuffers=2\)/#\1/' $(DIST_DIR)/config.txt && rm $(DIST_DIR)/config.txt.bak
 	cat sdcard/config-usbode.txt >> $(DIST_DIR)/config.txt
 	cp sdcard/config-options.txt $(DIST_DIR)/
 	cp sdcard/cmdline.txt $(DIST_DIR)/
