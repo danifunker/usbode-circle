@@ -164,11 +164,12 @@ dist-files:
 	rm -f $(DIST_DIR)/firmware/Makefile
 	
 	# Copy boot files
+	mkdir -p $(DIST_DIR)/overlays
 	cp $(CIRCLEHOME)/boot/bootcode.bin $(DIST_DIR)/
 	cp $(CIRCLEHOME)/boot/start{,4}.elf $(DIST_DIR)/
 	cp $(CIRCLEHOME)/boot/fixup{,4}.dat $(DIST_DIR)/
-	cp $(CIRCLEHOME)/boot/bcm*.dtb* $(DIST_DIR)/
-	cp $(CIRCLEHOME)/boot/bcm*.dtb* $(DIST_DIR)/
+	cp $(CIRCLEHOME)/boot/bcm*.dtb $(DIST_DIR)/
+	cp $(CIRCLEHOME)/boot/bcm*.dtbo $(DIST_DIR)/overlays
 	cp $(CIRCLEHOME)/boot/LICENCE.broadcom $(DIST_DIR)/
 	cp $(CIRCLEHOME)/boot/COPYING.linux $(DIST_DIR)/firmware/
 
