@@ -56,6 +56,11 @@ endif
 ifneq ($(BUILD_NUMBER),)
 export USBODE_BUILD_NUMBER = $(BUILD_NUMBER)
 endif
+ifeq ($(ARCH),64)
+RASPPI ?= $(word 1,$(SUPPORTED_RASPPI64))
+else
+RASPPI ?= $(word 1,$(SUPPORTED_RASPPI))
+endif
 
 # Define USBODE addon modules (from /addon directory)
 USBODE_ADDONS = gitinfo sdcardservice cdromservice scsitbservice usbcdgadget \
