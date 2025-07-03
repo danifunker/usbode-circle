@@ -165,11 +165,11 @@ dist-single: check-vars kernel clean-dist
 	@$(MAKE) dist-files
 
 dist-pi5:
-    @echo "Creating distribution package for Raspberry Pi 5..."
-    @$(MAKE) RASPPI=5 ARCH=64 DIST_DIR=dist64 check-vars kernel clean-dist
-    @$(MAKE) RASPPI=5 ARCH=64 DIST_DIR=dist64 dist-single
-    cp src/kernel*.img dist64/
-    @$(MAKE) DIST_DIR=dist64 dist-files
+	@echo "Creating distribution package for Raspberry Pi 5..."
+	@$(MAKE) RASPPI=5 ARCH=64 DIST_DIR=dist64 check-vars kernel clean-dist
+	@$(MAKE) RASPPI=5 ARCH=64 DIST_DIR=dist64 dist-single
+	cp src/kernel*.img dist64/
+	@$(MAKE) DIST_DIR=dist64 dist-files
 
 dist-files:
 	@echo "Creating distribution package..."
