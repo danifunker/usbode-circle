@@ -101,8 +101,8 @@ configure: check-vars check-config
 	@echo "Configuring for RASPPI=$(RASPPI)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
 	@echo "Using PREFIX=$(PREFIX)"
 	git submodule update --init --recursive
-	cd $(STDLIBHOME)/build/circle-newlib && \
-	make distclean
+	cd $(STDLIBHOME) && \
+	make clean
 	./configure -r $(RASPPI) --prefix "$(PREFIX)" $(DEBUG_CONFIGURE_FLAGS)
 
 configure64: check-config check-vars
@@ -110,7 +110,7 @@ configure64: check-config check-vars
 	@echo "Using PREFIX=$(PREFIX64)"
 	git submodule update --init --recursive
 	cd $(STDLIBHOME) && \
-	make distclean
+	make clean
 	./configure -r $(RASPPI) --prefix "$(PREFIX64)" $(DEBUG_CONFIGURE_FLAGS)
 
 # Build Circle stdlib
