@@ -242,13 +242,21 @@ clean-all:
 	@rm -f usbode*.zip
 	@cd src && $(MAKE) clean
 	@for module in $(USBODE_ADDONS); do \
-		echo "Cleaning addon/$$module"; \
-		cd addon/$$module && $(MAKE) clean; \
-		cd ../..; \
+		 echo "Cleaning addon/$$module"; \
+		 cd addon/$$module && $(MAKE) clean; \
+		 cd ../..; \
 	done
 	@for addon in $(CIRCLE_ADDONS); do \
-		echo "Cleaning $(CIRCLEHOME)/addon/$$addon"; \
-		cd $(CIRCLEHOME)/addon/$$addon && $(MAKE) clean; \
+    echo "Cleaning $(CIRCLEHOME)/addon/$$addon"; \
+	echo "Current Folder is: $$(pwd)"; \
+    if [ -d "$(CIRCLEHOME)/addon/$$addon" ]; then \
+		 echo "Directory exists: $(CIRCLEHOME)/addon/$$addon"; \
+		 cd "$(CIRCLEHOME)/addon/$$addon" && $(MAKE) clean; \
+	else \
+		 echo "Directory missing: $(CIRCLEHOME)/addon/$$addon"; \
+		 ls -l "$(CIRCLEHOME)/addon/"; \
+	fi; \
+	cd ../..; \
 	done
 	@cd $(STDLIBHOME) && $(MAKE) clean
 
