@@ -83,9 +83,17 @@ check-vars:
 
 check-config:
 	@if [ ! -f "$(BUILD_CONF)" ]; then \
-		echo "Warning: $(BUILD_CONF) not found, using default PREFIX=$(PREFIX)"; \
+		if [ "$(ARCH)" = "64" ]; then \
+			echo "Warning: $(BUILD_CONF) not found, using default PREFIX64=$(PREFIX64)"; \
+		else \
+			echo "Warning: $(BUILD_CONF) not found, using default PREFIX=$(PREFIX)"; \
+		fi; \
 	else \
-		echo "Using PREFIX=$(PREFIX) from $(BUILD_CONF)"; \
+		if [ "$(ARCH)" = "64" ]; then \
+			echo "Using PREFIX64=$(PREFIX64) from $(BUILD_CONF)"; \
+		else \
+			echo "Using PREFIX=$(PREFIX) from $(BUILD_CONF)"; \
+		fi; \
 	fi
 
 # Configure Circle for target architecture
@@ -93,9 +101,8 @@ configure: check-vars check-config
 	@echo "Configuring for RASPPI=$(RASPPI)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
 	@echo "Using PREFIX=$(PREFIX)"
 	git submodule update --init --recursive
-	cd $(STDLIBHOME) && \
-	rm -rf build && \
-	mkdir -p build/circle-newlib && \
+	cd $(STDLIBHOME)/build/circle-newlib && \
+	make distclean
 	./configure -r $(RASPPI) --prefix "$(PREFIX)" $(DEBUG_CONFIGURE_FLAGS)
 
 configure64: check-config check-vars
@@ -103,8 +110,7 @@ configure64: check-config check-vars
 	@echo "Using PREFIX=$(PREFIX64)"
 	git submodule update --init --recursive
 	cd $(STDLIBHOME) && \
-	rm -rf build && \
-	mkdir -p build/circle-newlib && \
+	make distclean
 	./configure -r $(RASPPI) --prefix "$(PREFIX64)" $(DEBUG_CONFIGURE_FLAGS)
 
 # Build Circle stdlib
@@ -158,14 +164,12 @@ dist-single: check-vars kernel clean-dist
 	# Call the existing dist target (without kernel dependency)
 	@$(MAKE) dist-files
 
-dist-pi5: ARCH=64
-dist-pi5: DIST_DIR=dist64
-dist-pi5: check-vars kernel clean-dist
-	@echo "Creating distribution package for Raspberry Pi 5..."
-	@$(MAKE) RASPPI=5 ARCH=64 DIST_DIR=dist64 dist-single
-	cp src/kernel*.img $(DIST_DIR)/
-	@$(MAKE) dist-files
-
+dist-pi5:
+    @echo "Creating distribution package for Raspberry Pi 5..."
+    @$(MAKE) RASPPI=5 ARCH=64 DIST_DIR=dist64 check-vars kernel clean-dist
+    @$(MAKE) RASPPI=5 ARCH=64 DIST_DIR=dist64 dist-single
+    cp src/kernel*.img dist64/
+    @$(MAKE) DIST_DIR=dist64 dist-files
 
 dist-files:
 	@echo "Creating distribution package..."
