@@ -74,7 +74,7 @@ CIRCLE_ADDONS = linux Properties
 USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0x0d01
 
 .PHONY: all clean-all clean-dist check-config check-vars configure circle-stdlib\
-	 circle-deps circle-addons usbode-addons kernel dist-files
+	 circle-deps circle-addons usbode-addons kernel dist-files apply-patches reset-patches check-patches
 .PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS) dist-single multi-arch package release\
 	 show-build-info rebuild show-config all-32 all-64 multi-arch-64 package-both
 
@@ -93,11 +93,26 @@ check-config:
 		echo "Using PREFIX=$(CURRENT_PREFIX) from $(BUILD_CONF) ($(ARCH_MODE)-bit mode)"; \
 	fi
 
+# Patch management targets
+apply-patches:
+	@echo "Applying patches to submodules..."
+	@chmod +x scripts/apply-patches.sh
+	@scripts/apply-patches.sh apply
+
+reset-patches:
+	@echo "Resetting patches from submodules..."
+	@chmod +x scripts/apply-patches.sh
+	@scripts/apply-patches.sh reset
+
+check-patches:
+	@scripts/apply-patches.sh check
+
 # Configure Circle for target architecture
 configure: check-vars check-config
 	@echo "Configuring for RASPPI=$(RASPPI) ($(ARCH_MODE)-bit mode)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
 	@echo "Using PREFIX=$(CURRENT_PREFIX)"
 	git submodule update --init --recursive
+	@$(MAKE) apply-patches
 	cd $(STDLIBHOME) && \
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
