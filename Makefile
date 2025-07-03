@@ -265,7 +265,7 @@ multi-arch: clean-dist
 multi-arch64: clean-dist
 	@for arch in $(SUPPORTED_RASPPI64); do \
 		echo "Building for RASPPI=$$arch$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
-		$(MAKE) RASPPI=$$arch DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; \
+		$(MAKE) RASPPI=$$arch DEBUG_FLAGS="$(DEBUG_FLAGS)" configure64 circle-deps circle-addons usbode-addons kernel; \
 		cp src/kernel*.img $(DIST_DIR)/ 2>/dev/null || true; \
 	done
 	@$(MAKE) dist-files
