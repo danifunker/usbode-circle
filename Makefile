@@ -25,6 +25,11 @@ PREFIX64 := $(shell \
 		grep '^PathPrefix64=' "$(BUILD_CONF)" 2>/dev/null | cut -d'=' -f2; \
 	fi \
 )
+SUPPORTED_RASPPI64 := $(shell \
+	if [ -f "$(BUILD_CONF)" ]; then \
+		grep '^supported_rasppi_64=' "$(BUILD_CONF)" 2>/dev/null | sed 's/supported_rasppi_64=(//' | sed 's/)//'; \
+	fi \
+)
 SUPPORTED_RASPPI := $(shell \
 	if [ -f "$(BUILD_CONF)" ]; then \
 		grep '^supported_rasppi=' "$(BUILD_CONF)" 2>/dev/null | sed 's/supported_rasppi=(//' | sed 's/)//'; \
@@ -34,6 +39,14 @@ SUPPORTED_RASPPI := $(shell \
 ifeq ($(PREFIX),)
 PREFIX = arm-none-eabi-
 endif
+ifeq ($(PREFIX64),)
+PREFIX64 = aarch64-none-elf-
+endif
+# Fallback if SUPPORTED_RASPPI64 is empty
+ifeq ($(SUPPORTED_RASPPI64),)
+SUPPORTED_RASPPI64 = 5
+endif
+
 RASPPI ?= $(if $(SUPPORTED_RASPPI),$(word 1,$(SUPPORTED_RASPPI)),1)
 # Fallback if empty
 ifeq ($(SUPPORTED_RASPPI),)
@@ -85,7 +98,7 @@ configure: check-vars check-config
 	mkdir -p build/circle-newlib && \
 	./configure -r $(RASPPI) --prefix "$(PREFIX)" $(DEBUG_CONFIGURE_FLAGS)
 
-configure64: check-config
+configure64: check-config check-vars
 	@echo "Configuring for RASPPI=$(RASPPI) 64-bit$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
 	@echo "Using PREFIX=$(PREFIX64)"
 	git submodule update --init --recursive
@@ -150,6 +163,9 @@ dist-pi5: DIST_DIR=dist64
 dist-pi5: check-vars kernel clean-dist
 	@echo "Creating distribution package for Raspberry Pi 5..."
 	@$(MAKE) RASPPI=5 ARCH=64 DIST_DIR=dist64 dist-single
+	cp src/kernel*.img $(DIST_DIR)/
+	@$(MAKE) dist-files
+
 
 dist-files:
 	@echo "Creating distribution package..."
@@ -246,7 +262,17 @@ multi-arch: clean-dist
 	done
 	@$(MAKE) dist-files
 
+multi-arch64: clean-dist
+	@for arch in $(SUPPORTED_RASPPI64); do \
+		echo "Building for RASPPI=$$arch$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
+		$(MAKE) RASPPI=$$arch DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; \
+		cp src/kernel*.img $(DIST_DIR)/ 2>/dev/null || true; \
+	done
+	@$(MAKE) dist-files
+
 package: multi-arch
+
+package64: multi-arch64
 
 release: 
 	@if [ -z "$(BUILD_NUMBER)" ]; then \
