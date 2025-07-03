@@ -8,6 +8,7 @@ DEBUG_CONFIGURE_FLAGS = $(if $(DEBUG_FLAGS),$(addprefix -d ,$(DEBUG_FLAGS)))
 DIST_DIR = dist
 BASE_VERSION = $(shell cat version.txt | head -n 1 | tr -d '\n\r')
 BUILD_NUMBER ?= 
+ARCH ?= 32
 BUILD_VERSION = $(if $(BUILD_NUMBER),$(BASE_VERSION)-$(BUILD_NUMBER),$(BASE_VERSION))
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -17,6 +18,11 @@ BUILD_CONF = $(HOME)/build-usbode.conf
 PREFIX := $(shell \
 	if [ -f "$(BUILD_CONF)" ]; then \
 		grep '^PathPrefix=' "$(BUILD_CONF)" 2>/dev/null | cut -d'=' -f2; \
+	fi \
+)
+PREFIX64 := $(shell \
+	if [ -f "$(BUILD_CONF)" ]; then \
+		grep '^PathPrefix64=' "$(BUILD_CONF)" 2>/dev/null | cut -d'=' -f2; \
 	fi \
 )
 SUPPORTED_RASPPI := $(shell \
@@ -31,7 +37,7 @@ endif
 RASPPI ?= $(if $(SUPPORTED_RASPPI),$(word 1,$(SUPPORTED_RASPPI)),1)
 # Fallback if empty
 ifeq ($(SUPPORTED_RASPPI),)
-SUPPORTED_RASPPI = 1 2 3
+SUPPORTED_RASPPI = 1 2 3 4
 endif
 #If BUILD_NUMBER is set, set it as the env var required for gitinfo.sh
 ifneq ($(BUILD_NUMBER),)
@@ -79,8 +85,17 @@ configure: check-vars check-config
 	mkdir -p build/circle-newlib && \
 	./configure -r $(RASPPI) --prefix "$(PREFIX)" $(DEBUG_CONFIGURE_FLAGS)
 
+configure64: check-config
+	@echo "Configuring for RASPPI=$(RASPPI) 64-bit$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
+	@echo "Using PREFIX=$(PREFIX64)"
+	git submodule update --init --recursive
+	cd $(STDLIBHOME) && \
+	rm -rf build && \
+	mkdir -p build/circle-newlib && \
+	./configure -r $(RASPPI) --prefix "$(PREFIX64)" $(DEBUG_CONFIGURE_FLAGS)
+
 # Build Circle stdlib
-circle-stdlib: configure
+circle-stdlib: $(if $(filter 64,$(ARCH)),configure64,configure)
 	@echo "Building Circle stdlib..."
 	cd $(STDLIBHOME) && $(MAKE) clean && $(MAKE) all
 
@@ -130,6 +145,12 @@ dist-single: check-vars kernel clean-dist
 	# Call the existing dist target (without kernel dependency)
 	@$(MAKE) dist-files
 
+dist-pi5: ARCH=64
+dist-pi5: DIST_DIR=dist64
+dist-pi5: check-vars kernel clean-dist
+	@echo "Creating distribution package for Raspberry Pi 5..."
+	@$(MAKE) RASPPI=5 ARCH=64 DIST_DIR=dist64 dist-single
+
 dist-files:
 	@echo "Creating distribution package..."
 	@echo "Platform Specific Builds Complete Successfully, copying general files to $(DIST_DIR)"
@@ -178,8 +199,7 @@ dist-files:
 	cp $(CIRCLEHOME)/boot/COPYING.linux $(DIST_DIR)/firmware/
 
 	# Create config.txt (hardcoded to 32-bit for now)
-	cp $(CIRCLEHOME)/boot/config32.txt $(DIST_DIR)/config.txt
-	# Remove problematic lines from pi4 config.txt
+	cp $(CIRCLEHOME)/boot/config$(ARCH).txt $(DIST_DIR)/config.txt	# Remove problematic lines from pi4 config.txt
 	sed -i.bak -e 's/^\(armstub=armstub7-rpi4\.bin\)/#\1/' -e 's/^\(max_framebuffers=2\)/#\1/' $(DIST_DIR)/config.txt && rm $(DIST_DIR)/config.txt.bak
 	cat sdcard/config-usbode.txt >> $(DIST_DIR)/config.txt
 	cp sdcard/config-options.txt $(DIST_DIR)/
