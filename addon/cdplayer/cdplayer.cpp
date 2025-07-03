@@ -42,7 +42,7 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
     Initialize();
 }
 
-boolean CCDPlayer::SetDevice(CDevice *pBinFileDevice) {
+boolean CCDPlayer::SetDevice(ICueDevice *pBinFileDevice) {
     LOGNOTE("CD Player setting device");
     state = NONE;
     address = 0;

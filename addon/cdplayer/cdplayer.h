@@ -35,6 +35,7 @@
 #include <circle/util.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
+#include <discimage/cuebinfile.h>
 
 #define SECTOR_SIZE 2352
 #define BATCH_SIZE 16 
@@ -59,7 +60,7 @@ class CCDPlayer : public CTask {
     CCDPlayer(const char *pSoundDevice);
     ~CCDPlayer(void);
     boolean Initialize();
-    boolean SetDevice(CDevice *pBinFileDevice);
+    boolean SetDevice(ICueDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();
     boolean SetVolume(u8 vol);
