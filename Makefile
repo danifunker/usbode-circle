@@ -19,19 +19,43 @@ PREFIX := $(shell \
 		grep '^PathPrefix=' "$(BUILD_CONF)" 2>/dev/null | cut -d'=' -f2; \
 	fi \
 )
+PREFIX64 := $(shell \
+	if [ -f "$(BUILD_CONF)" ]; then \
+		grep '^PathPrefix64=' "$(BUILD_CONF)" 2>/dev/null | cut -d'=' -f2; \
+	fi \
+)
 SUPPORTED_RASPPI := $(shell \
 	if [ -f "$(BUILD_CONF)" ]; then \
 		grep '^supported_rasppi=' "$(BUILD_CONF)" 2>/dev/null | sed 's/supported_rasppi=(//' | sed 's/)//'; \
+	fi \
+)
+SUPPORTED_RASPPI_64 := $(shell \
+	if [ -f "$(BUILD_CONF)" ]; then \
+		grep '^supported_rasppi_64=' "$(BUILD_CONF)" 2>/dev/null | sed 's/supported_rasppi_64=(//' | sed 's/)//'; \
 	fi \
 )
 # Fallback if PREFIX is empty
 ifeq ($(PREFIX),)
 PREFIX = arm-none-eabi-
 endif
-RASPPI ?= $(if $(SUPPORTED_RASPPI),$(word 1,$(SUPPORTED_RASPPI)),1)
+# Fallback if PREFIX64 is empty
+ifeq ($(PREFIX64),)
+PREFIX64 = aarch64-none-elf-
+endif
+# Determine architecture mode
+ARCH_MODE ?= 32
+CURRENT_PREFIX = $(if $(filter 64,$(ARCH_MODE)),$(PREFIX64),$(PREFIX))
+CURRENT_SUPPORTED = $(if $(filter 64,$(ARCH_MODE)),$(SUPPORTED_RASPPI_64),$(SUPPORTED_RASPPI))
+CURRENT_DIST_DIR = $(if $(filter 64,$(ARCH_MODE)),$(DIST_DIR)64,$(DIST_DIR))
+CURRENT_ZIP_NAME = $(if $(filter 64,$(ARCH_MODE)),usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)-64bit.zip,$(ZIP_NAME))
+
+RASPPI ?= $(if $(CURRENT_SUPPORTED),$(word 1,$(CURRENT_SUPPORTED)),1)
 # Fallback if empty
 ifeq ($(SUPPORTED_RASPPI),)
-SUPPORTED_RASPPI = 1 2 3
+SUPPORTED_RASPPI = 1 2 3 4
+endif
+ifeq ($(SUPPORTED_RASPPI_64),)
+SUPPORTED_RASPPI_64 = 4
 endif
 #If BUILD_NUMBER is set, set it as the env var required for gitinfo.sh
 ifneq ($(BUILD_NUMBER),)
@@ -52,7 +76,7 @@ USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0
 .PHONY: all clean-all clean-dist check-config check-vars configure circle-stdlib\
 	 circle-deps circle-addons usbode-addons kernel dist-files
 .PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS) dist-single multi-arch package release\
-	 show-build-info rebuild show-config
+	 show-build-info rebuild show-config all-32 all-64 multi-arch-64 package-both
 
 all: clean-all clean-dist configure circle-deps circle-addons usbode-addons kernel dist-files
 
@@ -66,18 +90,18 @@ check-config:
 	@if [ ! -f "$(BUILD_CONF)" ]; then \
 		echo "Warning: $(BUILD_CONF) not found, using default PREFIX=$(PREFIX)"; \
 	else \
-		echo "Using PREFIX=$(PREFIX) from $(BUILD_CONF)"; \
+		echo "Using PREFIX=$(CURRENT_PREFIX) from $(BUILD_CONF) ($(ARCH_MODE)-bit mode)"; \
 	fi
 
 # Configure Circle for target architecture
 configure: check-vars check-config
-	@echo "Configuring for RASPPI=$(RASPPI)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
-	@echo "Using PREFIX=$(PREFIX)"
+	@echo "Configuring for RASPPI=$(RASPPI) ($(ARCH_MODE)-bit mode)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
+	@echo "Using PREFIX=$(CURRENT_PREFIX)"
 	git submodule update --init --recursive
 	cd $(STDLIBHOME) && \
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
-	./configure -r $(RASPPI) --prefix "$(PREFIX)" $(DEBUG_CONFIGURE_FLAGS)
+	./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS)
 
 # Build Circle stdlib
 circle-stdlib: configure
@@ -122,109 +146,151 @@ kernel: usbode-addons
 	cd src && $(MAKE) clean && $(MAKE)
 
 dist-single: check-vars kernel clean-dist
-	@echo "Creating single-architecture distribution package for RASPPI=$(RASPPI)..."
+	@echo "Creating single-architecture distribution package for RASPPI=$(RASPPI) ($(ARCH_MODE)-bit)..."
 	
 	# Copy kernel files for current RASPPI architecture
-	cp src/kernel*.img $(DIST_DIR)/
+	cp src/kernel*.img $(CURRENT_DIST_DIR)/
 	
 	# Call the existing dist target (without kernel dependency)
-	@$(MAKE) dist-files
+	@$(MAKE) dist-files ARCH_MODE=$(ARCH_MODE)
 
 dist-files:
-	@echo "Creating distribution package..."
-	@echo "Platform Specific Builds Complete Successfully, copying general files to $(DIST_DIR)"
-	@mkdir -p $(DIST_DIR)
+	@echo "Creating distribution package ($(ARCH_MODE)-bit)..."
+	@echo "Platform Specific Builds Complete Successfully, copying general files to $(CURRENT_DIST_DIR)"
+	@mkdir -p $(CURRENT_DIST_DIR)
 	# Copy configuration files
-	cp sdcard/wpa_supplicant.conf $(DIST_DIR)/
-	cp sdcard/cmdline.txt $(DIST_DIR)/
+	cp sdcard/wpa_supplicant.conf $(CURRENT_DIST_DIR)/
+	cp sdcard/cmdline.txt $(CURRENT_DIST_DIR)/
 	
 	# Create and populate images directory
-	mkdir -p $(DIST_DIR)/images
-	cp sdcard/image.iso.gz $(DIST_DIR)/images/
-	gunzip $(DIST_DIR)/images/image.iso.gz
+	mkdir -p $(CURRENT_DIST_DIR)/images
+	cp sdcard/image.iso.gz $(CURRENT_DIST_DIR)/images/
+	gunzip $(CURRENT_DIST_DIR)/images/image.iso.gz
 	
 	# Create and populate system directory
-	mkdir -p $(DIST_DIR)/system
-	cp sdcard/test.pcm.gz $(DIST_DIR)/system/
-	gunzip $(DIST_DIR)/system/test.pcm.gz
+	mkdir -p $(CURRENT_DIST_DIR)/system
+	cp sdcard/test.pcm.gz $(CURRENT_DIST_DIR)/system/
+	gunzip $(CURRENT_DIST_DIR)/system/test.pcm.gz
 	
 	# Create firmware directory
-	mkdir -p $(DIST_DIR)/firmware
+	mkdir -p $(CURRENT_DIST_DIR)/firmware
 	
 	# Convert CHD files if chdman is available
 	@if command -v chdman >/dev/null 2>&1; then \
 		echo "Using chdman to convert CHD files"; \
-		chdman extractcd -i sdcard/usbode-audio-test.chd -o $(DIST_DIR)/images/usbode-audio-sampler.cue; \
+		chdman extractcd -i sdcard/usbode-audio-test.chd -o $(CURRENT_DIST_DIR)/images/usbode-audio-sampler.cue; \
 	else \
 		echo "chdman not found, skipping CHD conversion"; \
 	fi
 	
 	# Copy firmware files
-	cp $(CIRCLEHOME)/addon/wlan/firmware/* $(DIST_DIR)/firmware/
-	rm -f $(DIST_DIR)/firmware/Makefile
+	cp $(CIRCLEHOME)/addon/wlan/firmware/* $(CURRENT_DIST_DIR)/firmware/
+	rm -f $(CURRENT_DIST_DIR)/firmware/Makefile
 	
 	# Copy boot files
-	mkdir -p $(DIST_DIR)/overlays
-	cp $(CIRCLEHOME)/boot/bootcode.bin $(DIST_DIR)/
+	mkdir -p $(CURRENT_DIST_DIR)/overlays
+	cp $(CIRCLEHOME)/boot/bootcode.bin $(CURRENT_DIST_DIR)/
 	@for f in start.elf start4.elf; do \
-        if [ -f "$(CIRCLEHOME)/boot/$$f" ]; then cp "$(CIRCLEHOME)/boot/$$f" $(DIST_DIR)/; fi; \
-    done
+		if [ -f "$(CIRCLEHOME)/boot/$$f" ]; then cp "$(CIRCLEHOME)/boot/$$f" $(CURRENT_DIST_DIR)/; fi; \
+	done
 	@for f in fixup.dat fixup4.dat; do \
-        if [ -f "$(CIRCLEHOME)/boot/$$f" ]; then cp "$(CIRCLEHOME)/boot/$$f" $(DIST_DIR)/; fi; \
-    done
-	cp $(CIRCLEHOME)/boot/bcm*.dtb $(DIST_DIR)/
-	cp $(CIRCLEHOME)/boot/bcm*.dtbo $(DIST_DIR)/overlays
-	cp $(CIRCLEHOME)/boot/LICENCE.broadcom $(DIST_DIR)/
-	cp $(CIRCLEHOME)/boot/COPYING.linux $(DIST_DIR)/firmware/
+		if [ -f "$(CIRCLEHOME)/boot/$$f" ]; then cp "$(CIRCLEHOME)/boot/$$f" $(CURRENT_DIST_DIR)/; fi; \
+	done
+	cp $(CIRCLEHOME)/boot/bcm*.dtb $(CURRENT_DIST_DIR)/
+	cp $(CIRCLEHOME)/boot/bcm*.dtbo $(CURRENT_DIST_DIR)/overlays
+	cp $(CIRCLEHOME)/boot/LICENCE.broadcom $(CURRENT_DIST_DIR)/
+	cp $(CIRCLEHOME)/boot/COPYING.linux $(CURRENT_DIST_DIR)/firmware/
 
-	# Create config.txt (hardcoded to 32-bit for now)
-	cp $(CIRCLEHOME)/boot/config32.txt $(DIST_DIR)/config.txt
+	# Create config.txt based on architecture
+	@if [ "$(ARCH_MODE)" = "64" ]; then \
+		echo "Using 64-bit config"; \
+		cp $(CIRCLEHOME)/boot/config64.txt $(CURRENT_DIST_DIR)/config.txt; \
+	else \
+		echo "Using 32-bit config"; \
+		cp $(CIRCLEHOME)/boot/config32.txt $(CURRENT_DIST_DIR)/config.txt; \
+	fi
 	# Remove problematic lines from pi4 config.txt
-	sed -i.bak -e 's/^\(armstub=armstub7-rpi4\.bin\)/#\1/' -e 's/^\(max_framebuffers=2\)/#\1/' $(DIST_DIR)/config.txt && rm $(DIST_DIR)/config.txt.bak
-	cat sdcard/config-usbode.txt >> $(DIST_DIR)/config.txt
-	cp sdcard/config-options.txt $(DIST_DIR)/
-	cp sdcard/cmdline.txt $(DIST_DIR)/
+	sed -i.bak -e 's/^\(armstub=armstub7-rpi4\.bin\)/#\1/' -e 's/^\(max_framebuffers=2\)/#\1/' $(CURRENT_DIST_DIR)/config.txt && rm $(CURRENT_DIST_DIR)/config.txt.bak
+	cat sdcard/config-usbode.txt >> $(CURRENT_DIST_DIR)/config.txt
+	cp sdcard/config-options.txt $(CURRENT_DIST_DIR)/
+	cp sdcard/cmdline.txt $(CURRENT_DIST_DIR)/
 	
 	# Create zip file
-	@echo "Creating $(ZIP_NAME)..."
-	@cd $(DIST_DIR) && zip -r ../$(ZIP_NAME) ./*
-	@echo "Built $(ZIP_NAME). Copy the contents of the zip file to a freshly formatted SDCard (FAT32 or EXFAT) and try the build!"
+	@echo "Creating $(CURRENT_ZIP_NAME)..."
+	@cd $(CURRENT_DIST_DIR) && zip -r ../$(CURRENT_ZIP_NAME) ./*
+	@echo "Built $(CURRENT_ZIP_NAME). Copy the contents of the zip file to a freshly formatted SDCard (FAT32 or EXFAT) and try the build!"
 
 # Clean everything
 clean-all:
 	@echo "Cleaning all modules..."
-	@rm -rf $(DIST_DIR)
+	@rm -rf $(DIST_DIR) $(DIST_DIR)64
 	@rm -f usbode*.zip
-	@cd src && $(MAKE) clean || true
+	@cd src && $(MAKE) clean
 	@for module in $(USBODE_ADDONS); do \
 		echo "Cleaning addon/$$module"; \
-		cd addon/$$module && $(MAKE) clean || true; \
+		cd addon/$$module && $(MAKE) clean; \
 		cd ../..; \
 	done
 	@for addon in $(CIRCLE_ADDONS); do \
 		echo "Cleaning $(CIRCLEHOME)/addon/$$addon"; \
-		cd $(CIRCLEHOME)/addon/$$addon && $(MAKE) clean || true; \
+		cd $(CIRCLEHOME)/addon/$$addon && $(MAKE) clean; \
 	done
-	@cd $(STDLIBHOME) && $(MAKE) clean || true
+	@cd $(STDLIBHOME) && $(MAKE) clean
 
 # Override Circle's clean to call our clean-all
 clean: clean-all
 
 # Clean distribution files and prepare fresh dist directory
 clean-dist:
-	@echo "Cleaning distribution directory..."
-	@rm -rf $(DIST_DIR)
-	@rm -f usbode*.zip
-	@mkdir -p $(DIST_DIR)
+	@echo "Cleaning distribution directory ($(ARCH_MODE)-bit)..."
+	@rm -rf $(CURRENT_DIST_DIR)
+	@rm -f $(CURRENT_ZIP_NAME)
+	@mkdir -p $(CURRENT_DIST_DIR)
 
-# Multi-architecture build (matches your build script)
+# 32-bit specific targets
+all-32: 
+	@$(MAKE) multi-arch ARCH_MODE=32
+
+# 64-bit specific targets  
+all-64: 
+	@$(MAKE) multi-arch-64 ARCH_MODE=64
+
+# Multi-architecture build for 32-bit
 multi-arch: clean-dist
 	@for arch in $(SUPPORTED_RASPPI); do \
-		echo "Building for RASPPI=$$arch$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
-		$(MAKE) RASPPI=$$arch DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; \
-		cp src/kernel*.img $(DIST_DIR)/ 2>/dev/null || true; \
+		echo "Building for RASPPI=$$arch (32-bit)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
+		if ! $(MAKE) RASPPI=$$arch ARCH_MODE=32 DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; then \
+			echo "ERROR: Build failed for RASPPI=$$arch (32-bit)"; \
+			exit 1; \
+		fi; \
+		if ! cp src/kernel*.img $(CURRENT_DIST_DIR)/; then \
+			echo "ERROR: Failed to copy kernel files for RASPPI=$$arch (32-bit)"; \
+			exit 1; \
+		fi; \
 	done
-	@$(MAKE) dist-files
+	@$(MAKE) dist-files ARCH_MODE=32
+
+# Multi-architecture build for 64-bit
+multi-arch-64: 
+	@$(MAKE) clean-dist ARCH_MODE=64
+	@for arch in $(SUPPORTED_RASPPI_64); do \
+		echo "Building for RASPPI=$$arch (64-bit)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
+		if ! $(MAKE) RASPPI=$$arch ARCH_MODE=64 DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; then \
+			echo "ERROR: Build failed for RASPPI=$$arch (64-bit)"; \
+			exit 1; \
+		fi; \
+		if ! cp src/kernel*.img $(CURRENT_DIST_DIR)/; then \
+			echo "ERROR: Failed to copy kernel files for RASPPI=$$arch (64-bit)"; \
+			exit 1; \
+		fi; \
+	done
+	@$(MAKE) dist-files ARCH_MODE=64
+
+# Build both 32-bit and 64-bit packages
+package-both: 
+	@echo "Building both 32-bit and 64-bit packages..."
+	@$(MAKE) multi-arch
+	@$(MAKE) multi-arch-64
 
 package: multi-arch
 
@@ -233,7 +299,7 @@ release:
 		echo "Error: BUILD_NUMBER not set. Use: make release BUILD_NUMBER=123"; \
 		exit 1; \
 	fi
-	@$(MAKE) multi-arch BUILD_NUMBER="$(BUILD_NUMBER)"
+	@$(MAKE) package BUILD_NUMBER="$(BUILD_NUMBER)"
 
 show-build-info:
 	@echo "BASE_VERSION = $(BASE_VERSION)"
@@ -249,10 +315,16 @@ rebuild: clean-all all
 
 # Show what we're building
 show-config:
+	@echo "Current ARCH_MODE = $(ARCH_MODE)"
 	@echo "Current RASPPI = $(RASPPI)"
 	@echo "SUPPORTED_RASPPI = $(SUPPORTED_RASPPI)"
+	@echo "SUPPORTED_RASPPI_64 = $(SUPPORTED_RASPPI_64)"
 	@echo "PREFIX = $(PREFIX)"
+	@echo "PREFIX64 = $(PREFIX64)"
+	@echo "CURRENT_PREFIX = $(CURRENT_PREFIX)"
 	@echo "DEBUG_FLAGS = $(DEBUG_FLAGS)"
 	@echo "CIRCLE_ADDONS = $(CIRCLE_ADDONS)"
 	@echo "USBODE_ADDONS = $(USBODE_ADDONS)"
 	@echo "USBCDGADGET_CPPFLAGS = $(USBCDGADGET_CPPFLAGS)"
+	@echo "CURRENT_DIST_DIR = $(CURRENT_DIST_DIR)"
+	@echo "CURRENT_ZIP_NAME = $(CURRENT_ZIP_NAME)"
