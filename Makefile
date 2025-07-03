@@ -315,7 +315,7 @@ package-both:
 	@$(MAKE) multi-arch
 	@$(MAKE) multi-arch-64
 
-package: multi-arch
+package: package-both
 
 release: 
 	@if [ -z "$(BUILD_NUMBER)" ]; then \

@@ -20,7 +20,7 @@ jobs:
     - name: Get filename
       id: get-filename
       run: |
-        FILENAME_FULL=$(ls usbode*.zip | xargs basename)
+        FILENAME_FULL=$(ls usbode*.zip | grep -v -- '-64bit.zip' | xargs basename)
         FILENAME=${FILENAME_FULL%.zip}
         echo "Found file: $FILENAME"
         echo "filename=$FILENAME" >> $GITHUB_OUTPUT
@@ -36,6 +36,17 @@ jobs:
         overwrite: true
         include-hidden-files: false
 
+    - uses: actions/upload-artifact@v4
+      with:
+        # Using the extracted filename as the artifact name
+        name: ${{ steps.get-filename.outputs.filename }}-64bit
+        path: dist64/*
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false
+
     - name: Create Release (on main only)
       if: github.ref == 'refs/heads/main'
       id: create-release
@@ -43,7 +54,9 @@ jobs:
       with:
         tag_name: build-${{ github.run_number }}
         name: USBODE build-${{ github.run_number }}
-        files: ${{ steps.get-filename.outputs.filename }}.zip
+        files: | 
+          ${{ steps.get-filename.outputs.filename }}.zip
+          ${{ steps.get-filename.outputs.filename }}-64bit.zip
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
