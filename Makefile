@@ -49,6 +49,15 @@ CURRENT_SUPPORTED = $(if $(filter 64,$(ARCH_MODE)),$(SUPPORTED_RASPPI_64),$(SUPP
 CURRENT_DIST_DIR = $(if $(filter 64,$(ARCH_MODE)),$(DIST_DIR)64,$(DIST_DIR))
 CURRENT_ZIP_NAME = $(if $(filter 64,$(ARCH_MODE)),usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)-64bit.zip,$(ZIP_NAME))
 
+# Global C++ flags for Circle configuration
+GLOBAL_CPPFLAGS = -DKERNEL_MAX_SIZE=0x400000 \
+                  -DSCREEN_HEADLESS \
+                  -DUSE_USB_FIQ \
+                  -DREALTIME
+
+# Export for submodules
+export EXTRA_CPPFLAGS += $(GLOBAL_CPPFLAGS)
+
 RASPPI ?= $(if $(CURRENT_SUPPORTED),$(word 1,$(CURRENT_SUPPORTED)),1)
 # Fallback if empty
 ifeq ($(SUPPORTED_RASPPI),)
