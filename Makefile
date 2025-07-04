@@ -117,7 +117,7 @@ configure: check-vars check-config
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
 	if [ "$(RASPPI)" = "4" ]; then \
-		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o USE_USB_FIQ -o REALTIME; \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o USE_USB_FIQ; \
 	else \
 		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o USE_USB_FIQ; \
 	fi
