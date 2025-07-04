@@ -245,7 +245,9 @@ dist-files:
 		cp $(CIRCLEHOME)/boot/config32.txt $(CURRENT_DIST_DIR)/config.txt; \
 	fi
 	# Remove problematic lines from pi4 config.txt
-	sed -i.bak -e 's/^\(armstub=armstub7-rpi4\.bin\)/#\1/' -e 's/^\(max_framebuffers=2\)/#\1/' $(CURRENT_DIST_DIR)/config.txt && rm $(CURRENT_DIST_DIR)/config.txt.bak
+	sed -i.bak -e 's/^\(max_framebuffers=2\)/#\1/' $(CURRENT_DIST_DIR)/config.txt && rm $(CURRENT_DIST_DIR)/config.txt.bak
+	# Remove problematic [pi3+] section from config.txt
+	sed -i.bak '/^\[pi3+\]$$/,/^kernel=kernel8\.img$$/{/^$$/d; d;}' $(CURRENT_DIST_DIR)/config.txt && rm $(CURRENT_DIST_DIR)/config.txt.bak
 	cat sdcard/config-usbode.txt >> $(CURRENT_DIST_DIR)/config.txt
 	cp sdcard/config-options.txt $(CURRENT_DIST_DIR)/
 	cp sdcard/cmdline.txt $(CURRENT_DIST_DIR)/
