@@ -116,12 +116,11 @@ configure: check-vars check-config
 	cd $(STDLIBHOME) && \
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
-	./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS)
-    # Add global C++ flags to Circle's Config.mk
-	@echo "DEFINE += -DKERNEL_MAX_SIZE=0x400000" >> $(CIRCLEHOME)/Config.mk
-	@echo "DEFINE += -DSCREEN_HEADLESS" >> $(CIRCLEHOME)/Config.mk
-	@echo "DEFINE += -DUSE_USB_FIQ" >> $(CIRCLEHOME)/Config.mk
-	@echo "DEFINE += -DREALTIME" >> $(CIRCLEHOME)/Config.mk	
+	if [ "$(RASPPI)" = "4" ]; then \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o USE_USB_FIQ -o REALTIME; \
+	else \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o USE_USB_FIQ -o REALTIME; \
+	fi
 
 # Build Circle stdlib
 circle-stdlib: configure
