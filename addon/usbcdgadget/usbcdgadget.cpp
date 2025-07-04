@@ -652,12 +652,14 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
 		// Mode Select (10), Volume is 255,0
 		// Mode Select (10), Volume is 74,255
 		// Mode Select (10), Volume is 255,74
-		// So, we'll pick Output1Volume which is the last one it sets to a
-		// sensible value. Other games seem to set Output0Volume and Output1Volume
-		// the same so we should remain compatible
+		// So, we'll pick the minimum of the two
 
             	MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume"); 
-                cdplayer->SetVolume(modePage->Output1Volume);
+		cdplayer->SetVolume(
+		    modePage->Output0Volume < modePage->Output1Volume
+			? modePage->Output0Volume
+			: modePage->Output1Volume
+		);
             } else {
             	MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Couldn't get CDPlayer");
 	    }
