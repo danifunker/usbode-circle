@@ -1,0 +1,16 @@
+diff --git a/configure b/configure
+index c0d963a..8683448 100755
+--- a/configure
++++ b/configure
+@@ -200,9 +200,9 @@ export \
+
+ if [ $DEBUG -eq 1 ]
+ then
+-    CFLAGS_FOR_TARGET="$ARCH -DRASPPI=$RASPBERRYPI $OPTIONS -O0 -g -Wno-parentheses"
++    CFLAGS_FOR_TARGET="$ARCH -DRASPPI=$RASPBERRYPI $OPTIONS -O0 -g -Wno-parentheses -Wno-implicit-function-declaration"
+ else
+-    CFLAGS_FOR_TARGET="$ARCH -DRASPPI=$RASPBERRYPI $OPTIONS -Wno-parentheses"
++    CFLAGS_FOR_TARGET="$ARCH -DRASPPI=$RASPBERRYPI $OPTIONS -Wno-parentheses -Wno-implicit-function-declaration"
+ fi
+ export CFLAGS_FOR_TARGET
+

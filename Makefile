@@ -155,6 +155,14 @@ $(filter-out usbcdgadget,$(USBODE_ADDONS)): circle-addons
 	@echo "Building USBODE addon: $@"
 	cd addon/$@ && $(MAKE) clean && $(MAKE)
 
+armstub:
+	@echo "Building armstub for Raspberry Pi 4 ($(ARCH_MODE)-bit)..."
+	cd $(CIRCLEHOME) && ./configure -r 4 -f -p $(PREFIX)
+	cd $(CIRCLEHOME)/boot/armstub && $(MAKE) clean
+	echo PREFIX64=$(PREFIX64) >> $(CIRCLEHOME)/Config.mk
+	cd $(CIRCLEHOME)/boot/armstub && $(MAKE)
+	@echo "armstub build complete."
+
 # Build final kernel
 kernel: usbode-addons
 	@echo "Building final kernel..."
@@ -165,7 +173,19 @@ dist-single: check-vars kernel clean-dist
 	
 	# Copy kernel files for current RASPPI architecture
 	cp src/kernel*.img $(CURRENT_DIST_DIR)/
-	
+
+	@if [ "$(RASPPI)" = "4" ]; then \
+		echo "Building armstub for Raspberry Pi 4 ($(ARCH_MODE)-bit)..."; \
+		cd $(CIRCLEHOME); \
+		./configure -r 4 -p $(CURRENT_PREFIX) -f; \
+		cd boot/armstub && $(MAKE) clean; \
+		$(MAKE); \
+		cd ../../../../../; \
+		cp $(CIRCLEHOME)/boot/armstub/armstub*.bin $(CURRENT_DIST_DIR)/; \
+	else \
+		echo "No specific armstub build for RASPPI=$(RASPPI) ($(ARCH_MODE)-bit), skipping armstub copy";\
+	fi
+
 	# Call the existing dist target (without kernel dependency)
 	@$(MAKE) dist-files ARCH_MODE=$(ARCH_MODE)
 
@@ -225,7 +245,9 @@ dist-files:
 		cp $(CIRCLEHOME)/boot/config32.txt $(CURRENT_DIST_DIR)/config.txt; \
 	fi
 	# Remove problematic lines from pi4 config.txt
-	sed -i.bak -e 's/^\(armstub=armstub7-rpi4\.bin\)/#\1/' -e 's/^\(max_framebuffers=2\)/#\1/' $(CURRENT_DIST_DIR)/config.txt && rm $(CURRENT_DIST_DIR)/config.txt.bak
+	sed -i.bak -e 's/^\(max_framebuffers=2\)/#\1/' $(CURRENT_DIST_DIR)/config.txt && rm $(CURRENT_DIST_DIR)/config.txt.bak
+	# Remove problematic [pi3+] section from config.txt
+	sed -i.bak '/^\[pi3+\]$$/,/^kernel=kernel8\.img$$/{/^$$/d; d;}' $(CURRENT_DIST_DIR)/config.txt && rm $(CURRENT_DIST_DIR)/config.txt.bak
 	cat sdcard/config-usbode.txt >> $(CURRENT_DIST_DIR)/config.txt
 	cp sdcard/config-options.txt $(CURRENT_DIST_DIR)/
 	cp sdcard/cmdline.txt $(CURRENT_DIST_DIR)/
@@ -242,13 +264,21 @@ clean-all:
 	@rm -f usbode*.zip
 	@cd src && $(MAKE) clean
 	@for module in $(USBODE_ADDONS); do \
-		echo "Cleaning addon/$$module"; \
-		cd addon/$$module && $(MAKE) clean; \
-		cd ../..; \
+		 echo "Cleaning addon/$$module"; \
+		 cd addon/$$module && $(MAKE) clean; \
+		 cd ../..; \
 	done
 	@for addon in $(CIRCLE_ADDONS); do \
-		echo "Cleaning $(CIRCLEHOME)/addon/$$addon"; \
-		cd $(CIRCLEHOME)/addon/$$addon && $(MAKE) clean; \
+	echo "Cleaning $(CIRCLEHOME)/addon/$$addon"; \
+	echo "Current Folder is: $$(pwd)"; \
+	if [ -d "$(CIRCLEHOME)/addon/$$addon" ]; then \
+		 echo "Directory exists: $(CIRCLEHOME)/addon/$$addon"; \
+		 cd "$(CIRCLEHOME)/addon/$$addon" && $(MAKE) clean; \
+	else \
+		 echo "Directory missing: $(CIRCLEHOME)/addon/$$addon"; \
+		 ls -l "$(CIRCLEHOME)/addon/"; \
+	fi; \
+	cd ../..; \
 	done
 	@cd $(STDLIBHOME) && $(MAKE) clean
 
@@ -282,12 +312,15 @@ multi-arch: clean-dist
 			echo "ERROR: Failed to copy kernel files for RASPPI=$$arch (32-bit)"; \
 			exit 1; \
 		fi; \
+		if [ -f "$(CIRCLEHOME)/boot/armstub/armstub7-rpi4.bin" ]; then \
+			echo "Copying armstub7-rpi4.bin for RASPPI=$$arch (32-bit)"; \
+			cp $(CIRCLEHOME)/boot/armstub/armstub7-rpi4.bin $(CURRENT_DIST_DIR)/; \
+		fi; \
 	done
-	@$(MAKE) dist-files ARCH_MODE=32
+	@$(MAKE) dist-files ARCH_MODE=32 CURRENT_DIST_DIR=dist
 
 # Multi-architecture build for 64-bit
-multi-arch-64: 
-	@$(MAKE) clean-dist ARCH_MODE=64
+multi-arch-64: clean-dist
 	@for arch in $(SUPPORTED_RASPPI_64); do \
 		echo "Building for RASPPI=$$arch (64-bit)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
 		if ! $(MAKE) RASPPI=$$arch ARCH_MODE=64 DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; then \
@@ -298,16 +331,20 @@ multi-arch-64:
 			echo "ERROR: Failed to copy kernel files for RASPPI=$$arch (64-bit)"; \
 			exit 1; \
 		fi; \
+		if [ -f "$(CIRCLEHOME)/boot/armstub/armstub8-rpi4.bin" ]; then \
+			echo "Copying armstub8-rpi4.bin for RASPPI=$$arch (64-bit)"; \
+			cp $(CIRCLEHOME)/boot/armstub/armstub8-rpi4.bin $(CURRENT_DIST_DIR)/; \
+		fi; \
 	done
 	@$(MAKE) dist-files ARCH_MODE=64
 
 # Build both 32-bit and 64-bit packages
-package-both: 
+package-both: armstub
 	@echo "Building both 32-bit and 64-bit packages..."
-	@$(MAKE) multi-arch
-	@$(MAKE) multi-arch-64
+	@$(MAKE) multi-arch ARCH_MODE=32 CURRENT_DIST_DIR=dist
+	@$(MAKE) multi-arch-64 ARCH_MODE=64 CURRENT_DIST_DIR=dist64
 
-package: multi-arch
+package: package-both
 
 release: 
 	@if [ -z "$(BUILD_NUMBER)" ]; then \
