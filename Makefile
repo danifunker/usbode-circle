@@ -291,11 +291,10 @@ multi-arch: clean-dist
 			exit 1; \
 		fi; \
 	done
-	@$(MAKE) dist-files ARCH_MODE=32
+	@$(MAKE) dist-files ARCH_MODE=32 CURRENT_DIST_DIR=dist
 
 # Multi-architecture build for 64-bit
-multi-arch-64: 
-	@$(MAKE) clean-dist ARCH_MODE=64
+multi-arch-64: clean-dist
 	@for arch in $(SUPPORTED_RASPPI_64); do \
 		echo "Building for RASPPI=$$arch (64-bit)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
 		if ! $(MAKE) RASPPI=$$arch ARCH_MODE=64 DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; then \
@@ -312,8 +311,8 @@ multi-arch-64:
 # Build both 32-bit and 64-bit packages
 package-both: 
 	@echo "Building both 32-bit and 64-bit packages..."
-	@$(MAKE) multi-arch
-	@$(MAKE) multi-arch-64
+	@$(MAKE) multi-arch ARCH_MODE=32 CURRENT_DIST_DIR=dist
+	@$(MAKE) multi-arch-64 ARCH_MODE=64 CURRENT_DIST_DIR=dist64
 
 package: package-both
 
