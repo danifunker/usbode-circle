@@ -157,7 +157,7 @@ $(filter-out usbcdgadget,$(USBODE_ADDONS)): circle-addons
 
 armstub:
 	@echo "Building armstub for Raspberry Pi 4 ($(ARCH_MODE)-bit)..."
-	cd $(CIRCLEHOME) && ./configure -r 4 -f
+	cd $(CIRCLEHOME) && ./configure -r 4 -f -p $(PREFIX)
 	cd $(CIRCLEHOME)/boot/armstub && $(MAKE) clean
 	echo PREFIX64=$(PREFIX64) >> $(CIRCLEHOME)/Config.mk
 	cd $(CIRCLEHOME)/boot/armstub && $(MAKE)
