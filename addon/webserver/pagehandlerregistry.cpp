@@ -12,6 +12,7 @@
 #include "handlers/modepage.h"
 #include "handlers/configpage.h"
 #include "handlers/logpage.h"
+#include "handlers/shutdownpage.h"
 #include "handlers/asset.h"
 
 // includes for your api handlers
@@ -27,6 +28,7 @@ static ModePageHandler s_modePageHandler;
 static ConfigPageHandler s_configPageHandler;
 static LogPageHandler s_logPageHandler;
 static AssetHandler s_assetHandler;
+static ShutdownPageHandler s_shutdownPageHandler;
 
 // instances of your API handlers
 static MountAPIHandler s_mountAPIHandler;
@@ -42,6 +44,8 @@ static const std::map<std::string, IPageHandler*> g_pageHandlers = {
     { "/switchmode", &s_modePageHandler },
     { "/config", &s_configPageHandler },
     { "/log", &s_logPageHandler },
+    { "/shutdown", &s_shutdownPageHandler },
+    { "/reboot", &s_shutdownPageHandler },
 
     // API
     { "/api/mount", &s_mountAPIHandler },

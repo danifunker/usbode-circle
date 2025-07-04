@@ -210,6 +210,7 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("Got mode = %d", mode);
 
     // TODO improve this to encompass the GUI
+    // TODO load this earlier
     const char* imageName = Properties.GetString("current_image", DEFAULT_IMAGE_FILENAME);
     if (mode == 0) { // CDROM Mode
 
@@ -228,7 +229,6 @@ TShutdownMode CKernel::Run(void) {
 
 	    // Initialize USB CD Service
 	    // TODO get USB speed from Properties
-	    // TODO allow UI to set USB speed
 	    new CDROMService();
 	    LOGNOTE("Started CDROM service");
 

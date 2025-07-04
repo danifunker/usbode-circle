@@ -53,7 +53,7 @@ void CDROMService::SetDevice(ICueDevice* pBinFileDevice) {
     // We defer initialization of the CD Gadget until the first CD image is loaded
     if (!isInitialized) {
 	bool ok = m_CDGadget->Initialize();
-	assert(ok == true && "Failed to initialize CD Gadget");
+	assert(ok && "Failed to initialize CD Gadget");
     	LOGNOTE("Initialized USB CD gadget");
 	isInitialized = true;
     }

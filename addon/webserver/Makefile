@@ -16,6 +16,7 @@ OBJS    = webserver.o \
 	handlers/modepage.o \
 	handlers/homepage.o \
 	handlers/configpage.o \
+	handlers/shutdownpage.o \
 	handlers/logpage.o \
 	handlers/asset.o \
 	handlers/mountapi.o \
@@ -39,6 +40,7 @@ handlers/mountpage.o: pages/mount.h
 handlers/modepage.o: pages/mode.h
 handlers/homepage.o: pages/index.h
 handlers/configpage.o: pages/config.h
+handlers/shutdownpage.o: pages/shutdown.h
 handlers/logpage.o: pages/log.h
 handlers/asset.o: assets/logo.h
 handlers/asset.o: assets/favicon.h
