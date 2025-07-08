@@ -47,8 +47,13 @@ CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str) {
 
 CCueBinFileDevice::~CCueBinFileDevice(void) {
     f_close(m_pFile);
-    if (m_cue_str != nullptr)
+    delete m_pFile;
+    m_pFile = nullptr;
+
+    if (m_cue_str != nullptr) {
         delete[] m_cue_str;
+        m_cue_str = nullptr;
+    }
 }
 
 int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
