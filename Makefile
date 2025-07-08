@@ -1,5 +1,5 @@
 # Configuration
-MAKEFLAGS += -j8 --quiet # Use all available CPU cores
+MAKEFLAGS += -j8 # Use all available CPU cores
 USBODEHOME = .
 STDLIBHOME = $(USBODEHOME)/circle-stdlib
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
@@ -116,12 +116,16 @@ configure: check-vars check-config
 	cd $(STDLIBHOME) && \
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
-	./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS)
+	if [ "$(RASPPI)" = "4" ]; then \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o USE_USB_FIQ ; \
+	else \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o USE_USB_FIQ; \
+	fi
 
 # Build Circle stdlib
 circle-stdlib: configure
 	@echo "Building Circle stdlib..."
-	cd $(STDLIBHOME) && $(MAKE) clean && $(MAKE) all
+	cd $(STDLIBHOME) && $(MAKE) clean && $(MAKE) all 
 
 # Handle Circle dependencies (firmware and boot files)
 circle-deps: circle-stdlib
@@ -166,7 +170,7 @@ armstub:
 # Build final kernel
 kernel: usbode-addons
 	@echo "Building final kernel..."
-	cd src && $(MAKE) clean && $(MAKE)
+	cd src && $(MAKE) clean && $(MAKE) V=1
 
 dist-single: check-vars kernel clean-dist
 	@echo "Creating single-architecture distribution package for RASPPI=$(RASPPI) ($(ARCH_MODE)-bit)..."
