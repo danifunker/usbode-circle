@@ -777,11 +777,13 @@ bool CFTPWorker::Store(const char* pArgs) {
     LOGDBG("Closing socket/file");
 #endif
     delete pDataSocket;
+     pDataSocket = nullptr;
+
     f_close(&File);
-    delete[] WriteBuffer;
 
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
-    svc->RefreshCache();
+    if (svc != nullptr)
+    	svc->RefreshCache();
 
     return true;
 }
