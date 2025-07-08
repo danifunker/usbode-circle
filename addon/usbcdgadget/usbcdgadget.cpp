@@ -77,8 +77,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             0                  // iInterface
         },
         {
@@ -116,8 +116,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             0                  // iInterface
         },
         {
