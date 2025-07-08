@@ -59,7 +59,6 @@ class CWebServer : public CHTTPDaemon {
                           const char **ppContentType);
 private:
     CActLED *m_pActLED;
-    u8 *m_pContentBuffer;  // Added content buffer as class member
     CPropertiesFatFsFile *m_pProperties;
     CDROMService *cdromservice = nullptr;
 

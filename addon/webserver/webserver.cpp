@@ -39,7 +39,6 @@ LOGMODULE("webserver");
 CWebServer::CWebServer (CNetSubSystem *pNetSubSystem, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket)
 :       CHTTPDaemon (pNetSubSystem, pSocket, MAX_CONTENT_SIZE),
         m_pActLED (pActLED),
-        m_pContentBuffer(new u8[MAX_CONTENT_SIZE]),
         m_pProperties(pProperties)
 {
     // Select the correct section for all property operations
@@ -52,7 +51,6 @@ CWebServer::CWebServer (CNetSubSystem *pNetSubSystem, CActLED *pActLED, CPropert
 CWebServer::~CWebServer (void)
 {
         m_pActLED = 0;
-        delete[] m_pContentBuffer;
 }
 
 CHTTPDaemon *CWebServer::CreateWorker (CNetSubSystem *pNetSubSystem, CSocket *pSocket)
