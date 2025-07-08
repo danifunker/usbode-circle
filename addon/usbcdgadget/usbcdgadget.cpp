@@ -67,7 +67,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             sizeof(TUSBMSTGadgetConfigurationDescriptor),
             1,  // bNumInterfaces
             1,
-            0,
+            4,               // iConfiguration (index 4)
             0x80,    // bmAttributes (bus-powered)
             2 / 2    // bMaxPower (2mA)
         },
@@ -79,7 +79,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             2,                 // bNumEndpoints
             0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
-            0                  // iInterface
+            5                  // iInterface (index 5)
         },
         {
             sizeof(TUSBEndpointDescriptor),
@@ -106,7 +106,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             sizeof(TUSBMSTGadgetConfigurationDescriptor),
             1,  // bNumInterfaces
             1,
-            0,
+            4,               // iConfiguration (index 4)
             0x80,    // bmAttributes (bus-powered)
             2 / 2    // bMaxPower (2mA)
         },
@@ -118,7 +118,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             2,                 // bNumEndpoints
             0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
-            0                  // iInterface
+            5                  // iInterface (index 5)
         },
         {
             sizeof(TUSBEndpointDescriptor),
@@ -142,7 +142,9 @@ const char* const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "\x04\x03\x09\x04",  // Language ID
         "USBODE",
         "USB Optical Disk Emulator",  // Product (index 2)
-        "USBODE00001"         // Template Serial Number (index 3) - will be replaced with hardware serial
+        "USBODE00001",         // Template Serial Number (index 3) - will be replaced with hardware serial
+        "Default Configuration",    // Configuration string (index 4)
+        "Mass Storage Interface"    // Interface string (index 5)
     };
 
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpeed, ICueDevice* pDevice)
@@ -173,7 +175,9 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpe
     m_StringDescriptor[0] = s_StringDescriptorTemplate[0];  // Language ID
     m_StringDescriptor[1] = s_StringDescriptorTemplate[1];  // Manufacturer
     m_StringDescriptor[2] = s_StringDescriptorTemplate[2];  // Product
-    m_StringDescriptor[3] = m_HardwareSerialNumber;         // Hardware-based serial number    
+    m_StringDescriptor[3] = m_HardwareSerialNumber;         // Hardware-based serial number
+    m_StringDescriptor[4] = s_StringDescriptorTemplate[4];  // Configuration string
+    m_StringDescriptor[5] = s_StringDescriptorTemplate[5];  // Interface string
     if (pDevice)
         SetDevice(pDevice);
 }
@@ -210,14 +214,17 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
             if (!uchDescIndex) {
                 *pLength = (u8)m_StringDescriptor[0][0];
                 return m_StringDescriptor[0];
-            } else if (uchDescIndex < 4) {  // We have 4 string descriptors (0-3)
+            } else if (uchDescIndex < 6) {  // We have 6 string descriptors (0-5)
                 const char* desc_name = "";
                 switch(uchDescIndex) {
                     case 1: desc_name = "Manufacturer"; break;
                     case 2: desc_name = "Product"; break; 
                     case 3: desc_name = "Serial Number"; break;
-                    default: desc_name = "Unknown"; break;
+                    case 4: desc_name = "Configuration"; break;
+                    case 5: desc_name = "Interface"; break;
+                    default: desc_name = "Unknown"; break; 
                 }
+                // MLOGNOTE("CUSBCDGadget::GetDescriptor", "DESCRIPTOR_STRING %02x (%s)", uchDescIndex, desc_name);
                 return ToStringDescriptor(m_StringDescriptor[uchDescIndex], pLength);
             }
             break;
