@@ -598,9 +598,9 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 	 0x00, // SCCS ACC TPGS 3PC Reserved PROTECT
 	 0x00, // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
 	 0x00, // Obsolete Obsolete WBUS16a SYNCa LINKED Obsolete CMDQUE VS
-	 {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, // Vendor Identification
-	 {'C', 'D', 'R', 'O', 'M', ' ', 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', ' ', ' '},
-	 {'0', '0', '0', '1'}
+	 {'L', 'i', 'n', 'u', 'x', ' ', ' ', ' '}, // Vendor Identification "Linux   "
+	 {'F', 'i', 'l', 'e', '-', 'C', 'D', ' ', 'G', 'a', 'd', 'g', 'e', 't', ' ', ' '}, // Product ID "File-CD Gadget  "
+	 {'0', '6', '0', '6'} // Product Revision "0606"
     };
     TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
 
