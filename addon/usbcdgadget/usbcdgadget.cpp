@@ -54,7 +54,7 @@ const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
         // 0x0d01,	// CDROM
         USB_GADGET_VENDOR_ID,
         USB_GADGET_DEVICE_ID_CD,
-        0x000,    // bcdDevice
+        0x100,    // bcdDevice (version 1.00)
         1, 2, 3,  // strings
         1         // num configurations
 };
@@ -69,7 +69,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1,
             0,
             0x80,    // bmAttributes (bus-powered)
-            500 / 2  // bMaxPower (500mA)
+            2 / 2    // bMaxPower (2mA)
         },
         {
             sizeof(TUSBInterfaceDescriptor),
@@ -77,8 +77,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
             0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             0                  // iInterface
         },
         {
@@ -92,7 +92,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
         {
             sizeof(TUSBEndpointDescriptor),
             DESCRIPTOR_ENDPOINT,
-            0x02,                                                                        // OUT number 2
+            0x01,                                                                        // OUT number 1
             2,                                                                           // bmAttributes (Bulk)
             64,  // wMaxPacketSize
             0                                                                            // bInterval
@@ -108,7 +108,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1,
             0,
             0x80,    // bmAttributes (bus-powered)
-            500 / 2  // bMaxPower (500mA)
+            2 / 2    // bMaxPower (2mA)
         },
         {
             sizeof(TUSBInterfaceDescriptor),
@@ -116,8 +116,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
             0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
             0                  // iInterface
         },
         {
@@ -131,7 +131,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
         {
             sizeof(TUSBEndpointDescriptor),
             DESCRIPTOR_ENDPOINT,
-            0x02,                                                                        // OUT number 2
+            0x01,                                                                        // OUT number 1
             2,                                                                           // bmAttributes (Bulk)
             512,  // wMaxPacketSize
             0                                                                            // bInterval
@@ -2580,4 +2580,3 @@ void CUSBCDGadget::Update() {
             break;
     }
 }
-
