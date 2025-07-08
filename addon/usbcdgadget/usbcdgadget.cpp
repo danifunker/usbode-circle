@@ -92,7 +92,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
         {
             sizeof(TUSBEndpointDescriptor),
             DESCRIPTOR_ENDPOINT,
-            0x01,                                                                        // OUT number 1
+            0x02,                                                                        // OUT number 2
             2,                                                                           // bmAttributes (Bulk)
             64,  // wMaxPacketSize
             0                                                                            // bInterval
@@ -131,7 +131,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
         {
             sizeof(TUSBEndpointDescriptor),
             DESCRIPTOR_ENDPOINT,
-            0x01,                                                                        // OUT number 1
+            0x02,                                                                        // OUT number 2
             2,                                                                           // bmAttributes (Bulk)
             512,  // wMaxPacketSize
             0                                                                            // bInterval
@@ -2580,3 +2580,4 @@ void CUSBCDGadget::Update() {
             break;
     }
 }
+
