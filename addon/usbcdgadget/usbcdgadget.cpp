@@ -2006,28 +2006,28 @@ void CUSBCDGadget::HandleSCSICommand() {
             int page = m_CBW.CBWCB[2] & 0x3F;
             int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
             u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = %02x, allocationLength = %lu", LLBAA, DBD, page, allocationLength);
+            // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = %02x, allocationLength = %lu", LLBAA, DBD, page, allocationLength);
 
-            int length = 0;
+            ModeSense10Header reply_header; // Declared at the start of the case
+            memset(&reply_header, 0, sizeof(reply_header));
+            int length = 0; // Total bytes to send to host
+            int current_page_data_len = 0; // Length of mode page data only
 
 	    // We don't support saved values
 	    if (page_control == 0x03) {
-                        bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
-                        m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
-                        m_SenseParams.bAddlSenseCode = 0x39;      // Saving parameters not supported
-                        m_SenseParams.bAddlSenseCodeQual = 0x00;  
+            bmCSWStatus = CD_CSW_STATUS_FAIL;
+            m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
+            m_SenseParams.bAddlSenseCode = 0x39;      // Saving parameters not supported
+            m_SenseParams.bAddlSenseCodeQual = 0x00;  
 	    } else {
-		    // Define our response
-		    ModeSense10Header reply_header;
-		    memset(&reply_header, 0, sizeof(reply_header));
+            // Initialize header fields that are always set
 		    reply_header.mediumType = GetMediumType();
             // WP bit (0x80) if CDROM, otherwise 0.
 		    reply_header.deviceSpecificParameter = (m_InqReply.bPeriphQualDevType == 0x05) ? 0x80 : 0x00; 
-		    reply_header.blockDescriptorLength = htons(0); // No block descriptors (long format, so 2 bytes)
+		    reply_header.blockDescriptorLength = htons(0); // No block descriptors
 
-            length = sizeof(ModeSense10Header); // Start with header size
-            int current_page_data_len = 0;
-
+            // current_page_data_len is already 0
+            
             if (page == 0x08 || page == 0x3F) { // Caching Mode Page (0x08) or All Pages (0x3F)
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) providing Caching Page (0x08)");
                 ModePage0x08Data caching_page;
@@ -2038,7 +2038,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 
                 memcpy(m_InBuffer + sizeof(ModeSense10Header) + current_page_data_len, &caching_page, sizeof(caching_page));
                 current_page_data_len += sizeof(caching_page);
-                bmCSWStatus = CD_CSW_STATUS_OK;
+                bmCSWStatus = CD_CSW_STATUS_OK; // Set to OK if we are providing data
             } else if (page == 0x01 || page == 0x0E || page == 0x1A || page == 0x2A) {
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) specific unsupported page 0x%02x", page);
                 bmCSWStatus = CD_CSW_STATUS_FAIL;
@@ -2052,20 +2052,20 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_SenseParams.bAddlSenseCode = 0x24;   // INVALID FIELD IN CDB
                 m_SenseParams.bAddlSenseCodeQual = 0x00;
             }
-	    } // End of page_control != 0x03
+	    } // End of page_control != 0x03 else block
 
         if (bmCSWStatus == CD_CSW_STATUS_FAIL) {
             SendCSW();
         } else {
             // modeDataLength for ModeSense10Header: length of data following the first 2 bytes of the header.
-            // This includes: mediumType(1), deviceSpecificParam(1), reserved(2), blockDescLength(2) (total 6 bytes)
+            // This includes: the remaining 6 bytes of the header (mediumType(1), deviceSpecificParam(1), reserved(2), blockDescLength(2))
             // plus current_page_data_len.
             reply_header.modeDataLength = htons( (sizeof(ModeSense10Header) - 2) + current_page_data_len );
             memcpy(m_InBuffer, &reply_header, sizeof(ModeSense10Header));
 
-            length = sizeof(ModeSense10Header) + current_page_data_len;
+            length = sizeof(ModeSense10Header) + current_page_data_len; // Total actual data prepared
             if (allocationLength < length) {
-                length = allocationLength;
+                length = allocationLength; // Host wants less than we prepared
             }
 
             m_nnumber_blocks = 0;
