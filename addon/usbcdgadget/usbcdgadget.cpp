@@ -38,7 +38,7 @@
 
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
-#define MLOGDEBUG(From, ...)  // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
+#define MLOGDEBUG(From, ...) CLogger::Get()->Write(From, LogDebug, __VA_ARGS__)
 #define MLOGERR(From, ...) CLogger::Get()->Write(From, LogError, __VA_ARGS__)
 #define DEFAULT_BLOCKS 16000
 
@@ -528,7 +528,7 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData* pSetupData, u8* pData
 }
 
 void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
-    //MLOGNOTE("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
+    MLOGNOTE("CUSBCDGadget::OnTransferComplete", "state = %u, dir = %s, len=%u ",(unsigned)m_nState,bIn?"IN":"OUT", nLength);
     assert(m_nState != TCDState::Init);
     if (bIn)  // packet to host has been transferred
     {
@@ -787,7 +787,7 @@ int CUSBCDGadget::GetSkipBytesFromMCS(uint8_t mainChannelSelection) {
 //  https://chatgpt.com/share/683ecad4-e250-8012-b9aa-22c76de6e871
 //
 void CUSBCDGadget::HandleSCSICommand() {
-    //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
     switch (m_CBW.CBWCB[0]) {
         case 0x00:  // Test unit ready
         {
