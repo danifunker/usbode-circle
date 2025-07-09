@@ -20,7 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-#include <circle/timer.h> // For CTimer::SimpleMicrosDelay
+// #include <circle/timer.h> // Removed as CTimer::SimpleMicrosDelay was incorrect
 #include <assert.h>
 #include <scsitbservice/scsitbservice.h>
 #include <cdplayer/cdplayer.h>
@@ -188,7 +188,7 @@ CUSBCDGadget::~CUSBCDGadget(void) {
 }
 
 const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength) {
-    CTimer::SimpleMicrosDelay(100); // Added delay
+    CScheduler::Get()->MsSleep(1); // Corrected delay call to 1ms
     MLOGNOTE("CUSBCDGadget::GetDescriptor", "entered");
     assert(pLength);
 
