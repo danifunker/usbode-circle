@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <circle/sched/task.h>
-//#include <usbcdgadget/usbcdgadget.h>
+#include <usbcdgadget/usbcdgadget.h>
 #include <Properties/propertiesfatfsfile.h>
 #include <cdromservice/cdromservice.h>
 
