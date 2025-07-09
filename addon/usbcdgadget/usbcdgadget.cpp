@@ -20,6 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include <circle/timer.h> // For CTimer::SimpleMicrosDelay
 #include <assert.h>
 #include <scsitbservice/scsitbservice.h>
 #include <cdplayer/cdplayer.h>
@@ -95,7 +96,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0x02,                                                                        // OUT number 2
             2,                                                                           // bmAttributes (Bulk)
             64,  // wMaxPacketSize
-            0                                                                            // bInterval
+            1                                                                            // bInterval
         }};
 
 const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorHighSpeed =
@@ -134,7 +135,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0x02,                                                                        // OUT number 2
             2,                                                                           // bmAttributes (Bulk)
             512,  // wMaxPacketSize
-            0                                                                            // bInterval
+            1                                                                            // bInterval
         }};
 
 const char* const CUSBCDGadget::s_StringDescriptorTemplate[] =
@@ -187,6 +188,7 @@ CUSBCDGadget::~CUSBCDGadget(void) {
 }
 
 const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength) {
+    CTimer::SimpleMicrosDelay(100); // Added delay
     MLOGNOTE("CUSBCDGadget::GetDescriptor", "entered");
     assert(pLength);
 
