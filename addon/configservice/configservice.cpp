@@ -32,27 +32,32 @@ ConfigService::~ConfigService()
 
 const char* ConfigService::GetCurrentImage(const char *defaultValue)
 {
-	return m_properties->GetString("current_image", defaultValue);
+    m_properties->SelectSection("usbode");
+     return m_properties->GetString("current_image", defaultValue);
 }
 
 unsigned ConfigService::GetDefaultVolume(unsigned defaultValue)
 {
-	return m_properties->GetNumber("default_volume", defaultValue);
+    m_properties->SelectSection("usbode");
+    return m_properties->GetNumber("default_volume", defaultValue);
 }
 
 const char* ConfigService::GetLogfile(const char *defaultValue)
 {
-	return m_properties->GetString("logfile", defaultValue);
+    m_properties->SelectSection("usbode");
+    return m_properties->GetString("logfile", defaultValue);
 }
 
 const char* ConfigService::GetDisplayHat(const char *defaultValue)
 {
-	return m_properties->GetString("displayhat", defaultValue);
+    m_properties->SelectSection("usbode");
+    return m_properties->GetString("displayhat", defaultValue);
 }
 
 unsigned ConfigService::GetScreenTimeout(unsigned defaultValue)
 {
-	return m_properties->GetNumber("screen_timeout", defaultValue);
+    m_properties->SelectSection("usbode");
+    return m_properties->GetNumber("screen_timeout", defaultValue);
 }
 
 void ConfigService::SetCurrentImage(const char* value)
