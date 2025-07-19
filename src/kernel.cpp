@@ -64,6 +64,8 @@ CKernel::CKernel(void)
       m_WPASupplicant(SUPPLICANT_CONFIG_FILE),
       m_pSPIMaster(nullptr)
 {
+    // Initialize the global kernel pointer 
+    g_pKernel = this;
 }
 
 CKernel::~CKernel(void) {
@@ -139,13 +141,11 @@ boolean CKernel::Initialize(void) {
 }
 
 CKernel* CKernel::Get() {
-	return g_pKernel;
+    return g_pKernel;
 }
 
 TShutdownMode CKernel::Run(void) {
 	
-    // Initialize the global kernel pointer
-    g_pKernel = this;
 
     // Load our config file loader
     CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
@@ -199,7 +199,6 @@ TShutdownMode CKernel::Run(void) {
 	    LOGNOTE("Started SCSITB service");
 
 	    // Load our Display Service
-	    // TODO hard coded!
             const char* displayType = Properties.GetString("displayhat", "none");
 	    new DisplayService(displayType);
 	    LOGNOTE("Started DisplayService service");
@@ -226,9 +225,11 @@ TShutdownMode CKernel::Run(void) {
     for (unsigned nCount = 0; 1; nCount++) {
 
         // CRITICAL: Process network tasks even in ISO selection mode
+	/*
         if (m_Net.IsRunning()) {
             m_Net.Process();
         }
+	*/
 	
         // Start the Web Server
         if (m_Net.IsRunning() && !pCWebServer) {
