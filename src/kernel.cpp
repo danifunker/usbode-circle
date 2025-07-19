@@ -201,7 +201,7 @@ TShutdownMode CKernel::Run(void) {
 	    // Load our Display Service
 	    // TODO hard coded!
             const char* displayType = Properties.GetString("displayhat", "none");
-	    new DisplayService("st7789");
+	    new DisplayService(displayType);
 	    LOGNOTE("Started DisplayService service");
 
     } else { // Mass Storage Device Mode
