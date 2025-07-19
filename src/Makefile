@@ -31,6 +31,7 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(CIRCLEHOME)/lib/sound/libsound.a \
 	$(CIRCLEHOME)/addon/SDCard/libsdcard.a \
 	$(CIRCLEHOME)/addon/Properties/libproperties.a \
+	$(CIRCLEHOME)/addon/display/libdisplay.a \
 	$(USBODEHOME)/addon/webserver/libwebserver.a \
 	$(USBODEHOME)/addon/usbcdgadget/libusbcdgadget.a \
 	$(USBODEHOME)/addon/usbmsdgadget/libusbmsdgadget.a \
@@ -39,14 +40,14 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(USBODEHOME)/addon/cueparser/libcueparser.a \
 	$(USBODEHOME)/addon/ftpserver/libftpserver.a \
 	$(USBODEHOME)/addon/cdplayer/libcdplayer.a \
-	$(USBODEHOME)/addon/gpiobuttonmanager/libgpiobuttonmanager.a \
 	$(USBODEHOME)/addon/scsitbservice/libscsitbservice.a \
 	$(USBODEHOME)/addon/cdromservice/libcdromservice.a \
 	$(USBODEHOME)/addon/sdcardservice/libsdcardservice.a \
-	$(USBODEHOME)/addon/display/libdisplay.a \
 	$(USBODEHOME)/addon/shutdown/libshutdown.a \
+	$(USBODEHOME)/addon/displayservice/libdisplayservice.a \
+	$(USBODEHOME)/addon/configservice/libconfigservice.a \
 	$(USBODEHOME)/addon/gitinfo/libgitinfo.a
-	#
+
 %.h: %.html
 	@echo "  GEN   $@"
 	@$(CIRCLEHOME)/tools/converttool $< > $@
