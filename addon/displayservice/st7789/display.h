@@ -10,6 +10,7 @@
 #include <circle/gpiopin.h>
 #include <circle/pwmoutput.h>
 
+#define DEBOUNCETICKS 20
 #define BUTTONUP 5
 #define BUTTONDOWN 6
 #define BUTTONCANCEL 16
@@ -30,6 +31,7 @@ public:
     virtual void Wake() override;
     virtual void Refresh() override;
     virtual bool IsSleeping() override;
+    virtual bool Debounce(Button button) override;
     static void HandleButtonPress(void *context);
 
 private:
@@ -51,6 +53,8 @@ private:
     CGPIOPin* m_Backlight;
     int backlightTimer;
     bool sleeping = false;
+
+    unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };
 
 #endif // ST7789DISPLAY_H

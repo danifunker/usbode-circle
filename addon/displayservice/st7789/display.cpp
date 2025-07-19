@@ -6,6 +6,7 @@
 #include "powerpage.h"
 #include <displayservice/buttons.h>
 #include <circle/timer.h>
+#include <displayservice/buttonhandler.h>
 
 LOGMODULE("kernel");
 
@@ -145,14 +146,29 @@ void ST7789Display::Refresh() {
     m_PageManager.Refresh();
 }
 
+bool ST7789Display::Debounce(Button button) {
+    unsigned now = CTimer::Get()->GetTicks();
+    if (now - lastPressTime[(int)button] < DEBOUNCETICKS) {
+        LOGNOTE("Ignored a bounce!");
+	return true;
+    }
+
+    lastPressTime[(int)button] = now;
+    return false;
+}
+
 //TODO move to a base class
 // This is the callback from the GPIO Button interrupt. We pass this on to the
 // page manager to handle
 void ST7789Display::HandleButtonPress(void *pParam) {
 
+
     ButtonHandlerContext* context = static_cast<ButtonHandlerContext*>(pParam);
     LOGNOTE("Got button press %d", context->button);
     if (context) {
+	    
+	if (context->display->Debounce(context->button))
+		return;
 
 	bool wasSleeping = context->display->IsSleeping();
         context->display->Wake();

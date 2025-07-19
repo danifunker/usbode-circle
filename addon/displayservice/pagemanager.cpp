@@ -68,16 +68,6 @@ void PageManager::Refresh()
 
 void PageManager::HandleButtonPress(Button button)
 {
-    //TODO make this configurable
-    constexpr unsigned debounceTicks = 20;
-    unsigned now = CTimer::Get()->GetTicks();
-    if (now - lastPressTime[(int)button] < debounceTicks) {
-	LOGNOTE("Ignored a bounce!");
-        return;
-    }
-
-    lastPressTime[(int)button] = now;
-
     if (currentPage)
         currentPage->OnButtonPress(button);
 }

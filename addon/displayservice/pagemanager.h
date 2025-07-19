@@ -34,15 +34,6 @@ private:
 
     IPage* currentPage = nullptr;
 
-    unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
-
-};
-
-struct ButtonHandlerContext {
-    IDisplay* display;
-    PageManager* pageManager;
-    CGPIOPin* pin;
-    Button button;
 };
 
 #endif
