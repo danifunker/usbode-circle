@@ -6,9 +6,11 @@
 #include <circle/synchronize.h>
 #include <circle/util.h>
 #include <circle/logger.h>
-
+#include <Properties/propertiesfatfsfile.h>
 #include "st7789/display.h"
+#include "../../src/kernel.h"
 
+#define CONFIG_FILE "config.txt"
 
 LOGMODULE("displayservice");
 
@@ -46,16 +48,21 @@ void DisplayService::CreateDisplay(const char* displayType) {
 		1 // spi_chip_select
 	);
     } else if (strcmp(displayType, "st7789") == 0) {
+
+	 FATFS* fs = CKernel::Get()->GetFileSystem();
+         CPropertiesFatFsFile* properties = new CPropertiesFatFsFile(CONFIG_FILE, fs);
+	 properties->SelectSection("st7789");
+	 
 	//TODO: Get these values from properties
 	//TODO: but first implement a configuration service
         m_IDisplay = new ST7789Display(
-		22, // dc_pin
-		27, // reset_pin
-		13, // backlight_pin
-		1, // spi_cpol
-		1, // spi_chpa
-		80000000, // spi_clock_speed
-		0 // spi_chip_select
+		properties->GetNumber("dc_pin", 22), // dc_pin
+		properties->GetNumber("reset_pin", 27), // reset_pin
+		properties->GetNumber("backlight_pin", 13), // backlight_pin
+		properties->GetNumber("spi_cpol", 1), // spi_cpol
+		properties->GetNumber("spi_chpa", 1), // spi_chpa
+		properties->GetNumber("spi_clock_speed", 80000000), // spi_clock_speed
+		properties->GetNumber("spi_chip_select", 0) // spi_chip_select
 	);
     }
     assert(m_IDisplay != nullptr && "Didn't create display");
