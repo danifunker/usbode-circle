@@ -37,22 +37,21 @@ const char* ST7789ImagesPage::nextPageName() {
 
 void ST7789ImagesPage::OnButtonPress(Button button)
 {
-	LOGNOTE("Button received by page %d", button);
-	
+    LOGDBG("Button received by page %d", button);
     switch (button)
     {
         case Button::Up:
-	    LOGNOTE("Move Up");
+	    LOGDBG("Move Up");
             MoveSelection(-1);
             break;
 
         case Button::Down:
-	    LOGNOTE("Move Down");
+	    LOGDBG("Move Down");
             MoveSelection(+1);
             break;
 
         case Button::Ok:
-	    LOGNOTE("Select new CD %d", m_SelectedIndex);
+	    LOGDBG("Select new CD %d", m_SelectedIndex);
 	    //TODO show an acknowledgement screen rather then just returning to main screen
             m_Service->SetNextCD(m_SelectedIndex);
             m_NextPageName = "homepage";
@@ -60,7 +59,7 @@ void ST7789ImagesPage::OnButtonPress(Button button)
             break;
 
         case Button::Cancel:
-	    LOGNOTE("Cancel");
+	    LOGDBG("Cancel");
             m_NextPageName = "homepage";
             m_ShouldChangePage = true;
             break;
@@ -77,7 +76,7 @@ void ST7789ImagesPage::MoveSelection(int delta) {
     size_t fileCount = m_Service->GetCount();
     if (fileCount == 0) return;
 
-    LOGNOTE("Selected index is %d, Menu delta is %d", m_SelectedIndex, delta);
+    LOGDBG("Selected index is %d, Menu delta is %d", m_SelectedIndex, delta);
     int newIndex = static_cast<int>(m_SelectedIndex) + delta;
     if (newIndex < 0)
         newIndex = 0;
@@ -85,8 +84,8 @@ void ST7789ImagesPage::MoveSelection(int delta) {
         newIndex = static_cast<int>(fileCount - 1);
 
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
-	LOGNOTE("New menu index is %d", newIndex);
-        LOGNOTE("%s", m_Service->GetName(m_SelectedIndex));
+	LOGDBG("New menu index is %d", newIndex);
+        LOGDBG("%s", m_Service->GetName(m_SelectedIndex));
         m_SelectedIndex = static_cast<size_t>(newIndex);
         Draw();
     }
