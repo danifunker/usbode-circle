@@ -304,7 +304,9 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
         m_Graphics->DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
         m_Graphics->DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
     }
-        // --- B BUTTON ---
+   
+    // --- B BUTTON ---
+    /*
     // Draw a white button with dark border for better contrast
     m_Graphics->DrawRect(65, 215, 18, 20, COLOR2D(255, 255, 255));
     m_Graphics->DrawRectOutline(65, 215, 18, 20, COLOR2D(0, 0, 0));
@@ -348,6 +350,8 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawLine(arrow_x - 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
     m_Graphics->DrawLine(arrow_x + 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
 
+    */
+
     // --- X BUTTON ---
     // Draw a white button with dark border for better contrast
     m_Graphics->DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
@@ -370,9 +374,21 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
 
     // Icon next to X button - different based on screen type
     unsigned icon_x = 155;
-    unsigned icon_y = 225;
+    unsigned icon_y = 220;
 
     if (strcmp(screenType, "main") == 0) {
+	int radius = 7; // Adjust radius as needed
+	int cx = icon_x + radius; // Center x
+	int cy = icon_y + radius; // Center y
+
+	// Draw the circle outline
+	m_Graphics->DrawCircleOutline(cx, cy, radius, COLOR2D(255, 255, 255));
+
+	// Draw the vertical line ("I") - top center of the circle downward
+	// Start the line a little above the top of the circle for stylistic power symbol
+	int line_length = 6; // Length of the line
+	m_Graphics->DrawLine(cx, cy - radius - 2, cx, cy - radius + line_length, COLOR2D(255, 255, 255));
+	/*
         // Menu bars for main screen
         // Thicker menu bars (2px)
         m_Graphics->DrawLine(icon_x, icon_y - 5, icon_x + 15, icon_y - 5, COLOR2D(255, 255, 255));
@@ -383,6 +399,7 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
 
         m_Graphics->DrawLine(icon_x, icon_y + 5, icon_x + 15, icon_y + 5, COLOR2D(255, 255, 255));
         m_Graphics->DrawLine(icon_x, icon_y + 6, icon_x + 15, icon_y + 6, COLOR2D(255, 255, 255));
+	*/
     } else {
         // Red X icon for other screens (cancel)
         m_Graphics->DrawLine(icon_x - 8, icon_y - 8, icon_x + 8, icon_y + 8, COLOR2D(255, 0, 0));
@@ -395,6 +412,7 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
         m_Graphics->DrawLine(icon_x + 8, icon_y - 7, icon_x - 8, icon_y + 7, COLOR2D(255, 0, 0));
     }
 
+    /*
     // --- Y BUTTON ---
     // Draw a white button with dark border for better contrast
     m_Graphics->DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
@@ -441,4 +459,5 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
         m_Graphics->DrawLine(y_icon_x - 3, y_icon_y + 6, y_icon_x + 8, y_icon_y - 5, COLOR2D(0, 255, 0));
         m_Graphics->DrawLine(y_icon_x - 2, y_icon_y + 5, y_icon_x + 7, y_icon_y - 4, COLOR2D(0, 255, 0));
     }
+    */
 }
