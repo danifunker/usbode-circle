@@ -2,7 +2,6 @@
 #include <circle/logger.h>
 #include <gitinfo/gitinfo.h>
 #include "../../../src/kernel.h"
-#include "configservice/configservice.h"
 
 LOGMODULE("homepage");
 

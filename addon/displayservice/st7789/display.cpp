@@ -7,6 +7,7 @@
 #include <displayservice/buttons.h>
 #include <circle/timer.h>
 #include <displayservice/buttonhandler.h>
+#include <configservice/configservice.h>
 
 LOGMODULE("kernel");
 
@@ -107,6 +108,9 @@ bool ST7789Display::Initialize() {
 		m_Backlight = new CGPIOPin(m_backlight_pin, GPIOModeAlternateFunction0, m_GPIOManager);
 		m_PWMOutput.Start();
                 m_PWMOutput.Write(2, 1024);
+
+		// Backlight timeout
+		backlightTimeout = ConfigService::GetInstance()->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
 	}
 
         return bOK;
@@ -140,7 +144,7 @@ void ST7789Display::Refresh() {
     // Is it time to dim the screen?
     unsigned now = CTimer::Get()->GetClockTicks();
     //LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, TIMEOUT);
-    if (!sleeping && now - backlightTimer > TIMEOUT )
+    if (!sleeping && now - backlightTimer > backlightTimeout )
 	Sleep();
 
     m_PageManager.Refresh();

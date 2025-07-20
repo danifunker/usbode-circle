@@ -18,7 +18,7 @@
 
 #define PWM_CLOCK_RATE  1000000
 #define PWM_RANGE       1024
-#define TIMEOUT 10000000
+#define DEFAULT_TIMEOUT 10
 
 class ST7789Display : public IDisplay {
 public:
@@ -53,6 +53,7 @@ private:
     CGPIOPin* m_Backlight;
     int backlightTimer;
     bool sleeping = false;
+    int backlightTimeout;
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };
