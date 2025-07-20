@@ -26,6 +26,7 @@ private:
     void ScrollDown();
     void SelectItem();
     void DrawNavigationBar(const char* screenType);
+    void DrawConfirmation(const char* message);
     void MoveSelection(int delta);
 
 private:

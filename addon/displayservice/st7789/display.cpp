@@ -13,7 +13,7 @@ LOGMODULE("kernel");
 // Constructor
 ST7789Display::ST7789Display(int dc_pin, int reset_pin, int backlight_pin, int spi_cpol, int spi_cpha, int spi_clock_speed, int spi_chip_select) 
 :         m_SPIMaster (spi_clock_speed, spi_cpol, spi_cpha, 0),
-        m_Display (&m_SPIMaster, dc_pin, reset_pin, backlight_pin, 240, 240,
+        m_Display (&m_SPIMaster, dc_pin, reset_pin, 0, 240, 240,
                    spi_cpol, spi_cpha, spi_clock_speed, spi_chip_select),
 	m_Graphics(&m_Display),
 	m_PWMOutput (PWM_CLOCK_RATE, PWM_RANGE, true)

@@ -73,6 +73,7 @@ CKernel::~CKernel(void) {
         delete m_pSPIMaster;
         m_pSPIMaster = nullptr;
     }
+    //TODO delete more here!
 }
 
 boolean CKernel::Initialize(void) {
@@ -217,20 +218,9 @@ TShutdownMode CKernel::Run(void) {
     // Previous IP tracking
     bool ntpInitialized = false;
 
-    // Status update timing
-    static unsigned lastStatusUpdate = 0;
-    const unsigned STATUS_UPDATE_INTERVAL = 30000;  // Update every 30 seconds
-
     // Main Loop
     for (unsigned nCount = 0; 1; nCount++) {
 
-        // CRITICAL: Process network tasks even in ISO selection mode
-	/*
-        if (m_Net.IsRunning()) {
-            m_Net.Process();
-        }
-	*/
-	
         // Start the Web Server
         if (m_Net.IsRunning() && !pCWebServer) {
             // Create the web server

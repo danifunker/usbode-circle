@@ -56,11 +56,13 @@ void ST7789PowerPage::OnButtonPress(Button button)
 	    switch (m_SelectedIndex) {
 		    case 0:
 	                    LOGNOTE("Shutting down");
-			    new CShutdown(ShutdownHalt, 0);
+			    DrawConfirmation("It's now safe to turn off...");
+			    new CShutdown(ShutdownHalt, 500);
 			    break;
 		    case 1:
 			    LOGNOTE("Rebooting");
-			    new CShutdown(ShutdownReboot, 0);
+			    DrawConfirmation("Rebooting...");
+			    new CShutdown(ShutdownReboot, 500);
 			    break;
 	    }
             break;
@@ -109,6 +111,19 @@ void ST7789PowerPage::Refresh()
     //Draw();
 }
 
+void ST7789PowerPage::DrawConfirmation(const char* message)
+{
+    m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
+
+    // Draw header bar with blue background
+    const char* pTitle = CGitInfo::Get()->GetShortVersionString();
+    m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
+    m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
+
+    m_Graphics->DrawText(10, 40, COLOR2D(0,0,0), message, C2DGraphics::AlignLeft);
+    m_Graphics->UpdateDisplay();
+}
+
 void ST7789PowerPage::Draw()
 {
 
@@ -117,12 +132,9 @@ void ST7789PowerPage::Draw()
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
-    const char* pTitle = CGitInfo::Get()->GetShortVersionString();
-
     // Draw header bar with blue background
+    const char* pTitle = CGitInfo::Get()->GetShortVersionString();
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
-
-    // Draw title text in white
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
     size_t startIndex = 0;
