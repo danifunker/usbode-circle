@@ -94,7 +94,6 @@ void ST7789ImagesPage::MoveSelection(int delta) {
     size_t fileCount = m_Service->GetCount();
     if (fileCount == 0) return;
 
-    LOGDBG("Selected index is %d, Menu delta is %d", m_SelectedIndex, delta);
     int newIndex = static_cast<int>(m_SelectedIndex) + delta;
     if (newIndex < 0)
         newIndex = 0;
@@ -102,10 +101,8 @@ void ST7789ImagesPage::MoveSelection(int delta) {
         newIndex = static_cast<int>(fileCount - 1);
 
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
-	LOGDBG("New menu index is %d", newIndex);
-        LOGDBG("%s", m_Service->GetName(m_SelectedIndex));
+        LOGDBG("%s", m_Service->GetName(newIndex));
         m_SelectedIndex = static_cast<size_t>(newIndex);
-        Draw();
     }
 }
 
@@ -120,7 +117,7 @@ void ST7789ImagesPage::Refresh()
     */
 
     //TODO We shouldn't redraw everything!
-    //Draw();
+    Draw();
 }
 
 void ST7789ImagesPage::Draw()
@@ -140,6 +137,12 @@ void ST7789ImagesPage::Draw()
     // Draw title text in white
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
+    if (m_SelectedIndex != m_PreviousSelectedIndex) {
+        m_ScrollOffset = 0;
+        m_ScrollDirLeft = true;
+        m_PreviousSelectedIndex = m_SelectedIndex;
+    }
+
     size_t totalPages = (fileCount + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
     size_t currentPage = m_SelectedIndex / ITEMS_PER_PAGE;
     size_t startIndex = currentPage * ITEMS_PER_PAGE;
@@ -153,7 +156,31 @@ void ST7789ImagesPage::Draw()
 	CCharGenerator Font (DEFAULT_FONT, CCharGenerator::FontFlagsNone);
 	const int maxLen = (m_Display->GetWidth() - 10) / Font.GetCharWidth();
         char cropped[maxLen + 1];
-	sprintf(cropped, "%.*s", maxLen, name);
+	size_t nameLen = strlen(name);
+
+	// Only scroll selected line and only if too long
+	if (i == m_SelectedIndex && nameLen > (size_t)maxLen) {
+	    uint32_t now = CTimer::Get()->GetClockTicks();; // or however you get current ms
+	    if (now - m_LastScrollMs > 200) { // scroll every 200ms
+		m_LastScrollMs = now;
+
+		if (m_ScrollDirLeft) {
+		    ++m_ScrollOffset;
+		    if (m_ScrollOffset >= (int)(nameLen - maxLen))
+			m_ScrollDirLeft = false;
+		} else {
+		    --m_ScrollOffset;
+		    if (m_ScrollOffset <= 0)
+			m_ScrollDirLeft = true;
+		}
+	    }
+
+	    int offset = MAX(0, MIN(m_ScrollOffset, (int)(nameLen - maxLen)));
+	    snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name + offset);
+	} else {
+	    // No scrolling
+	    snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
+	}
 
         if (i == m_SelectedIndex) {
             m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0,0,0));

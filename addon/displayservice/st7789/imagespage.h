@@ -10,6 +10,7 @@
 
 #define ITEMS_PER_PAGE 9 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 class ST7789ImagesPage : public IPage {
 public:
@@ -43,5 +44,10 @@ private:
     SCSITBService* m_Service = nullptr;
     size_t m_TotalFiles;
     size_t m_SelectedIndex = 0;
+
+    int m_ScrollOffset = 0;
+    bool m_ScrollDirLeft = true;
+    uint32_t m_LastScrollMs = 0;
+    int m_PreviousSelectedIndex = -1;
 };
 #endif
