@@ -200,25 +200,18 @@ void ST7789ImagesPage::Draw()
 
 	    int fullTextPx = (int)strlen(extended) * charWidth;
 	    if (fullTextPx > maxTextPx) {
-		uint32_t now = CTimer::Get()->GetClockTicks();
-		if (now - m_LastScrollMs > 20) { // scroll speed
-		    m_LastScrollMs = now;
-
-		    if (m_ScrollDirLeft) {
-			m_ScrollOffsetPx++;
-			m_ScrollOffsetPx++;
+		if (m_ScrollDirLeft) {
+			m_ScrollOffsetPx+=3;
 			if (m_ScrollOffsetPx >= (fullTextPx - maxTextPx)) {
 			    m_ScrollOffsetPx = (fullTextPx - maxTextPx);
 			    m_ScrollDirLeft = false;
 			}
-		    } else {
-			m_ScrollOffsetPx--;
-			m_ScrollOffsetPx--;
+		} else {
+			m_ScrollOffsetPx-=3;
 			if (m_ScrollOffsetPx <= 0) {
 			    m_ScrollOffsetPx = 0;
 			    m_ScrollDirLeft = true;
 			}
-		    }
 		}
 		DrawTextScrolled(10, y + 30, COLOR2D(255,255,255), extended, m_ScrollOffsetPx);
 	    } else {
