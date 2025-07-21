@@ -176,12 +176,14 @@ void ST7789ImagesPage::Draw()
     for (size_t i = startIndex; i < endIndex; ++i) {
         int y = static_cast<int>((i - startIndex) * 20);
         const char* name = m_Service->GetName(i);
+	size_t nameLen = strlen(name);
+	char extended[nameLen + 2];
+        snprintf(extended, sizeof(extended), "%s ", name);
 	
 	// Crop
 	CCharGenerator Font (DEFAULT_FONT, CCharGenerator::FontFlagsNone);
 	const int maxLen = (m_Display->GetWidth() - 10) / Font.GetCharWidth();
         char cropped[maxLen + 1];
-	size_t nameLen = strlen(name);
 
 	// Only scroll selected line and only if too long
 	const int charWidth = Font.GetCharWidth();
@@ -191,7 +193,7 @@ void ST7789ImagesPage::Draw()
 
             m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0,0,0));
 
-	    int fullTextPx = (int)strlen(name) * charWidth;
+	    int fullTextPx = (int)strlen(extended) * charWidth;
 	    if (fullTextPx > maxTextPx) {
 		uint32_t now = CTimer::Get()->GetClockTicks();
 		if (now - m_LastScrollMs > 20) { // scroll speed
@@ -213,7 +215,7 @@ void ST7789ImagesPage::Draw()
 			}
 		    }
 		}
-		DrawTextScrolled(10, y + 30, COLOR2D(255,255,255), name, m_ScrollOffsetPx);
+		DrawTextScrolled(10, y + 30, COLOR2D(255,255,255), extended, m_ScrollOffsetPx);
 	    } else {
 		// No scrolling needed
 		m_Graphics->DrawText(10, y + 30, COLOR2D(255,255,255), name, C2DGraphics::AlignLeft);
