@@ -21,6 +21,7 @@ void ST7789ImagesPage::OnEnter()
     LOGNOTE("Drawing imagespage");
     const char* name = m_Service->GetCurrentCDName();
     SetSelectedName(name);
+    m_MountedIndex = m_SelectedIndex;
     Draw();
 }
 
@@ -56,6 +57,7 @@ void ST7789ImagesPage::OnButtonPress(Button button)
 	    LOGDBG("Select new CD %d", m_SelectedIndex);
 	    //TODO show an acknowledgement screen rather then just returning to main screen
             m_Service->SetNextCD(m_SelectedIndex);
+	    m_MountedIndex = m_SelectedIndex;
             m_NextPageName = "homepage";
             m_ShouldChangePage = true;
             break;
@@ -189,9 +191,12 @@ void ST7789ImagesPage::Draw()
 	const int charWidth = Font.GetCharWidth();
 	const int maxTextPx = m_Display->GetWidth() - 10;
 
+	if (i == m_MountedIndex)
+            m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0,255,0));
+
 	if (i == m_SelectedIndex) {
 
-            m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0,0,0));
+	    m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0,0,0));
 
 	    int fullTextPx = (int)strlen(extended) * charWidth;
 	    if (fullTextPx > maxTextPx) {

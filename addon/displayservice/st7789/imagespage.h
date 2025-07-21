@@ -44,6 +44,7 @@ private:
     SCSITBService* m_Service = nullptr;
     size_t m_TotalFiles;
     size_t m_SelectedIndex = 0;
+    size_t m_MountedIndex = 0;
 
     int m_ScrollOffsetPx = 0;
     bool m_ScrollDirLeft = true;
