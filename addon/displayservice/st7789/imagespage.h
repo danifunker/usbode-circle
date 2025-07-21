@@ -29,6 +29,7 @@ private:
     void SelectItem();
     void DrawNavigationBar(const char* screenType);
     void MoveSelection(int delta);
+    void SetSelectedName(const char* name);
     const char* GetIPAddress();
     const char* GetCurrentImage();
     const char* GetVersionString();
