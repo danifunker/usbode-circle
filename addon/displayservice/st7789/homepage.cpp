@@ -58,6 +58,8 @@ void ST7789HomePage::OnButtonPress(Button button)
             break;
 
         case Button::Ok:
+            m_NextPageName = "infopage";
+	    m_ShouldChangePage = true;
             break;
 
         default:
@@ -249,7 +251,7 @@ void ST7789HomePage::Draw()
     m_Display->On();
 }
 
-//TODO: put in common plage
+//TODO: put in common place
 void ST7789HomePage::DrawNavigationBar(const char* screenType)
 {
     // Draw button bar at bottom
@@ -415,7 +417,6 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
         m_Graphics->DrawLine(icon_x + 8, icon_y - 7, icon_x - 8, icon_y + 7, COLOR2D(255, 0, 0));
     }
 
-    /*
     // --- Y BUTTON ---
     // Draw a white button with dark border for better contrast
     m_Graphics->DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
@@ -441,10 +442,30 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
 
-    // Icon next to Y button - different based on screen type
-    unsigned y_icon_x = 215;
-    unsigned y_icon_y = 225;
+    // Draw small hammer icon in the header
+    unsigned hammer_x = 215;
+    unsigned hammer_y = 225;
 
+    // Draw hammer head (claw hammer shape)
+    // Main head body
+    m_Graphics->DrawRect(hammer_x - 7, hammer_y - 4, 10, 6, COLOR2D(255, 255, 255));
+
+    // Claw part (back of hammer)
+    m_Graphics->DrawRect(hammer_x - 9, hammer_y - 3, 3, 2, COLOR2D(255, 255, 255));
+    m_Graphics->DrawRect(hammer_x - 10, hammer_y - 2, 2, 2, COLOR2D(255, 255, 255));
+
+    // Strike face (front of hammer)
+    m_Graphics->DrawRect(hammer_x + 3, hammer_y - 3, 2, 4, COLOR2D(255, 255, 255));
+
+    // Draw hammer handle (wooden grip)
+    m_Graphics->DrawRect(hammer_x - 1, hammer_y + 2, 2, 8, COLOR2D(255, 255, 255));
+
+    // Add grip texture lines
+    m_Graphics->DrawLine(hammer_x - 1, hammer_y + 4, hammer_x, hammer_y + 4, COLOR2D(58, 124, 165));
+    m_Graphics->DrawLine(hammer_x - 1, hammer_y + 6, hammer_x, hammer_y + 6, COLOR2D(58, 124, 165));
+    m_Graphics->DrawLine(hammer_x - 1, hammer_y + 8, hammer_x, hammer_y + 8, COLOR2D(58, 124, 165));
+
+    /*
     if (strcmp(screenType, "main") == 0) {
         // Folder icon for main screen
         m_Graphics->DrawRect(y_icon_x, y_icon_y - 2, 16, 11, COLOR2D(255, 255, 255));
