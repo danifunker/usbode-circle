@@ -13,6 +13,8 @@ OBJS    = displayservice.o \
 	  st7789/homepage.o \
 	  st7789/imagespage.o \
 	  st7789/powerpage.o \
+	  st7789/configpage.o \
+	  st7789/usbconfigpage.o \
 	  st7789/display.o 
 
 libdisplayservice.a: $(OBJS)

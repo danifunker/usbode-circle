@@ -9,7 +9,8 @@ ST7789HomePage::ST7789HomePage(CST7789Display* display, C2DGraphics* graphics)
 : m_Display(display),
   m_Graphics(graphics)
 {
-	 m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+	m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+	config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 }
 
 ST7789HomePage::~ST7789HomePage() {
@@ -47,6 +48,8 @@ void ST7789HomePage::OnButtonPress(Button button)
             break;
 
         case Button::Down:
+            m_NextPageName = "configpage";
+	    m_ShouldChangePage = true;
             break;
 
         case Button::Cancel:
@@ -97,9 +100,9 @@ const char* ST7789HomePage::GetCurrentImage() {
 }
 
 const char* ST7789HomePage::GetUSBSpeed() {
-	if (CKernelOptions::Get()->GetUSBFullSpeed())
-		return "FullSpeed";
-	return "HighSpeed";
+	if (config->GetUSBFullSpeed())
+		return "FullSpeed (USB 1.1)";
+	return "HighSpeed (USB 2)";
 }
 
 void ST7789HomePage::Draw()
@@ -305,7 +308,6 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
     }
    
     // --- B BUTTON ---
-    /*
     // Draw a white button with dark border for better contrast
     m_Graphics->DrawRect(65, 215, 18, 20, COLOR2D(255, 255, 255));
     m_Graphics->DrawRectOutline(65, 215, 18, 20, COLOR2D(0, 0, 0));
@@ -339,17 +341,29 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
     // Down arrow for all screens
     arrow_x = 95;
     arrow_y = 225;
+  
+    if (strcmp(screenType, "main") == 0) {
+        // Menu bars for main screen
+        // Thicker menu bars (2px)
+        m_Graphics->DrawLine(arrow_x, arrow_y - 5, arrow_x + 15, arrow_y - 5, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(arrow_x, arrow_y - 4, arrow_x + 15, arrow_y - 4, COLOR2D(255, 255, 255));
 
-    // Stem (3px thick)
-    m_Graphics->DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
-    m_Graphics->DrawLine(arrow_x - 1, arrow_y, arrow_x - 1, arrow_y + 13, COLOR2D(255, 255, 255));
-    m_Graphics->DrawLine(arrow_x + 1, arrow_y, arrow_x + 1, arrow_y + 13, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(arrow_x, arrow_y, arrow_x + 15, arrow_y, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(arrow_x, arrow_y + 1, arrow_x + 15, arrow_y + 1, COLOR2D(255, 255, 255));
 
-    // Arrow head
-    m_Graphics->DrawLine(arrow_x - 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
-    m_Graphics->DrawLine(arrow_x + 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(arrow_x, arrow_y + 5, arrow_x + 15, arrow_y + 5, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(arrow_x, arrow_y + 6, arrow_x + 15, arrow_y + 6, COLOR2D(255, 255, 255));
+    } else {
+        // Stem (3px thick)
+        m_Graphics->DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(arrow_x - 1, arrow_y, arrow_x - 1, arrow_y + 13, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(arrow_x + 1, arrow_y, arrow_x + 1, arrow_y + 13, COLOR2D(255, 255, 255));
 
-    */
+        // Arrow head
+        m_Graphics->DrawLine(arrow_x - 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(arrow_x + 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
+    }
+
 
     // --- X BUTTON ---
     // Draw a white button with dark border for better contrast
@@ -388,16 +402,6 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
 	int line_length = 6; // Length of the line
 	m_Graphics->DrawLine(cx, cy - radius - 2, cx, cy - radius + line_length, COLOR2D(255, 255, 255));
 	/*
-        // Menu bars for main screen
-        // Thicker menu bars (2px)
-        m_Graphics->DrawLine(icon_x, icon_y - 5, icon_x + 15, icon_y - 5, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(icon_x, icon_y - 4, icon_x + 15, icon_y - 4, COLOR2D(255, 255, 255));
-
-        m_Graphics->DrawLine(icon_x, icon_y, icon_x + 15, icon_y, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(icon_x, icon_y + 1, icon_x + 15, icon_y + 1, COLOR2D(255, 255, 255));
-
-        m_Graphics->DrawLine(icon_x, icon_y + 5, icon_x + 15, icon_y + 5, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(icon_x, icon_y + 6, icon_x + 15, icon_y + 6, COLOR2D(255, 255, 255));
 	*/
     } else {
         // Red X icon for other screens (cancel)

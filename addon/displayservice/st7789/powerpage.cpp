@@ -57,12 +57,12 @@ void ST7789PowerPage::OnButtonPress(Button button)
 		    case 0:
 	                    LOGNOTE("Shutting down");
 			    DrawConfirmation("It's now safe to turn off...");
-			    new CShutdown(ShutdownHalt, 500);
+			    new CShutdown(ShutdownHalt, 1000);
 			    break;
 		    case 1:
 			    LOGNOTE("Rebooting");
 			    DrawConfirmation("Rebooting...");
-			    new CShutdown(ShutdownReboot, 500);
+			    new CShutdown(ShutdownReboot, 1000);
 			    break;
 	    }
             break;
@@ -83,7 +83,7 @@ void ST7789PowerPage::MoveSelection(int delta) {
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
-    LOGNOTE("Selected index is %d, Menu delta is %d", m_SelectedIndex, delta);
+    LOGDBG("Selected index is %d, Menu delta is %d", m_SelectedIndex, delta);
     int newIndex = static_cast<int>(m_SelectedIndex) + delta;
     if (newIndex < 0)
         newIndex = 0;
@@ -91,7 +91,7 @@ void ST7789PowerPage::MoveSelection(int delta) {
         newIndex = static_cast<int>(fileCount - 1);
 
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
-	LOGNOTE("New menu index is %d", newIndex);
+	LOGDBG("New menu index is %d", newIndex);
         m_SelectedIndex = static_cast<size_t>(newIndex);
         Draw();
     }

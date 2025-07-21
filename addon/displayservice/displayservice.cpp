@@ -7,6 +7,7 @@
 #include <circle/util.h>
 #include <circle/logger.h>
 #include <Properties/propertiesfatfsfile.h>
+#include <configservice/configservice.h>
 #include "st7789/display.h"
 #include "../../src/kernel.h"
 
@@ -87,7 +88,9 @@ void DisplayService::Run(void) {
     LOGNOTE("Display Run Loop entered");
 
     while (true) {
+	    // Refresh our display
 	    m_IDisplay->Refresh();
+
 	    CScheduler::Get()->MsSleep(20); //tick rate for page changes
     }
 

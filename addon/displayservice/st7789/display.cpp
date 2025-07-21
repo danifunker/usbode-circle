@@ -4,10 +4,12 @@
 #include "splashpage.h"
 #include "imagespage.h"
 #include "powerpage.h"
+#include "configpage.h"
+#include "usbconfigpage.h"
 #include <displayservice/buttons.h>
 #include <circle/timer.h>
 #include <displayservice/buttonhandler.h>
-#include <configservice/configservice.h>
+#include <circle/sched/scheduler.h>
 
 LOGMODULE("kernel");
 
@@ -19,6 +21,7 @@ ST7789Display::ST7789Display(int dc_pin, int reset_pin, int backlight_pin, int s
 	m_Graphics(&m_Display),
 	m_PWMOutput (PWM_CLOCK_RATE, PWM_RANGE, true)
 {
+	config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 	if (backlight_pin)
 		m_backlight_pin = backlight_pin;
 
@@ -65,6 +68,8 @@ bool ST7789Display::Initialize() {
 	m_PageManager.RegisterPage("homepage", new ST7789HomePage(&m_Display, &m_Graphics));
 	m_PageManager.RegisterPage("imagespage", new ST7789ImagesPage(&m_Display, &m_Graphics));
 	m_PageManager.RegisterPage("powerpage", new ST7789PowerPage(&m_Display, &m_Graphics));
+	m_PageManager.RegisterPage("configpage", new ST7789ConfigPage(&m_Display, &m_Graphics));
+	m_PageManager.RegisterPage("usbconfigpage", new ST7789USBConfigPage(&m_Display, &m_Graphics));
 
 	// Set the stating page
 	LOGNOTE("Setting initial page");
@@ -108,9 +113,10 @@ bool ST7789Display::Initialize() {
 		m_Backlight = new CGPIOPin(m_backlight_pin, GPIOModeAlternateFunction0, m_GPIOManager);
 		m_PWMOutput.Start();
                 m_PWMOutput.Write(2, 1024);
+		pwm_configured = true;
 
 		// Backlight timeout
-		backlightTimeout = ConfigService::GetInstance()->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+		backlightTimeout = config->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
 	}
 
         return bOK;
@@ -121,6 +127,10 @@ void ST7789Display::Clear() {
 }
 
 void ST7789Display::Sleep() {
+
+    if (!pwm_configured)
+	    return;
+
     LOGNOTE("Sleeping");
     sleeping = true;
     m_PWMOutput.Write(2, 32);

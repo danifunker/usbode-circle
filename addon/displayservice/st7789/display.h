@@ -1,6 +1,7 @@
 #ifndef ST7789_DISPLAY_H
 #define ST7789_DISPLAY_H
 
+#include <configservice/configservice.h>
 #include <displayservice/idisplay.h>
 #include <displayservice/pagemanager.h>
 #include <display/st7789display.h>
@@ -49,11 +50,14 @@ private:
     CGPIOPin* m_ButtonOk;
     CGPIOPin* m_ButtonCancel;
 
+    ConfigService* config;
+
     int m_backlight_pin;
     CGPIOPin* m_Backlight;
     int backlightTimer;
     bool sleeping = false;
-    int backlightTimeout;
+    unsigned backlightTimeout;
+    bool pwm_configured = false;
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };

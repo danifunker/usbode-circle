@@ -7,6 +7,7 @@
 #include <circle/spimaster.h>
 #include <circle/2dgraphics.h>
 #include <scsitbservice/scsitbservice.h>
+#include <configservice/configservice.h>
 
 class ST7789HomePage : public IPage {
 public:
@@ -30,6 +31,7 @@ private:
     const char* GetVersionString();
     const char* GetUSBSpeed();
     const char* m_NextPageName;
+    ConfigService* config;
 
 private:
     bool m_ShouldChangePage = false;
