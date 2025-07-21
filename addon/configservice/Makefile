@@ -7,7 +7,8 @@ STDLIBHOME = $(USBODEHOME)/circle-stdlib
 NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
-OBJS    = configservice.o
+OBJS    = configservice.o \
+	  cmdline.o
 
 libconfigservice.a: $(OBJS)
 	@echo "  AR    $@"
