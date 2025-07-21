@@ -50,6 +50,9 @@ private:
     bool m_ScrollDirLeft = true;
     uint32_t m_LastScrollMs = 0;
     size_t m_PreviousSelectedIndex = -1;
+    void DrawText(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
+                           const TFont& rFont = DEFAULT_FONT,
+                           CCharGenerator::TFontFlags FontFlags = CCharGenerator::FontFlagsNone);
     void DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
                                    int pixelOffset, const TFont &rFont = DEFAULT_FONT,
                        CCharGenerator::TFontFlags FontFlags = CCharGenerator::FontFlagsNone);

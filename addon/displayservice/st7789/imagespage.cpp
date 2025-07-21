@@ -108,17 +108,50 @@ void ST7789ImagesPage::MoveSelection(int delta) {
     }
 }
 
+void ST7789ImagesPage::DrawText(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
+                           const TFont& rFont,
+                           CCharGenerator::TFontFlags FontFlags)
+{
+    CCharGenerator Font(rFont, FontFlags);
+    int m_nWidth = m_Graphics->GetWidth();
+    int m_nHeight = m_Graphics->GetHeight();
+
+    unsigned nWidth = 0;
+    for (const char* p = pText; *p != '\0'; ++p) {
+        nWidth += (*p == ' ') ? (Font.GetCharWidth() / 2) : Font.GetCharWidth();
+    }
+
+    for (; *pText != '\0'; ++pText) {
+        for (unsigned y = 0; y < Font.GetUnderline(); y++) {
+            CCharGenerator::TPixelLine Line = Font.GetPixelLine(*pText, y);
+
+            for (unsigned x = 0; x < Font.GetCharWidth(); x++) {
+                if (Font.GetPixel(x, Line)) {
+                    m_Graphics->DrawPixel(nX + x, nY + y, Color);
+                }
+            }
+        }
+
+        if (*pText == ' ') {
+            nX += Font.GetCharWidth() / 2;
+        } else {
+            nX += Font.GetCharWidth();
+        }
+    }
+}
+
 void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
-                                   int pixelOffset, const TFont& rFont,
-                                   CCharGenerator::TFontFlags FontFlags)
+                                        int pixelOffset, const TFont& rFont,
+                                        CCharGenerator::TFontFlags FontFlags)
 {
     CCharGenerator Font(rFont, FontFlags);
 
-    int m_nWidth = 230;
-    int m_nHeight = 230;
+    int m_nWidth = m_Graphics->GetWidth();
+    int m_nHeight = m_Graphics->GetHeight();
     unsigned drawX = nX - pixelOffset;
 
-    for (; *pText != '\0'; pText++, drawX += Font.GetCharWidth()) {
+    for (; *pText != '\0'; ++pText) {
+        // Draw character
         for (unsigned y = 0; y < Font.GetUnderline(); y++) {
             CCharGenerator::TPixelLine Line = Font.GetPixelLine(*pText, y);
             for (unsigned x = 0; x < Font.GetCharWidth(); x++) {
@@ -129,6 +162,12 @@ void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
                     }
                 }
             }
+        }
+
+        if (*pText == ' ') {
+            drawX += Font.GetCharWidth() / 2;  // Try /2 or fixed value like 2
+        } else {
+            drawX += Font.GetCharWidth();
         }
     }
 }
@@ -216,11 +255,11 @@ void ST7789ImagesPage::Draw()
 		DrawTextScrolled(10, y + 30, COLOR2D(255,255,255), extended, m_ScrollOffsetPx);
 	    } else {
 		// No scrolling needed
-		m_Graphics->DrawText(10, y + 30, COLOR2D(255,255,255), name, C2DGraphics::AlignLeft);
+		DrawText(10, y + 30, COLOR2D(255,255,255), name);
 	    }
 	} else {
 	    snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
-            m_Graphics->DrawText(10, y + 30, COLOR2D(0,0,0), cropped, C2DGraphics::AlignLeft);
+            DrawText(10, y + 30, COLOR2D(0,0,0), cropped);
 	}
     }
 
