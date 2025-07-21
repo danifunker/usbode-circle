@@ -30,8 +30,7 @@ std::string ShutdownPageHandler::GetHTML() {
 THTTPStatus ShutdownPageHandler::PopulateContext(kainjow::mustache::data& context,
                                    const char *pPath,
                                    const char  *pParams,
-                                   const char  *pFormData,
-                                   CPropertiesFatFsFile *m_pProperties)
+                                   const char  *pFormData)
 {
     LOGNOTE("Shutdown page called");
     

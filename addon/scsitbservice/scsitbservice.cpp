@@ -58,9 +58,8 @@ int compareFileEntries(const void* a, const void* b) {
 
 SCSITBService *SCSITBService::s_pThis = 0;
 
-SCSITBService::SCSITBService(CPropertiesFatFsFile *pProperties)
-: 	m_pProperties (pProperties),
-	m_FileCount(0) 
+SCSITBService::SCSITBService()
+: 	m_FileCount(0) 
 {
     LOGNOTE("SCSITBService::SCSITBService() called");
     
@@ -69,6 +68,7 @@ SCSITBService::SCSITBService(CPropertiesFatFsFile *pProperties)
     s_pThis = this;
 
     cdromservice = static_cast<CDROMService*>(CScheduler::Get()->GetTask("cdromservice"));
+    configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
     assert(cdromservice != nullptr && "Failed to get cdromservice");
 
     m_FileEntries = new FileEntry[MAX_FILES];
@@ -140,9 +140,7 @@ bool SCSITBService::RefreshCache() {
     LOGNOTE("SCSITBService::RefreshCache() called");
 
     // Get current loaded image
-    m_pProperties->Load();
-    m_pProperties->SelectSection("usbode");
-    const char* current_image = m_pProperties->GetString("current_image", DEFAULT_IMAGE_FILENAME);
+    const char* current_image = configservice->GetCurrentImage(DEFAULT_IMAGE_FILENAME);
     LOGNOTE("SCSITBService::RefreshCache() loaded current_image %s from config.txt", current_image);
 
     m_FileCount = 0;
@@ -233,9 +231,7 @@ void SCSITBService::Run() {
     			cdromservice->SetDevice(cueBinFileDevice);
 
 			// Save current mounted image name
-			m_pProperties->SelectSection("usbode");
-			m_pProperties->SetString("current_image", imageName);
-			m_pProperties->Save();
+			configservice->SetCurrentImage(imageName);
 
 			current_cd = next_cd;
 

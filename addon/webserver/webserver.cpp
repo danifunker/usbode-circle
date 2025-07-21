@@ -36,14 +36,10 @@
 
 LOGMODULE("webserver");
 
-CWebServer::CWebServer (CNetSubSystem *pNetSubSystem, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket)
+CWebServer::CWebServer (CNetSubSystem *pNetSubSystem, CActLED *pActLED, CSocket *pSocket)
 :       CHTTPDaemon (pNetSubSystem, pSocket, MAX_CONTENT_SIZE),
-        m_pActLED (pActLED),
-        m_pProperties(pProperties)
+        m_pActLED (pActLED)
 {
-    // Select the correct section for all property operations
-    m_pProperties->SelectSection("usbode");
-
     cdromservice = static_cast<CDROMService*>(CScheduler::Get()->GetTask("cdromservice"));
     assert(cdromservice != nullptr && "Failed to get cdromservice");
 }
@@ -55,7 +51,7 @@ CWebServer::~CWebServer (void)
 
 CHTTPDaemon *CWebServer::CreateWorker (CNetSubSystem *pNetSubSystem, CSocket *pSocket)
 {
-        return new CWebServer (pNetSubSystem, m_pActLED, m_pProperties, pSocket);
+        return new CWebServer (pNetSubSystem, m_pActLED, pSocket);
 }
 
 THTTPStatus CWebServer::GetContent (const char  *pPath,
@@ -68,7 +64,7 @@ THTTPStatus CWebServer::GetContent (const char  *pPath,
     IPageHandler* handler = PageHandlerRegistry::getHandler(pPath);
 
     if (handler)
-	    return handler->GetContent(pPath, pParams, pFormData, pBuffer, pLength, ppContentType, m_pProperties);
+	    return handler->GetContent(pPath, pParams, pFormData, pBuffer, pLength, ppContentType);
 
     return HTTPInternalServerError;
 }

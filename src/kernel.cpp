@@ -47,12 +47,6 @@
 
 LOGMODULE("kernel");
 
-// Add this near other constant definitions at the top of the file
-const char CKernel::ConfigOptionTimeZone[] = "timezone";
-
-// Define the constant for screen_sleep config option
-//const char CKernel::ConfigOptionScreenSleep[] = "screen_sleep";
-
 static CKernel* g_pKernel = nullptr;
 
 CKernel::CKernel(void)
@@ -149,18 +143,12 @@ CKernel* CKernel::Get() {
 TShutdownMode CKernel::Run(void) {
 	
 
-    // Load our config file loader
-    CPropertiesFatFsFile Properties(CONFIG_FILE, &m_FileSystem);
-    if (!Properties.Load()) {
-        LOGERR("Error loading properties from %s (line %u)",
-               CONFIG_FILE, Properties.GetErrorLine());
-        return ShutdownHalt;
-    }
-
-    Properties.SelectSection("usbode");
+    // Initialize our config service
+    ConfigService* config = new ConfigService();
+    LOGNOTE("Started Config service");
 
     // Start the file logging service
-    const char* logfile = Properties.GetString("logfile", nullptr);
+    const char* logfile = config->GetLogfile();
     if (logfile) {
         new CFileLogDaemon(logfile);
         LOGNOTE("Started the Log File service");
@@ -173,24 +161,21 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
     LOGNOTE("=====================================");
 
-    int mode = Properties.GetNumber("mode", 0);
+    int mode = config->GetMode();
     LOGNOTE("Got mode = %d", mode);
 
     if (mode == 0) { // CDROM Mode
 
-	    // Initialize our config service
-	    new ConfigService();
-	    LOGNOTE("Started Config service");
 
 	    // Initialize the CD Player service
 	    const char* pSoundDevice = m_Options.GetSoundDevice();
 	    
 	    //Currently supporting PWM and I2S sound devices. HDMI needs more work.
 	    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
-    		unsigned int volume = Properties.GetNumber("default_volume", 0xff);
+    		unsigned int volume = config->GetDefaultVolume();
 		if (volume > 0xff)
 			volume = 0xff;
-		CCDPlayer *player = new CCDPlayer(pSoundDevice);
+		CCDPlayer* player = new CCDPlayer(pSoundDevice);
 		player->SetDefaultVolume((u8)volume);
 		LOGNOTE("Started the CD Player service. Default volume is %d", volume);
 	    }
@@ -201,11 +186,11 @@ TShutdownMode CKernel::Run(void) {
 	    LOGNOTE("Started CDROM service");
 
 	    // Load our SCSITB Service
-	    new SCSITBService(&Properties);
+	    new SCSITBService();
 	    LOGNOTE("Started SCSITB service");
 
 	    // Load our Display Service, if needed
-            const char* displayType = Properties.GetString("displayhat", "none");
+            const char* displayType = config->GetDisplayHat();
 	    if (strcmp(displayType, "none") != 0 ) {
 	        new DisplayService(displayType);
 	        LOGNOTE("Started DisplayService service");
@@ -231,7 +216,7 @@ TShutdownMode CKernel::Run(void) {
         // Start the Web Server
         if (m_Net.IsRunning() && !pCWebServer) {
             // Create the web server
-            pCWebServer = new CWebServer(&m_Net, &m_ActLED, &Properties);
+            pCWebServer = new CWebServer(&m_Net, &m_ActLED);
 
             LOGNOTE("Started Webserver service");
         }
@@ -239,8 +224,7 @@ TShutdownMode CKernel::Run(void) {
         // Run NTP
         if (m_Net.IsRunning() && !ntpInitialized) {
                 // Read timezone from config.txt
-                Properties.SelectSection("usbode");
-                const char* timezone = Properties.GetString(ConfigOptionTimeZone, "UTC");
+                const char* timezone = config->GetTimezone();
 
                 // Initialize NTP with the timezone
                 InitializeNTP(timezone);

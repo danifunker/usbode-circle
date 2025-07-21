@@ -13,6 +13,7 @@
 #include <shutdown/shutdown.h>
 #include "modepage.h"
 #include "util.h"
+#include <configservice/configservice.h>
 
 using namespace kainjow;
 
@@ -29,8 +30,7 @@ std::string ModePageHandler::GetHTML() {
 THTTPStatus ModePageHandler::PopulateContext(kainjow::mustache::data& context,
                                    const char *pPath,
                                    const char  *pParams,
-                                   const char  *pFormData,
-                                   CPropertiesFatFsFile *m_pProperties)
+                                   const char  *pFormData)
 {
 	LOGDBG("Mode page called");
 
@@ -51,15 +51,14 @@ THTTPStatus ModePageHandler::PopulateContext(kainjow::mustache::data& context,
 	}
 
 	// Compare to current mode & proceed if necessary
-	int mode = m_pProperties->GetNumber("mode", 0);
+	ConfigService* config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+	int mode = config->GetMode();
 	LOGDBG("Mode parameter is %d", mode);
 
 	if (mode != qmode) {
 
 		// Save current mode
-		m_pProperties->SelectSection("usbode");
-		m_pProperties->SetNumber("mode", qmode, 10);
-		m_pProperties->Save();
+		config->SetMode(qmode);
 
 		// Signal a reboot or shutdown
 		new CShutdown(ShutdownReboot, 1000);

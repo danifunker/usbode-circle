@@ -9,7 +9,6 @@ public:
    THTTPStatus GetJson(nlohmann::json& j,
 		const char *pPath,
 		const char *pParams,
-		const char *pFormData,
-		CPropertiesFatFsFile *m_pProperties);
+		const char *pFormData);
 };
 #endif

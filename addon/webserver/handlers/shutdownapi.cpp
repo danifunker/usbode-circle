@@ -14,8 +14,7 @@ LOGMODULE("shutdownapi");
 THTTPStatus ShutdownAPIHandler::GetJson(nlohmann::json& j,
                 const char *pPath,
                 const char *pParams,
-                const char *pFormData,
-                CPropertiesFatFsFile *m_pProperties)
+                const char *pFormData)
 {
     if (!pPath)
         return HTTPNotFound;

@@ -20,7 +20,6 @@
 #ifndef _kernel_h
 #define _kernel_h
 
-#include <Properties/propertiesfatfsfile.h>
 #include <SDCard/emmc.h>
 #include <circle/actled.h>
 #include <circle/devicenameservice.h>

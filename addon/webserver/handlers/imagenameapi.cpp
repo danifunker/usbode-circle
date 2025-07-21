@@ -14,8 +14,7 @@ LOGMODULE("imagenameapi");
 THTTPStatus ImageNameAPIHandler::GetJson(nlohmann::json& j,
                 const char *pPath,
                 const char *pParams,
-                const char *pFormData,
-                CPropertiesFatFsFile *m_pProperties)
+                const char *pFormData)
 {
 
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));

@@ -20,7 +20,6 @@
 #ifndef _webserver_h
 #define _webserver_h
 
-#include <Properties/propertiesfatfsfile.h>
 #include <circle/sched/scheduler.h>
 #include <circle/actled.h>
 #include <circle/net/httpdaemon.h>
@@ -43,7 +42,7 @@ enum TShutdownMode {
 
 class CWebServer : public CHTTPDaemon {
    public:
-    CWebServer(CNetSubSystem *pNetSubSystem, CActLED *pActLED, CPropertiesFatFsFile *pProperties, CSocket *pSocket = 0);
+    CWebServer(CNetSubSystem *pNetSubSystem, CActLED *pActLED, CSocket *pSocket = 0);
     ~CWebServer(void);
 
     // from CHTTPDaemon
@@ -59,7 +58,6 @@ class CWebServer : public CHTTPDaemon {
                           const char **ppContentType);
 private:
     CActLED *m_pActLED;
-    CPropertiesFatFsFile *m_pProperties;
     CDROMService *cdromservice = nullptr;
 
 public:

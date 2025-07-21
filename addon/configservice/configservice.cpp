@@ -66,6 +66,12 @@ unsigned ConfigService::GetLogLevel(unsigned defaultValue)
     return m_properties->GetNumber("loglevel", defaultValue);
 }
 
+unsigned ConfigService::GetMode(unsigned defaultValue)
+{
+    m_properties->SelectSection("usbode");
+    return m_properties->GetNumber("mode", defaultValue);
+}
+
 const char* ConfigService::GetLogfile(const char *defaultValue)
 {
     m_properties->SelectSection("usbode");
@@ -77,6 +83,12 @@ const char* ConfigService::GetDisplayHat(const char *defaultValue)
 {
     m_properties->SelectSection("usbode");
     return m_properties->GetString("displayhat", defaultValue);
+}
+
+const char* ConfigService::GetTimezone(const char *defaultValue)
+{
+    m_properties->SelectSection("usbode");
+    return m_properties->GetString("timezone", defaultValue);
 }
 
 unsigned ConfigService::GetScreenTimeout(unsigned defaultValue)
@@ -93,6 +105,13 @@ void ConfigService::SetCurrentImage(const char* value)
     configIsDirty=true;
 }
 
+void ConfigService::SetMode(unsigned value)
+{
+    m_properties->SelectSection("usbode");
+    m_properties->SetNumber("mode", value);
+    configIsDirty=true;
+}
+
 void ConfigService::SetDefaultVolume(unsigned value)
 {
     m_properties->SelectSection("usbode");
@@ -104,6 +123,13 @@ void ConfigService::SetDisplayHat(const char* value)
 {
     m_properties->SelectSection("usbode");
     m_properties->SetString("displayhat", value);
+    configIsDirty=true;
+}
+
+void ConfigService::SetTimezone(const char* value)
+{
+    m_properties->SelectSection("usbode");
+    m_properties->SetString("timezone", value);
     configIsDirty=true;
 }
 

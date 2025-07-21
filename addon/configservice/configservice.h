@@ -13,17 +13,21 @@ public:
     const char* GetCurrentImage(const char *defaultValue="image.iso");
     unsigned GetDefaultVolume(unsigned defaultValue=255);
     const char* GetDisplayHat(const char *defaultValue="none");
+    const char* GetTimezone(const char *defaultValue="UTC");
     unsigned GetScreenTimeout(unsigned defaultValue=30);
     unsigned GetLogLevel(unsigned defaultValue=4);
-    const char* GetLogfile(const char *defaultValue="SD:/usbode-logs.txt");
+    unsigned GetMode(unsigned defaultValue=0);
+    const char* GetLogfile(const char *defaultValue=nullptr);
     bool GetUSBFullSpeed();
 
     void SetLogfile(const char* value);
     void SetCurrentImage(const char* value);
     void SetDefaultVolume(unsigned value);
     void SetDisplayHat(const char* value);
+    void SetTimezone(const char* value);
     void SetScreenTimeout(unsigned value);
     void SetLogLevel(unsigned value);
+    void SetMode(unsigned value);
     void SetUSBFullSpeed(bool value);
 
     bool IsDirty();

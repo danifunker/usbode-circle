@@ -283,8 +283,7 @@ bool ConfigPageHandler::UpdateCmdlineFile(const std::map<std::string, std::strin
 THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
                                    const char *pPath,
                                    const char  *pParams,
-                                   const char  *pFormData,
-                                   CPropertiesFatFsFile *m_pProperties)
+                                   const char  *pFormData)
 {
     LOGNOTE("Config page called");
     
