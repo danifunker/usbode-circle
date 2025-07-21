@@ -106,6 +106,31 @@ void ST7789ImagesPage::MoveSelection(int delta) {
     }
 }
 
+void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
+                                   int pixelOffset, const TFont& rFont,
+                                   CCharGenerator::TFontFlags FontFlags)
+{
+    CCharGenerator Font(rFont, FontFlags);
+
+    int m_nWidth = 230;
+    int m_nHeight = 230;
+    unsigned drawX = nX - pixelOffset;
+
+    for (; *pText != '\0'; pText++, drawX += Font.GetCharWidth()) {
+        for (unsigned y = 0; y < Font.GetUnderline(); y++) {
+            CCharGenerator::TPixelLine Line = Font.GetPixelLine(*pText, y);
+            for (unsigned x = 0; x < Font.GetCharWidth(); x++) {
+                int finalX = drawX + x;
+                if (finalX >= 0 && finalX < m_nWidth && (nY + y) < m_nHeight) {
+                    if (Font.GetPixel(x, Line)) {
+                        m_Graphics->DrawPixel(finalX, nY + y, Color);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void ST7789ImagesPage::Refresh()
 {
 	/*
@@ -138,7 +163,7 @@ void ST7789ImagesPage::Draw()
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
     if (m_SelectedIndex != m_PreviousSelectedIndex) {
-        m_ScrollOffset = 0;
+        m_ScrollOffsetPx = 0;
         m_ScrollDirLeft = true;
         m_PreviousSelectedIndex = m_SelectedIndex;
     }
@@ -159,41 +184,50 @@ void ST7789ImagesPage::Draw()
 	size_t nameLen = strlen(name);
 
 	// Only scroll selected line and only if too long
-	if (i == m_SelectedIndex && nameLen > (size_t)maxLen) {
-	    uint32_t now = CTimer::Get()->GetClockTicks();; // or however you get current ms
-	    if (now - m_LastScrollMs > 200) { // scroll every 200ms
-		m_LastScrollMs = now;
+	const int charWidth = Font.GetCharWidth();
+	const int maxTextPx = m_Display->GetWidth() - 10;
 
-		if (m_ScrollDirLeft) {
-		    ++m_ScrollOffset;
-		    if (m_ScrollOffset >= (int)(nameLen - maxLen))
-			m_ScrollDirLeft = false;
-		} else {
-		    --m_ScrollOffset;
-		    if (m_ScrollOffset <= 0)
-			m_ScrollDirLeft = true;
-		}
-	    }
+	if (i == m_SelectedIndex) {
 
-	    int offset = MAX(0, MIN(m_ScrollOffset, (int)(nameLen - maxLen)));
-	    snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name + offset);
-	} else {
-	    // No scrolling
-	    snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
-	}
-
-        if (i == m_SelectedIndex) {
             m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0,0,0));
-            m_Graphics->DrawText(10, y + 30, COLOR2D(255,255,255), cropped, C2DGraphics::AlignLeft);
+
+	    int fullTextPx = (int)strlen(name) * charWidth;
+	    if (fullTextPx > maxTextPx) {
+		uint32_t now = CTimer::Get()->GetClockTicks();
+		if (now - m_LastScrollMs > 20) { // scroll speed
+		    m_LastScrollMs = now;
+
+		    if (m_ScrollDirLeft) {
+			m_ScrollOffsetPx++;
+			m_ScrollOffsetPx++;
+			if (m_ScrollOffsetPx >= (fullTextPx - maxTextPx)) {
+			    m_ScrollOffsetPx = (fullTextPx - maxTextPx);
+			    m_ScrollDirLeft = false;
+			}
+		    } else {
+			m_ScrollOffsetPx--;
+			m_ScrollOffsetPx--;
+			if (m_ScrollOffsetPx <= 0) {
+			    m_ScrollOffsetPx = 0;
+			    m_ScrollDirLeft = true;
+			}
+		    }
+		}
+		DrawTextScrolled(10, y + 30, COLOR2D(255,255,255), name, m_ScrollOffsetPx);
+	    } else {
+		// No scrolling needed
+		m_Graphics->DrawText(10, y + 30, COLOR2D(255,255,255), name, C2DGraphics::AlignLeft);
+	    }
 	} else {
+	    snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
             m_Graphics->DrawText(10, y + 30, COLOR2D(0,0,0), cropped, C2DGraphics::AlignLeft);
 	}
     }
 
     // Draw page indicator
     char pageText[16];
-    snprintf(pageText, sizeof(pageText), "[%02u/%02u]", currentPage + 1, totalPages);
-    m_Graphics->DrawText(175, 10, COLOR2D(255, 255, 255), pageText, C2DGraphics::AlignLeft);
+    snprintf(pageText, sizeof(pageText), "%d/%d", currentPage + 1, totalPages);
+    m_Graphics->DrawText(180, 10, COLOR2D(255, 255, 255), pageText, C2DGraphics::AlignLeft);
 
     DrawNavigationBar("images");
     m_Graphics->UpdateDisplay();

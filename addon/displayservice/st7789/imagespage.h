@@ -45,9 +45,12 @@ private:
     size_t m_TotalFiles;
     size_t m_SelectedIndex = 0;
 
-    int m_ScrollOffset = 0;
+    int m_ScrollOffsetPx = 0;
     bool m_ScrollDirLeft = true;
     uint32_t m_LastScrollMs = 0;
-    int m_PreviousSelectedIndex = -1;
+    size_t m_PreviousSelectedIndex = -1;
+    void DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
+                                   int pixelOffset, const TFont &rFont = DEFAULT_FONT,
+                       CCharGenerator::TFontFlags FontFlags = CCharGenerator::FontFlagsNone);
 };
 #endif
