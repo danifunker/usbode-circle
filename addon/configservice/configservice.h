@@ -1,8 +1,6 @@
 #ifndef CONFIG_SERVICE_H
 #define CONFIG_SERVICE_H
 
-#define CONFIG_FILE "config.txt"
-
 #include "cmdline.h"
 #include <Properties/propertiesfatfsfile.h>
 #include <circle/sched/task.h>
@@ -16,6 +14,7 @@ public:
     unsigned GetDefaultVolume(unsigned defaultValue=255);
     const char* GetDisplayHat(const char *defaultValue="none");
     unsigned GetScreenTimeout(unsigned defaultValue=30);
+    unsigned GetLogLevel(unsigned defaultValue=4);
     const char* GetLogfile(const char *defaultValue="SD:/usbode-logs.txt");
     bool GetUSBFullSpeed();
 
@@ -24,6 +23,7 @@ public:
     void SetDefaultVolume(unsigned value);
     void SetDisplayHat(const char* value);
     void SetScreenTimeout(unsigned value);
+    void SetLogLevel(unsigned value);
     void SetUSBFullSpeed(bool value);
 
     bool IsDirty();

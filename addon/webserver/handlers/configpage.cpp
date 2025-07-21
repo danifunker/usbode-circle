@@ -415,6 +415,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["displayhat_none"] = (current_displayhat == "none");
     context["displayhat_pirateaudio"] = (current_displayhat == "pirateaudiolineout");
     context["displayhat_waveshare"] = (current_displayhat == "waveshare");
+    context["displayhat_st7789"] = (current_displayhat == "st7789");
     
     // Set sound device options
     context["sounddev_sndpwm"] = (current_sounddev == "sndpwm");

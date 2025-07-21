@@ -5,6 +5,7 @@
 #include "imagespage.h"
 #include "powerpage.h"
 #include "configpage.h"
+#include "logconfigpage.h"
 #include "usbconfigpage.h"
 #include <displayservice/buttons.h>
 #include <circle/timer.h>
@@ -70,6 +71,7 @@ bool ST7789Display::Initialize() {
 	m_PageManager.RegisterPage("powerpage", new ST7789PowerPage(&m_Display, &m_Graphics));
 	m_PageManager.RegisterPage("configpage", new ST7789ConfigPage(&m_Display, &m_Graphics));
 	m_PageManager.RegisterPage("usbconfigpage", new ST7789USBConfigPage(&m_Display, &m_Graphics));
+	m_PageManager.RegisterPage("logconfigpage", new ST7789LogConfigPage(&m_Display, &m_Graphics));
 
 	// Set the stating page
 	LOGNOTE("Setting initial page");

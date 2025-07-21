@@ -204,10 +204,12 @@ TShutdownMode CKernel::Run(void) {
 	    new SCSITBService(&Properties);
 	    LOGNOTE("Started SCSITB service");
 
-	    // Load our Display Service
+	    // Load our Display Service, if needed
             const char* displayType = Properties.GetString("displayhat", "none");
-	    new DisplayService(displayType);
-	    LOGNOTE("Started DisplayService service");
+	    if (strcmp(displayType, "none") != 0 ) {
+	        new DisplayService(displayType);
+	        LOGNOTE("Started DisplayService service");
+	    }
 
     } else { // Mass Storage Device Mode
 	    // Start our SD Card Service

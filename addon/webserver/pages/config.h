@@ -24,6 +24,7 @@
 "                            <option value=\"none\" {{#displayhat_none}}selected{{/displayhat_none}}>None</option>\n"
 "                            <option value=\"pirateaudiolineout\" {{#displayhat_pirateaudio}}selected{{/displayhat_pirateaudio}}>Pirate Audio Line Out</option>\n"
 "                            <option value=\"waveshare\" {{#displayhat_waveshare}}selected{{/displayhat_waveshare}}>Waveshare OLED</option>\n"
+"                            <option value=\"st7789\" {{#displayhat_st7789}}selected{{/displayhat_st7789}}>ST7789 OLED</option>\n"
 "                        </select>\n"
 "                    </div>\n"
 "                    <div class=\"form-group\">\n"

@@ -19,9 +19,11 @@ ConfigService::ConfigService()
     s_pThis = this;
 
     FATFS* fs = CKernel::Get()->GetFileSystem();
-    m_properties = new CPropertiesFatFsFile(CONFIG_FILE, fs);
-
-    cmdline.Load("SD:/cmdline.txt");
+    m_properties = new CPropertiesFatFsFile("SD:/config.txt", fs);
+    bool ok = m_properties->Load();
+    assert(ok && "Can't load configuration properties from config.txt");
+    ok = cmdline.Load("SD:/cmdline.txt");
+    assert(ok && "Can't load configuration properties from cmdline.txt");
     SetName("configservice");
 }
 
@@ -47,7 +49,7 @@ void ConfigService::SetUSBFullSpeed(bool value)
 const char* ConfigService::GetCurrentImage(const char *defaultValue)
 {
     m_properties->SelectSection("usbode");
-     return m_properties->GetString("current_image", defaultValue);
+    return m_properties->GetString("current_image", defaultValue);
 }
 
 //TODO bounds checking
@@ -55,6 +57,13 @@ unsigned ConfigService::GetDefaultVolume(unsigned defaultValue)
 {
     m_properties->SelectSection("usbode");
     return m_properties->GetNumber("default_volume", defaultValue);
+}
+
+//TODO bounds checking
+unsigned ConfigService::GetLogLevel(unsigned defaultValue)
+{
+    m_properties->SelectSection("usbode");
+    return m_properties->GetNumber("loglevel", defaultValue);
 }
 
 const char* ConfigService::GetLogfile(const char *defaultValue)
@@ -95,6 +104,13 @@ void ConfigService::SetDisplayHat(const char* value)
 {
     m_properties->SelectSection("usbode");
     m_properties->SetString("displayhat", value);
+    configIsDirty=true;
+}
+
+void ConfigService::SetLogLevel(unsigned value)
+{
+    m_properties->SelectSection("usbode");
+    m_properties->SetNumber("loglevel", value);
     configIsDirty=true;
 }
 
