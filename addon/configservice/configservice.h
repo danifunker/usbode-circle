@@ -17,8 +17,11 @@ public:
     unsigned GetScreenTimeout(unsigned defaultValue=30);
     unsigned GetLogLevel(unsigned defaultValue=4);
     unsigned GetMode(unsigned defaultValue=0);
-    const char* GetLogfile(const char *defaultValue=nullptr);
+    const char* GetLogfile(const char *defaultValue="SD:/usbode-log.txt");
     bool GetUSBFullSpeed();
+
+    void SetSoundDev(const char* value);
+    const char* GetSoundDev(const char* defaultValue="none");
 
     void SetLogfile(const char* value);
     void SetCurrentImage(const char* value);

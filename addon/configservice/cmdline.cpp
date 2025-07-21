@@ -30,6 +30,12 @@ bool CmdLine::Load(const char* filename) {
 
     line[bytesRead] = '\0';  // Null-terminate the buffer
 
+    // Chomp trailing newline(s)
+    char* p = line + strlen(line) - 1;
+    while (p >= line && (*p == '\n' || *p == '\r')) {
+        *p-- = '\0';
+    }
+
     count = 0;
     char* saveptr = nullptr;
     char* token = strtok_r(line, " ", &saveptr);

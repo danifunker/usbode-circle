@@ -35,8 +35,9 @@ ConfigService::~ConfigService()
 bool ConfigService::GetUSBFullSpeed()
 {
     const char* val = cmdline.GetValue("usbspeed");
-    if (val != NULL && strcmp(val, "full") == 0)
-	    return true;
+    if (val != nullptr && strcmp(val, "full") == 0) {
+	return true;
+    }
     return false;
 }
 
@@ -44,6 +45,20 @@ void ConfigService::SetUSBFullSpeed(bool value)
 {
     cmdline.SetValue("usbspeed", value ? "full" : "high");
     cmdlineIsDirty=true;
+}
+
+void ConfigService::SetSoundDev(const char* value)
+{
+    cmdline.SetValue("sounddev", value);
+    cmdlineIsDirty=true;
+}
+
+const char* ConfigService::GetSoundDev(const char* defaultValue)
+{
+    const char* val = cmdline.GetValue("sounddev");
+    if (val != nullptr )
+	    return val;
+    return defaultValue;
 }
 
 const char* ConfigService::GetCurrentImage(const char *defaultValue)
@@ -62,8 +77,15 @@ unsigned ConfigService::GetDefaultVolume(unsigned defaultValue)
 //TODO bounds checking
 unsigned ConfigService::GetLogLevel(unsigned defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetNumber("loglevel", defaultValue);
+    const char* val = cmdline.GetValue("loglevel");
+    if (val == nullptr )
+	    return defaultValue;
+
+    int parsed = atoi(val);
+    if (parsed < 0)
+	    return defaultValue;
+
+    return static_cast<unsigned>(parsed);
 }
 
 unsigned ConfigService::GetMode(unsigned defaultValue)
@@ -135,9 +157,10 @@ void ConfigService::SetTimezone(const char* value)
 
 void ConfigService::SetLogLevel(unsigned value)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetNumber("loglevel", value);
-    configIsDirty=true;
+    char buffer[2];
+    snprintf(buffer, sizeof(buffer), "%u", value);
+    cmdline.SetValue("loglevel", buffer);
+    cmdlineIsDirty=true;
 }
 
 void ConfigService::SetLogfile(const char* value)
