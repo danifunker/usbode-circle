@@ -30,6 +30,7 @@
 #include <devicestate/devicestate.h>
 #include <circle/logger.h>
 #include <displayservice/displayservice.h>
+#include <configservice/configservice.h>
 
 #include <circle/time.h>
 
@@ -176,6 +177,10 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("Got mode = %d", mode);
 
     if (mode == 0) { // CDROM Mode
+
+	    // Initialize our config service
+	    new ConfigService();
+	    LOGNOTE("Started Config service");
 
 	    // Initialize the CD Player service
 	    const char* pSoundDevice = m_Options.GetSoundDevice();
