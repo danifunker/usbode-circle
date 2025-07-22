@@ -1,84 +1,71 @@
 #include "homepage.h"
+
 #include <circle/logger.h>
 #include <gitinfo/gitinfo.h>
+
 #include "../../../src/kernel.h"
 
 LOGMODULE("homepage");
 
 ST7789HomePage::ST7789HomePage(CST7789Display* display, C2DGraphics* graphics)
-: m_Display(display),
-  m_Graphics(graphics)
-{
-	m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
-	config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+    : m_Display(display),
+      m_Graphics(graphics) {
+    m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+    config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 }
 
 ST7789HomePage::~ST7789HomePage() {
     LOGNOTE("Homepage starting");
 }
 
-void ST7789HomePage::OnEnter()
-{
+void ST7789HomePage::OnEnter() {
     LOGNOTE("Drawing homepage");
     Draw();
 }
 
-void ST7789HomePage::OnExit()
-{
-	m_ShouldChangePage = false;
+void ST7789HomePage::OnExit() {
+    m_ShouldChangePage = false;
 }
 
 bool ST7789HomePage::shouldChangePage() {
-	return m_ShouldChangePage;
+    return m_ShouldChangePage;
 }
 
 const char* ST7789HomePage::nextPageName() {
-	return m_NextPageName;
+    return m_NextPageName;
 }
 
-void ST7789HomePage::OnButtonPress(Button button)
-{
-	LOGNOTE("Button received by page %d", button);
-	
-    switch (button)
-    {
+void ST7789HomePage::OnButtonPress(Button button) {
+    LOGNOTE("Button received by page %d", button);
+
+    switch (button) {
         case Button::Up:
             m_NextPageName = "imagespage";
-	    m_ShouldChangePage = true;
+            m_ShouldChangePage = true;
             break;
 
         case Button::Down:
             m_NextPageName = "configpage";
-	    m_ShouldChangePage = true;
+            m_ShouldChangePage = true;
             break;
 
         case Button::Cancel:
             m_NextPageName = "powerpage";
-	    m_ShouldChangePage = true;
+            m_ShouldChangePage = true;
             break;
 
         case Button::Ok:
             m_NextPageName = "infopage";
-	    m_ShouldChangePage = true;
+            m_ShouldChangePage = true;
             break;
 
         default:
             break;
     }
-    
 }
 
-void ST7789HomePage::Refresh()
-{
-	/*
-    const char* pIPAddress = GetIPAddress();
-    const char* pISOName = GetCurrentImage();
-    // Draw IP address
-    m_Graphics->DrawText(35, 45, COLOR2D(0, 0, 0), pIPAddress, C2DGraphics::AlignLeft);
-    m_Graphics->UpdateDisplay();
-    */
-
-    //TODO We shouldn't redraw everything!
+void ST7789HomePage::Refresh() {
+    // TODO We shouldn't redraw everything!
     Draw();
 }
 
@@ -86,10 +73,10 @@ const char* ST7789HomePage::GetIPAddress() {
     CNetSubSystem* net = CKernel::Get()->GetNetwork();
     if (net && net->IsRunning()) {
         CString IPString;
-	net->GetConfig()->GetIPAddress()->Format(&IPString);
-	return (const char*)IPString;
+        net->GetConfig()->GetIPAddress()->Format(&IPString);
+        return (const char*)IPString;
     } else {
-	return "Not Connected";
+        return "Not Connected";
     }
 }
 
@@ -98,18 +85,16 @@ const char* ST7789HomePage::GetVersionString() {
 }
 
 const char* ST7789HomePage::GetCurrentImage() {
-	return m_Service->GetCurrentCDName();
+    return m_Service->GetCurrentCDName();
 }
 
 const char* ST7789HomePage::GetUSBSpeed() {
-	if (config->GetUSBFullSpeed())
-		return "FullSpeed (USB 1.1)";
-	return "HighSpeed (USB 2)";
+    if (config->GetUSBFullSpeed())
+        return "FullSpeed (USB 1.1)";
+    return "HighSpeed (USB 2)";
 }
 
-void ST7789HomePage::Draw()
-{
-
+void ST7789HomePage::Draw() {
     const char* pTitle = GetVersionString();
     const char* pIPAddress = GetIPAddress();
     const char* pISOName = GetCurrentImage();
@@ -145,18 +130,18 @@ void ST7789HomePage::Draw()
 
     // Move the USB icon further down to accommodate 3 lines of text and make it larger
     unsigned usb_x = 10;
-    unsigned usb_y = 75; // Moved down close to nav bar
+    unsigned usb_y = 75;  // Moved down close to nav bar
 
     // USB outline - rectangular shape (3x larger)
     // Using DrawRect for thicker lines instead of individual pixels
-    m_Graphics->DrawRect(usb_x, usb_y, 24, 2, COLOR2D(0, 0, 0)); // Top horizontal
-    m_Graphics->DrawRect(usb_x, usb_y+21, 24, 2, COLOR2D(0, 0, 0)); // Bottom horizontal
-    m_Graphics->DrawRect(usb_x, usb_y, 2, 23, COLOR2D(0, 0, 0)); // Left vertical
-    m_Graphics->DrawRect(usb_x+22, usb_y, 2, 23, COLOR2D(0, 0, 0)); // Right vertical
+    m_Graphics->DrawRect(usb_x, usb_y, 24, 2, COLOR2D(0, 0, 0));       // Top horizontal
+    m_Graphics->DrawRect(usb_x, usb_y + 21, 24, 2, COLOR2D(0, 0, 0));  // Bottom horizontal
+    m_Graphics->DrawRect(usb_x, usb_y, 2, 23, COLOR2D(0, 0, 0));       // Left vertical
+    m_Graphics->DrawRect(usb_x + 22, usb_y, 2, 23, COLOR2D(0, 0, 0));  // Right vertical
 
     // USB pins (larger)
-    m_Graphics->DrawRect(usb_x+6, usb_y+6, 4, 12, COLOR2D(0, 0, 0)); // Left pin
-    m_Graphics->DrawRect(usb_x+14, usb_y+6, 4, 12, COLOR2D(0, 0, 0)); // Right pin
+    m_Graphics->DrawRect(usb_x + 6, usb_y + 6, 4, 12, COLOR2D(0, 0, 0));   // Left pin
+    m_Graphics->DrawRect(usb_x + 14, usb_y + 6, 4, 12, COLOR2D(0, 0, 0));  // Right pin
 
     // Draw USB speed info next to the USB icon
     m_Graphics->DrawText(40, 80, COLOR2D(0, 0, 0), pUSBSpeed, C2DGraphics::AlignLeft);
@@ -176,70 +161,62 @@ void ST7789HomePage::Draw()
     m_Graphics->DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 2, COLOR2D(0, 0, 0));
 
     // ISO name handling with THREE-line support
-    size_t first_line_chars = 25;  // First line chars
-    size_t second_line_chars = 25; // Second line chars
-    size_t third_line_chars = 25;  // Third line chars
+    size_t first_line_chars = 25;   // First line chars
+    size_t second_line_chars = 25;  // Second line chars
+    size_t third_line_chars = 25;   // Third line chars
 
     char first_line[40] = {0};
     char second_line[40] = {0};
     char third_line[40] = {0};
     size_t iso_length = strlen(pISOName);
 
-    if (iso_length <= first_line_chars)
-    {
-	// Short name fits on one line
-	m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), pISOName, C2DGraphics::AlignLeft);
+    if (iso_length <= first_line_chars) {
+        // Short name fits on one line
+        m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), pISOName, C2DGraphics::AlignLeft);
+    } else if (iso_length <= first_line_chars + second_line_chars) {
+        // Two lines needed
+        // First line
+        strncpy(first_line, pISOName, first_line_chars);
+        first_line[first_line_chars] = '\0';
+        m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
+
+        // Second line
+        strncpy(second_line, pISOName + first_line_chars, second_line_chars);
+        second_line[second_line_chars] = '\0';
+        m_Graphics->DrawText(35, cd_y + 20, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
+    } else if (iso_length <= first_line_chars + second_line_chars + third_line_chars) {
+        // Three lines needed
+        // First line
+        strncpy(first_line, pISOName, first_line_chars);
+        first_line[first_line_chars] = '\0';
+        m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
+
+        // Second line
+        strncpy(second_line, pISOName + first_line_chars, second_line_chars);
+        second_line[second_line_chars] = '\0';
+        m_Graphics->DrawText(35, cd_y + 20, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
+
+        // Third line
+        strncpy(third_line, pISOName + first_line_chars + second_line_chars, third_line_chars);
+        third_line[third_line_chars] = '\0';
+        m_Graphics->DrawText(35, cd_y + 40, COLOR2D(0, 0, 0), third_line, C2DGraphics::AlignLeft);
+    } else {
+        // More than three lines worth of text - show first two lines and end with ellipsis + last part
+        // First line
+        strncpy(first_line, pISOName, first_line_chars);
+        first_line[first_line_chars] = '\0';
+        m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
+
+        // Second line
+        strncpy(second_line, pISOName + first_line_chars, second_line_chars);
+        second_line[second_line_chars] = '\0';
+        m_Graphics->DrawText(35, cd_y + 20, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
+
+        // Third line with "..." and last 11 chars of filename
+        strcpy(third_line, "...");
+        strcat(third_line, pISOName + (iso_length - 11));
+        m_Graphics->DrawText(35, cd_y + 40, COLOR2D(0, 0, 0), third_line, C2DGraphics::AlignLeft);
     }
-    else if (iso_length <= first_line_chars + second_line_chars)
-    {
-	// Two lines needed
-	// First line
-	strncpy(first_line, pISOName, first_line_chars);
-	first_line[first_line_chars] = '\0';
-	m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
-
-	// Second line
-	strncpy(second_line, pISOName + first_line_chars, second_line_chars);
-	second_line[second_line_chars] = '\0';
-	m_Graphics->DrawText(35, cd_y + 20, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
-    }
-    else if (iso_length <= first_line_chars + second_line_chars + third_line_chars)
-    {
-	// Three lines needed
-	// First line
-	strncpy(first_line, pISOName, first_line_chars);
-	first_line[first_line_chars] = '\0';
-	m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
-
-	// Second line
-	strncpy(second_line, pISOName + first_line_chars, second_line_chars);
-	second_line[second_line_chars] = '\0';
-	m_Graphics->DrawText(35, cd_y + 20, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
-
-	// Third line
-	strncpy(third_line, pISOName + first_line_chars + second_line_chars, third_line_chars);
-	third_line[third_line_chars] = '\0';
-	m_Graphics->DrawText(35, cd_y + 40, COLOR2D(0, 0, 0), third_line, C2DGraphics::AlignLeft);
-    }
-    else
-    {
-	// More than three lines worth of text - show first two lines and end with ellipsis + last part
-	// First line
-	strncpy(first_line, pISOName, first_line_chars);
-	first_line[first_line_chars] = '\0';
-	m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
-
-	// Second line
-	strncpy(second_line, pISOName + first_line_chars, second_line_chars);
-			second_line[second_line_chars] = '\0';
-	m_Graphics->DrawText(35, cd_y + 20, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
-
-	// Third line with "..." and last 11 chars of filename
-	strcpy(third_line, "...");
-	strcat(third_line, pISOName + (iso_length - 11));
-	m_Graphics->DrawText(35, cd_y + 40, COLOR2D(0, 0, 0), third_line, C2DGraphics::AlignLeft);
-    }
-
 
     // Use the helper function to draw navigation bar (false = main screen layout)
     DrawNavigationBar("main");
@@ -251,9 +228,8 @@ void ST7789HomePage::Draw()
     m_Display->On();
 }
 
-//TODO: put in common place
-void ST7789HomePage::DrawNavigationBar(const char* screenType)
-{
+// TODO: put in common place
+void ST7789HomePage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom
     m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
 
@@ -263,8 +239,8 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(5, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "A" using lines instead of text
-    unsigned a_x = 14; // Center of A
-    unsigned a_y = 225; // Center of button
+    unsigned a_x = 14;   // Center of A
+    unsigned a_y = 225;  // Center of button
 
     // Draw A using thick lines (3px wide)
     // Left diagonal of A
@@ -279,7 +255,7 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
 
     // Middle bar of A
     m_Graphics->DrawLine(a_x - 2, a_y, a_x + 2, a_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0)); // Fixed: a_y+1 instead of a_x+1
+    m_Graphics->DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0));  // Fixed: a_y+1 instead of a_x+1
 
     // UP arrow for navigation screens or custom icon for main screen
     unsigned arrow_x = 35;
@@ -290,13 +266,13 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
         unsigned cd_y = 215;
         unsigned cd_radius = 10;
         // Draw outer circle of CD
-        m_Graphics->DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, cd_radius, COLOR2D(255,255,255));
+        m_Graphics->DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, cd_radius, COLOR2D(255, 255, 255));
 
         // Draw middle circle of CD
-        m_Graphics->DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, 5, COLOR2D(255,255,255));
+        m_Graphics->DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, 5, COLOR2D(255, 255, 255));
 
         // Draw center hole of CD
-        m_Graphics->DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 2, COLOR2D(255,255,255));
+        m_Graphics->DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 2, COLOR2D(255, 255, 255));
     } else {
         // On other screens, show up navigation arrow
         // Stem (3px thick)
@@ -308,15 +284,15 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
         m_Graphics->DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
         m_Graphics->DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
     }
-   
+
     // --- B BUTTON ---
     // Draw a white button with dark border for better contrast
     m_Graphics->DrawRect(65, 215, 18, 20, COLOR2D(255, 255, 255));
     m_Graphics->DrawRectOutline(65, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "B" using lines instead of text
-    unsigned b_x = 74; // Center of B
-    unsigned b_y = 225; // Center of button
+    unsigned b_x = 74;   // Center of B
+    unsigned b_y = 225;  // Center of button
 
     // Draw B using thick lines
     // Vertical line of B
@@ -343,7 +319,7 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
     // Down arrow for all screens
     arrow_x = 95;
     arrow_y = 225;
-  
+
     if (strcmp(screenType, "main") == 0) {
         // Menu bars for main screen
         // Thicker menu bars (2px)
@@ -366,20 +342,19 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
         m_Graphics->DrawLine(arrow_x + 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
     }
 
-
     // --- X BUTTON ---
     // Draw a white button with dark border for better contrast
     m_Graphics->DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
     m_Graphics->DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "X" using lines instead of text
-    unsigned x_x = 134; // Center of X
-    unsigned x_y = 225; // Center of button
+    unsigned x_x = 134;  // Center of X
+    unsigned x_y = 225;  // Center of button
 
     // Draw X using thick lines (3px wide)
     // First diagonal of X (top-left to bottom-right)
     m_Graphics->DrawLine(x_x - 4, x_y - 6, x_x + 4, x_y + 6, COLOR2D(0, 0, 0));
-        m_Graphics->DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
+    m_Graphics->DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(x_x - 3, x_y - 6, x_x + 5, x_y + 6, COLOR2D(0, 0, 0));
 
     // Second diagonal of X (top-right to bottom-left)
@@ -392,19 +367,19 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
     unsigned icon_y = 220;
 
     if (strcmp(screenType, "main") == 0) {
-	int radius = 7; // Adjust radius as needed
-	int cx = icon_x + radius; // Center x
-	int cy = icon_y + radius; // Center y
+        int radius = 7;            // Adjust radius as needed
+        int cx = icon_x + radius;  // Center x
+        int cy = icon_y + radius;  // Center y
 
-	// Draw the circle outline
-	m_Graphics->DrawCircleOutline(cx, cy, radius, COLOR2D(255, 255, 255));
+        // Draw the circle outline
+        m_Graphics->DrawCircleOutline(cx, cy, radius, COLOR2D(255, 255, 255));
 
-	// Draw the vertical line ("I") - top center of the circle downward
-	// Start the line a little above the top of the circle for stylistic power symbol
-	int line_length = 6; // Length of the line
-	m_Graphics->DrawLine(cx, cy - radius - 2, cx, cy - radius + line_length, COLOR2D(255, 255, 255));
-	/*
-	*/
+        // Draw the vertical line ("I") - top center of the circle downward
+        // Start the line a little above the top of the circle for stylistic power symbol
+        int line_length = 6;  // Length of the line
+        m_Graphics->DrawLine(cx, cy - radius - 2, cx, cy - radius + line_length, COLOR2D(255, 255, 255));
+        /*
+         */
     } else {
         // Red X icon for other screens (cancel)
         m_Graphics->DrawLine(icon_x - 8, icon_y - 8, icon_x + 8, icon_y + 8, COLOR2D(255, 0, 0));
@@ -423,8 +398,8 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "Y" using lines instead of text
-    unsigned y_x = 194; // Center of Y
-    unsigned y_y = 225; // Center of button
+    unsigned y_x = 194;  // Center of Y
+    unsigned y_y = 225;  // Center of button
 
     // Draw Y using thick lines (3px wide)
     // Upper left diagonal of Y
@@ -438,7 +413,7 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawLine(y_x + 3, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
 
     // Stem of Y
-        m_Graphics->DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
+    m_Graphics->DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
 

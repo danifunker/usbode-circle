@@ -1,16 +1,16 @@
 #ifndef _ST7789_POWERPAGE_H
 #define _ST7789_POWERPAGE_H
 
-#include <displayservice/ipage.h>
-#include <displayservice/buttons.h>
-#include <display/st7789display.h>
-#include <circle/spimaster.h>
 #include <circle/2dgraphics.h>
+#include <circle/spimaster.h>
+#include <display/st7789display.h>
+#include <displayservice/buttons.h>
+#include <displayservice/ipage.h>
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 class ST7789PowerPage : public IPage {
-public:
+   public:
     ST7789PowerPage(CST7789Display* display, C2DGraphics* graphics);
     ~ST7789PowerPage();
     void OnEnter() override;
@@ -20,7 +20,7 @@ public:
     virtual bool shouldChangePage() override;
     virtual const char* nextPageName() override;
 
-private:
+   private:
     void Draw();
     void ScrollUp();
     void ScrollDown();
@@ -29,12 +29,11 @@ private:
     void DrawConfirmation(const char* message);
     void MoveSelection(int delta);
 
-private:
+   private:
     bool m_ShouldChangePage = false;
-    CST7789Display*          m_Display;
-    C2DGraphics*             m_Graphics;
-    const char* options[2] = { "Shutdown", "Reboot" };
+    CST7789Display* m_Display;
+    C2DGraphics* m_Graphics;
+    const char* options[2] = {"Shutdown", "Reboot"};
     size_t m_SelectedIndex = 0;
-
 };
 #endif

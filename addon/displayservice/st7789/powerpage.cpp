@@ -1,4 +1,5 @@
 #include "powerpage.h"
+
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <gitinfo/gitinfo.h>
@@ -7,79 +8,72 @@
 LOGMODULE("powerpage");
 
 ST7789PowerPage::ST7789PowerPage(CST7789Display* display, C2DGraphics* graphics)
-: m_Display(display),
-  m_Graphics(graphics)
-{
+    : m_Display(display),
+      m_Graphics(graphics) {
 }
 
 ST7789PowerPage::~ST7789PowerPage() {
     LOGNOTE("PowerPage starting");
 }
 
-void ST7789PowerPage::OnEnter()
-{
+void ST7789PowerPage::OnEnter() {
     LOGNOTE("Drawing PowerPage");
     Draw();
 }
 
-void ST7789PowerPage::OnExit()
-{
-	m_ShouldChangePage = false;
+void ST7789PowerPage::OnExit() {
+    m_ShouldChangePage = false;
 }
 
 bool ST7789PowerPage::shouldChangePage() {
-	return m_ShouldChangePage;
+    return m_ShouldChangePage;
 }
 
 const char* ST7789PowerPage::nextPageName() {
-	return "homepage";
+    return "homepage";
 }
 
-void ST7789PowerPage::OnButtonPress(Button button)
-{
-	LOGNOTE("Button received by page %d", button);
-	
-    switch (button)
-    {
+void ST7789PowerPage::OnButtonPress(Button button) {
+    LOGNOTE("Button received by page %d", button);
+
+    switch (button) {
         case Button::Up:
-	    LOGNOTE("Move Up");
+            LOGNOTE("Move Up");
             MoveSelection(-1);
             break;
 
         case Button::Down:
-	    LOGNOTE("Move Down");
+            LOGNOTE("Move Down");
             MoveSelection(+1);
             break;
 
         case Button::Ok:
-	    //TODO show an acknowledgement screen rather then just doing
-	    switch (m_SelectedIndex) {
-		    case 0:
-	                    LOGNOTE("Shutting down");
-			    DrawConfirmation("It's now safe to turn off...");
-			    new CShutdown(ShutdownHalt, 1000);
-			    break;
-		    case 1:
-			    LOGNOTE("Rebooting");
-			    DrawConfirmation("Rebooting...");
-			    new CShutdown(ShutdownReboot, 1000);
-			    break;
-	    }
+            // TODO show an acknowledgement screen rather then just doing
+            switch (m_SelectedIndex) {
+                case 0:
+                    LOGNOTE("Shutting down");
+                    DrawConfirmation("It's now safe to turn off...");
+                    new CShutdown(ShutdownHalt, 1000);
+                    break;
+                case 1:
+                    LOGNOTE("Rebooting");
+                    DrawConfirmation("Rebooting...");
+                    new CShutdown(ShutdownReboot, 1000);
+                    break;
+            }
             break;
 
         case Button::Cancel:
-	    LOGNOTE("Cancel");
+            LOGNOTE("Cancel");
             m_ShouldChangePage = true;
             break;
 
         default:
             break;
     }
-    
 }
 
 void ST7789PowerPage::MoveSelection(int delta) {
-
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
@@ -91,28 +85,18 @@ void ST7789PowerPage::MoveSelection(int delta) {
         newIndex = static_cast<int>(fileCount - 1);
 
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
-	LOGDBG("New menu index is %d", newIndex);
+        LOGDBG("New menu index is %d", newIndex);
         m_SelectedIndex = static_cast<size_t>(newIndex);
         Draw();
     }
 }
 
-void ST7789PowerPage::Refresh()
-{
-	/*
-    const char* pIPAddress = GetIPAddress();
-    const char* pISOName = GetCurrentImage();
-    // Draw IP address
-    m_Graphics->DrawText(35, 45, COLOR2D(0, 0, 0), pIPAddress, C2DGraphics::AlignLeft);
-    m_Graphics->UpdateDisplay();
-    */
-
-    //TODO We shouldn't redraw everything!
-    //Draw();
+void ST7789PowerPage::Refresh() {
+    // TODO We shouldn't redraw everything!
+    // Draw();
 }
 
-void ST7789PowerPage::DrawConfirmation(const char* message)
-{
+void ST7789PowerPage::DrawConfirmation(const char* message) {
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
@@ -120,13 +104,11 @@ void ST7789PowerPage::DrawConfirmation(const char* message)
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
-    m_Graphics->DrawText(10, 40, COLOR2D(0,0,0), message, C2DGraphics::AlignLeft);
+    m_Graphics->DrawText(10, 40, COLOR2D(0, 0, 0), message, C2DGraphics::AlignLeft);
     m_Graphics->UpdateDisplay();
 }
 
-void ST7789PowerPage::Draw()
-{
-
+void ST7789PowerPage::Draw() {
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
@@ -143,22 +125,21 @@ void ST7789PowerPage::Draw()
     for (size_t i = startIndex; i < endIndex; ++i) {
         int y = static_cast<int>((i - startIndex) * 20);
         const char* name = options[i];
-	
+
         if (i == m_SelectedIndex) {
-            m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0,0,0));
-            m_Graphics->DrawText(10, y + 30, COLOR2D(255,255,255), name, C2DGraphics::AlignLeft);
-	} else {
-            m_Graphics->DrawText(10, y + 30, COLOR2D(0,0,0), name, C2DGraphics::AlignLeft);
-	}
+            m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 0, 0));
+            m_Graphics->DrawText(10, y + 30, COLOR2D(255, 255, 255), name, C2DGraphics::AlignLeft);
+        } else {
+            m_Graphics->DrawText(10, y + 30, COLOR2D(0, 0, 0), name, C2DGraphics::AlignLeft);
+        }
     }
 
     DrawNavigationBar("power");
     m_Graphics->UpdateDisplay();
 }
 
-//TODO: put in common place
-void ST7789PowerPage::DrawNavigationBar(const char* screenType)
-{
+// TODO: put in common place
+void ST7789PowerPage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom
     m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
 
@@ -168,8 +149,8 @@ void ST7789PowerPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(5, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "A" using lines instead of text
-    unsigned a_x = 14; // Center of A
-    unsigned a_y = 225; // Center of button
+    unsigned a_x = 14;   // Center of A
+    unsigned a_y = 225;  // Center of button
 
     // Draw A using thick lines (3px wide)
     // Left diagonal of A
@@ -184,7 +165,7 @@ void ST7789PowerPage::DrawNavigationBar(const char* screenType)
 
     // Middle bar of A
     m_Graphics->DrawLine(a_x - 2, a_y, a_x + 2, a_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0)); // Fixed: a_y+1 instead of a_x+1
+    m_Graphics->DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0));  // Fixed: a_y+1 instead of a_x+1
 
     // UP arrow for navigation screens or custom icon for main screen
     unsigned arrow_x = 35;
@@ -211,14 +192,14 @@ void ST7789PowerPage::DrawNavigationBar(const char* screenType)
         m_Graphics->DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
         m_Graphics->DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
     }
-        // --- B BUTTON ---
+    // --- B BUTTON ---
     // Draw a white button with dark border for better contrast
     m_Graphics->DrawRect(65, 215, 18, 20, COLOR2D(255, 255, 255));
     m_Graphics->DrawRectOutline(65, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "B" using lines instead of text
-    unsigned b_x = 74; // Center of B
-    unsigned b_y = 225; // Center of button
+    unsigned b_x = 74;   // Center of B
+    unsigned b_y = 225;  // Center of button
 
     // Draw B using thick lines
     // Vertical line of B
@@ -261,13 +242,13 @@ void ST7789PowerPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "X" using lines instead of text
-    unsigned x_x = 134; // Center of X
-    unsigned x_y = 225; // Center of button
+    unsigned x_x = 134;  // Center of X
+    unsigned x_y = 225;  // Center of button
 
     // Draw X using thick lines (3px wide)
     // First diagonal of X (top-left to bottom-right)
     m_Graphics->DrawLine(x_x - 4, x_y - 6, x_x + 4, x_y + 6, COLOR2D(0, 0, 0));
-        m_Graphics->DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
+    m_Graphics->DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(x_x - 3, x_y - 6, x_x + 5, x_y + 6, COLOR2D(0, 0, 0));
 
     // Second diagonal of X (top-right to bottom-left)
@@ -308,8 +289,8 @@ void ST7789PowerPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "Y" using lines instead of text
-    unsigned y_x = 194; // Center of Y
-    unsigned y_y = 225; // Center of button
+    unsigned y_x = 194;  // Center of Y
+    unsigned y_y = 225;  // Center of button
 
     // Draw Y using thick lines (3px wide)
     // Upper left diagonal of Y
@@ -323,7 +304,7 @@ void ST7789PowerPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawLine(y_x + 3, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
 
     // Stem of Y
-        m_Graphics->DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
+    m_Graphics->DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
 

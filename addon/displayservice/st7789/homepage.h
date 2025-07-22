@@ -1,16 +1,16 @@
 #ifndef _ST7789_HOMEPAGE_H
 #define _ST7789_HOMEPAGE_H
 
-#include <displayservice/ipage.h>
-#include <displayservice/buttons.h>
-#include <display/st7789display.h>
-#include <circle/spimaster.h>
 #include <circle/2dgraphics.h>
-#include <scsitbservice/scsitbservice.h>
+#include <circle/spimaster.h>
 #include <configservice/configservice.h>
+#include <display/st7789display.h>
+#include <displayservice/buttons.h>
+#include <displayservice/ipage.h>
+#include <scsitbservice/scsitbservice.h>
 
 class ST7789HomePage : public IPage {
-public:
+   public:
     ST7789HomePage(CST7789Display* display, C2DGraphics* graphics);
     ~ST7789HomePage();
     void OnEnter() override;
@@ -20,7 +20,7 @@ public:
     virtual bool shouldChangePage() override;
     virtual const char* nextPageName() override;
 
-private:
+   private:
     void Draw();
     void ScrollUp();
     void ScrollDown();
@@ -33,10 +33,10 @@ private:
     const char* m_NextPageName;
     ConfigService* config;
 
-private:
+   private:
     bool m_ShouldChangePage = false;
-    CST7789Display*          m_Display;
-    C2DGraphics*             m_Graphics;
+    CST7789Display* m_Display;
+    C2DGraphics* m_Graphics;
     SCSITBService* m_Service = nullptr;
     char* pIPAddress;
     char* pISOName;

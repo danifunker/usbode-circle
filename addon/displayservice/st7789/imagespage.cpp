@@ -1,4 +1,5 @@
 #include "imagespage.h"
+
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <gitinfo/gitinfo.h>
@@ -6,9 +7,8 @@
 LOGMODULE("imagespage");
 
 ST7789ImagesPage::ST7789ImagesPage(CST7789Display* display, C2DGraphics* graphics)
-: m_Display(display),
-  m_Graphics(graphics)
-{
+    : m_Display(display),
+      m_Graphics(graphics) {
     m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
 }
 
@@ -16,8 +16,7 @@ ST7789ImagesPage::~ST7789ImagesPage() {
     LOGNOTE("Imagespage starting");
 }
 
-void ST7789ImagesPage::OnEnter()
-{
+void ST7789ImagesPage::OnEnter() {
     LOGNOTE("Drawing imagespage");
     const char* name = m_Service->GetCurrentCDName();
     SetSelectedName(name);
@@ -25,45 +24,42 @@ void ST7789ImagesPage::OnEnter()
     Draw();
 }
 
-void ST7789ImagesPage::OnExit()
-{
-	m_ShouldChangePage = false;
+void ST7789ImagesPage::OnExit() {
+    m_ShouldChangePage = false;
 }
 
 bool ST7789ImagesPage::shouldChangePage() {
-	return m_ShouldChangePage;
+    return m_ShouldChangePage;
 }
 
 const char* ST7789ImagesPage::nextPageName() {
-	return m_NextPageName;
+    return m_NextPageName;
 }
 
-void ST7789ImagesPage::OnButtonPress(Button button)
-{
+void ST7789ImagesPage::OnButtonPress(Button button) {
     LOGDBG("Button received by page %d", button);
-    switch (button)
-    {
+    switch (button) {
         case Button::Up:
-	    LOGDBG("Move Up");
+            LOGDBG("Move Up");
             MoveSelection(-1);
             break;
 
         case Button::Down:
-	    LOGDBG("Move Down");
+            LOGDBG("Move Down");
             MoveSelection(+1);
             break;
 
         case Button::Ok:
-	    LOGDBG("Select new CD %d", m_SelectedIndex);
-	    //TODO show an acknowledgement screen rather then just returning to main screen
+            LOGDBG("Select new CD %d", m_SelectedIndex);
+            // TODO show an acknowledgement screen rather then just returning to main screen
             m_Service->SetNextCD(m_SelectedIndex);
-	    m_MountedIndex = m_SelectedIndex;
+            m_MountedIndex = m_SelectedIndex;
             m_NextPageName = "homepage";
             m_ShouldChangePage = true;
             break;
 
         case Button::Cancel:
-	    LOGDBG("Cancel");
+            LOGDBG("Cancel");
             m_NextPageName = "homepage";
             m_ShouldChangePage = true;
             break;
@@ -71,7 +67,6 @@ void ST7789ImagesPage::OnButtonPress(Button button)
         default:
             break;
     }
-    
 }
 
 void ST7789ImagesPage::SetSelectedName(const char* name) {
@@ -109,9 +104,8 @@ void ST7789ImagesPage::MoveSelection(int delta) {
 }
 
 void ST7789ImagesPage::DrawText(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
-                           const TFont& rFont,
-                           CCharGenerator::TFontFlags FontFlags)
-{
+                                const TFont& rFont,
+                                CCharGenerator::TFontFlags FontFlags) {
     CCharGenerator Font(rFont, FontFlags);
     int m_nWidth = m_Graphics->GetWidth();
     int m_nHeight = m_Graphics->GetHeight();
@@ -142,8 +136,7 @@ void ST7789ImagesPage::DrawText(unsigned nX, unsigned nY, T2DColor Color, const 
 
 void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
                                         int pixelOffset, const TFont& rFont,
-                                        CCharGenerator::TFontFlags FontFlags)
-{
+                                        CCharGenerator::TFontFlags FontFlags) {
     CCharGenerator Font(rFont, FontFlags);
 
     int m_nWidth = m_Graphics->GetWidth();
@@ -172,22 +165,12 @@ void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
     }
 }
 
-void ST7789ImagesPage::Refresh()
-{
-	/*
-    const char* pIPAddress = GetIPAddress();
-    const char* pISOName = GetCurrentImage();
-    // Draw IP address
-    m_Graphics->DrawText(35, 45, COLOR2D(0, 0, 0), pIPAddress, C2DGraphics::AlignLeft);
-    m_Graphics->UpdateDisplay();
-    */
-
-    //TODO We shouldn't redraw everything!
+void ST7789ImagesPage::Refresh() {
+    // TODO We shouldn't redraw everything!
     Draw();
 }
 
-void ST7789ImagesPage::Draw()
-{
+void ST7789ImagesPage::Draw() {
     if (!m_Service) return;
 
     size_t fileCount = m_Service->GetCount();
@@ -217,50 +200,49 @@ void ST7789ImagesPage::Draw()
     for (size_t i = startIndex; i < endIndex; ++i) {
         int y = static_cast<int>((i - startIndex) * 20);
         const char* name = m_Service->GetName(i);
-	size_t nameLen = strlen(name);
-	char extended[nameLen + 2];
+        size_t nameLen = strlen(name);
+        char extended[nameLen + 2];
         snprintf(extended, sizeof(extended), "%s ", name);
-	
-	// Crop
-	CCharGenerator Font (DEFAULT_FONT, CCharGenerator::FontFlagsNone);
-	const int maxLen = (m_Display->GetWidth() - 10) / Font.GetCharWidth();
+
+        // Crop
+        CCharGenerator Font(DEFAULT_FONT, CCharGenerator::FontFlagsNone);
+        const int maxLen = (m_Display->GetWidth() - 10) / Font.GetCharWidth();
         char cropped[maxLen + 1];
 
-	// Only scroll selected line and only if too long
-	const int charWidth = Font.GetCharWidth();
-	const int maxTextPx = m_Display->GetWidth() - 10;
+        // Only scroll selected line and only if too long
+        const int charWidth = Font.GetCharWidth();
+        const int maxTextPx = m_Display->GetWidth() - 10;
 
-	if (i == m_MountedIndex)
-            m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0,255,0));
+        if (i == m_MountedIndex)
+            m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 255, 0));
 
-	if (i == m_SelectedIndex) {
+        if (i == m_SelectedIndex) {
+            m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 0, 0));
 
-	    m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0,0,0));
-
-	    int fullTextPx = (int)strlen(extended) * charWidth;
-	    if (fullTextPx > maxTextPx) {
-		if (m_ScrollDirLeft) {
-			m_ScrollOffsetPx+=3;
-			if (m_ScrollOffsetPx >= (fullTextPx - maxTextPx)) {
-			    m_ScrollOffsetPx = (fullTextPx - maxTextPx);
-			    m_ScrollDirLeft = false;
-			}
-		} else {
-			m_ScrollOffsetPx-=3;
-			if (m_ScrollOffsetPx <= 0) {
-			    m_ScrollOffsetPx = 0;
-			    m_ScrollDirLeft = true;
-			}
-		}
-		DrawTextScrolled(10, y + 30, COLOR2D(255,255,255), extended, m_ScrollOffsetPx);
-	    } else {
-		// No scrolling needed
-		DrawText(10, y + 30, COLOR2D(255,255,255), name);
-	    }
-	} else {
-	    snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
-            DrawText(10, y + 30, COLOR2D(0,0,0), cropped);
-	}
+            int fullTextPx = (int)strlen(extended) * charWidth;
+            if (fullTextPx > maxTextPx) {
+                if (m_ScrollDirLeft) {
+                    m_ScrollOffsetPx += 3;
+                    if (m_ScrollOffsetPx >= (fullTextPx - maxTextPx)) {
+                        m_ScrollOffsetPx = (fullTextPx - maxTextPx);
+                        m_ScrollDirLeft = false;
+                    }
+                } else {
+                    m_ScrollOffsetPx -= 3;
+                    if (m_ScrollOffsetPx <= 0) {
+                        m_ScrollOffsetPx = 0;
+                        m_ScrollDirLeft = true;
+                    }
+                }
+                DrawTextScrolled(10, y + 30, COLOR2D(255, 255, 255), extended, m_ScrollOffsetPx);
+            } else {
+                // No scrolling needed
+                DrawText(10, y + 30, COLOR2D(255, 255, 255), name);
+            }
+        } else {
+            snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
+            DrawText(10, y + 30, COLOR2D(0, 0, 0), cropped);
+        }
     }
 
     // Draw page indicator
@@ -272,9 +254,8 @@ void ST7789ImagesPage::Draw()
     m_Graphics->UpdateDisplay();
 }
 
-//TODO: put in common place
-void ST7789ImagesPage::DrawNavigationBar(const char* screenType)
-{
+// TODO: put in common place
+void ST7789ImagesPage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom
     m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
 
@@ -284,8 +265,8 @@ void ST7789ImagesPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(5, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "A" using lines instead of text
-    unsigned a_x = 14; // Center of A
-    unsigned a_y = 225; // Center of button
+    unsigned a_x = 14;   // Center of A
+    unsigned a_y = 225;  // Center of button
 
     // Draw A using thick lines (3px wide)
     // Left diagonal of A
@@ -300,7 +281,7 @@ void ST7789ImagesPage::DrawNavigationBar(const char* screenType)
 
     // Middle bar of A
     m_Graphics->DrawLine(a_x - 2, a_y, a_x + 2, a_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0)); // Fixed: a_y+1 instead of a_x+1
+    m_Graphics->DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0));  // Fixed: a_y+1 instead of a_x+1
 
     // UP arrow for navigation screens or custom icon for main screen
     unsigned arrow_x = 35;
@@ -327,14 +308,14 @@ void ST7789ImagesPage::DrawNavigationBar(const char* screenType)
         m_Graphics->DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
         m_Graphics->DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
     }
-        // --- B BUTTON ---
+    // --- B BUTTON ---
     // Draw a white button with dark border for better contrast
     m_Graphics->DrawRect(65, 215, 18, 20, COLOR2D(255, 255, 255));
     m_Graphics->DrawRectOutline(65, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "B" using lines instead of text
-    unsigned b_x = 74; // Center of B
-    unsigned b_y = 225; // Center of button
+    unsigned b_x = 74;   // Center of B
+    unsigned b_y = 225;  // Center of button
 
     // Draw B using thick lines
     // Vertical line of B
@@ -377,13 +358,13 @@ void ST7789ImagesPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "X" using lines instead of text
-    unsigned x_x = 134; // Center of X
-    unsigned x_y = 225; // Center of button
+    unsigned x_x = 134;  // Center of X
+    unsigned x_y = 225;  // Center of button
 
     // Draw X using thick lines (3px wide)
     // First diagonal of X (top-left to bottom-right)
     m_Graphics->DrawLine(x_x - 4, x_y - 6, x_x + 4, x_y + 6, COLOR2D(0, 0, 0));
-        m_Graphics->DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
+    m_Graphics->DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(x_x - 3, x_y - 6, x_x + 5, x_y + 6, COLOR2D(0, 0, 0));
 
     // Second diagonal of X (top-right to bottom-left)
@@ -424,8 +405,8 @@ void ST7789ImagesPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "Y" using lines instead of text
-    unsigned y_x = 194; // Center of Y
-    unsigned y_y = 225; // Center of button
+    unsigned y_x = 194;  // Center of Y
+    unsigned y_y = 225;  // Center of button
 
     // Draw Y using thick lines (3px wide)
     // Upper left diagonal of Y
@@ -439,7 +420,7 @@ void ST7789ImagesPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawLine(y_x + 3, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
 
     // Stem of Y
-        m_Graphics->DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
+    m_Graphics->DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
 

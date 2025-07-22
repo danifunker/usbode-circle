@@ -1,17 +1,17 @@
 #ifndef _ST7789_LOGCONFIGPAGE_H
 #define _ST7789_LOGCONFIGPAGE_H
 
-#include <configservice/configservice.h>
-#include <displayservice/ipage.h>
-#include <displayservice/buttons.h>
-#include <display/st7789display.h>
-#include <circle/spimaster.h>
 #include <circle/2dgraphics.h>
+#include <circle/spimaster.h>
+#include <configservice/configservice.h>
+#include <display/st7789display.h>
+#include <displayservice/buttons.h>
+#include <displayservice/ipage.h>
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 class ST7789LogConfigPage : public IPage {
-public:
+   public:
     ST7789LogConfigPage(CST7789Display* display, C2DGraphics* graphics);
     ~ST7789LogConfigPage();
     void OnEnter() override;
@@ -21,7 +21,7 @@ public:
     virtual bool shouldChangePage() override;
     virtual const char* nextPageName() override;
 
-private:
+   private:
     void Draw();
     void ScrollUp();
     void ScrollDown();
@@ -32,20 +32,19 @@ private:
     bool IsSaved();
     void DrawConfirmation(const char* message);
 
-private:
+   private:
     bool m_ShouldChangePage = false;
-    CST7789Display*          m_Display;
-    C2DGraphics*             m_Graphics;
+    CST7789Display* m_Display;
+    C2DGraphics* m_Graphics;
     ConfigService* config;
-    const char* options[6] = { 
-	    "0 No Logging",
-	    "1 + Panic",
-	    "2 + Errors",
-	    "3 + Warnings",
-	    "4 + Notes",
-	    "5 + Debug",
+    const char* options[6] = {
+        "0 No Logging",
+        "1 + Panic",
+        "2 + Errors",
+        "3 + Warnings",
+        "4 + Notes",
+        "5 + Debug",
     };
     size_t m_SelectedIndex = 0;
-
 };
 #endif

@@ -1,9 +1,12 @@
-#include "BaseDisplay.h"
+#include "basedisplay.h"
+
+
+// NOT USED YET
 
 // All methods are declared here, but not implemented yet (just stubs for now)
 
 bool BaseDisplay::Initialize() {
-    return false; // Placeholder
+    return false;  // Placeholder
 }
 
 void BaseDisplay::Clear() {
@@ -45,4 +48,3 @@ void BaseDisplay::Wake() {
 void BaseDisplay::Refresh() {
     // Placeholder
 }
-

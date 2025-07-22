@@ -1,6 +1,7 @@
 #ifndef BUTTONS_H
 #define BUTTONS_H
 
+// An enum representing the buttons
 enum class Button
 {
     Up,

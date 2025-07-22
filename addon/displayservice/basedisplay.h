@@ -4,7 +4,7 @@
 #include "idisplay.h"
 
 class BaseDisplay : public IDisplay {
-public:
+   public:
     virtual ~BaseDisplay() = default;
 
     // All methods are virtual, not implemented yet — override in derived class or later in this base class.
@@ -24,5 +24,4 @@ public:
     virtual void Refresh() override;
 };
 
-#endif // BASEDISPLAY_H
-
+#endif  // BASEDISPLAY_H

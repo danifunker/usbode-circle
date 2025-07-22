@@ -3,8 +3,10 @@
 
 #include "pagemanager.h"
 
+// This interface represents all display. It exists so we
+// can support different display types (waveshare, st7789, ...)
 class IDisplay {
-public:
+   public:
     virtual ~IDisplay() = default;
 
     virtual bool Initialize() = 0;

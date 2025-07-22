@@ -1,17 +1,17 @@
 #ifndef _ST7789_USBCONFIGPAGE_H
 #define _ST7789_USBCONFIGPAGE_H
 
-#include <configservice/configservice.h>
-#include <displayservice/ipage.h>
-#include <displayservice/buttons.h>
-#include <display/st7789display.h>
-#include <circle/spimaster.h>
 #include <circle/2dgraphics.h>
+#include <circle/spimaster.h>
+#include <configservice/configservice.h>
+#include <display/st7789display.h>
+#include <displayservice/buttons.h>
+#include <displayservice/ipage.h>
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 class ST7789USBConfigPage : public IPage {
-public:
+   public:
     ST7789USBConfigPage(CST7789Display* display, C2DGraphics* graphics);
     ~ST7789USBConfigPage();
     void OnEnter() override;
@@ -21,7 +21,7 @@ public:
     virtual bool shouldChangePage() override;
     virtual const char* nextPageName() override;
 
-private:
+   private:
     void Draw();
     void ScrollUp();
     void ScrollDown();
@@ -32,13 +32,12 @@ private:
     bool IsSaved();
     void DrawConfirmation(const char* message);
 
-private:
+   private:
     bool m_ShouldChangePage = false;
-    CST7789Display*          m_Display;
-    C2DGraphics*             m_Graphics;
+    CST7789Display* m_Display;
+    C2DGraphics* m_Graphics;
     ConfigService* config;
-    const char* options[2] = { "High Speed", "Full Speed" };
+    const char* options[2] = {"High Speed", "Full Speed"};
     size_t m_SelectedIndex = 0;
-
 };
 #endif

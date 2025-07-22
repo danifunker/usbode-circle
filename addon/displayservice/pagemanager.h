@@ -1,16 +1,16 @@
 #ifndef PAGE_MANAGER_H
 #define PAGE_MANAGER_H
 
-#include "ipage.h"
-#include "idisplay.h"
-#include <displayservice/buttons.h>
-#include <circle/types.h>
 #include <circle/gpiopin.h>
+#include <circle/types.h>
+#include <displayservice/buttons.h>
 
-class PageManager
-{
-public:
-    PageManager ();
+#include "idisplay.h"
+#include "ipage.h"
+
+class PageManager {
+   public:
+    PageManager();
     ~PageManager();
 
     void RegisterPage(const char* name, IPage* page);
@@ -22,7 +22,7 @@ public:
 
     void HandleButtonPress(Button button);
 
-private:
+   private:
     struct PageEntry {
         const char* name;
         IPage* page;
@@ -33,8 +33,6 @@ private:
     int pageCount = 0;
 
     IPage* currentPage = nullptr;
-
 };
 
 #endif
-

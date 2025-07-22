@@ -1,83 +1,72 @@
 #include "infopage.h"
+
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <gitinfo/gitinfo.h>
-#include <shutdown/shutdown.h>
 #include <scsitbservice/scsitbservice.h>
+#include <shutdown/shutdown.h>
 
 LOGMODULE("infopage");
 
 ST7789InfoPage::ST7789InfoPage(CST7789Display* display, C2DGraphics* graphics)
-: m_Display(display),
-  m_Graphics(graphics)
-{
+    : m_Display(display),
+      m_Graphics(graphics) {
 }
 
 ST7789InfoPage::~ST7789InfoPage() {
     LOGNOTE("InfoPage starting");
 }
 
-void ST7789InfoPage::OnEnter()
-{
+void ST7789InfoPage::OnEnter() {
     LOGNOTE("Drawing InfoPage");
     Draw();
 }
 
-void ST7789InfoPage::OnExit()
-{
-	m_ShouldChangePage = false;
+void ST7789InfoPage::OnExit() {
+    m_ShouldChangePage = false;
 }
 
 bool ST7789InfoPage::shouldChangePage() {
-	return m_ShouldChangePage;
+    return m_ShouldChangePage;
 }
 
 const char* ST7789InfoPage::nextPageName() {
-	return "homepage";
+    return "homepage";
 }
 
-void ST7789InfoPage::OnButtonPress(Button button)
-{
-	LOGNOTE("Button received by page %d", button);
-	
-    switch (button)
-    {
+void ST7789InfoPage::OnButtonPress(Button button) {
+    LOGNOTE("Button received by page %d", button);
 
+    switch (button) {
         case Button::Ok:
         case Button::Cancel:
-	    LOGNOTE("OK/Cancel");
+            LOGNOTE("OK/Cancel");
             m_ShouldChangePage = true;
             break;
 
         default:
             break;
     }
-    
 }
 
-void ST7789InfoPage::MoveSelection(int delta) 
-{
+void ST7789InfoPage::MoveSelection(int delta) {
 }
 
-void ST7789InfoPage::Refresh()
-{
+void ST7789InfoPage::Refresh() {
 }
 
-void ST7789InfoPage::Draw()
-{
-
+void ST7789InfoPage::Draw() {
     // Create clean version string without "USBODE v" prefix
     char pVersionInfo[32];
     snprintf(pVersionInfo, sizeof(pVersionInfo), "%s.%s.%s",
-        CGitInfo::Get()->GetMajorVersion(),
-        CGitInfo::Get()->GetMinorVersion(),
-        CGitInfo::Get()->GetPatchVersion());
+             CGitInfo::Get()->GetMajorVersion(),
+             CGitInfo::Get()->GetMinorVersion(),
+             CGitInfo::Get()->GetPatchVersion());
 
     const char* pBuildNumber = CGitInfo::Get()->GetBuildNumber();
     const char* pBuildDate = __DATE__ " " __TIME__;
     const char* pGitBranch = GIT_BRANCH;
     const char* pGitCommit = GIT_COMMIT;
-
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
@@ -126,15 +115,15 @@ void ST7789InfoPage::Draw()
 
     // Line 2: Build number (if available)
     if (strlen(pBuildNumber) > 0) {
-	char build_num_line[64];
-	snprintf(build_num_line, sizeof(build_num_line), "Build: %s", pBuildNumber);
-	m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), build_num_line, C2DGraphics::AlignLeft);
-	y_pos += line_spacing;
+        char build_num_line[64];
+        snprintf(build_num_line, sizeof(build_num_line), "Build: %s", pBuildNumber);
+        m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), build_num_line, C2DGraphics::AlignLeft);
+        y_pos += line_spacing;
     }
 
     // Line 3: Build Date label
     m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), "Build Date:", C2DGraphics::AlignLeft);
-    y_pos += 20; // Smaller spacing for the date line
+    y_pos += 20;  // Smaller spacing for the date line
 
     // Line 4: Build Date value (on second line)
     m_Graphics->DrawText(left_margin + 10, y_pos, COLOR2D(0, 0, 140), pBuildDate, C2DGraphics::AlignLeft);
@@ -143,9 +132,9 @@ void ST7789InfoPage::Draw()
     // Line 5: Git branch (with star if main)
     char branch_line[64];
     if (strcmp(pGitBranch, "main") == 0) {
-	snprintf(branch_line, sizeof(branch_line), "Branch: %s *", pGitBranch);
+        snprintf(branch_line, sizeof(branch_line), "Branch: %s *", pGitBranch);
     } else {
-	snprintf(branch_line, sizeof(branch_line), "Branch: %s", pGitBranch);
+        snprintf(branch_line, sizeof(branch_line), "Branch: %s", pGitBranch);
     }
     m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), branch_line, C2DGraphics::AlignLeft);
 
@@ -156,14 +145,12 @@ void ST7789InfoPage::Draw()
     snprintf(hash_line, sizeof(hash_line), "Commit: %s", short_hash);
     m_Graphics->DrawText(left_margin, 175, COLOR2D(0, 0, 140), hash_line, C2DGraphics::AlignLeft);
 
-
     DrawNavigationBar("info");
     m_Graphics->UpdateDisplay();
 }
 
-//TODO: put in common place
-void ST7789InfoPage::DrawNavigationBar(const char* screenType)
-{
+// TODO: put in common place
+void ST7789InfoPage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom
     m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
 
@@ -267,13 +254,13 @@ void ST7789InfoPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "X" using lines instead of text
-    unsigned x_x = 134; // Center of X
-    unsigned x_y = 225; // Center of button
+    unsigned x_x = 134;  // Center of X
+    unsigned x_y = 225;  // Center of button
 
     // Draw X using thick lines (3px wide)
     // First diagonal of X (top-left to bottom-right)
     m_Graphics->DrawLine(x_x - 4, x_y - 6, x_x + 4, x_y + 6, COLOR2D(0, 0, 0));
-        m_Graphics->DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
+    m_Graphics->DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(x_x - 3, x_y - 6, x_x + 5, x_y + 6, COLOR2D(0, 0, 0));
 
     // Second diagonal of X (top-right to bottom-left)
@@ -314,8 +301,8 @@ void ST7789InfoPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
 
     // Draw letter "Y" using lines instead of text
-    unsigned y_x = 194; // Center of Y
-    unsigned y_y = 225; // Center of button
+    unsigned y_x = 194;  // Center of Y
+    unsigned y_y = 225;  // Center of button
 
     // Draw Y using thick lines (3px wide)
     // Upper left diagonal of Y
@@ -329,7 +316,7 @@ void ST7789InfoPage::DrawNavigationBar(const char* screenType)
     m_Graphics->DrawLine(y_x + 3, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
 
     // Stem of Y
-        m_Graphics->DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
+    m_Graphics->DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
     m_Graphics->DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
 

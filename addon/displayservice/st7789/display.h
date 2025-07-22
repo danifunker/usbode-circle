@@ -1,28 +1,30 @@
 #ifndef ST7789_DISPLAY_H
 #define ST7789_DISPLAY_H
 
-#include <configservice/configservice.h>
-#include <displayservice/idisplay.h>
-#include <displayservice/pagemanager.h>
-#include <display/st7789display.h>
-#include <circle/spimaster.h>
 #include <circle/2dgraphics.h>
 #include <circle/gpiomanager.h>
 #include <circle/gpiopin.h>
 #include <circle/pwmoutput.h>
+#include <circle/spimaster.h>
+#include <configservice/configservice.h>
+#include <display/st7789display.h>
+#include <displayservice/idisplay.h>
+#include <displayservice/pagemanager.h>
 
+// Settings for the buttons
 #define DEBOUNCETICKS 20
 #define BUTTONUP 5
 #define BUTTONDOWN 6
 #define BUTTONCANCEL 16
 #define BUTTONOK 24
 
-#define PWM_CLOCK_RATE  1000000
-#define PWM_RANGE       1024
+// Settings for the backlight
+#define PWM_CLOCK_RATE 1000000
+#define PWM_RANGE 1024
 #define DEFAULT_TIMEOUT 10
 
 class ST7789Display : public IDisplay {
-public:
+   public:
     ST7789Display(int dc_pin, int reset_pin, int backlight_pin, int spi_cpol, int spi_chpa, int spi_clock_speed, int spi_chip_select);
     virtual ~ST7789Display();
 
@@ -33,15 +35,14 @@ public:
     virtual void Refresh() override;
     virtual bool IsSleeping() override;
     virtual bool Debounce(Button button) override;
-    static void HandleButtonPress(void *context);
+    static void HandleButtonPress(void* context);
 
-private:
-
-private:
-    CSPIMaster              m_SPIMaster;
-    CST7789Display          m_Display;
-    C2DGraphics 	    m_Graphics;
-    PageManager		    m_PageManager;
+   private:
+   private:
+    CSPIMaster m_SPIMaster;
+    CST7789Display m_Display;
+    C2DGraphics m_Graphics;
+    PageManager m_PageManager;
     CPWMOutput m_PWMOutput;
 
     CGPIOManager* m_GPIOManager;
@@ -62,5 +63,4 @@ private:
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };
 
-#endif // ST7789DISPLAY_H
-
+#endif  // ST7789DISPLAY_H

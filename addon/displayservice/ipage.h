@@ -3,12 +3,14 @@
 
 #include <displayservice/buttons.h>
 
+// This interface defines a page and is implemented by
+// all pages in our GUI
 class IPage {
-public:
-    virtual void OnEnter() = 0;                      // Called when screen becomes active
-    virtual void OnExit() = 0;                      // Called when screen becomes inactive
-    virtual void OnButtonPress(Button buttonId) = 0;    // Handle button input
-    virtual void Refresh() = 0;                       // Called from main loop to redraw or refresh
+   public:
+    virtual void OnEnter() = 0;
+    virtual void OnExit() = 0;
+    virtual void OnButtonPress(Button buttonId) = 0;
+    virtual void Refresh() = 0;
     virtual bool shouldChangePage() = 0;
     virtual const char* nextPageName() = 0;
     virtual ~IPage() {}
