@@ -58,7 +58,7 @@ void DisplayService::CreateDisplay(const char* displayType) {
         );
 
     // Generic ST7789 screen depends on how you wired it up. The default values
-    // mirror the wiring of the Pirate Audio screen
+    // (mostly) mirror the wiring of the Pirate Audio screen
     // https://pinout.xyz/pinout/pirate_audio_line_out
     } else if (strcmp(displayType, "st7789") == 0) {
         //TODO: Bring this into configservice

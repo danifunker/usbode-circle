@@ -135,23 +135,14 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             }
     }
     
-    LOGNOTE("Loading current values");
     // Set current values for display
     std::string current_displayhat = config->GetDisplayHat();
-    LOGNOTE("Loading current values");
     std::string current_screen_timeout = std::to_string(config->GetScreenTimeout());
-    LOGNOTE("Loading current values");
     std::string current_default_volume = std::to_string(config->GetDefaultVolume());
-    LOGNOTE("Loading current values");
     std::string current_sounddev = config->GetSoundDev();
-    LOGNOTE("Loading current values");
     std::string current_loglevel = std::to_string(config->GetLogLevel());
-    LOGNOTE("Loading current values");
     std::string current_usbspeed = config->GetUSBFullSpeed() ? "full" : "high";
-    LOGNOTE("Loading current values");
     std::string current_logfile = config->GetLogfile();
-
-    LOGNOTE("Loaded current values");
     
     // Remove SD:/ prefix from logfile for display
     if (current_logfile.find("SD:/") == 0) {
@@ -166,19 +157,16 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["current_sounddev"] = current_sounddev;
     context["current_loglevel"] = current_loglevel;
     context["current_usbspeed"] = current_usbspeed;
-    LOGNOTE("Set context 1");
 
     // Set form values
     context["screen_timeout"] = current_screen_timeout;
     context["logfile"] = current_logfile;
-    LOGNOTE("Set context 2");
     
     // Set display HAT options
     context["displayhat_none"] = (current_displayhat == "none");
     context["displayhat_pirateaudio"] = (current_displayhat == "pirateaudiolineout");
     context["displayhat_waveshare"] = (current_displayhat == "waveshare");
     context["displayhat_st7789"] = (current_displayhat == "st7789");
-    LOGNOTE("Set context 3");
     
     // Set sound device options
     context["sounddev_sndpwm"] = (current_sounddev == "sndpwm");
@@ -187,7 +175,6 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     // Set USB speed options
     context["usbspeed_high"] = (current_usbspeed == "high");
     context["usbspeed_full"] = (current_usbspeed == "full");
-    LOGNOTE("Set context 4");
     
     // Set log level options
     context["loglevel_0"] = (current_loglevel == "0");
@@ -196,7 +183,6 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["loglevel_3"] = (current_loglevel == "3");
     context["loglevel_4"] = (current_loglevel == "4");
     context["loglevel_5"] = (current_loglevel == "5");
-    LOGNOTE("Set context 5");
     
     // Set messages
     if (!error_message.empty()) {
@@ -205,7 +191,6 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     if (!success_message.empty()) {
         context["success_message"] = success_message;
     }
-    LOGNOTE("Set context 6");
     
     return HTTPOK;
 }
