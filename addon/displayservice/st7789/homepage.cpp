@@ -12,14 +12,18 @@ ST7789HomePage::ST7789HomePage(CST7789Display* display, C2DGraphics* graphics)
       m_Graphics(graphics) {
     m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+    LOGNOTE("Homepage starting");
 }
 
 ST7789HomePage::~ST7789HomePage() {
-    LOGNOTE("Homepage starting");
 }
 
 void ST7789HomePage::OnEnter() {
     LOGNOTE("Drawing homepage");
+    pTitle = GetVersionString();
+    pUSBSpeed = GetUSBSpeed();
+    pISOName = GetCurrentImage();
+    pIPAddress = GetIPAddress();
     Draw();
 }
 
@@ -65,8 +69,19 @@ void ST7789HomePage::OnButtonPress(Button button) {
 }
 
 void ST7789HomePage::Refresh() {
-    // TODO We shouldn't redraw everything!
-    Draw();
+    // We shouldn't redraw everything all the time!
+    const char* ISOName = GetCurrentImage();
+    if (strcmp(ISOName, pISOName) != 0) {
+	pISOName = ISOName;
+        Draw();
+    }
+
+    const char* IPAddress = GetIPAddress();
+    if (strcmp(IPAddress, pIPAddress) != 0) {
+	pIPAddress = IPAddress;
+        Draw();
+    }
+
 }
 
 const char* ST7789HomePage::GetIPAddress() {
@@ -95,10 +110,6 @@ const char* ST7789HomePage::GetUSBSpeed() {
 }
 
 void ST7789HomePage::Draw() {
-    const char* pTitle = GetVersionString();
-    const char* pIPAddress = GetIPAddress();
-    const char* pISOName = GetCurrentImage();
-    const char* pUSBSpeed = GetUSBSpeed();
 
     // Clear the screen with WHITE background using the graphics object
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));

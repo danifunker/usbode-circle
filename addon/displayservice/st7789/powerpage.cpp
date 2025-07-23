@@ -92,8 +92,7 @@ void ST7789PowerPage::MoveSelection(int delta) {
 }
 
 void ST7789PowerPage::Refresh() {
-    // TODO We shouldn't redraw everything!
-    // Draw();
+    // We don't need to do anything here
 }
 
 void ST7789PowerPage::DrawConfirmation(const char* message) {

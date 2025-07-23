@@ -38,8 +38,9 @@ class ST7789HomePage : public IPage {
     CST7789Display* m_Display;
     C2DGraphics* m_Graphics;
     SCSITBService* m_Service = nullptr;
-    char* pIPAddress;
-    char* pISOName;
-    char* pUSBSpeed;
+    const char* pIPAddress;
+    const char* pISOName;
+    const char* pUSBSpeed;
+    const char* pTitle;
 };
 #endif

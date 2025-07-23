@@ -95,8 +95,7 @@ void ST7789USBConfigPage::MoveSelection(int delta) {
 }
 
 void ST7789USBConfigPage::Refresh() {
-    // TODO We shouldn't redraw everything!
-    // Draw();
+    // Nothing to do here
 }
 
 void ST7789USBConfigPage::SaveAndReboot() {

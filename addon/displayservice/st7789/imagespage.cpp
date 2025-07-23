@@ -100,6 +100,7 @@ void ST7789ImagesPage::MoveSelection(int delta) {
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
         LOGDBG("%s", m_Service->GetName(newIndex));
         m_SelectedIndex = static_cast<size_t>(newIndex);
+	Draw();
     }
 }
 
@@ -166,8 +167,8 @@ void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
 }
 
 void ST7789ImagesPage::Refresh() {
-    // TODO We shouldn't redraw everything!
-    Draw();
+    // We only update the screen on keypress so the redraw trigger is in
+    // the "MoveSelection" method. We do nothing here
 }
 
 void ST7789ImagesPage::Draw() {

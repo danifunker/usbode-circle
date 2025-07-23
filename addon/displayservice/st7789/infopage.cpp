@@ -53,6 +53,7 @@ void ST7789InfoPage::MoveSelection(int delta) {
 }
 
 void ST7789InfoPage::Refresh() {
+    // This page doesn't change, so no need to refresh
 }
 
 void ST7789InfoPage::Draw() {
