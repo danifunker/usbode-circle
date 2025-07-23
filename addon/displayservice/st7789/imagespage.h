@@ -45,6 +45,9 @@ class ST7789ImagesPage : public IPage {
     size_t m_TotalFiles;
     size_t m_SelectedIndex = 0;
     size_t m_MountedIndex = 0;
+    int charWidth;
+    int maxTextPx;
+    bool dirty = false;
 
     int m_ScrollOffsetPx = 0;
     bool m_ScrollDirLeft = true;
@@ -56,5 +59,6 @@ class ST7789ImagesPage : public IPage {
     void DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
                           int pixelOffset, const TFont& rFont = DEFAULT_FONT,
                           CCharGenerator::TFontFlags FontFlags = CCharGenerator::FontFlagsNone);
+    bool RefreshScroll();
 };
 #endif

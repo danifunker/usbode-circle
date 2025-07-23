@@ -105,6 +105,6 @@ void DisplayService::Run(void) {
         // Refresh our display
         m_IDisplay->Refresh();
 
-        CScheduler::Get()->MsSleep(100);  // tick rate for page changes
+        CScheduler::Get()->MsSleep(50);  // tick rate for page changes
     }
 }

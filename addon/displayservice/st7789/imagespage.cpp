@@ -10,6 +10,11 @@ ST7789ImagesPage::ST7789ImagesPage(CST7789Display* display, C2DGraphics* graphic
     : m_Display(display),
       m_Graphics(graphics) {
     m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+
+    // Initialize some variables
+    CCharGenerator Font(DEFAULT_FONT, CCharGenerator::FontFlagsNone);
+    charWidth = Font.GetCharWidth();
+    maxTextPx = m_Display->GetWidth() - 10;
 }
 
 ST7789ImagesPage::~ST7789ImagesPage() {
@@ -100,7 +105,8 @@ void ST7789ImagesPage::MoveSelection(int delta) {
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
         LOGDBG("%s", m_Service->GetName(newIndex));
         m_SelectedIndex = static_cast<size_t>(newIndex);
-	Draw();
+	//Draw();
+	dirty = true;
     }
 }
 
@@ -166,9 +172,53 @@ void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
     }
 }
 
+bool ST7789ImagesPage::RefreshScroll() {
+    const char* name = m_Service->GetName(m_SelectedIndex);
+    size_t nameLen = strlen(name);
+
+
+    int fullTextPx = ((int)nameLen + 2) * charWidth;
+
+    if (fullTextPx > maxTextPx) {
+
+        if (m_ScrollDirLeft) {
+            m_ScrollOffsetPx += 5;
+            if (m_ScrollOffsetPx >= (fullTextPx - maxTextPx)) {
+                m_ScrollOffsetPx = (fullTextPx - maxTextPx);
+                m_ScrollDirLeft = false;
+            }
+        } else {
+            m_ScrollOffsetPx -= 5;
+            if (m_ScrollOffsetPx <= 0) {
+                m_ScrollOffsetPx = 0;
+                m_ScrollDirLeft = true;
+            }
+        }
+
+        size_t currentPage = m_SelectedIndex / ITEMS_PER_PAGE;
+        size_t startIndex = currentPage * ITEMS_PER_PAGE;
+        int y = static_cast<int>((m_SelectedIndex - startIndex) * 20);
+
+        char extended[nameLen + 2];
+        snprintf(extended, sizeof(extended), "%s ", name);
+
+        m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 0, 0));
+        DrawTextScrolled(10, y + 30, COLOR2D(255, 255, 255), extended, m_ScrollOffsetPx);
+	return true;
+    }
+
+    return false;
+}
+
 void ST7789ImagesPage::Refresh() {
-    // We only update the screen on keypress so the redraw trigger is in
-    // the "MoveSelection" method. We do nothing here
+
+    // Scroll the current line if it needs it
+    if (RefreshScroll())
+	m_Graphics->UpdateDisplay();
+
+    // Redraw the screen only when it's needed
+    if (dirty)
+	Draw();
 }
 
 void ST7789ImagesPage::Draw() {
@@ -176,6 +226,8 @@ void ST7789ImagesPage::Draw() {
 
     size_t fileCount = m_Service->GetCount();
     if (fileCount == 0) return;
+
+    dirty = false;
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
@@ -206,45 +258,23 @@ void ST7789ImagesPage::Draw() {
         snprintf(extended, sizeof(extended), "%s ", name);
 
         // Crop
-        CCharGenerator Font(DEFAULT_FONT, CCharGenerator::FontFlagsNone);
-        const int maxLen = (m_Display->GetWidth() - 10) / Font.GetCharWidth();
+        const int maxLen = maxTextPx / charWidth;
         char cropped[maxLen + 1];
+        snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
 
         // Only scroll selected line and only if too long
-        const int charWidth = Font.GetCharWidth();
-        const int maxTextPx = m_Display->GetWidth() - 10;
-
         if (i == m_MountedIndex)
             m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 255, 0));
 
         if (i == m_SelectedIndex) {
             m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 0, 0));
-
-            int fullTextPx = (int)strlen(extended) * charWidth;
-            if (fullTextPx > maxTextPx) {
-                if (m_ScrollDirLeft) {
-                    m_ScrollOffsetPx += 3;
-                    if (m_ScrollOffsetPx >= (fullTextPx - maxTextPx)) {
-                        m_ScrollOffsetPx = (fullTextPx - maxTextPx);
-                        m_ScrollDirLeft = false;
-                    }
-                } else {
-                    m_ScrollOffsetPx -= 3;
-                    if (m_ScrollOffsetPx <= 0) {
-                        m_ScrollOffsetPx = 0;
-                        m_ScrollDirLeft = true;
-                    }
-                }
-                DrawTextScrolled(10, y + 30, COLOR2D(255, 255, 255), extended, m_ScrollOffsetPx);
-            } else {
-                // No scrolling needed
-                DrawText(10, y + 30, COLOR2D(255, 255, 255), name);
-            }
+            DrawText(10, y + 30, COLOR2D(255,255,255), cropped);
         } else {
-            snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
             DrawText(10, y + 30, COLOR2D(0, 0, 0), cropped);
         }
     }
+
+    RefreshScroll();
 
     // Draw page indicator
     char pageText[16];
