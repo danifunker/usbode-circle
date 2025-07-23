@@ -65,7 +65,7 @@ endif
 # Define USBODE addon modules (from /addon directory)
 USBODE_ADDONS = gitinfo sdcardservice cdromservice scsitbservice usbcdgadget \
 				shutdown usbmsdgadget discimage cueparser filelogdaemon \
-				webserver ftpserver configservice display displayservice cdplayer
+				webserver ftpserver configservice displayservice cdplayer
 
 # Only the Circle addons we actually need
 CIRCLE_ADDONS = linux Properties display
