@@ -1,5 +1,6 @@
 /*
 / (c) 2025 Ian Cass
+/ (c) 2025 Dani Sarfati
 / This is a Circle CTask service which displays the UI for USBODE
 */
 
@@ -16,6 +17,7 @@
 
 #include "../../src/kernel.h"
 #include "st7789/display.h"
+#include "sh1106/display.h"
 
 #define CONFIG_FILE "config.txt"
 
@@ -73,6 +75,30 @@ void DisplayService::CreateDisplay(const char* displayType) {
             properties->GetNumber("spi_chpa", 1),                // spi_chpa
             properties->GetNumber("spi_clock_speed", 80000000),  // spi_clock_speed
             properties->GetNumber("spi_chip_select", 0)          // spi_chip_select
+        );
+
+    } else if (strcmp(displayType, "sh1106") == 0) {
+        FATFS* fs = CKernel::Get()->GetFileSystem();
+        CPropertiesFatFsFile* properties = new CPropertiesFatFsFile(CONFIG_FILE, fs);
+        properties->SelectSection("sh1106");
+        m_IDisplay = new SH1106Display(
+            properties->GetNumber("dc_pin", 22),                 // dc_pin
+            properties->GetNumber("reset_pin", 27),              // reset_pin
+            properties->GetNumber("backlight_pin", 0),          // backlight_pin
+            properties->GetNumber("spi_cpol", 0),                // spi_cpol
+            properties->GetNumber("spi_chpa", 0),                // spi_chpa
+            properties->GetNumber("spi_clock_speed", 24000000),  // spi_clock_speed
+            properties->GetNumber("spi_chip_select", 1)          // spi_chip_select
+        );
+    } else if (strcmp(displayType, "waveshare") == 0) {
+        m_IDisplay = new SH1106Display(
+            24,        // dc_pin
+            25,        // reset_pin
+            0,         // backlight_pin
+            0,         // spi_cpol
+            0,         // spi_chpa
+            40000000,  // spi_clock_speed
+            0          // spi_chip_select
         );
     }
     assert(m_IDisplay != nullptr && "Didn't create display");

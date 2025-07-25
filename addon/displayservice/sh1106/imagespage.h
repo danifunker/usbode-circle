@@ -1,21 +1,21 @@
-#ifndef _ST7789_IMAGESPAGE_H
-#define _ST7789_IMAGESPAGE_H
+#ifndef _SH1106_IMAGESPAGE_H
+#define _SH1106_IMAGESPAGE_H
 
 #include <circle/2dgraphics.h>
 #include <circle/spimaster.h>
-#include <display/st7789display.h>
+#include <display/sh1106display.h>
 #include <displayservice/buttons.h>
 #include <displayservice/ipage.h>
 #include <scsitbservice/scsitbservice.h>
 
-#define ITEMS_PER_PAGE 9
+#define ITEMS_PER_PAGE 5
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
-class ST7789ImagesPage : public IPage {
+class SH1106ImagesPage : public IPage {
    public:
-    ST7789ImagesPage(CST7789Display* display, C2DGraphics* graphics);
-    ~ST7789ImagesPage();
+    SH1106ImagesPage(CSH1106Display* display, C2DGraphics* graphics);
+    ~SH1106ImagesPage();
     void OnEnter() override;
     void OnExit() override;
     void OnButtonPress(Button buttonId) override;
@@ -39,7 +39,7 @@ class ST7789ImagesPage : public IPage {
 
    private:
     bool m_ShouldChangePage = false;
-    CST7789Display* m_Display;
+    CSH1106Display* m_Display;
     C2DGraphics* m_Graphics;
     SCSITBService* m_Service = nullptr;
     size_t m_TotalFiles;

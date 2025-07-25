@@ -171,7 +171,8 @@ void CSH1106Display::DrawText(unsigned nPosX, unsigned nPosY, const char *pStrin
                             TSH1106Color Color, TSH1106Color BgColor,
                             bool bDoubleWidth, bool bDoubleHeight, const TFont &rFont)
 {
-    assert(pString != 0);
+    if (pString == 0)
+	    return;
     
     CCharGenerator CharGen(rFont, CCharGenerator::MakeFlags(bDoubleWidth, bDoubleHeight));
     

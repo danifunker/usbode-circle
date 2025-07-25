@@ -172,7 +172,7 @@ void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
     }
 }
 
-bool ST7789ImagesPage::RefreshScroll() {
+void ST7789ImagesPage::RefreshScroll() {
     const char* name = m_Service->GetName(m_SelectedIndex);
     size_t nameLen = strlen(name);
 
@@ -204,21 +204,21 @@ bool ST7789ImagesPage::RefreshScroll() {
 
         m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 0, 0));
         DrawTextScrolled(10, y + 30, COLOR2D(255, 255, 255), extended, m_ScrollOffsetPx);
-	return true;
+	m_Graphics->UpdateDisplay();
     }
-
-    return false;
 }
 
 void ST7789ImagesPage::Refresh() {
 
-    // Scroll the current line if it needs it
-    if (RefreshScroll())
-	m_Graphics->UpdateDisplay();
 
     // Redraw the screen only when it's needed
-    if (dirty)
+    if (dirty) {
 	Draw();
+	return;
+    }
+
+    // Scroll the current line if it needs it
+    RefreshScroll();
 }
 
 void ST7789ImagesPage::Draw() {
