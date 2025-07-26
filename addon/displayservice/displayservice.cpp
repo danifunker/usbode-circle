@@ -49,15 +49,17 @@ void DisplayService::CreateDisplay(const char* displayType) {
 
     // Pirate Audio Screen has hard coded values
     if (strcmp(displayType, "pirateaudiolineout") == 0) {
-        m_IDisplay = new ST7789Display(
-            9,         // dc_pin
-            27,        // reset_pin
-            13,        // backlight_pin
-            0,         // spi_cpol
-            0,         // spi_chpa
-            80000000,  // spi_clock_speed
-            1          // spi_chip_select
-        );
+
+	DisplayConfig config = {
+	    .dc_pin = 9,
+	    .reset_pin = 27,
+	    .backlight_pin = 13,
+	    .spi_cpol = 0,
+	    .spi_cpha = 1,
+	    .spi_clock_speed = 80000000,
+	    .spi_chip_select = 1
+	};
+        m_IDisplay = new ST7789Display(&config);
 
     // Generic ST7789 screen depends on how you wired it up. The default values
     // (mostly) mirror the wiring of the Pirate Audio screen
@@ -67,39 +69,44 @@ void DisplayService::CreateDisplay(const char* displayType) {
         FATFS* fs = CKernel::Get()->GetFileSystem();
         CPropertiesFatFsFile* properties = new CPropertiesFatFsFile(CONFIG_FILE, fs);
         properties->SelectSection("st7789");
-        m_IDisplay = new ST7789Display(
-            properties->GetNumber("dc_pin", 22),                 // dc_pin
-            properties->GetNumber("reset_pin", 27),              // reset_pin
-            properties->GetNumber("backlight_pin", 13),          // backlight_pin
-            properties->GetNumber("spi_cpol", 1),                // spi_cpol
-            properties->GetNumber("spi_chpa", 1),                // spi_chpa
-            properties->GetNumber("spi_clock_speed", 80000000),  // spi_clock_speed
-            properties->GetNumber("spi_chip_select", 0)          // spi_chip_select
-        );
+
+	DisplayConfig config = {
+            .dc_pin = properties->GetNumber("dc_pin", 22),
+            .reset_pin = properties->GetNumber("reset_pin", 27),
+            .backlight_pin = properties->GetNumber("backlight_pin", 13),
+            .spi_cpol = properties->GetNumber("spi_cpol", 1),
+            .spi_cpha = properties->GetNumber("spi_chpa", 1),
+            .spi_clock_speed = properties->GetNumber("spi_clock_speed", 80000000),
+            .spi_chip_select = properties->GetNumber("spi_chip_select", 0)
+	};
+        m_IDisplay = new ST7789Display(&config);
 
     } else if (strcmp(displayType, "sh1106") == 0) {
         FATFS* fs = CKernel::Get()->GetFileSystem();
         CPropertiesFatFsFile* properties = new CPropertiesFatFsFile(CONFIG_FILE, fs);
         properties->SelectSection("sh1106");
-        m_IDisplay = new SH1106Display(
-            properties->GetNumber("dc_pin", 22),                 // dc_pin
-            properties->GetNumber("reset_pin", 27),              // reset_pin
-            properties->GetNumber("backlight_pin", 0),          // backlight_pin
-            properties->GetNumber("spi_cpol", 0),                // spi_cpol
-            properties->GetNumber("spi_chpa", 0),                // spi_chpa
-            properties->GetNumber("spi_clock_speed", 24000000),  // spi_clock_speed
-            properties->GetNumber("spi_chip_select", 1)          // spi_chip_select
-        );
+
+	DisplayConfig config = {
+            .dc_pin = properties->GetNumber("dc_pin", 22),
+            .reset_pin = properties->GetNumber("reset_pin", 27),
+            .backlight_pin = properties->GetNumber("backlight_pin", 0),
+            .spi_cpol = properties->GetNumber("spi_cpol", 0),
+            .spi_cpha = properties->GetNumber("spi_chpa", 0),
+            .spi_clock_speed = properties->GetNumber("spi_clock_speed", 24000000),
+            .spi_chip_select = properties->GetNumber("spi_chip_select", 1)
+	};
+        m_IDisplay = new SH1106Display(&config);
     } else if (strcmp(displayType, "waveshare") == 0) {
-        m_IDisplay = new SH1106Display(
-            24,        // dc_pin
-            25,        // reset_pin
-            0,         // backlight_pin
-            0,         // spi_cpol
-            0,         // spi_chpa
-            40000000,  // spi_clock_speed
-            0          // spi_chip_select
-        );
+	DisplayConfig config = {
+            .dc_pin = 24,
+            .reset_pin = 25,
+            .backlight_pin = 0,
+            .spi_cpol = 0,
+            .spi_cpha = 0,
+            .spi_clock_speed = 40000000,
+            .spi_chip_select = 0
+	};
+        m_IDisplay = new SH1106Display(&config);
     }
     assert(m_IDisplay != nullptr && "Didn't create display");
 }

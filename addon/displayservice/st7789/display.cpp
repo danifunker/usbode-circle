@@ -23,22 +23,19 @@
 
 LOGMODULE("kernel");
 
-// TODO move some of these methods to a base class so other display types can benefit from this framework
-
 // Constructor
-// TODO. Refactor. I don't like passing all these params. Instead, pass a config object
-ST7789Display::ST7789Display(int dc_pin, int reset_pin, int backlight_pin, int spi_cpol, int spi_cpha, int spi_clock_speed, int spi_chip_select)
-    : m_SPIMaster(spi_clock_speed, spi_cpol, spi_cpha, 0),
-      m_Display(&m_SPIMaster, dc_pin, reset_pin, 0, 240, 240,
-                spi_cpol, spi_cpha, spi_clock_speed, spi_chip_select),
+ST7789Display::ST7789Display(const DisplayConfig* config)
+    : m_SPIMaster(config->spi_clock_speed, config->spi_cpol, config->spi_cpha, 0),
+      m_Display(&m_SPIMaster, config->dc_pin, config->reset_pin, 0, 240, 240,
+                config->spi_cpol, config->spi_cpha, config->spi_clock_speed, config->spi_chip_select),
       m_Graphics(&m_Display),
       m_PWMOutput(PWM_CLOCK_RATE, PWM_RANGE, true) {
     // Obtain our config service
-    config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+    configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 
     // Initialize the backlight variables
-    if (backlight_pin)
-        m_backlight_pin = backlight_pin;
+    if (config->backlight_pin)
+        m_backlight_pin = config->backlight_pin;
 
     backlightTimer = CTimer::Get()->GetClockTicks();
 
@@ -131,7 +128,7 @@ bool ST7789Display::Initialize() {
         pwm_configured = true;
 
         // Backlight timeout
-        backlightTimeout = config->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+        backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
         LOGNOTE("Registered backlight");
     }
 

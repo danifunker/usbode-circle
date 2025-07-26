@@ -23,15 +23,15 @@
 
 LOGMODULE("kernel");
 
-SH1106Display::SH1106Display(int dc_pin, int reset_pin, int backlight_pin, int spi_cpol, int spi_cpha, int spi_clock_speed, int spi_chip_select)
-    : m_SPIMaster(spi_clock_speed, spi_cpol, spi_cpha, 0),
-      m_Display(&m_SPIMaster, dc_pin, reset_pin, 128, 64,
-		spi_clock_speed, spi_cpol, spi_cpha, spi_chip_select),
+SH1106Display::SH1106Display(const DisplayConfig* config)
+    : m_SPIMaster(config->spi_clock_speed, config->spi_cpol, config->spi_cpha, 0),
+      m_Display(&m_SPIMaster, config->dc_pin, config->reset_pin, 128, 64,
+		config->spi_clock_speed, config->spi_cpol, config->spi_cpha, config->spi_chip_select),
       m_Graphics(&m_Display) 
 {
 	     
     // Obtain our config service
-    config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+    configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 
     backlightTimer = CTimer::Get()->GetClockTicks();
 
@@ -113,7 +113,7 @@ bool SH1106Display::Initialize() {
     }
 
     // Backlight timeout
-    backlightTimeout = config->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+    backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
     LOGNOTE("Registered backlight");
 
     return bOK;

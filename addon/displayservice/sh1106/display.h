@@ -30,7 +30,7 @@
 
 class SH1106Display : public IDisplay {
    public:
-    SH1106Display(int dc_pin, int reset_pin, int backlight_pin, int spi_cpol, int spi_chpa, int spi_clock_speed, int spi_chip_select);
+    SH1106Display(const DisplayConfig* config);
     virtual ~SH1106Display();
 
     virtual bool Initialize() override;
@@ -55,7 +55,7 @@ class SH1106Display : public IDisplay {
     CGPIOPin* m_ButtonOk;
     CGPIOPin* m_ButtonCancel;
 
-    ConfigService* config;
+    ConfigService* configservice;
 
     int backlightTimer;
     bool sleeping = false;

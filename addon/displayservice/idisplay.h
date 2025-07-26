@@ -3,6 +3,16 @@
 
 #include "pagemanager.h"
 
+struct DisplayConfig {
+    int dc_pin;
+    int reset_pin;
+    int backlight_pin;
+    int spi_cpol;
+    int spi_cpha;
+    int spi_clock_speed;
+    int spi_chip_select;
+};
+
 // This interface represents all display. It exists so we
 // can support different display types (waveshare, st7789, ...)
 class IDisplay {
