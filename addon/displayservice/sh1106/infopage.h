@@ -3,7 +3,7 @@
 
 #include <circle/2dgraphics.h>
 #include <circle/spimaster.h>
-#include <udisplay/sh1106display.h>
+#include <libsh1106/sh1106display.h>
 #include <displayservice/buttons.h>
 #include <displayservice/ipage.h>
 

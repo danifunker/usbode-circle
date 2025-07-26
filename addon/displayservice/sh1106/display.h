@@ -7,7 +7,7 @@
 #include <circle/pwmoutput.h>
 #include <circle/spimaster.h>
 #include <configservice/configservice.h>
-#include <udisplay/sh1106display.h>
+#include <libsh1106/sh1106display.h>
 #include <displayservice/idisplay.h>
 #include <displayservice/pagemanager.h>
 
