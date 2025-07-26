@@ -25,7 +25,7 @@
 
 class ST7789Display : public IDisplay {
    public:
-    ST7789Display(const DisplayConfig* config);
+    ST7789Display(DisplayConfig* config, ButtonConfig* buttons);
     virtual ~ST7789Display();
 
     virtual bool Initialize() override;
@@ -50,6 +50,11 @@ class ST7789Display : public IDisplay {
     CGPIOPin* m_ButtonDown;
     CGPIOPin* m_ButtonOk;
     CGPIOPin* m_ButtonCancel;
+
+    const int up_pin;
+    const int down_pin;
+    const int ok_pin;
+    const int cancel_pin;
 
     ConfigService* configservice;
 

@@ -4,13 +4,13 @@
 #include "pagemanager.h"
 
 struct DisplayConfig {
-    int dc_pin;
-    int reset_pin;
-    int backlight_pin;
-    int spi_cpol;
-    int spi_cpha;
-    int spi_clock_speed;
-    int spi_chip_select;
+    unsigned dc_pin;
+    unsigned reset_pin;
+    unsigned backlight_pin;
+    unsigned spi_cpol;
+    unsigned spi_cpha;
+    unsigned spi_clock_speed;
+    unsigned spi_chip_select;
 };
 
 // This interface represents all display. It exists so we

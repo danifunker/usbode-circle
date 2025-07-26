@@ -19,7 +19,7 @@
 #include "st7789/display.h"
 #include "sh1106/display.h"
 
-#define CONFIG_FILE "config.txt"
+#define CONFIG_FILE "SD:/config.txt"
 
 LOGMODULE("displayservice");
 
@@ -59,7 +59,15 @@ void DisplayService::CreateDisplay(const char* displayType) {
 	    .spi_clock_speed = 80000000,
 	    .spi_chip_select = 1
 	};
-        m_IDisplay = new ST7789Display(&config);
+
+	ButtonConfig buttons = {
+		.Up = ST7789_BUTTONUP,
+		.Down = ST7789_BUTTONDOWN,
+		.Ok = ST7789_BUTTONOK,
+		.Cancel = ST7789_BUTTONCANCEL
+	};
+
+        m_IDisplay = new ST7789Display(&config, &buttons);
 
     // Generic ST7789 screen depends on how you wired it up. The default values
     // (mostly) mirror the wiring of the Pirate Audio screen
@@ -68,6 +76,7 @@ void DisplayService::CreateDisplay(const char* displayType) {
         //TODO: Bring this into configservice
         FATFS* fs = CKernel::Get()->GetFileSystem();
         CPropertiesFatFsFile* properties = new CPropertiesFatFsFile(CONFIG_FILE, fs);
+	properties->Load();
         properties->SelectSection("st7789");
 
 	DisplayConfig config = {
@@ -79,11 +88,23 @@ void DisplayService::CreateDisplay(const char* displayType) {
             .spi_clock_speed = properties->GetNumber("spi_clock_speed", 80000000),
             .spi_chip_select = properties->GetNumber("spi_chip_select", 0)
 	};
-        m_IDisplay = new ST7789Display(&config);
 
+	ButtonConfig buttons = {
+		.Up = properties->GetNumber("button_up", ST7789_BUTTONUP),
+		.Down = properties->GetNumber("button_down", ST7789_BUTTONDOWN),
+		.Ok = properties->GetNumber("button_ok", ST7789_BUTTONOK),
+		.Cancel = properties->GetNumber("button_cancel", ST7789_BUTTONCANCEL)
+	};
+
+        m_IDisplay = new ST7789Display(&config, &buttons);
+
+    // Generic SH1106 screen depends on how you wired it up. The default values
+    // (mostly) mirror the wiring of the Pirate Audio screen
+    // https://pinout.xyz/pinout/pirate_audio_line_out
     } else if (strcmp(displayType, "sh1106") == 0) {
         FATFS* fs = CKernel::Get()->GetFileSystem();
         CPropertiesFatFsFile* properties = new CPropertiesFatFsFile(CONFIG_FILE, fs);
+	properties->Load();
         properties->SelectSection("sh1106");
 
 	DisplayConfig config = {
@@ -95,7 +116,15 @@ void DisplayService::CreateDisplay(const char* displayType) {
             .spi_clock_speed = properties->GetNumber("spi_clock_speed", 24000000),
             .spi_chip_select = properties->GetNumber("spi_chip_select", 1)
 	};
-        m_IDisplay = new SH1106Display(&config);
+
+	ButtonConfig buttons = {
+		.Up = properties->GetNumber("button_up", SH1106_BUTTONUP),
+		.Down = properties->GetNumber("button_down", SH1106_BUTTONDOWN),
+		.Ok = properties->GetNumber("button_ok", SH1106_BUTTONOK),
+		.Cancel = properties->GetNumber("button_cancel", SH1106_BUTTONCANCEL)
+	};
+
+        m_IDisplay = new SH1106Display(&config, &buttons);
     } else if (strcmp(displayType, "waveshare") == 0) {
 	DisplayConfig config = {
             .dc_pin = 24,
@@ -103,10 +132,18 @@ void DisplayService::CreateDisplay(const char* displayType) {
             .backlight_pin = 0,
             .spi_cpol = 0,
             .spi_cpha = 0,
-            .spi_clock_speed = 40000000,
+            .spi_clock_speed = 24000000,
             .spi_chip_select = 0
 	};
-        m_IDisplay = new SH1106Display(&config);
+
+	ButtonConfig buttons = {
+		.Up = SH1106_BUTTONUP,
+		.Down = SH1106_BUTTONDOWN,
+		.Ok = SH1106_BUTTONOK,
+		.Cancel = SH1106_BUTTONCANCEL
+	};
+
+        m_IDisplay = new SH1106Display(&config, &buttons);
     }
     assert(m_IDisplay != nullptr && "Didn't create display");
 }
@@ -136,7 +173,8 @@ void DisplayService::Run(void) {
 
     while (true) {
         // Refresh our display
-        m_IDisplay->Refresh();
+	if (m_IDisplay)
+            m_IDisplay->Refresh();
 
         CScheduler::Get()->MsSleep(50);  // tick rate for page changes
     }

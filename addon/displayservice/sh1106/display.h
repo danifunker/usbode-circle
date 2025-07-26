@@ -30,7 +30,7 @@
 
 class SH1106Display : public IDisplay {
    public:
-    SH1106Display(const DisplayConfig* config);
+    SH1106Display(DisplayConfig* config, ButtonConfig* buttons);
     virtual ~SH1106Display();
 
     virtual bool Initialize() override;
@@ -54,6 +54,11 @@ class SH1106Display : public IDisplay {
     CGPIOPin* m_ButtonDown;
     CGPIOPin* m_ButtonOk;
     CGPIOPin* m_ButtonCancel;
+
+    const int up_pin;
+    const int down_pin;
+    const int ok_pin;
+    const int cancel_pin;
 
     ConfigService* configservice;
 

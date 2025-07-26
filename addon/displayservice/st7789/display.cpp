@@ -21,15 +21,20 @@
 #include "splashpage.h"
 #include "usbconfigpage.h"
 
-LOGMODULE("kernel");
+LOGMODULE("st7789display");
 
 // Constructor
-ST7789Display::ST7789Display(const DisplayConfig* config)
+ST7789Display::ST7789Display(DisplayConfig* config, ButtonConfig* buttons)
     : m_SPIMaster(config->spi_clock_speed, config->spi_cpol, config->spi_cpha, 0),
       m_Display(&m_SPIMaster, config->dc_pin, config->reset_pin, 0, 240, 240,
                 config->spi_cpol, config->spi_cpha, config->spi_clock_speed, config->spi_chip_select),
       m_Graphics(&m_Display),
-      m_PWMOutput(PWM_CLOCK_RATE, PWM_RANGE, true) {
+      m_PWMOutput(PWM_CLOCK_RATE, PWM_RANGE, true),
+      up_pin(buttons->Up),
+      down_pin(buttons->Down),
+      ok_pin(buttons->Ok),
+      cancel_pin(buttons->Cancel)
+{
     // Obtain our config service
     configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 
@@ -99,22 +104,22 @@ bool ST7789Display::Initialize() {
 
     // TODO move to base class
     if (bOK) {
-        m_ButtonUp = new CGPIOPin(ST7789_BUTTONUP, GPIOModeInputPullUp, m_GPIOManager);
+        m_ButtonUp = new CGPIOPin(up_pin, GPIOModeInputPullUp, m_GPIOManager);
         static ButtonHandlerContext buttonUpCtx = {this, &m_PageManager, m_ButtonUp, Button::Up};
         m_ButtonUp->ConnectInterrupt(HandleButtonPress, &buttonUpCtx);
         m_ButtonUp->EnableInterrupt(GPIOInterruptOnFallingEdge);
 
-        m_ButtonDown = new CGPIOPin(ST7789_BUTTONDOWN, GPIOModeInputPullUp, m_GPIOManager);
+        m_ButtonDown = new CGPIOPin(down_pin, GPIOModeInputPullUp, m_GPIOManager);
         static ButtonHandlerContext buttonDownCtx = {this, &m_PageManager, m_ButtonDown, Button::Down};
         m_ButtonDown->ConnectInterrupt(HandleButtonPress, &buttonDownCtx);
         m_ButtonDown->EnableInterrupt(GPIOInterruptOnFallingEdge);
 
-        m_ButtonOk = new CGPIOPin(ST7789_BUTTONOK, GPIOModeInputPullUp, m_GPIOManager);
+        m_ButtonOk = new CGPIOPin(ok_pin, GPIOModeInputPullUp, m_GPIOManager);
         static ButtonHandlerContext buttonOkCtx = {this, &m_PageManager, m_ButtonOk, Button::Ok};
         m_ButtonOk->ConnectInterrupt(HandleButtonPress, &buttonOkCtx);
         m_ButtonOk->EnableInterrupt(GPIOInterruptOnFallingEdge);
 
-        m_ButtonCancel = new CGPIOPin(ST7789_BUTTONCANCEL, GPIOModeInputPullUp, m_GPIOManager);
+        m_ButtonCancel = new CGPIOPin(cancel_pin, GPIOModeInputPullUp, m_GPIOManager);
         static ButtonHandlerContext buttonCancelCtx = {this, &m_PageManager, m_ButtonCancel, Button::Cancel};
         m_ButtonCancel->ConnectInterrupt(HandleButtonPress, &buttonCancelCtx);
         m_ButtonCancel->EnableInterrupt(GPIOInterruptOnFallingEdge);
