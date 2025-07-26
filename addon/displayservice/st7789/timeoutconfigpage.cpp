@@ -1,101 +1,86 @@
-#include "imagespage.h"
-
+#include "timeoutconfigpage.h"
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <gitinfo/gitinfo.h>
+#include <shutdown/shutdown.h>
 
-LOGMODULE("imagespage");
+LOGMODULE("timeoutconfigpage");
 
-ST7789ImagesPage::ST7789ImagesPage(CST7789Display* display, C2DGraphics* graphics)
-    : m_Display(display),
-      m_Graphics(graphics) {
-    m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
-
-    // Initialize some variables
-    CCharGenerator Font(DEFAULT_FONT, CCharGenerator::FontFlagsNone);
-    charWidth = Font.GetCharWidth();
-    maxTextPx = m_Display->GetWidth() - 10;
+ST7789TimeoutConfigPage::ST7789TimeoutConfigPage(CST7789Display* display, C2DGraphics* graphics)
+: m_Display(display),
+  m_Graphics(graphics)
+{
+    configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 }
 
-ST7789ImagesPage::~ST7789ImagesPage() {
-    LOGNOTE("Imagespage starting");
+ST7789TimeoutConfigPage::~ST7789TimeoutConfigPage() {
+    LOGNOTE("TimeoutConfigPage starting");
 }
 
-void ST7789ImagesPage::OnEnter() {
-    LOGNOTE("Drawing imagespage");
-    const char* name = m_Service->GetCurrentCDName();
-    SetSelectedName(name);
-    m_MountedIndex = m_SelectedIndex;
+void ST7789TimeoutConfigPage::OnEnter()
+{
+    LOGNOTE("Drawing TimeoutConfigPage");
+
     Draw();
 }
 
-void ST7789ImagesPage::OnExit() {
-    m_ShouldChangePage = false;
+void ST7789TimeoutConfigPage::OnExit()
+{
+	m_ShouldChangePage = false;
 }
 
-bool ST7789ImagesPage::shouldChangePage() {
-    return m_ShouldChangePage;
+bool ST7789TimeoutConfigPage::shouldChangePage() {
+	return m_ShouldChangePage;
 }
 
-const char* ST7789ImagesPage::nextPageName() {
-    return m_NextPageName;
+const char* ST7789TimeoutConfigPage::nextPageName() {
+	return m_NextPageName;
 }
 
-void ST7789ImagesPage::OnButtonPress(Button button) {
-    LOGDBG("Button received by page %d", button);
-    switch (button) {
+void ST7789TimeoutConfigPage::OnButtonPress(Button button)
+{
+	LOGNOTE("Button received by page %d", button);
+	
+    switch (button)
+    {
         case Button::Up:
-            LOGDBG("Move Up");
+	    LOGNOTE("Move Up");
             MoveSelection(-1);
             break;
 
         case Button::Down:
-            LOGDBG("Move Down");
+	    LOGNOTE("Move Down");
             MoveSelection(+1);
             break;
 
         case Button::Ok:
-            LOGDBG("Select new CD %d", m_SelectedIndex);
-            // TODO show an acknowledgement screen rather then just returning to main screen
-            m_Service->SetNextCD(m_SelectedIndex);
-            m_MountedIndex = m_SelectedIndex;
-            m_NextPageName = "homepage";
-            m_ShouldChangePage = true;
+	{
+	    unsigned timeout = 5 * (m_SelectedIndex + 1);
+	    LOGNOTE("Setting screen timeout to %d", timeout);
+	    configservice->SetScreenTimeout(timeout);
+	    m_NextPageName = "homepage";
+	    m_ShouldChangePage = true;
             break;
+	}
 
         case Button::Cancel:
-            LOGDBG("Cancel");
-            m_NextPageName = "homepage";
+	    LOGNOTE("Cancel");
+	    m_NextPageName = "homepage";
             m_ShouldChangePage = true;
             break;
 
         default:
             break;
     }
+    
 }
 
-void ST7789ImagesPage::SetSelectedName(const char* name) {
-    if (!m_Service || !name) return;
+void ST7789TimeoutConfigPage::MoveSelection(int delta) {
 
-    size_t fileCount = m_Service->GetCount();
-    for (size_t i = 0; i < fileCount; ++i) {
-        const char* currentName = m_Service->GetName(i);
-        if (strcmp(currentName, name) == 0) {
-            m_SelectedIndex = i;
-            return;
-        }
-    }
-
-    // Optional: fallback to 0 if name not found
-    m_SelectedIndex = 0;
-}
-
-void ST7789ImagesPage::MoveSelection(int delta) {
-    if (!m_Service) return;
-
-    size_t fileCount = m_Service->GetCount();
+    size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
+    LOGDBG("Selected index is %d, Menu delta is %d", m_SelectedIndex, delta);
     int newIndex = static_cast<int>(m_SelectedIndex) + delta;
     if (newIndex < 0)
         newIndex = 0;
@@ -103,190 +88,48 @@ void ST7789ImagesPage::MoveSelection(int delta) {
         newIndex = static_cast<int>(fileCount - 1);
 
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
-        LOGDBG("%s", m_Service->GetName(newIndex));
+	LOGDBG("New menu index is %d", newIndex);
         m_SelectedIndex = static_cast<size_t>(newIndex);
-	//Draw();
-	dirty = true;
+        Draw();
     }
 }
 
-void ST7789ImagesPage::DrawText(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
-                                const TFont& rFont,
-                                CCharGenerator::TFontFlags FontFlags) {
-    CCharGenerator Font(rFont, FontFlags);
-    int m_nWidth = m_Graphics->GetWidth();
-    int m_nHeight = m_Graphics->GetHeight();
-
-    unsigned nWidth = 0;
-    for (const char* p = pText; *p != '\0'; ++p) {
-        nWidth += (*p == ' ') ? (Font.GetCharWidth() / 2) : Font.GetCharWidth();
-    }
-
-    for (; *pText != '\0'; ++pText) {
-        for (unsigned y = 0; y < Font.GetUnderline(); y++) {
-            CCharGenerator::TPixelLine Line = Font.GetPixelLine(*pText, y);
-
-            for (unsigned x = 0; x < Font.GetCharWidth(); x++) {
-                if (Font.GetPixel(x, Line)) {
-                    m_Graphics->DrawPixel(nX + x, nY + y, Color);
-                }
-            }
-        }
-
-        if (*pText == ' ') {
-            nX += Font.GetCharWidth() / 2;
-        } else {
-            nX += Font.GetCharWidth();
-        }
-    }
+void ST7789TimeoutConfigPage::Refresh()
+{
 }
 
-void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
-                                        int pixelOffset, const TFont& rFont,
-                                        CCharGenerator::TFontFlags FontFlags) {
-    CCharGenerator Font(rFont, FontFlags);
-
-    int m_nWidth = m_Graphics->GetWidth();
-    int m_nHeight = m_Graphics->GetHeight();
-    unsigned drawX = nX - pixelOffset;
-
-    for (; *pText != '\0'; ++pText) {
-        // Draw character
-        for (unsigned y = 0; y < Font.GetUnderline(); y++) {
-            CCharGenerator::TPixelLine Line = Font.GetPixelLine(*pText, y);
-            for (unsigned x = 0; x < Font.GetCharWidth(); x++) {
-                int finalX = drawX + x;
-                if (finalX >= 0 && finalX < m_nWidth && (nY + y) < m_nHeight) {
-                    if (Font.GetPixel(x, Line)) {
-                        m_Graphics->DrawPixel(finalX, nY + y, Color);
-                    }
-                }
-            }
-        }
-
-        if (*pText == ' ') {
-            drawX += Font.GetCharWidth() / 2;  // Try /2 or fixed value like 2
-        } else {
-            drawX += Font.GetCharWidth();
-        }
-    }
-}
-
-void ST7789ImagesPage::RefreshScroll() {
-    const char* name = m_Service->GetName(m_SelectedIndex);
-    size_t nameLen = strlen(name);
-
-
-    int fullTextPx = ((int)nameLen + 2) * charWidth;
-
-    if (fullTextPx > maxTextPx) {
-
-        if (m_ScrollDirLeft) {
-            m_ScrollOffsetPx += 5;
-            if (m_ScrollOffsetPx >= (fullTextPx - maxTextPx)) {
-                m_ScrollOffsetPx = (fullTextPx - maxTextPx);
-                m_ScrollDirLeft = false;
-            }
-        } else {
-            m_ScrollOffsetPx -= 5;
-            if (m_ScrollOffsetPx <= 0) {
-                m_ScrollOffsetPx = 0;
-                m_ScrollDirLeft = true;
-            }
-        }
-
-        size_t currentPage = m_SelectedIndex / ITEMS_PER_PAGE;
-        size_t startIndex = currentPage * ITEMS_PER_PAGE;
-        int y = static_cast<int>((m_SelectedIndex - startIndex) * 20);
-
-        char extended[nameLen + 2];
-        snprintf(extended, sizeof(extended), "%s ", name);
-
-        m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 0, 0));
-        DrawTextScrolled(10, y + 30, COLOR2D(255, 255, 255), extended, m_ScrollOffsetPx);
-	m_Graphics->UpdateDisplay();
-    }
-}
-
-void ST7789ImagesPage::Refresh() {
-
-
-    // Redraw the screen only when it's needed
-    if (dirty) {
-	Draw();
-	return;
-    }
-
-    // Scroll the current line if it needs it
-    RefreshScroll();
-}
-
-void ST7789ImagesPage::Draw() {
-    if (!m_Service) return;
-
-    size_t fileCount = m_Service->GetCount();
+void ST7789TimeoutConfigPage::Draw() {
+    size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
-
-    dirty = false;
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
-    const char* pTitle = "CD Images";
-
     // Draw header bar with blue background
+    const char* pTitle = "Timeout";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
-
-    // Draw title text in white
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
-    if (m_SelectedIndex != m_PreviousSelectedIndex) {
-        m_ScrollOffsetPx = 0;
-        m_ScrollDirLeft = true;
-        m_PreviousSelectedIndex = m_SelectedIndex;
-    }
-
-    size_t totalPages = (fileCount + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
-    size_t currentPage = m_SelectedIndex / ITEMS_PER_PAGE;
-    size_t startIndex = currentPage * ITEMS_PER_PAGE;
-    size_t endIndex = MIN(startIndex + ITEMS_PER_PAGE, fileCount);
+    size_t startIndex = 0;
+    size_t endIndex = fileCount;
 
     for (size_t i = startIndex; i < endIndex; ++i) {
         int y = static_cast<int>((i - startIndex) * 20);
-        const char* name = m_Service->GetName(i);
-        size_t nameLen = strlen(name);
-        char extended[nameLen + 2];
-        snprintf(extended, sizeof(extended), "%s ", name);
-
-        // Crop
-        const int maxLen = maxTextPx / charWidth;
-        char cropped[maxLen + 1];
-        snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
-
-        // Only scroll selected line and only if too long
-        if (i == m_MountedIndex)
-            m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 255, 0));
+        const char* name = options[i];
 
         if (i == m_SelectedIndex) {
             m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 0, 0));
-            DrawText(10, y + 30, COLOR2D(255,255,255), cropped);
+            m_Graphics->DrawText(10, y + 30, COLOR2D(255, 255, 255), name, C2DGraphics::AlignLeft);
         } else {
-            DrawText(10, y + 30, COLOR2D(0, 0, 0), cropped);
+            m_Graphics->DrawText(10, y + 30, COLOR2D(0, 0, 0), name, C2DGraphics::AlignLeft);
         }
     }
 
-    RefreshScroll();
-
-    // Draw page indicator
-    char pageText[16];
-    snprintf(pageText, sizeof(pageText), "%d/%d", currentPage + 1, totalPages);
-    m_Graphics->DrawText(180, 10, COLOR2D(255, 255, 255), pageText, C2DGraphics::AlignLeft);
-
-    DrawNavigationBar("images");
+    DrawNavigationBar("power");
     m_Graphics->UpdateDisplay();
 }
 
 // TODO: put in common place
-void ST7789ImagesPage::DrawNavigationBar(const char* screenType) {
+void ST7789TimeoutConfigPage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom
     m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
 

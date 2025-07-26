@@ -99,7 +99,7 @@ void ST7789PowerPage::DrawConfirmation(const char* message) {
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
-    const char* pTitle = CGitInfo::Get()->GetShortVersionString();
+    const char* pTitle = "Confirmation";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
@@ -114,7 +114,7 @@ void ST7789PowerPage::Draw() {
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
-    const char* pTitle = CGitInfo::Get()->GetShortVersionString();
+    const char* pTitle = "Power";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 

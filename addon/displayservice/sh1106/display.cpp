@@ -18,6 +18,7 @@
 #include "imagespage.h"
 #include "infopage.h"
 #include "logconfigpage.h"
+#include "timeoutconfigpage.h"
 #include "powerpage.h"
 #include "usbconfigpage.h"
 
@@ -79,6 +80,7 @@ bool SH1106Display::Initialize() {
     m_PageManager.RegisterPage("configpage", new SH1106ConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("usbconfigpage", new SH1106USBConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("logconfigpage", new SH1106LogConfigPage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("timeoutconfigpage", new SH1106TimeoutConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("infopage", new SH1106InfoPage(&m_Display, &m_Graphics));
 
     // Set the stating page

@@ -1,42 +1,43 @@
-#include "configpage.h"
+#include "timeoutconfigpage.h"
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <gitinfo/gitinfo.h>
 #include <shutdown/shutdown.h>
 
-LOGMODULE("configpage");
+LOGMODULE("timeoutconfigpage");
 
-SH1106ConfigPage::SH1106ConfigPage(CSH1106Display* display, C2DGraphics* graphics)
+SH1106TimeoutConfigPage::SH1106TimeoutConfigPage(CSH1106Display* display, C2DGraphics* graphics)
 : m_Display(display),
   m_Graphics(graphics)
 {
+    configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 }
 
-SH1106ConfigPage::~SH1106ConfigPage() {
-    LOGNOTE("ConfigPage starting");
+SH1106TimeoutConfigPage::~SH1106TimeoutConfigPage() {
+    LOGNOTE("TimeoutConfigPage starting");
 }
 
-void SH1106ConfigPage::OnEnter()
+void SH1106TimeoutConfigPage::OnEnter()
 {
-    LOGNOTE("Drawing ConfigPage");
+    LOGNOTE("Drawing TimeoutConfigPage");
 
     Draw();
 }
 
-void SH1106ConfigPage::OnExit()
+void SH1106TimeoutConfigPage::OnExit()
 {
 	m_ShouldChangePage = false;
 }
 
-bool SH1106ConfigPage::shouldChangePage() {
+bool SH1106TimeoutConfigPage::shouldChangePage() {
 	return m_ShouldChangePage;
 }
 
-const char* SH1106ConfigPage::nextPageName() {
+const char* SH1106TimeoutConfigPage::nextPageName() {
 	return m_NextPageName;
 }
 
-void SH1106ConfigPage::OnButtonPress(Button button)
+void SH1106TimeoutConfigPage::OnButtonPress(Button button)
 {
 	LOGNOTE("Button received by page %d", button);
 	
@@ -53,24 +54,14 @@ void SH1106ConfigPage::OnButtonPress(Button button)
             break;
 
         case Button::Ok:
-	    switch (m_SelectedIndex) {
-		    case 0:
-	                    LOGNOTE("USB Configuration");
-			    m_NextPageName = "usbconfigpage";
-			    m_ShouldChangePage = true;
-			    break;
-		    case 1:
-			    LOGNOTE("Logging Configuration");
-			    m_NextPageName = "logconfigpage";
-			    m_ShouldChangePage = true;
-			    break;
-		    case 2:
-			    LOGNOTE("Timeout Configuration");
-			    m_NextPageName = "timeoutconfigpage";
-			    m_ShouldChangePage = true;
-			    break;
-	    }
+	{
+	    unsigned timeout = 5 * (m_SelectedIndex + 1);
+	    LOGNOTE("Setting screen timeout to %d", timeout);
+	    configservice->SetScreenTimeout(timeout);
+	    m_NextPageName = "homepage";
+	    m_ShouldChangePage = true;
             break;
+	}
 
         case Button::Cancel:
 	    LOGNOTE("Cancel");
@@ -84,7 +75,7 @@ void SH1106ConfigPage::OnButtonPress(Button button)
     
 }
 
-void SH1106ConfigPage::MoveSelection(int delta) {
+void SH1106TimeoutConfigPage::MoveSelection(int delta) {
 
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
@@ -103,11 +94,11 @@ void SH1106ConfigPage::MoveSelection(int delta) {
     }
 }
 
-void SH1106ConfigPage::Refresh()
+void SH1106TimeoutConfigPage::Refresh()
 {
 }
 
-void SH1106ConfigPage::Draw()
+void SH1106TimeoutConfigPage::Draw()
 {
 
     size_t fileCount = sizeof(options) / sizeof(options[0]);
@@ -115,7 +106,7 @@ void SH1106ConfigPage::Draw()
 
     m_Graphics->ClearScreen(COLOR2D(0, 0, 0));
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 10, COLOR2D(255, 255, 255));
-    m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), "Config", C2DGraphics::AlignLeft, Font8x8);
+    m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), "TimeoutConfig", C2DGraphics::AlignLeft, Font8x8);
 
     size_t startIndex = 0;
     size_t endIndex = fileCount;

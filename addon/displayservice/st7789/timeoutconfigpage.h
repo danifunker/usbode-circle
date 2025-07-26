@@ -1,18 +1,19 @@
-#ifndef _SH1106_CONFIGPAGE_H
-#define _SH1106_CONFIGPAGE_H
+#ifndef _ST7789_TOCONFIGPAGE_H
+#define _ST7789_TOCONFIGPAGE_H
 
 #include <displayservice/ipage.h>
 #include <displayservice/buttons.h>
-#include <libsh1106/sh1106display.h>
+#include <display/st7789display.h>
+#include <configservice/configservice.h>
 #include <circle/spimaster.h>
 #include <circle/2dgraphics.h>
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-class SH1106ConfigPage : public IPage {
+class ST7789TimeoutConfigPage : public IPage {
 public:
-    SH1106ConfigPage(CSH1106Display* display, C2DGraphics* graphics);
-    ~SH1106ConfigPage();
+    ST7789TimeoutConfigPage(CST7789Display* display, C2DGraphics* graphics);
+    ~ST7789TimeoutConfigPage();
     void OnEnter() override;
     void OnExit() override;
     void OnButtonPress(Button buttonId) override;
@@ -32,9 +33,10 @@ private:
 private:
     bool m_ShouldChangePage = false;
     const char* m_NextPageName;
-    CSH1106Display*          m_Display;
+    CST7789Display*          m_Display;
     C2DGraphics*             m_Graphics;
-    const char* options[3] = { "USB Config", "Logging Config", "Timeout Config" };
+    ConfigService* configservice;
+    const char* options[5] = { "5s", "10s", "15s", "20s", "25s" };
     size_t m_SelectedIndex = 0;
 
 };
