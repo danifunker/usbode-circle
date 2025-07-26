@@ -127,14 +127,14 @@ void SH1106Display::Clear() {
 void SH1106Display::Sleep() {
     LOGNOTE("Sleeping");
     sleeping = true;
-    //m_PWMOutput.Write(2, 32);  // TODO make the backlight value configurable
+    m_Display.Off();
 }
 
 // Wake the screen
 void SH1106Display::Wake() {
     backlightTimer = CTimer::Get()->GetClockTicks();
     if (sleeping) {
-        //m_PWMOutput.Write(2, 1024);
+	m_Display.On();
         LOGNOTE("Waking");
     }
     sleeping = false;

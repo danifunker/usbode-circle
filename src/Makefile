@@ -45,7 +45,7 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(USBODEHOME)/addon/sdcardservice/libsdcardservice.a \
 	$(USBODEHOME)/addon/shutdown/libshutdown.a \
 	$(USBODEHOME)/addon/displayservice/libdisplayservice.a \
-	$(USBODEHOME)/addon/udisplay/libsh1106.a \
+	$(USBODEHOME)/addon/libsh1106/libsh1106.a \
 	$(USBODEHOME)/addon/configservice/libconfigservice.a \
 	$(USBODEHOME)/addon/gitinfo/libgitinfo.a
 
