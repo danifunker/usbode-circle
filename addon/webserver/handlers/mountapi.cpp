@@ -14,8 +14,7 @@ LOGMODULE("mountapi");
 THTTPStatus MountAPIHandler::GetJson(nlohmann::json& j,
                 const char *pPath,
                 const char *pParams,
-                const char *pFormData,
-                CPropertiesFatFsFile *m_pProperties)
+                const char *pFormData)
 {
 
     auto params = parse_query_params(pParams);

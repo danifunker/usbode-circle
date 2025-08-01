@@ -20,7 +20,6 @@
 #ifndef _kernel_h
 #define _kernel_h
 
-#include <Properties/propertiesfatfsfile.h>
 #include <SDCard/emmc.h>
 #include <circle/actled.h>
 #include <circle/devicenameservice.h>
@@ -47,8 +46,8 @@
 #include <wlan/hostap/wpa_supplicant/wpasupplicant.h>
 #include <circle/spimaster.h>
 #include <circle/gpiopin.h>
-#include <display/displaymanager.h>
-#include <gpiobuttonmanager/gpiobuttonmanager.h>
+//#include <display/displaymanager.h>
+//#include <gpiobuttonmanager/gpiobuttonmanager.h>
 #include <scsitbservice/scsitbservice.h>
 #include <cdromservice/cdromservice.h>
 #include <sdcardservice/sdcardservice.h>
@@ -63,6 +62,7 @@ enum TShutdownMode {
 };
 #endif
 
+
 class CKernel 
 {
    public:
@@ -71,7 +71,9 @@ class CKernel
 
     boolean Initialize(void);
     boolean SetDevice(char *imageName);
-
+    FATFS* GetFileSystem();
+    CNetSubSystem* GetNetwork();
+    static CKernel* Get();
     TShutdownMode Run(void);
 
 private:
@@ -93,73 +95,9 @@ private:
         CNetSubSystem           m_Net;
         CWPASupplicant          m_WPASupplicant;
 
-	// CD Gadget
-	//CUSBCDGadget*		m_CDGadget = nullptr;
-	
-	// MSD Gadget
-	//CUSBMMSDGadget*		m_MMSDGadget = nullptr;
-
-	// SPI and display components
 	CSPIMaster* m_pSPIMaster;
-	CDisplayManager* m_pDisplayManager;
-	//CI2CMaster m_I2CMaster;
-	//CSoundBaseDevice *m_pSound;
-	// GPIO button manager
-	CGPIOButtonManager* m_pButtonManager;
-
-	// Helper method to parse display type from config.txt
-	TDisplayType ParseDisplayType(void);
-
-	// Helper method for display initialization
-	TDisplayType GetDisplayTypeFromString(const char* displayType);
-	void InitializeDisplay(TDisplayType displayType);  // Change parameter type from const char* to TDisplayType
-
-	// Flag to track USB initialization state
-	boolean m_bUSBInitialized;
-
-	// Config option name
-	static const char ConfigOptionDisplayType[];
-
-	// Updates the display with current status information
-	void UpdateDisplayStatus(const char* imageName);
-
-	// Button event callback
-	static void ButtonEventHandler(unsigned nButtonIndex, boolean bPressed, void* pParam);
-
-	// Flag to indicate button test mode
-	boolean m_bButtonTestMode;
-
-	// Helper method for button initialization
-	void InitializeButtons(TDisplayType displayType);
-
-	// NTP client configuration
 	void InitializeNTP(const char* timezone);
 	static const char ConfigOptionTimeZone[];
-
-	// Screen state tracking
-	enum TScreenState
-	{
-		ScreenStateMain,
-		ScreenStateLoadISO,
-		ScreenStateAdvanced,
-		ScreenStateBuildInfo    // New screen state for build info
-	};
-	
-	TScreenState m_ScreenState;
-	
-	// ISO file browsing
-	unsigned m_nCurrentISOIndex;
-	unsigned m_nTotalISOCount;
-	CString *m_pISOList;
-	static const unsigned MAX_ISO_FILES = 500;
-	
-	// Helper methods for ISO file management
-	void ScanForISOFiles(void);
-	void ShowISOSelectionScreen(void);
-	void LoadSelectedISO(void);
-
-	// Add this near other constant definitions
-	static const char ConfigOptionScreenSleep[];
 };
 
 #endif

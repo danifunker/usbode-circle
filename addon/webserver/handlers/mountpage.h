@@ -9,8 +9,7 @@ public:
     THTTPStatus PopulateContext(kainjow::mustache::data& context,
 		    		   const char *pPath,
                                    const char  *pParams,
-                                   const char  *pFormData,
-				   CPropertiesFatFsFile *m_pProperties);
+                                   const char  *pFormData);
     std::string GetHTML();
 };
 #endif

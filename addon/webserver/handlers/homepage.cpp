@@ -28,8 +28,7 @@ std::string HomePageHandler::GetHTML() {
 THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
                                    const char *pPath,
                                    const char  *pParams,
-                                   const char  *pFormData,
-                                   CPropertiesFatFsFile *m_pProperties)
+                                   const char  *pFormData)
 {
         LOGDBG("Home page called");
 

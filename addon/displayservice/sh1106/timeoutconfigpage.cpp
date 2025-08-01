@@ -1,0 +1,127 @@
+#include "timeoutconfigpage.h"
+#include <circle/logger.h>
+#include <circle/sched/scheduler.h>
+#include <gitinfo/gitinfo.h>
+#include <shutdown/shutdown.h>
+
+LOGMODULE("timeoutconfigpage");
+
+SH1106TimeoutConfigPage::SH1106TimeoutConfigPage(CSH1106Display* display, C2DGraphics* graphics)
+: m_Display(display),
+  m_Graphics(graphics)
+{
+    configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+}
+
+SH1106TimeoutConfigPage::~SH1106TimeoutConfigPage() {
+    LOGNOTE("TimeoutConfigPage starting");
+}
+
+void SH1106TimeoutConfigPage::OnEnter()
+{
+    LOGNOTE("Drawing TimeoutConfigPage");
+
+    Draw();
+}
+
+void SH1106TimeoutConfigPage::OnExit()
+{
+	m_ShouldChangePage = false;
+}
+
+bool SH1106TimeoutConfigPage::shouldChangePage() {
+	return m_ShouldChangePage;
+}
+
+const char* SH1106TimeoutConfigPage::nextPageName() {
+	return m_NextPageName;
+}
+
+void SH1106TimeoutConfigPage::OnButtonPress(Button button)
+{
+	LOGNOTE("Button received by page %d", button);
+	
+    switch (button)
+    {
+        case Button::Up:
+	    LOGNOTE("Move Up");
+            MoveSelection(-1);
+            break;
+
+        case Button::Down:
+	    LOGNOTE("Move Down");
+            MoveSelection(+1);
+            break;
+
+        case Button::Ok:
+	{
+	    unsigned timeout = 5 * (m_SelectedIndex + 1);
+	    LOGNOTE("Setting screen timeout to %d", timeout);
+	    configservice->SetScreenTimeout(timeout);
+	    m_NextPageName = "homepage";
+	    m_ShouldChangePage = true;
+            break;
+	}
+
+        case Button::Cancel:
+	    LOGNOTE("Cancel");
+	    m_NextPageName = "homepage";
+            m_ShouldChangePage = true;
+            break;
+
+        default:
+            break;
+    }
+    
+}
+
+void SH1106TimeoutConfigPage::MoveSelection(int delta) {
+
+    size_t fileCount = sizeof(options) / sizeof(options[0]);
+    if (fileCount == 0) return;
+
+    LOGDBG("Selected index is %d, Menu delta is %d", m_SelectedIndex, delta);
+    int newIndex = static_cast<int>(m_SelectedIndex) + delta;
+    if (newIndex < 0)
+        newIndex = 0;
+    else if (newIndex >= static_cast<int>(fileCount))
+        newIndex = static_cast<int>(fileCount - 1);
+
+    if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
+	LOGDBG("New menu index is %d", newIndex);
+        m_SelectedIndex = static_cast<size_t>(newIndex);
+        Draw();
+    }
+}
+
+void SH1106TimeoutConfigPage::Refresh()
+{
+}
+
+void SH1106TimeoutConfigPage::Draw()
+{
+
+    size_t fileCount = sizeof(options) / sizeof(options[0]);
+    if (fileCount == 0) return;
+
+    m_Graphics->ClearScreen(COLOR2D(0, 0, 0));
+    m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 10, COLOR2D(255, 255, 255));
+    m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), "TimeoutConfig", C2DGraphics::AlignLeft, Font8x8);
+
+    size_t startIndex = 0;
+    size_t endIndex = fileCount;
+
+    for (size_t i = startIndex; i < endIndex; ++i) {
+        int y = static_cast<int>((i - startIndex) * 10);
+        const char* name = options[i];
+
+        if (i == m_SelectedIndex) {
+            m_Graphics->DrawRect(0, y + 15, m_Display->GetWidth(), 9, COLOR2D(255, 255, 255));
+            m_Graphics->DrawText(0, y + 16, COLOR2D(0,0,0), name, C2DGraphics::AlignLeft, Font6x7);
+        } else {
+            m_Graphics->DrawText(0, y + 16, COLOR2D(255,255,255), name, C2DGraphics::AlignLeft, Font6x7);
+        }
+    }
+    m_Graphics->UpdateDisplay();
+}
+

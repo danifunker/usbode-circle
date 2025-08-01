@@ -2,7 +2,6 @@
 #define IPAGE_HANDLER_H
 
 #include <circle/sched/scheduler.h>
-#include <Properties/propertiesfatfsfile.h>
 #include <usbcdgadget/usbcdgadget.h>
 
 class IPageHandler {
@@ -14,8 +13,7 @@ public:
                                    const char  *pFormData,
                                    u8          *pBuffer,
                                    unsigned    *pLength,
-                                   const char **ppContentType,
-				   CPropertiesFatFsFile *m_pProperties) = 0;
+                                   const char **ppContentType) = 0;
 };
 
 #endif // IPAGE_HANDLER_H

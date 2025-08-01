@@ -57,8 +57,7 @@ std::string LogPageHandler::read_loglines(const std::string& path) {
 THTTPStatus LogPageHandler::PopulateContext(kainjow::mustache::data& context,
                                    const char *pPath,
                                    const char  *pParams,
-                                   const char  *pFormData,
-                                   CPropertiesFatFsFile *m_pProperties)
+                                   const char  *pFormData)
 {
     LOGNOTE("Log page called");
     

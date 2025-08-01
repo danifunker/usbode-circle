@@ -11,6 +11,7 @@
 #include <gitinfo/gitinfo.h>
 #include "util.h"
 #include "pagehandlerbase.h"
+#include <configservice/configservice.h>
 
 using namespace kainjow;
 
@@ -25,8 +26,7 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 		   const char *pFormData,
 		   u8 *pBuffer,
 		   unsigned *pLength,
-		   const char **ppContentType,
-		   CPropertiesFatFsFile *m_pProperties)
+		   const char **ppContentType)
 {
 	// Set up Mustache Template Engine
         mustache::mustache tmpl{s_Template};
@@ -46,7 +46,7 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 	context.set("content", mustache::data{part});
 	
 	// Call subclass hook to add page specific context
-	THTTPStatus status = PopulateContext(context, pPath, pParams, pFormData, m_pProperties);
+	THTTPStatus status = PopulateContext(context, pPath, pParams, pFormData);
 
 	// Return HTTP error if necessary
 	if (status != HTTPOK)
@@ -60,17 +60,14 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
         // Get current loaded image
         std::string current_image = svc->GetCurrentCDName();
 
-	// Load our properties
-        m_pProperties->Load();
-        m_pProperties->SelectSection("usbode");
+	// Get our config service
+	ConfigService* config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 
 	// Get the current mode
-	// TODO add this to devicestate
-        context.set("cdrom", !m_pProperties->GetNumber("mode", 0));
+        context.set("cdrom", !config->GetMode());
 
         // Get the current USB mode
-	// TODO add this to devicestate
-        boolean is_full_speed = CKernelOptions::Get()->GetUSBFullSpeed();
+        boolean is_full_speed = config->GetUSBFullSpeed();
         context.set("usb_mode", is_full_speed?"FullSpeed":"HighSpeed");
 
         // Add build info

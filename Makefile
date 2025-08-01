@@ -65,10 +65,10 @@ endif
 # Define USBODE addon modules (from /addon directory)
 USBODE_ADDONS = gitinfo sdcardservice cdromservice scsitbservice usbcdgadget \
 				shutdown usbmsdgadget discimage cueparser filelogdaemon \
-				webserver ftpserver display gpiobuttonmanager cdplayer
+				webserver ftpserver configservice libsh1106 displayservice cdplayer
 
 # Only the Circle addons we actually need
-CIRCLE_ADDONS = linux Properties
+CIRCLE_ADDONS = linux Properties display
 
 # Module-specific CPPFLAGS
 USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0x0d01

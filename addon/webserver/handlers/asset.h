@@ -11,7 +11,6 @@ public:
                                    const char  *pFormData,
                                    u8          *pBuffer,
                                    unsigned    *pLength,
-                                   const char **ppContentType,
-				   CPropertiesFatFsFile *m_pProperties);
+                                   const char **ppContentType);
 };
 #endif
