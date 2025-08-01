@@ -19,9 +19,16 @@ displayhat=waveshare
 ```
 
 ## ST7789A
-If you've bought a standalone ST7789 SPI board, you can manually wire it to the Raspberry Pi and configure it under the `[st7789]` section in your config.txt. Default values are shown below and are based on the Pirate Audio wiring. If you wire it using these default settings, you don't need to specify them in the config file.
+If you've bought a standalone ST7789 SPI board, you can manually wire it to the Raspberry Pi and configure USBODE to use it. You should have the following in your config.txt
 
-Note, GPIO 10 and 11 must be used for SPI MOSI and SCLK. The other pins can be configured as below
+```
+[usbode]
+displayhat=st7789
+```
+
+Default pin mappings are shown below and are based on the Pirate Audio wiring. If you wire it using these default settings, you don't need to specify them in the config file. If you've wired it differently, you can configure as below under the `[st7789]` section
+
+Note, GPIO 10 and 11 must be used for SPI MOSI and SCLK. 
 
 ```
 [st7789]
@@ -44,9 +51,16 @@ button_cancel=16
 ```
 
 ## SH1106
-If you've bought a standalone SH1106 SPI board, you can manually wire it to the Raspberry Pi and configure it under the `[sh1106]` section in your config.txt. Default values are shown below and are also based on the Pirate Audio settings. In fact, the pinout of the SH1106 SPI boards is mostly the same as the ST7789 boards and you can swap them over with no rewiring. If you wire it using these default settings, you don't need to specify them in the config file.
+If you've bought a standalone SH1106 SPI board, you can manually wire it to the Raspberry Pi and configure USBODE to use it.  Your config.txt should have the following setting under `[usbode]` section
 
-Note, GPIO 10 and 11 must be used for SPI MOSI and SCLK. The other pins can be configured as below
+```
+[usbode]
+displayhat=sh1106
+```
+
+Default pin mappings are shown below and are also based on the Pirate Audio settings. In fact, the pinout of the SH1106 SPI boards is mostly the same as the ST7789 boards and you can swap them over with no rewiring. If you wire it using these default settings, you don't need to specify them in the config file. If you've wired it differently, you can configure as below under the `[sh1106]` section
+
+Note, GPIO 10 and 11 must be used for SPI MOSI and SCLK. 
 
 ```
 [sh1106]
