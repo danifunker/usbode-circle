@@ -58,7 +58,7 @@ If you've bought a standalone SH1106 SPI board, you can manually wire it to the 
 displayhat=sh1106
 ```
 
-Default pin mappings are shown below and are also based on the Pirate Audio settings. In fact, the pinout of the SH1106 SPI boards is mostly the same as the ST7789 boards and you can swap them over with no rewiring. If you wire it using these default settings, you don't need to specify them in the config file. If you've wired it differently, you can configure as below under the `[sh1106]` section
+Default pin mappings are shown below and are also based on the Pirate Audio settings. If you wire it using these default settings, you don't need to specify them in the config file. If you've wired it differently, you can configure as below under the `[sh1106]` section
 
 Note, GPIO 10 and 11 must be used for SPI MOSI and SCLK. 
 
