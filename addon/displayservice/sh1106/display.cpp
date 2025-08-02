@@ -150,14 +150,17 @@ bool SH1106Display::IsSleeping() {
 // necessary. Pass on the refresh call to the page manager
 void SH1106Display::Refresh() {
     unsigned backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
-    if (!backlightTimeout)
-            return;
+    if (!backlightTimeout && sleeping)
+	    Wake();
 
-    // Is it time to dim the screen?
-    unsigned now = CTimer::Get()->GetClockTicks();
-    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, backlightTimeout);
-    if (!sleeping && now - backlightTimer > backlightTimeout)
-        Sleep();
+    if (backlightTimeout) {
+
+	    // Is it time to dim the screen?
+	    unsigned now = CTimer::Get()->GetClockTicks();
+	    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, backlightTimeout);
+	    if (!sleeping && now - backlightTimer > backlightTimeout)
+		Sleep();
+    }
 
     m_PageManager.Refresh();
 }

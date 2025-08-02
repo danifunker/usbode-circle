@@ -170,14 +170,16 @@ bool ST7789Display::IsSleeping() {
 // necessary. Pass on the refresh call to the page manager
 void ST7789Display::Refresh() {
     unsigned backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
-    if (!backlightTimeout)
-	    return;
+    if (!backlightTimeout && sleeping)
+            Wake();
 
-    unsigned now = CTimer::Get()->GetClockTicks();
-    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, backlightTimeout);
-    // Is it time to dim the screen?
-    if (!sleeping && now - backlightTimer > backlightTimeout)
-        Sleep();
+    if (backlightTimeout) {
+	    unsigned now = CTimer::Get()->GetClockTicks();
+	    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, backlightTimeout);
+	    // Is it time to dim the screen?
+	    if (!sleeping && now - backlightTimer > backlightTimeout)
+		Sleep();
+    }
 
     m_PageManager.Refresh();
 }
