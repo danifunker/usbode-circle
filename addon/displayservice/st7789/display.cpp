@@ -133,10 +133,6 @@ bool ST7789Display::Initialize() {
         m_PWMOutput.Start();
         m_PWMOutput.Write(2, 1024);
         pwm_configured = true;
-
-        // Backlight timeout
-        backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
-        LOGNOTE("Registered backlight");
     }
 
     return bOK;
@@ -173,9 +169,13 @@ bool ST7789Display::IsSleeping() {
 // Called by displaymanager kernel loop. Check backlight timeout and sleep if
 // necessary. Pass on the refresh call to the page manager
 void ST7789Display::Refresh() {
-    // Is it time to dim the screen?
+    unsigned backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+    if (!backlightTimeout)
+	    return;
+
     unsigned now = CTimer::Get()->GetClockTicks();
-    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, TIMEOUT);
+    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, backlightTimeout);
+    // Is it time to dim the screen?
     if (!sleeping && now - backlightTimer > backlightTimeout)
         Sleep();
 

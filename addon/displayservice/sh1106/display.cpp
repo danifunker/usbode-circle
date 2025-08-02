@@ -118,10 +118,6 @@ bool SH1106Display::Initialize() {
         LOGNOTE("Registered buttons");
     }
 
-    // Backlight timeout
-    backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
-    LOGNOTE("Registered backlight");
-
     return bOK;
 }
 
@@ -153,9 +149,13 @@ bool SH1106Display::IsSleeping() {
 // Called by displaymanager kernel loop. Check backlight timeout and sleep if
 // necessary. Pass on the refresh call to the page manager
 void SH1106Display::Refresh() {
+    unsigned backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+    if (!backlightTimeout)
+            return;
+
     // Is it time to dim the screen?
     unsigned now = CTimer::Get()->GetClockTicks();
-    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, TIMEOUT);
+    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, backlightTimeout);
     if (!sleeping && now - backlightTimer > backlightTimeout)
         Sleep();
 

@@ -62,7 +62,6 @@ class ST7789Display : public IDisplay {
     CGPIOPin* m_Backlight;
     int backlightTimer;
     bool sleeping = false;
-    unsigned backlightTimeout;
     bool pwm_configured = false;
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
