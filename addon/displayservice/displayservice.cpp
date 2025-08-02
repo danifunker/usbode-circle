@@ -55,7 +55,7 @@ void DisplayService::CreateDisplay(const char* displayType) {
 	    .reset_pin = 27,
 	    .backlight_pin = 13,
 	    .spi_cpol = 0,
-	    .spi_cpha = 1,
+	    .spi_cpha = 0,
 	    .spi_clock_speed = 80000000,
 	    .spi_chip_select = 1
 	};
