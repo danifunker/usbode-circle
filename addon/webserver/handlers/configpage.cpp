@@ -15,6 +15,7 @@
 #include "configpage.h"
 #include "util.h"
 #include <configservice/configservice.h>
+#include <cdplayer/cdplayer.h>
 
 using namespace kainjow;
 
@@ -62,72 +63,87 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string success_message;
     ConfigService* config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
     
+    // Check if CD player is available (only in CDROM mode with sound enabled)
+    CCDPlayer* pCDPlayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+    bool soundTestAvailable = (pCDPlayer != nullptr);
+    context["sound_test_available"] = soundTestAvailable;
+    
     // Handle POST request (form submission)
     if (pFormData && strlen(pFormData) > 0) {
         LOGDBG("Processing configuration form data");
         
         auto form_params = ParseFormData(pFormData);
         
-        // Prepare config.txt updates
-        std::map<std::string, std::string> config_updates;
-        
-        // Display HAT configuration
-        if (form_params.count("displayhat")) {
-	    config->SetDisplayHat(form_params["displayhat"].c_str());
-        }
-        
-        // Screen timeout
-        if (form_params.count("screen_timeout")) {
-	    config->SetScreenTimeout(std::atoi(form_params["screen_timeout"].c_str()));
-        }
-        
-        // ST7789 brightness settings
-        if (form_params.count("st7789_brightness")) {
-            config->SetST7789Brightness(std::atoi(form_params["st7789_brightness"].c_str()));
-        }
-        
-        if (form_params.count("st7789_sleep_brightness")) {
-            config->SetST7789SleepBrightness(std::atoi(form_params["st7789_sleep_brightness"].c_str()));
-        }
-        
-        // Log file configuration
-        if (form_params.count("logfile")) {
-            std::string logfile = form_params["logfile"];
-            if (!logfile.empty()) {
-                // Ensure SD:/ prefix
-                if (logfile.find("SD:/") != 0) {
-                    logfile = "SD:/" + logfile;
+        // Handle sound test action
+        if (form_params.count("action") && form_params["action"] == "soundtest") {
+            LOGNOTE("Sound test button pressed");
+            
+            if (pCDPlayer) {
+                if (pCDPlayer->SoundTest()) {
+                    success_message = "Sound test executed successfully";
+                } else {
+                    error_message = "Sound test failed";
                 }
-		config->SetLogfile(logfile.c_str());
-            }
-            if (form_params.count("default_volume"))
-            { 
-		config->SetDefaultVolume(std::atoi(form_params["default_volume"].c_str()));
-            }
-        }
-        
-        // Prepare cmdline.txt updates
-        std::map<std::string, std::string> cmdline_updates;
-        
-        // Sound device configuration
-        if (form_params.count("sounddev")) {
-	    config->SetSoundDev(form_params["sounddev"].c_str());
-        }
-        
-        // Log level configuration
-        if (form_params.count("loglevel")) {
-	    config->SetLogLevel(std::atoi(form_params["loglevel"].c_str()));
-        }
-        
-        // USB speed configuration
-        if (form_params.count("usbspeed")) {
-            if (form_params["usbspeed"] == "full") {
-		config->SetUSBFullSpeed(true);
             } else {
-		config->SetUSBFullSpeed(false);
+                error_message = "Error: CD Player not available (sound not enabled)";
             }
-        }
-        
+        } else {
+            // Handle regular configuration updates
+            
+            // Display HAT configuration
+            if (form_params.count("displayhat")) {
+                config->SetDisplayHat(form_params["displayhat"].c_str());
+            }
+            
+            // Screen timeout
+            if (form_params.count("screen_timeout")) {
+                config->SetScreenTimeout(std::atoi(form_params["screen_timeout"].c_str()));
+            }
+            
+            // ST7789 brightness settings
+            if (form_params.count("st7789_brightness")) {
+                config->SetST7789Brightness(std::atoi(form_params["st7789_brightness"].c_str()));
+            }
+            
+            if (form_params.count("st7789_sleep_brightness")) {
+                config->SetST7789SleepBrightness(std::atoi(form_params["st7789_sleep_brightness"].c_str()));
+            }
+            
+            // Log file configuration
+            if (form_params.count("logfile")) {
+                std::string logfile = form_params["logfile"];
+                if (!logfile.empty()) {
+                    // Ensure SD:/ prefix
+                    if (logfile.find("SD:/") != 0) {
+                        logfile = "SD:/" + logfile;
+                    }
+                    config->SetLogfile(logfile.c_str());
+                }
+                if (form_params.count("default_volume"))
+                { 
+                    config->SetDefaultVolume(std::atoi(form_params["default_volume"].c_str()));
+                }
+            }
+            
+            // Sound device configuration
+            if (form_params.count("sounddev")) {
+                config->SetSoundDev(form_params["sounddev"].c_str());
+            }
+            
+            // Log level configuration
+            if (form_params.count("loglevel")) {
+                config->SetLogLevel(std::atoi(form_params["loglevel"].c_str()));
+            }
+            
+            // USB speed configuration
+            if (form_params.count("usbspeed")) {
+                if (form_params["usbspeed"] == "full") {
+                    config->SetUSBFullSpeed(true);
+                } else {
+                    config->SetUSBFullSpeed(false);
+                }
+            }
+            
             // Check for action parameter to determine what to do after saving
             std::string action = form_params.count("action") ? form_params["action"] : "save";
             
@@ -142,6 +158,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             } else {
                 success_message = "Configuration saved successfully. Reboot required for changes to take effect.";
             }
+        }
     }
     
     // Set current values for display

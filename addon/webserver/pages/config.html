@@ -1,4 +1,4 @@
-            <div class="navigation">
+<div class="navigation">
                 <a href="/" class="button">Back to Home</a>
             </div>
 
@@ -58,12 +58,27 @@
                             <option value="sndi2s" {{#sounddev_sndi2s}}selected{{/sounddev_sndi2s}}>I2S Audio (HATs)</option>
                         </select>
                     </div>
-                </div>
-                <div class="form-group">
-                    <label for="default_volume">CD Audio Out Volume:</label>
-                    <div class="current-value">Current: {{current_default_volume}}</div>
-                    <input type="number" id="default_volume" name="default_volume" min="0" max="255" value="{{current_default_volume}}">
-                    <div class="current-value">Set to 0 for silent, 255 maximum (255 is default)</div>
+                    <div class="form-group">
+                        <label for="default_volume">CD Audio Out Volume:</label>
+                        <div class="current-value">Current: {{current_default_volume}}</div>
+                        <input type="number" id="default_volume" name="default_volume" min="0" max="255" value="{{current_default_volume}}">
+                        <div class="current-value">Set to 0 for silent, 255 maximum (255 is default)</div>
+                    </div>
+                    
+                    {{#sound_test_available}}
+                    <div class="form-group">
+                        <label>Audio Test:</label>
+                        <div class="current-value">Test audio output functionality (computer generated sound runs for about 6 seconds)</div>
+                        <button type="submit" name="action" value="soundtest" class="button">Execute Sound Test</button>
+                    </div>
+                    {{/sound_test_available}}
+                    
+                    {{^sound_test_available}}
+                    <div class="form-group">
+                        <label>Audio Test:</label>
+                        <div class="current-value">Sound test not available (not in CDROM mode or sound not enabled)</div>
+                    </div>
+                    {{/sound_test_available}}
                 </div>
 
                 <div class="form-section">
@@ -112,4 +127,4 @@
                     <a href="/" class="button button-danger">Cancel</a>
                 </div>
             </form>
-        
+
