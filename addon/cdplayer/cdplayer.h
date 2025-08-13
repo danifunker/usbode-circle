@@ -60,7 +60,6 @@ class CCDPlayer : public CTask {
     CCDPlayer(const char *pSoundDevice);
     ~CCDPlayer(void);
     boolean Initialize();
-    static CCDPlayer* Get(void) { return s_pThis; }
     boolean SetDevice(ICueDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();

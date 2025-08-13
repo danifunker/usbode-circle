@@ -63,7 +63,7 @@ THTTPStatus LogPageHandler::PopulateContext(kainjow::mustache::data& context,
     LOGNOTE("Log page called");
     
     // Check if CD player is available (only in CDROM mode with sound enabled)
-    CCDPlayer* pCDPlayer = CCDPlayer::Get();
+    CCDPlayer* pCDPlayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
     bool soundTestAvailable = (pCDPlayer != nullptr);
     context["sound_test_available"] = soundTestAvailable;
     
