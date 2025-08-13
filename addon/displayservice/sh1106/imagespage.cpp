@@ -56,12 +56,12 @@ void SH1106ImagesPage::OnButtonPress(Button button) {
 
         case Button::Left:
             LOGDBG("Scroll Left");
-            MoveSelection(-6);
+            MoveSelection(-5);
             break;
 
         case Button::Right:
             LOGDBG("Scroll Right");
-            MoveSelection(+6);
+            MoveSelection(+5);
             break;
 
         case Button::Ok:
