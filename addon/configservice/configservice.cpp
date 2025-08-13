@@ -119,6 +119,17 @@ unsigned ConfigService::GetScreenTimeout(unsigned defaultValue)
     return m_properties->GetNumber("screen_timeout", defaultValue);
 }
 
+unsigned ConfigService::GetST7789Brightness(unsigned defaultValue)
+{
+    m_properties->SelectSection("usbode");
+    return m_properties->GetNumber("st7789_brightness", defaultValue);
+}
+
+unsigned ConfigService::GetST7789SleepBrightness(unsigned defaultValue)
+{
+    m_properties->SelectSection("usbode");
+    return m_properties->GetNumber("st7789_sleep_brightness", defaultValue);
+}
 
 void ConfigService::SetCurrentImage(const char* value)
 {
@@ -174,6 +185,20 @@ void ConfigService::SetScreenTimeout(unsigned value)
 {
     m_properties->SelectSection("usbode");
     m_properties->SetNumber("screen_timeout", value);
+    configIsDirty=true;
+}
+
+void ConfigService::SetST7789Brightness(unsigned value)
+{
+    m_properties->SelectSection("usbode");
+    m_properties->SetNumber("st7789_brightness", value);
+    configIsDirty=true;
+}
+
+void ConfigService::SetST7789SleepBrightness(unsigned value)
+{
+    m_properties->SelectSection("usbode");
+    m_properties->SetNumber("st7789_sleep_brightness", value);
     configIsDirty=true;
 }
 

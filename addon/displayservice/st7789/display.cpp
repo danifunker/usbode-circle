@@ -1,9 +1,9 @@
-
 /*
-/ (c) 2025 Ian Cass
-/ This is a display driver for USBODE for the ST7789 series screens
-/ It's responsible for managing the page rendering
-*/
+ / (c) 2025 Ian Cass
+ / (c) 2025 Dani Sarfati
+ / This is a display driver for USBODE for the ST7789 series screens
+ / It's responsible for managing the page rendering
+ */
 #include "display.h"
 
 #include <circle/logger.h>
@@ -131,7 +131,8 @@ bool ST7789Display::Initialize() {
     if (bOK) {
         m_Backlight = new CGPIOPin(m_backlight_pin, GPIOModeAlternateFunction0, m_GPIOManager);
         m_PWMOutput.Start();
-        m_PWMOutput.Write(2, 1024);
+        unsigned brightness = configservice->GetST7789Brightness(1024);
+        m_PWMOutput.Write(2, brightness);
         pwm_configured = true;
     }
 
@@ -149,14 +150,16 @@ void ST7789Display::Sleep() {
 
     LOGNOTE("Sleeping");
     sleeping = true;
-    m_PWMOutput.Write(2, 32);  // TODO make the backlight value configurable
+    unsigned sleepBrightness = configservice->GetST7789SleepBrightness(32);
+    m_PWMOutput.Write(2, sleepBrightness);
 }
 
 // Wake the screen
 void ST7789Display::Wake() {
     backlightTimer = CTimer::Get()->GetClockTicks();
     if (sleeping) {
-        m_PWMOutput.Write(2, 1024);
+        unsigned brightness = configservice->GetST7789Brightness(1024);
+        m_PWMOutput.Write(2, brightness);
         LOGNOTE("Waking");
     }
     sleeping = false;

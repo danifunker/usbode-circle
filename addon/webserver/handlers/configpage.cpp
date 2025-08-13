@@ -81,6 +81,15 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
 	    config->SetScreenTimeout(std::atoi(form_params["screen_timeout"].c_str()));
         }
         
+        // ST7789 brightness settings
+        if (form_params.count("st7789_brightness")) {
+            config->SetST7789Brightness(std::atoi(form_params["st7789_brightness"].c_str()));
+        }
+        
+        if (form_params.count("st7789_sleep_brightness")) {
+            config->SetST7789SleepBrightness(std::atoi(form_params["st7789_sleep_brightness"].c_str()));
+        }
+        
         // Log file configuration
         if (form_params.count("logfile")) {
             std::string logfile = form_params["logfile"];
@@ -138,6 +147,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     // Set current values for display
     std::string current_displayhat = config->GetDisplayHat();
     std::string current_screen_timeout = std::to_string(config->GetScreenTimeout());
+    std::string current_st7789_brightness = std::to_string(config->GetST7789Brightness());
+    std::string current_st7789_sleep_brightness = std::to_string(config->GetST7789SleepBrightness());
     std::string current_default_volume = std::to_string(config->GetDefaultVolume());
     std::string current_sounddev = config->GetSoundDev();
     std::string current_loglevel = std::to_string(config->GetLogLevel());
@@ -152,6 +163,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     // Set context variables
     context["current_displayhat"] = current_displayhat;
     context["current_screen_timeout"] = current_screen_timeout;
+    context["current_st7789_brightness"] = current_st7789_brightness;
+    context["current_st7789_sleep_brightness"] = current_st7789_sleep_brightness;
     context["current_logfile"] = current_logfile.empty() ? "disabled" : current_logfile;
     context["current_default_volume"] = current_default_volume.empty() ? "255" : current_default_volume;
     context["current_sounddev"] = current_sounddev;
@@ -160,6 +173,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
 
     // Set form values
     context["screen_timeout"] = current_screen_timeout;
+    context["st7789_brightness"] = current_st7789_brightness;
+    context["st7789_sleep_brightness"] = current_st7789_sleep_brightness;
     context["logfile"] = current_logfile;
     
     // Set display HAT options

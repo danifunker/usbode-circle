@@ -19,6 +19,8 @@ public:
     unsigned GetMode(unsigned defaultValue=0);
     const char* GetLogfile(const char *defaultValue="SD:/usbode-log.txt");
     bool GetUSBFullSpeed();
+    unsigned GetST7789Brightness(unsigned defaultValue=1024);
+    unsigned GetST7789SleepBrightness(unsigned defaultValue=32);
 
     void SetSoundDev(const char* value);
     const char* GetSoundDev(const char* defaultValue="none");
@@ -32,6 +34,8 @@ public:
     void SetLogLevel(unsigned value);
     void SetMode(unsigned value);
     void SetUSBFullSpeed(bool value);
+    void SetST7789Brightness(unsigned value);
+    void SetST7789SleepBrightness(unsigned value);
 
     bool IsDirty();
 
