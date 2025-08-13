@@ -58,6 +58,7 @@ void SH1106HomePage::OnButtonPress(Button button) {
             m_ShouldChangePage = true;
             break;
 
+        case Button::Center:
         case Button::Ok:
             m_NextPageName = "imagespage";
             m_ShouldChangePage = true;

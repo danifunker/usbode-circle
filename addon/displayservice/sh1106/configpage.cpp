@@ -52,6 +52,7 @@ void SH1106ConfigPage::OnButtonPress(Button button)
             MoveSelection(+1);
             break;
 
+        case Button::Center:
         case Button::Ok:
 	    switch (m_SelectedIndex) {
 		    case 0:

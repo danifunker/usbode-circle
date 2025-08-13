@@ -47,6 +47,7 @@ void SH1106PowerPage::OnButtonPress(Button button) {
             MoveSelection(+1);
             break;
 
+        case Button::Center:
         case Button::Ok:
             // TODO show an acknowledgement screen rather then just doing
             switch (m_SelectedIndex) {

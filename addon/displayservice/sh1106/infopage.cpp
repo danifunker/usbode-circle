@@ -38,6 +38,12 @@ void SH1106InfoPage::OnButtonPress(Button button) {
     LOGNOTE("Button received by page %d", button);
 
     switch (button) {
+        case Button::Down:
+        case Button::Up:
+        case Button::Left:
+        case Button::Right:
+        case Button::Key3:
+        case Button::Center:
         case Button::Ok:
         case Button::Cancel:
             LOGNOTE("OK/Cancel");
