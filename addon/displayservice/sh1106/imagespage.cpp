@@ -54,7 +54,18 @@ void SH1106ImagesPage::OnButtonPress(Button button) {
             MoveSelection(+1);
             break;
 
+        case Button::Left:
+            LOGDBG("Scroll Left");
+            MoveSelection(-5);
+            break;
+
+        case Button::Right:
+            LOGDBG("Scroll Right");
+            MoveSelection(+5);
+            break;
+
         case Button::Ok:
+        case Button::Center:
             LOGDBG("Select new CD %d", m_SelectedIndex);
             // TODO show an acknowledgement screen rather then just returning to main screen
             m_Service->SetNextCD(m_SelectedIndex);

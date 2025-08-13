@@ -32,7 +32,12 @@ SH1106Display::SH1106Display(DisplayConfig* config, ButtonConfig* buttons)
       up_pin(buttons->Up),
       down_pin(buttons->Down),
       ok_pin(buttons->Ok),
-      cancel_pin(buttons->Cancel)
+      cancel_pin(buttons->Cancel),
+      left_pin(buttons->Left),
+      right_pin(buttons->Right),
+      center_pin(buttons->Center),
+      key3_pin(buttons->Key3)
+
 {
 
     // Obtain our config service
@@ -49,6 +54,10 @@ SH1106Display::~SH1106Display() {
     delete m_ButtonDown;
     delete m_ButtonOk;
     delete m_ButtonCancel;
+    delete m_ButtonLeft;
+    delete m_ButtonRight;
+    delete m_ButtonCenter;
+    delete m_ButtonKey3;
     delete m_GPIOManager;
 
     LOGNOTE("SH1106Display resources released.");
@@ -115,6 +124,27 @@ bool SH1106Display::Initialize() {
         static ButtonHandlerContext buttonCancelCtx = {this, &m_PageManager, m_ButtonCancel, Button::Cancel};
         m_ButtonCancel->ConnectInterrupt(HandleButtonPress, &buttonCancelCtx);
         m_ButtonCancel->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
+        m_ButtonLeft = new CGPIOPin(left_pin, GPIOModeInputPullUp, m_GPIOManager);
+        static ButtonHandlerContext buttonLeftCtx = {this, &m_PageManager, m_ButtonLeft, Button::Left};
+        m_ButtonLeft->ConnectInterrupt(HandleButtonPress, &buttonLeftCtx);
+        m_ButtonLeft->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
+        m_ButtonRight = new CGPIOPin(right_pin, GPIOModeInputPullUp, m_GPIOManager);
+        static ButtonHandlerContext buttonRightCtx = {this, &m_PageManager, m_ButtonRight, Button::Right};
+        m_ButtonRight->ConnectInterrupt(HandleButtonPress, &buttonRightCtx);
+        m_ButtonRight->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
+        m_ButtonCenter = new CGPIOPin(center_pin, GPIOModeInputPullUp, m_GPIOManager);
+        static ButtonHandlerContext buttonCenterCtx = {this, &m_PageManager, m_ButtonCenter, Button::Center};
+        m_ButtonCenter->ConnectInterrupt(HandleButtonPress, &buttonCenterCtx);
+        m_ButtonCenter->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
+        m_ButtonKey3 = new CGPIOPin(key3_pin, GPIOModeInputPullUp, m_GPIOManager);
+        static ButtonHandlerContext buttonKey3Ctx = {this, &m_PageManager, m_ButtonKey3, Button::Key3};
+        m_ButtonKey3->ConnectInterrupt(HandleButtonPress, &buttonKey3Ctx);
+        m_ButtonKey3->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
         LOGNOTE("Registered buttons");
     }
 
@@ -129,6 +159,7 @@ void SH1106Display::Clear() {
 void SH1106Display::Sleep() {
     LOGNOTE("Sleeping");
     sleeping = true;
+    showingSleepWarning = false;
     m_Display.Off();
 }
 
@@ -136,14 +167,45 @@ void SH1106Display::Sleep() {
 void SH1106Display::Wake() {
     backlightTimer = CTimer::Get()->GetClockTicks();
     if (sleeping) {
-	m_Display.On();
+    m_Display.On();
         LOGNOTE("Waking");
+        // Force complete page redraw by calling OnEnter again
+        IPage* currentPage = m_PageManager.GetCurrentPage();
+        if (currentPage) {
+            currentPage->OnEnter();
+        }
     }
     sleeping = false;
+    showingSleepWarning = false;
 }
 
 bool SH1106Display::IsSleeping() {
     return sleeping;
+}
+
+void SH1106Display::DrawSleepWarning() {
+    // Draw a centered box with "Entering Sleep..." message
+    const int boxWidth = 110;  // Increased from 100 to accommodate text
+    const int boxHeight = 24;
+    const int boxX = (m_Display.GetWidth() - boxWidth) / 2;
+    const int boxY = (m_Display.GetHeight() - boxHeight) / 2;
+    
+    // Draw black filled rectangle with white border
+    m_Graphics.DrawRect(boxX, boxY, boxWidth, boxHeight, COLOR2D(255, 255, 255));
+    m_Graphics.DrawRect(boxX + 1, boxY + 1, boxWidth - 2, boxHeight - 2, COLOR2D(0, 0, 0));
+    
+    // Clear the inner area
+    for (int y = boxY + 2; y < boxY + boxHeight - 2; y++) {
+        for (int x = boxX + 2; x < boxX + boxWidth - 2; x++) {
+            m_Graphics.DrawPixel(x, y, COLOR2D(0, 0, 0));
+        }
+    }
+    
+    // Draw the text centered in the box
+    const char* message = "Entering Sleep...";
+    m_Graphics.DrawText(boxX + 5, boxY + 9, COLOR2D(255, 255, 255), message, C2DGraphics::AlignLeft, Font6x7);
+    
+    m_Graphics.UpdateDisplay();
 }
 
 // Called by displaymanager kernel loop. Check backlight timeout and sleep if
@@ -154,15 +216,49 @@ void SH1106Display::Refresh() {
 	    Wake();
 
     if (backlightTimeout) {
-
-	    // Is it time to dim the screen?
-	    unsigned now = CTimer::Get()->GetClockTicks();
-	    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, backlightTimeout);
-	    if (!sleeping && now - backlightTimer > backlightTimeout)
-		Sleep();
+        unsigned now = CTimer::Get()->GetClockTicks();
+        
+        // Check if we're on the images page - disable sleep for this page
+        IPage* currentPage = m_PageManager.GetCurrentPage();
+        bool isImagesPage = (currentPage == m_PageManager.GetPage("imagespage"));
+        
+        // Only proceed with sleep logic if not on images page
+        if (!isImagesPage) {
+            // Check if we should show sleep warning
+            if (!sleeping && !showingSleepWarning && 
+                now - backlightTimer > (backlightTimeout - SLEEP_WARNING_DURATION)) {
+                showingSleepWarning = true;
+                sleepWarningStartTime = now;
+                DrawSleepWarning();
+                return;
+            }
+            
+            // Check if we should actually sleep
+            if (!sleeping && now - backlightTimer > backlightTimeout) {
+                Sleep();
+                return;
+            }
+            
+            // If showing sleep warning but not time to sleep yet, keep showing it
+            if (showingSleepWarning && !sleeping) {
+                return;
+            }
+        } else {
+            // On images page - clear any existing sleep warning
+            if (showingSleepWarning) {
+                showingSleepWarning = false;
+                // Redraw the page to clear the sleep warning
+                if (currentPage) {
+                    currentPage->OnEnter();
+                }
+            }
+        }
     }
 
-    m_PageManager.Refresh();
+    // Normal page refresh if not showing sleep warning
+    if (!showingSleepWarning) {
+        m_PageManager.Refresh();
+    }
 }
 
 // Debounce the key presses

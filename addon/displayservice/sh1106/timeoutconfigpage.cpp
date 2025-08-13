@@ -54,6 +54,7 @@ void SH1106TimeoutConfigPage::OnButtonPress(Button button)
             break;
 
         case Button::Ok:
+        case Button::Center:
 	{
 	    unsigned timeout = 5 * (m_SelectedIndex + 1);
 	    LOGNOTE("Setting screen timeout to %d", timeout);
@@ -65,7 +66,7 @@ void SH1106TimeoutConfigPage::OnButtonPress(Button button)
 
         case Button::Cancel:
 	    LOGNOTE("Cancel");
-	    m_NextPageName = "homepage";
+	    m_NextPageName = "configpage";
             m_ShouldChangePage = true;
             break;
 

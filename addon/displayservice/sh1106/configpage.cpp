@@ -52,10 +52,11 @@ void SH1106ConfigPage::OnButtonPress(Button button)
             MoveSelection(+1);
             break;
 
+        case Button::Center:
         case Button::Ok:
 	    switch (m_SelectedIndex) {
 		    case 0:
-	                    LOGNOTE("USB Configuration");
+	            LOGNOTE("USB Configuration");
 			    m_NextPageName = "usbconfigpage";
 			    m_ShouldChangePage = true;
 			    break;
@@ -69,6 +70,16 @@ void SH1106ConfigPage::OnButtonPress(Button button)
 			    m_NextPageName = "timeoutconfigpage";
 			    m_ShouldChangePage = true;
 			    break;
+            case 3:
+                LOGNOTE("Display Build Info");
+                m_NextPageName = "infopage";
+                m_ShouldChangePage = true;
+                break;
+            case 4:
+                LOGNOTE("Shutdown Menu");
+                m_NextPageName = "powerpage";
+                m_ShouldChangePage = true;
+                break;
 	    }
             break;
 
@@ -115,7 +126,7 @@ void SH1106ConfigPage::Draw()
 
     m_Graphics->ClearScreen(COLOR2D(0, 0, 0));
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 10, COLOR2D(255, 255, 255));
-    m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), "Config", C2DGraphics::AlignLeft, Font8x8);
+    m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), "Config & System", C2DGraphics::AlignLeft, Font8x8);
 
     size_t startIndex = 0;
     size_t endIndex = fileCount;

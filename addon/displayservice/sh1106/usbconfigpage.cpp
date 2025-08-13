@@ -50,6 +50,7 @@ void SH1106USBConfigPage::OnButtonPress(Button button) {
             break;
 
         case Button::Ok:
+        case Button::Center:
             // TODO show an acknowledgement screen rather then just doing
             switch (m_SelectedIndex) {
                 case 0:

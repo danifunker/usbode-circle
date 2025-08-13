@@ -34,6 +34,7 @@ class SH1106LogConfigPage : public IPage {
 
    private:
     bool m_ShouldChangePage = false;
+    const char* m_NextPageName;
     CSH1106Display* m_Display;
     C2DGraphics* m_Graphics;
     ConfigService* config;

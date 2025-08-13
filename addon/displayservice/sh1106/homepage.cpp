@@ -49,17 +49,18 @@ void SH1106HomePage::OnButtonPress(Button button) {
             break;
 
         case Button::Down:
-            m_NextPageName = "configpage";
+            m_NextPageName = "imagespage";
             m_ShouldChangePage = true;
             break;
 
         case Button::Cancel:
-            m_NextPageName = "powerpage";
+            m_NextPageName = "configpage";
             m_ShouldChangePage = true;
             break;
 
+        case Button::Center:
         case Button::Ok:
-            m_NextPageName = "infopage";
+            m_NextPageName = "imagespage";
             m_ShouldChangePage = true;
             break;
 
@@ -113,7 +114,7 @@ void SH1106HomePage::Draw() {
 
     m_Graphics->ClearScreen(COLOR2D(0, 0, 0));
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 10, COLOR2D(255, 255, 255));
-    m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), pTitle, C2DGraphics::AlignLeft, Font8x8);
+    m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), pTitle, C2DGraphics::AlignLeft, Font6x7);
 
     // Draw WiFi icon using pixel operations
     unsigned int wifi_x = 0;

@@ -20,6 +20,8 @@
 #define SH1106_BUTTONRIGHT 26
 #define SH1106_BUTTONCANCEL 20
 #define SH1106_BUTTONOK 21
+#define SH1106_BUTTONCENTER 13
+#define SH1106_BUTTONKEY3 16
 
 //#define SH1106_BUTTONUP 5
 //#define SH1106_BUTTONDOWN 6
@@ -27,6 +29,7 @@
 //#define SH1106_BUTTONOK 24
 
 #define DEFAULT_TIMEOUT 10
+#define SLEEP_WARNING_DURATION 2000000  // 2 seconds in microseconds
 
 class SH1106Display : public IDisplay {
    public:
@@ -43,6 +46,8 @@ class SH1106Display : public IDisplay {
     static void HandleButtonPress(void* context);
 
    private:
+    void DrawSleepWarning();
+
    private:
     CSPIMaster m_SPIMaster;
     CSH1106Display m_Display;
@@ -54,16 +59,26 @@ class SH1106Display : public IDisplay {
     CGPIOPin* m_ButtonDown;
     CGPIOPin* m_ButtonOk;
     CGPIOPin* m_ButtonCancel;
+    CGPIOPin* m_ButtonLeft;
+    CGPIOPin* m_ButtonRight;
+    CGPIOPin* m_ButtonKey3;
+    CGPIOPin* m_ButtonCenter;
 
     const int up_pin;
     const int down_pin;
     const int ok_pin;
     const int cancel_pin;
+    const int left_pin;
+    const int right_pin;
+    const int key3_pin;
+    const int center_pin;
 
     ConfigService* configservice;
 
     int backlightTimer;
     bool sleeping = false;
+    bool showingSleepWarning = false;
+    unsigned sleepWarningStartTime = 0;
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };
