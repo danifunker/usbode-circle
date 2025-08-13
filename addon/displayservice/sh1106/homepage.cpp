@@ -44,12 +44,12 @@ void SH1106HomePage::OnButtonPress(Button button) {
 
     switch (button) {
         case Button::Up:
-            m_NextPageName = "infopage";
+            m_NextPageName = "imagespage";
             m_ShouldChangePage = true;
             break;
 
         case Button::Down:
-            m_NextPageName = "powerpage";
+            m_NextPageName = "imagespage";
             m_ShouldChangePage = true;
             break;
 

@@ -31,7 +31,7 @@ bool SH1106InfoPage::shouldChangePage() {
 }
 
 const char* SH1106InfoPage::nextPageName() {
-    return "homepage";
+    return "configpage";
 }
 
 void SH1106InfoPage::OnButtonPress(Button button) {

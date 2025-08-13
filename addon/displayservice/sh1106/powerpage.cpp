@@ -30,7 +30,7 @@ bool SH1106PowerPage::shouldChangePage() {
 }
 
 const char* SH1106PowerPage::nextPageName() {
-    return "homepage";
+    return "configpage";
 }
 
 void SH1106PowerPage::OnButtonPress(Button button) {
