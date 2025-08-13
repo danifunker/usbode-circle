@@ -59,6 +59,10 @@ class SH1106Display : public IDisplay {
     CGPIOPin* m_ButtonDown;
     CGPIOPin* m_ButtonOk;
     CGPIOPin* m_ButtonCancel;
+    CGPIOPin* m_ButtonLeft;
+    CGPIOPin* m_ButtonRight;
+    CGPIOPin* m_ButtonKey3;
+    CGPIOPin* m_ButtonCenter;
 
     const int up_pin;
     const int down_pin;

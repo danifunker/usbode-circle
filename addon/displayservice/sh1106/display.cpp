@@ -49,6 +49,10 @@ SH1106Display::~SH1106Display() {
     delete m_ButtonDown;
     delete m_ButtonOk;
     delete m_ButtonCancel;
+    delete m_ButtonLeft;
+    delete m_ButtonRight;
+    delete m_ButtonKey3;
+    delete m_ButtonCenter;
     delete m_GPIOManager;
 
     LOGNOTE("SH1106Display resources released.");
