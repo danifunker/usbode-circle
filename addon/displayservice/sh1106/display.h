@@ -21,12 +21,8 @@
 #define SH1106_BUTTONCANCEL 20
 #define SH1106_BUTTONOK 21
 
-//#define SH1106_BUTTONUP 5
-//#define SH1106_BUTTONDOWN 6
-//#define SH1106_BUTTONCANCEL 16
-//#define SH1106_BUTTONOK 24
-
 #define DEFAULT_TIMEOUT 10
+#define SLEEP_WARNING_DURATION 2000000  // 2 seconds in microseconds
 
 class SH1106Display : public IDisplay {
    public:
@@ -43,6 +39,8 @@ class SH1106Display : public IDisplay {
     static void HandleButtonPress(void* context);
 
    private:
+    void DrawSleepWarning();
+
    private:
     CSPIMaster m_SPIMaster;
     CSH1106Display m_Display;
@@ -64,6 +62,8 @@ class SH1106Display : public IDisplay {
 
     int backlightTimer;
     bool sleeping = false;
+    bool showingSleepWarning = false;
+    unsigned sleepWarningStartTime = 0;
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };

@@ -19,6 +19,7 @@ class PageManager {
     void Refresh();
 
     IPage* GetPage(const char* name);
+    IPage* GetCurrentPage() const { return currentPage; }
 
     void HandleButtonPress(Button button);
 

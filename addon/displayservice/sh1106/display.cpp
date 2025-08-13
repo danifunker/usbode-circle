@@ -129,6 +129,7 @@ void SH1106Display::Clear() {
 void SH1106Display::Sleep() {
     LOGNOTE("Sleeping");
     sleeping = true;
+    showingSleepWarning = false;
     m_Display.Off();
 }
 
@@ -136,14 +137,45 @@ void SH1106Display::Sleep() {
 void SH1106Display::Wake() {
     backlightTimer = CTimer::Get()->GetClockTicks();
     if (sleeping) {
-	m_Display.On();
+    m_Display.On();
         LOGNOTE("Waking");
+        // Force complete page redraw by calling OnEnter again
+        IPage* currentPage = m_PageManager.GetCurrentPage();
+        if (currentPage) {
+            currentPage->OnEnter();
+        }
     }
     sleeping = false;
+    showingSleepWarning = false;
 }
 
 bool SH1106Display::IsSleeping() {
     return sleeping;
+}
+
+void SH1106Display::DrawSleepWarning() {
+    // Draw a centered box with "Entering Sleep..." message
+    const int boxWidth = 100;
+    const int boxHeight = 24;
+    const int boxX = (m_Display.GetWidth() - boxWidth) / 2;
+    const int boxY = (m_Display.GetHeight() - boxHeight) / 2;
+    
+    // Draw black filled rectangle with white border
+    m_Graphics.DrawRect(boxX, boxY, boxWidth, boxHeight, COLOR2D(255, 255, 255));
+    m_Graphics.DrawRect(boxX + 1, boxY + 1, boxWidth - 2, boxHeight - 2, COLOR2D(0, 0, 0));
+    
+    // Clear the inner area
+    for (int y = boxY + 2; y < boxY + boxHeight - 2; y++) {
+        for (int x = boxX + 2; x < boxX + boxWidth - 2; x++) {
+            m_Graphics.DrawPixel(x, y, COLOR2D(0, 0, 0));
+        }
+    }
+    
+    // Draw the text centered in the box
+    const char* message = "Entering Sleep...";
+    m_Graphics.DrawText(boxX + 8, boxY + 9, COLOR2D(255, 255, 255), message, C2DGraphics::AlignLeft, Font6x7);
+    
+    m_Graphics.UpdateDisplay();
 }
 
 // Called by displaymanager kernel loop. Check backlight timeout and sleep if
@@ -154,15 +186,33 @@ void SH1106Display::Refresh() {
 	    Wake();
 
     if (backlightTimeout) {
-
-	    // Is it time to dim the screen?
-	    unsigned now = CTimer::Get()->GetClockTicks();
-	    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, backlightTimeout);
-	    if (!sleeping && now - backlightTimer > backlightTimeout)
-		Sleep();
+        unsigned now = CTimer::Get()->GetClockTicks();
+        
+        // Check if we should show sleep warning
+        if (!sleeping && !showingSleepWarning && 
+            now - backlightTimer > (backlightTimeout - SLEEP_WARNING_DURATION)) {
+            showingSleepWarning = true;
+            sleepWarningStartTime = now;
+            DrawSleepWarning();
+            return;
+        }
+        
+        // Check if we should actually sleep
+        if (!sleeping && now - backlightTimer > backlightTimeout) {
+            Sleep();
+            return;
+        }
+        
+        // If showing sleep warning but not time to sleep yet, keep showing it
+        if (showingSleepWarning && !sleeping) {
+            return;
+        }
     }
 
-    m_PageManager.Refresh();
+    // Normal page refresh if not showing sleep warning
+    if (!showingSleepWarning) {
+        m_PageManager.Refresh();
+    }
 }
 
 // Debounce the key presses
