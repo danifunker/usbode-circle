@@ -155,7 +155,7 @@ bool SH1106Display::IsSleeping() {
 
 void SH1106Display::DrawSleepWarning() {
     // Draw a centered box with "Entering Sleep..." message
-    const int boxWidth = 100;
+    const int boxWidth = 110;  // Increased from 100 to accommodate text
     const int boxHeight = 24;
     const int boxX = (m_Display.GetWidth() - boxWidth) / 2;
     const int boxY = (m_Display.GetHeight() - boxHeight) / 2;
@@ -173,7 +173,7 @@ void SH1106Display::DrawSleepWarning() {
     
     // Draw the text centered in the box
     const char* message = "Entering Sleep...";
-    m_Graphics.DrawText(boxX + 8, boxY + 9, COLOR2D(255, 255, 255), message, C2DGraphics::AlignLeft, Font6x7);
+    m_Graphics.DrawText(boxX + 5, boxY + 9, COLOR2D(255, 255, 255), message, C2DGraphics::AlignLeft, Font6x7);
     
     m_Graphics.UpdateDisplay();
 }
