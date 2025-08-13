@@ -55,7 +55,7 @@ void SH1106ConfigPage::OnButtonPress(Button button)
         case Button::Ok:
 	    switch (m_SelectedIndex) {
 		    case 0:
-	                    LOGNOTE("USB Configuration");
+	            LOGNOTE("USB Configuration");
 			    m_NextPageName = "usbconfigpage";
 			    m_ShouldChangePage = true;
 			    break;
@@ -69,6 +69,16 @@ void SH1106ConfigPage::OnButtonPress(Button button)
 			    m_NextPageName = "timeoutconfigpage";
 			    m_ShouldChangePage = true;
 			    break;
+            case 3:
+                LOGNOTE("Display Build Info");
+                m_NextPageName = "infopage";
+                m_ShouldChangePage = true;
+                break;
+            case 4:
+                LOGNOTE("Shutdown Menu");
+                m_NextPageName = "powerpage";
+                m_ShouldChangePage = true;
+                break;
 	    }
             break;
 
