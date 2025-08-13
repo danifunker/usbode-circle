@@ -4,3 +4,4 @@ current_image=image.iso
 logfile=SD:/usbode-logs.txt
 displayhat=pirateaudiolineout
 default_volume=255
+screen_timeout=5
