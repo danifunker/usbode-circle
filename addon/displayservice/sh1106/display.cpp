@@ -33,10 +33,11 @@ SH1106Display::SH1106Display(DisplayConfig* config, ButtonConfig* buttons)
       down_pin(buttons->Down),
       ok_pin(buttons->Ok),
       cancel_pin(buttons->Cancel),
-      key3_pin(buttons->Key3),
       left_pin(buttons->Left),
       right_pin(buttons->Right),
-      center_pin(buttons->Center)
+      center_pin(buttons->Center),
+      key3_pin(buttons->Key3)
+
 {
 
     // Obtain our config service
@@ -55,8 +56,8 @@ SH1106Display::~SH1106Display() {
     delete m_ButtonCancel;
     delete m_ButtonLeft;
     delete m_ButtonRight;
-    delete m_ButtonKey3;
     delete m_ButtonCenter;
+    delete m_ButtonKey3;
     delete m_GPIOManager;
 
     LOGNOTE("SH1106Display resources released.");
