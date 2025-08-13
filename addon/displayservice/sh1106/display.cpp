@@ -32,7 +32,11 @@ SH1106Display::SH1106Display(DisplayConfig* config, ButtonConfig* buttons)
       up_pin(buttons->Up),
       down_pin(buttons->Down),
       ok_pin(buttons->Ok),
-      cancel_pin(buttons->Cancel)
+      cancel_pin(buttons->Cancel),
+      key3_pin(buttons->Key3),
+      left_pin(buttons->Left),
+      right_pin(buttons->Right),
+      center_pin(buttons->Center)
 {
 
     // Obtain our config service
@@ -119,6 +123,27 @@ bool SH1106Display::Initialize() {
         static ButtonHandlerContext buttonCancelCtx = {this, &m_PageManager, m_ButtonCancel, Button::Cancel};
         m_ButtonCancel->ConnectInterrupt(HandleButtonPress, &buttonCancelCtx);
         m_ButtonCancel->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
+        m_ButtonLeft = new CGPIOPin(left_pin, GPIOModeInputPullUp, m_GPIOManager);
+        static ButtonHandlerContext buttonLeftCtx = {this, &m_PageManager, m_ButtonLeft, Button::Left};
+        m_ButtonLeft->ConnectInterrupt(HandleButtonPress, &buttonLeftCtx);
+        m_ButtonLeft->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
+        m_ButtonRight = new CGPIOPin(right_pin, GPIOModeInputPullUp, m_GPIOManager);
+        static ButtonHandlerContext buttonRightCtx = {this, &m_PageManager, m_ButtonRight, Button::Right};
+        m_ButtonRight->ConnectInterrupt(HandleButtonPress, &buttonRightCtx);
+        m_ButtonRight->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
+        m_ButtonCenter = new CGPIOPin(center_pin, GPIOModeInputPullUp, m_GPIOManager);
+        static ButtonHandlerContext buttonCenterCtx = {this, &m_PageManager, m_ButtonCenter, Button::Center};
+        m_ButtonCenter->ConnectInterrupt(HandleButtonPress, &buttonCenterCtx);
+        m_ButtonCenter->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
+        m_ButtonKey3 = new CGPIOPin(key3_pin, GPIOModeInputPullUp, m_GPIOManager);
+        static ButtonHandlerContext buttonKey3Ctx = {this, &m_PageManager, m_ButtonKey3, Button::Key3};
+        m_ButtonKey3->ConnectInterrupt(HandleButtonPress, &buttonKey3Ctx);
+        m_ButtonKey3->EnableInterrupt(GPIOInterruptOnFallingEdge);
+
         LOGNOTE("Registered buttons");
     }
 

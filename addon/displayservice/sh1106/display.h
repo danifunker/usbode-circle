@@ -68,6 +68,10 @@ class SH1106Display : public IDisplay {
     const int down_pin;
     const int ok_pin;
     const int cancel_pin;
+    const int left_pin;
+    const int right_pin;
+    const int key3_pin;
+    const int center_pin;
 
     ConfigService* configservice;
 
