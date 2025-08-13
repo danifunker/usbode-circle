@@ -121,7 +121,11 @@ void DisplayService::CreateDisplay(const char* displayType) {
 		.Up = properties->GetNumber("button_up", SH1106_BUTTONUP),
 		.Down = properties->GetNumber("button_down", SH1106_BUTTONDOWN),
 		.Ok = properties->GetNumber("button_ok", SH1106_BUTTONOK),
-		.Cancel = properties->GetNumber("button_cancel", SH1106_BUTTONCANCEL)
+		.Cancel = properties->GetNumber("button_cancel", SH1106_BUTTONCANCEL),
+		.Left = properties->GetNumber("button_left", SH1106_BUTTONLEFT),
+		.Right = properties->GetNumber("button_right", SH1106_BUTTONRIGHT),
+		.Key3 = properties->GetNumber("button_key3", SH1106_BUTTONKEY3),
+        .Center = properties->GetNumber("button_center", SH1106_BUTTONCENTER)
 	};
 
         m_IDisplay = new SH1106Display(&config, &buttons);
@@ -140,7 +144,11 @@ void DisplayService::CreateDisplay(const char* displayType) {
 		.Up = SH1106_BUTTONUP,
 		.Down = SH1106_BUTTONDOWN,
 		.Ok = SH1106_BUTTONOK,
-		.Cancel = SH1106_BUTTONCANCEL
+		.Cancel = SH1106_BUTTONCANCEL,
+        .Left = SH1106_BUTTONLEFT,
+        .Right = SH1106_BUTTONRIGHT,
+        .Key3 = SH1106_BUTTONKEY3,
+        .Center = SH1106_BUTTONCENTER
 	};
 
         m_IDisplay = new SH1106Display(&config, &buttons);
