@@ -188,24 +188,40 @@ void SH1106Display::Refresh() {
     if (backlightTimeout) {
         unsigned now = CTimer::Get()->GetClockTicks();
         
-        // Check if we should show sleep warning
-        if (!sleeping && !showingSleepWarning && 
-            now - backlightTimer > (backlightTimeout - SLEEP_WARNING_DURATION)) {
-            showingSleepWarning = true;
-            sleepWarningStartTime = now;
-            DrawSleepWarning();
-            return;
-        }
+        // Check if we're on the images page - disable sleep for this page
+        IPage* currentPage = m_PageManager.GetCurrentPage();
+        bool isImagesPage = (currentPage == m_PageManager.GetPage("imagespage"));
         
-        // Check if we should actually sleep
-        if (!sleeping && now - backlightTimer > backlightTimeout) {
-            Sleep();
-            return;
-        }
-        
-        // If showing sleep warning but not time to sleep yet, keep showing it
-        if (showingSleepWarning && !sleeping) {
-            return;
+        // Only proceed with sleep logic if not on images page
+        if (!isImagesPage) {
+            // Check if we should show sleep warning
+            if (!sleeping && !showingSleepWarning && 
+                now - backlightTimer > (backlightTimeout - SLEEP_WARNING_DURATION)) {
+                showingSleepWarning = true;
+                sleepWarningStartTime = now;
+                DrawSleepWarning();
+                return;
+            }
+            
+            // Check if we should actually sleep
+            if (!sleeping && now - backlightTimer > backlightTimeout) {
+                Sleep();
+                return;
+            }
+            
+            // If showing sleep warning but not time to sleep yet, keep showing it
+            if (showingSleepWarning && !sleeping) {
+                return;
+            }
+        } else {
+            // On images page - clear any existing sleep warning
+            if (showingSleepWarning) {
+                showingSleepWarning = false;
+                // Redraw the page to clear the sleep warning
+                if (currentPage) {
+                    currentPage->OnEnter();
+                }
+            }
         }
     }
 
