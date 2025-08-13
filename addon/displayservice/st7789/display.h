@@ -38,7 +38,6 @@ class ST7789Display : public IDisplay {
     static void HandleButtonPress(void* context);
 
    private:
-   private:
     CSPIMaster m_SPIMaster;
     CST7789Display m_Display;
     C2DGraphics m_Graphics;
@@ -63,6 +62,10 @@ class ST7789Display : public IDisplay {
     int backlightTimer;
     bool sleeping = false;
     bool pwm_configured = false;
+    bool showingSleepWarning = false;
+    unsigned sleepWarningStartTime = 0;
+    
+    void DrawSleepWarning();
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };

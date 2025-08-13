@@ -1,9 +1,9 @@
-
 /*
-/ (c) 2025 Ian Cass
-/ This is a display driver for USBODE for the ST7789 series screens
-/ It's responsible for managing the page rendering
-*/
+ / (c) 2025 Ian Cass
+ / (c) 2025 Dani Sarfati
+ / This is a display driver for USBODE for the ST7789 series screens
+ / It's responsible for managing the page rendering
+ */
 #include "display.h"
 
 #include <circle/logger.h>
@@ -23,6 +23,9 @@
 #include "usbconfigpage.h"
 
 LOGMODULE("st7789display");
+
+#define SLEEP_WARNING_DURATION 2000000  // 2 seconds in microseconds
+#define LOW_BRIGHTNESS_THRESHOLD 16     // Show warning only if sleep brightness < 16
 
 // Constructor
 ST7789Display::ST7789Display(DisplayConfig* config, ButtonConfig* buttons)
@@ -131,7 +134,8 @@ bool ST7789Display::Initialize() {
     if (bOK) {
         m_Backlight = new CGPIOPin(m_backlight_pin, GPIOModeAlternateFunction0, m_GPIOManager);
         m_PWMOutput.Start();
-        m_PWMOutput.Write(2, 1024);
+        unsigned brightness = configservice->GetST7789Brightness(1024);
+        m_PWMOutput.Write(2, brightness);
         pwm_configured = true;
     }
 
@@ -142,6 +146,32 @@ void ST7789Display::Clear() {
     // TODO: Clear screen. Do we need this?
 }
 
+void ST7789Display::DrawSleepWarning() {
+    // Draw a centered box with "Entering Sleep..." message
+    const int boxWidth = 200;
+    const int boxHeight = 60;
+    const int boxX = (240 - boxWidth) / 2;  // ST7789 is 240x240
+    const int boxY = (240 - boxHeight) / 2;
+    
+    // Draw black filled rectangle with white border
+    m_Graphics.DrawRect(boxX, boxY, boxWidth, boxHeight, COLOR2D(255, 255, 255));
+    m_Graphics.DrawRect(boxX + 2, boxY + 2, boxWidth - 4, boxHeight - 4, COLOR2D(0, 0, 0));
+    
+    // Clear the inner area
+    for (int y = boxY + 4; y < boxY + boxHeight - 4; y++) {
+        for (int x = boxX + 4; x < boxX + boxWidth - 4; x++) {
+            m_Graphics.DrawPixel(x, y, COLOR2D(0, 0, 0));
+        }
+    }
+    
+    // Draw the text centered in the box
+    const char* message = "Entering Sleep...";
+    // Center text horizontally and vertically in the box
+    m_Graphics.DrawText(boxX + 30, boxY + 25, COLOR2D(255, 255, 255), message, C2DGraphics::AlignLeft, Font8x16);
+    
+    m_Graphics.UpdateDisplay();
+}
+
 // Dim the screen or even turn it off
 void ST7789Display::Sleep() {
     if (!pwm_configured)
@@ -149,17 +179,25 @@ void ST7789Display::Sleep() {
 
     LOGNOTE("Sleeping");
     sleeping = true;
-    m_PWMOutput.Write(2, 32);  // TODO make the backlight value configurable
+    unsigned sleepBrightness = configservice->GetST7789SleepBrightness(32);
+    m_PWMOutput.Write(2, sleepBrightness);
 }
 
 // Wake the screen
 void ST7789Display::Wake() {
     backlightTimer = CTimer::Get()->GetClockTicks();
     if (sleeping) {
-        m_PWMOutput.Write(2, 1024);
+        unsigned brightness = configservice->GetST7789Brightness(1024);
+        m_PWMOutput.Write(2, brightness);
         LOGNOTE("Waking");
+        // Force complete page redraw by calling OnEnter again
+        IPage* currentPage = m_PageManager.GetCurrentPage();
+        if (currentPage) {
+            currentPage->OnEnter();
+        }
     }
     sleeping = false;
+    showingSleepWarning = false;
 }
 
 bool ST7789Display::IsSleeping() {
@@ -174,14 +212,53 @@ void ST7789Display::Refresh() {
             Wake();
 
     if (backlightTimeout) {
-	    unsigned now = CTimer::Get()->GetClockTicks();
-	    // LOGNOTE("backlightTimer is %d, now is %d, TIMEOUT is %d", backlightTimer, now, backlightTimeout);
-	    // Is it time to dim the screen?
-	    if (!sleeping && now - backlightTimer > backlightTimeout)
-		Sleep();
+        unsigned now = CTimer::Get()->GetClockTicks();
+        
+        // Check if we're on the images page - disable sleep for this page
+        IPage* currentPage = m_PageManager.GetCurrentPage();
+        bool isImagesPage = (currentPage == m_PageManager.GetPage("imagespage"));
+        
+        // Only proceed with sleep logic if not on images page
+        if (!isImagesPage) {
+            // Check if sleep brightness is low enough to warrant showing warning
+            unsigned sleepBrightness = configservice->GetST7789SleepBrightness(32);
+            bool shouldShowWarning = (sleepBrightness < LOW_BRIGHTNESS_THRESHOLD);
+            
+            // Check if we should show sleep warning
+            if (!sleeping && !showingSleepWarning && shouldShowWarning &&
+                now - backlightTimer > (backlightTimeout - SLEEP_WARNING_DURATION)) {
+                showingSleepWarning = true;
+                sleepWarningStartTime = now;
+                DrawSleepWarning();
+                return;
+            }
+            
+            // Check if we should actually sleep
+            if (!sleeping && now - backlightTimer > backlightTimeout) {
+                Sleep();
+                return;
+            }
+            
+            // If showing sleep warning but not time to sleep yet, keep showing it
+            if (showingSleepWarning && !sleeping) {
+                return;
+            }
+        } else {
+            // On images page - clear any existing sleep warning
+            if (showingSleepWarning) {
+                showingSleepWarning = false;
+                // Redraw the page to clear the sleep warning
+                if (currentPage) {
+                    currentPage->OnEnter();
+                }
+            }
+        }
     }
 
-    m_PageManager.Refresh();
+    // Normal page refresh if not showing sleep warning
+    if (!showingSleepWarning) {
+        m_PageManager.Refresh();
+    }
 }
 
 // Debounce the key presses
