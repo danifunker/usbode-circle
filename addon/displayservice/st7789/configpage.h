@@ -34,7 +34,7 @@ private:
     const char* m_NextPageName;
     CST7789Display*          m_Display;
     C2DGraphics*             m_Graphics;
-    const char* options[3] = { "USB Configuration", "Logging Configuration", "Timeout Configuration" };
+    const char* options[5] = { "USB Configuration", "Logging Configuration", "Timeout Configuration", "Power", "Build Info" };
     size_t m_SelectedIndex = 0;
 
 };
