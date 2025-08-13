@@ -5,6 +5,22 @@
      white-space:pre;background-color:#f9f9f9;">
 {{log_lines}}
 </div>
+
+{{#sound_test_available}}
+<form method="post" style="margin: 10px 0;">
+    <input type="hidden" name="action" value="soundtest">
+    <button type="submit" class="button">Execute Sound Test</button>
+</form>
+{{/sound_test_available}}
+
+{{^sound_test_available}}
+<p style="color: #666; font-style: italic;">Sound test not available (not in CDROM mode or sound not enabled)</p>
+{{/sound_test_available}}
+
+{{#message}}
+<div style="background-color: #E3F2FD; padding: 10px; margin: 10px 0; border-left: 4px solid #2196F3;">{{message}}</div>
+{{/message}}
+
 <div>
-	<a class="button" href="/">Return to File List</a>
+    <a class="button" href="/">Return to File List</a>
 </div>

@@ -170,6 +170,7 @@ boolean CCDPlayer::SoundTest() {
 
     unsigned int total_frames = m_pSound->GetQueueSizeFrames();
     UINT bytesRead = 0;
+    boolean success = false;
 
     // Read sound bytes and give them to the DAC
     for (unsigned nCount = 0; m_pSound->IsActive(); nCount++) {
@@ -187,6 +188,7 @@ boolean CCDPlayer::SoundTest() {
 
             if (bytesRead == 0) {
                 LOGNOTE("Sound test: finished successfully");
+                success = true;
                 break;
             }
 
@@ -199,7 +201,7 @@ boolean CCDPlayer::SoundTest() {
         CScheduler::Get()->Yield();
     }
     f_close(&file);
-    return false;
+    return success;
 }
 
 boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {

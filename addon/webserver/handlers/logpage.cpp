@@ -14,6 +14,7 @@
 #include <shutdown/shutdown.h>
 #include "logpage.h"
 #include "util.h"
+#include <cdplayer/cdplayer.h>
 
 using namespace kainjow;
 
@@ -60,6 +61,26 @@ THTTPStatus LogPageHandler::PopulateContext(kainjow::mustache::data& context,
                                    const char  *pFormData)
 {
     LOGNOTE("Log page called");
+    
+    // Check if CD player is available (only in CDROM mode with sound enabled)
+    CCDPlayer* pCDPlayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+    bool soundTestAvailable = (pCDPlayer != nullptr);
+    context["sound_test_available"] = soundTestAvailable;
+    
+    // Handle POST request for sound test
+    if (pFormData && strstr(pFormData, "action=soundtest")) {
+        LOGNOTE("Sound test button pressed");
+        
+        if (pCDPlayer) {
+            if (pCDPlayer->SoundTest()) {
+                context["message"] = "Sound test executed successfully";
+            } else {
+                context["message"] = "Sound test failed";
+            }
+        } else {
+            context["message"] = "Error: CD Player not available (sound not enabled)";
+        }
+    }
     
     context["log_lines"] = read_loglines("/usbode-logs.txt");
     
