@@ -19,6 +19,7 @@
 #include "cdromservice.h"
 
 #include <assert.h>
+#include <circle/new.h>
 #include <circle/sched/scheduler.h>
 #include <circle/string.h>
 #include <circle/synchronize.h>

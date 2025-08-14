@@ -8,17 +8,19 @@ NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
 OBJS    = configservice.o \
-	  cmdline.o
+	cmdline.o \
+	config.o
 
 libconfigservice.a: $(OBJS)
 	@echo "  AR    $@"
 	@rm -f $@
 	@$(AR) cr $@ $(OBJS)
 
-include $(STDLIBHOME)/Config.mk
+#include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
 
 # Add include path for addon itself if needed, and other common addon paths
-CFLAGS += -I ../../addon
+CFLAGS += -I $(STDLIBHOME)/include -I $(STDDEF_INCPATH) -I ../../addon
+CFLAGS += -D_TIME_T_DECLARED
 
 -include $(DEPS)

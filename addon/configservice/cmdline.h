@@ -6,6 +6,8 @@
 #define MAX_KEY_LEN 64
 #define MAX_VALUE_LEN 256
 
+#define CMDLINE_FILE "SD:/cmdline.txt"
+
 struct Pair {
     char key[MAX_KEY_LEN];
     char value[MAX_VALUE_LEN];
@@ -16,10 +18,11 @@ public:
     CmdLine();
 
     bool Load(const char* filename);
-    bool Save(const char* filename) const;
+    bool Save();
 
     const char* GetValue(const char* key) const;
     bool SetValue(const char* key, const char* value);
+    bool IsDirty();
 
     /*
     int GetLogLevel() const;
@@ -29,6 +32,7 @@ public:
 private:
     Pair pairs[MAX_PAIRS];
     int count;
+    bool dirty = false;
 
     int find_index(const char* key) const;
 };

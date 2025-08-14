@@ -6,7 +6,6 @@
 
 #include "displayservice.h"
 
-#include <Properties/propertiesfatfsfile.h>
 #include <assert.h>
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
@@ -30,6 +29,8 @@ DisplayService::DisplayService(const char* displayType) {
     assert(s_pThis == 0);
     s_pThis = this;
 
+    config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+
     LOGNOTE("Display Service starting");
     SetName("displayservice");
 
@@ -50,7 +51,7 @@ void DisplayService::CreateDisplay(const char* displayType) {
     // Pirate Audio Screen has hard coded values
     if (strcmp(displayType, "pirateaudiolineout") == 0) {
 
-	DisplayConfig config = {
+	DisplayConfig display_config = {
 	    .dc_pin = 9,
 	    .reset_pin = 27,
 	    .backlight_pin = 13,
@@ -67,71 +68,64 @@ void DisplayService::CreateDisplay(const char* displayType) {
 		.Cancel = ST7789_BUTTONCANCEL
 	};
 
-        m_IDisplay = new ST7789Display(&config, &buttons);
+        m_IDisplay = new ST7789Display(&display_config, &buttons);
 
     // Generic ST7789 screen depends on how you wired it up. The default values
     // (mostly) mirror the wiring of the Pirate Audio screen
     // https://pinout.xyz/pinout/pirate_audio_line_out
     } else if (strcmp(displayType, "st7789") == 0) {
-        //TODO: Bring this into configservice
-        FATFS* fs = CKernel::Get()->GetFileSystem();
-        CPropertiesFatFsFile* properties = new CPropertiesFatFsFile(CONFIG_FILE, fs);
-	properties->Load();
-        properties->SelectSection("st7789");
+	const char* section = "st7789";
 
-	DisplayConfig config = {
-            .dc_pin = properties->GetNumber("dc_pin", 22),
-            .reset_pin = properties->GetNumber("reset_pin", 27),
-            .backlight_pin = properties->GetNumber("backlight_pin", 13),
-            .spi_cpol = properties->GetNumber("spi_cpol", 1),
-            .spi_cpha = properties->GetNumber("spi_chpa", 1),
-            .spi_clock_speed = properties->GetNumber("spi_clock_speed", 80000000),
-            .spi_chip_select = properties->GetNumber("spi_chip_select", 0)
+	DisplayConfig display_config = {
+            .dc_pin = config->GetProperty("dc_pin", 22, section),
+            .reset_pin = config->GetProperty("reset_pin", 27, section),
+            .backlight_pin = config->GetProperty("backlight_pin", 13, section),
+            .spi_cpol = config->GetProperty("spi_cpol", 1, section),
+            .spi_cpha = config->GetProperty("spi_chpa", 1, section),
+            .spi_clock_speed = config->GetProperty("spi_clock_speed", 80000000, section),
+            .spi_chip_select = config->GetProperty("spi_chip_select", 0u, section)
 	};
 
 	ButtonConfig buttons = {
-		.Up = properties->GetNumber("button_up", ST7789_BUTTONUP),
-		.Down = properties->GetNumber("button_down", ST7789_BUTTONDOWN),
-		.Ok = properties->GetNumber("button_ok", ST7789_BUTTONOK),
-		.Cancel = properties->GetNumber("button_cancel", ST7789_BUTTONCANCEL)
+		.Up = config->GetProperty("button_up", ST7789_BUTTONUP, section),
+		.Down = config->GetProperty("button_down", ST7789_BUTTONDOWN, section),
+		.Ok = config->GetProperty("button_ok", ST7789_BUTTONOK, section),
+		.Cancel = config->GetProperty("button_cancel", ST7789_BUTTONCANCEL, section)
 	};
 
-        m_IDisplay = new ST7789Display(&config, &buttons);
+        m_IDisplay = new ST7789Display(&display_config, &buttons);
 
     // Generic SH1106 screen depends on how you wired it up. The default values
     // (mostly) mirror the wiring of the Pirate Audio screen
     // https://pinout.xyz/pinout/pirate_audio_line_out
     } else if (strcmp(displayType, "sh1106") == 0) {
-        FATFS* fs = CKernel::Get()->GetFileSystem();
-        CPropertiesFatFsFile* properties = new CPropertiesFatFsFile(CONFIG_FILE, fs);
-	properties->Load();
-        properties->SelectSection("sh1106");
+	const char* section = "sh1106";
 
-	DisplayConfig config = {
-            .dc_pin = properties->GetNumber("dc_pin", 22),
-            .reset_pin = properties->GetNumber("reset_pin", 27),
-            .backlight_pin = properties->GetNumber("backlight_pin", 0),
-            .spi_cpol = properties->GetNumber("spi_cpol", 0),
-            .spi_cpha = properties->GetNumber("spi_chpa", 0),
-            .spi_clock_speed = properties->GetNumber("spi_clock_speed", 24000000),
-            .spi_chip_select = properties->GetNumber("spi_chip_select", 1)
+	DisplayConfig display_config = {
+            .dc_pin = config->GetProperty("dc_pin", 22, section),
+            .reset_pin = config->GetProperty("reset_pin", 27, section),
+            .backlight_pin = config->GetProperty("backlight_pin", 0u, section),
+            .spi_cpol = config->GetProperty("spi_cpol", 0u, section),
+            .spi_cpha = config->GetProperty("spi_chpa", 0u, section),
+            .spi_clock_speed = config->GetProperty("spi_clock_speed", 24000000, section),
+            .spi_chip_select = config->GetProperty("spi_chip_select", 1, section)
 	};
 
 	// Default to bare minimum button config
         ButtonConfig buttons = {
-            .Up = properties->GetNumber("button_up", SH1106_BUTTONUP),
-            .Down = properties->GetNumber("button_down", SH1106_BUTTONDOWN),
-            .Left = properties->GetNumber("button_left", 0),
-            .Right = properties->GetNumber("button_right", 0),
-            .Ok = properties->GetNumber("button_ok", SH1106_BUTTONOK),
-            .Cancel = properties->GetNumber("button_cancel", SH1106_BUTTONCANCEL),
-            .Key3 = properties->GetNumber("button_key3", 0),
-            .Center = properties->GetNumber("button_center", 0)
+            .Up = config->GetProperty("button_up", SH1106_BUTTONUP, section),
+            .Down = config->GetProperty("button_down", SH1106_BUTTONDOWN, section),
+            .Left = config->GetProperty("button_left", 0u, section),
+            .Right = config->GetProperty("button_right", 0u, section),
+            .Ok = config->GetProperty("button_ok", SH1106_BUTTONOK, section),
+            .Cancel = config->GetProperty("button_cancel", SH1106_BUTTONCANCEL, section),
+            .Key3 = config->GetProperty("button_key3", 0u, section),
+            .Center = config->GetProperty("button_center", 0u, section)
 	};
 
-        m_IDisplay = new SH1106Display(&config, &buttons);
+        m_IDisplay = new SH1106Display(&display_config, &buttons);
     } else if (strcmp(displayType, "waveshare") == 0) {
-	DisplayConfig config = {
+	DisplayConfig display_config = {
             .dc_pin = 24,
             .reset_pin = 25,
             .backlight_pin = 0,
@@ -152,7 +146,7 @@ void DisplayService::CreateDisplay(const char* displayType) {
         .Center = SH1106_BUTTONCENTER
 	};
 
-        m_IDisplay = new SH1106Display(&config, &buttons);
+        m_IDisplay = new SH1106Display(&display_config, &buttons);
     }
     assert(m_IDisplay != nullptr && "Didn't create display");
 }

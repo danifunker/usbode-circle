@@ -1,40 +1,41 @@
 #include "configservice.h"
+#include "config.h"
+#include "cmdline.h"
+
+#include <assert.h>
 #include <circle/logger.h>
-#include <string.h>
-#include <ctype.h>
-#include <fatfs/ff.h>
-#include "../../src/kernel.h"
-#include <circle/logger.h>
+#include <circle/sched/scheduler.h>
+#include "simpleini.hpp"
 
 LOGMODULE("configservice");
 
-//TODO: Find a way to delete settings
-
 ConfigService *ConfigService::s_pThis = 0;
 
-ConfigService::ConfigService()
+ConfigService::ConfigService() 
+:  m_cmdline(new CmdLine()),
+ m_config(new Config())
 {
     // I am the one and only!
     assert(s_pThis == 0);
     s_pThis = this;
 
-    FATFS* fs = CKernel::Get()->GetFileSystem();
-    m_properties = new CPropertiesFatFsFile("SD:/config.txt", fs);
-    bool ok = m_properties->Load();
-    assert(ok && "Can't load configuration properties from config.txt");
-    ok = cmdline.Load("SD:/cmdline.txt");
+    bool ok = m_cmdline->Load(CMDLINE_FILE);
     assert(ok && "Can't load configuration properties from cmdline.txt");
+
+    ok = m_config->Load(CONFIG_FILE);
+    assert(ok && "Can't load configuration properties from config.txt");
+
     SetName("configservice");
 }
 
 ConfigService::~ConfigService()
 {
-    delete m_properties;
+    delete m_config;
 }
 
 bool ConfigService::GetUSBFullSpeed()
 {
-    const char* val = cmdline.GetValue("usbspeed");
+    const char* val = m_cmdline->GetValue("usbspeed");
     if (val != nullptr && strcmp(val, "full") == 0) {
 	return true;
     }
@@ -43,39 +44,38 @@ bool ConfigService::GetUSBFullSpeed()
 
 void ConfigService::SetUSBFullSpeed(bool value)
 {
-    cmdline.SetValue("usbspeed", value ? "full" : "high");
-    cmdlineIsDirty=true;
+    m_cmdline->SetValue("usbspeed", value ? "full" : "high");
 }
 
 void ConfigService::SetSoundDev(const char* value)
 {
-    cmdline.SetValue("sounddev", value);
-    cmdlineIsDirty=true;
+    m_cmdline->SetValue("sounddev", value);
 }
 
 const char* ConfigService::GetSoundDev(const char* defaultValue)
 {
-    const char* val = cmdline.GetValue("sounddev");
+    const char* val = m_cmdline->GetValue("sounddev");
     if (val != nullptr )
 	    return val;
     return defaultValue;
 }
 
-const char* ConfigService::GetCurrentImage(const char *defaultValue)
+const char* ConfigService::GetCurrentImage(const char* defaultValue)
 {
-    return GetProperty("current_image", defaultValue);
+    return m_config->GetString("current_image", defaultValue);
 }
 
-//TODO bounds checking
+
+
 unsigned ConfigService::GetDefaultVolume(unsigned defaultValue)
 {
-    return GetProperty("default_volume", defaultValue);
+    return m_config->GetNumber("default_volume", defaultValue);
 }
 
 //TODO bounds checking
 unsigned ConfigService::GetLogLevel(unsigned defaultValue)
 {
-    const char* val = cmdline.GetValue("loglevel");
+    const char* val = m_cmdline->GetValue("loglevel");
     if (val == nullptr )
 	    return defaultValue;
 
@@ -88,133 +88,121 @@ unsigned ConfigService::GetLogLevel(unsigned defaultValue)
 
 unsigned ConfigService::GetMode(unsigned defaultValue)
 {
-    return GetProperty("mode", defaultValue);
+    return m_config->GetNumber("mode", defaultValue);
 }
 
 const char* ConfigService::GetLogfile(const char *defaultValue)
 {
-    return GetProperty("logfile", defaultValue);
+    return m_config->GetString("logfile", defaultValue);
 }
 
 // TODO enum
 const char* ConfigService::GetDisplayHat(const char *defaultValue)
 {
-    return GetProperty("displayhat", defaultValue);
+    return m_config->GetString("displayhat", defaultValue);
 }
 
 const char* ConfigService::GetTimezone(const char *defaultValue)
 {
-    return GetProperty("timezone", defaultValue);
+    return m_config->GetString("timezone", defaultValue);
 }
 
 unsigned ConfigService::GetScreenTimeout(unsigned defaultValue)
 {
-    return GetProperty("screen_timeout", defaultValue);
+    return m_config->GetNumber("screen_timeout", defaultValue);
 }
 
 unsigned ConfigService::GetST7789Brightness(unsigned defaultValue)
 {
-    return GetProperty("st7789_brightness", defaultValue);
+    return m_config->GetNumber("st7789_brightness", defaultValue);
 }
 
 unsigned ConfigService::GetST7789SleepBrightness(unsigned defaultValue)
 {
-    return GetProperty("st7789_sleep_brightness", defaultValue);
+    return m_config->GetNumber("st7789_sleep_brightness", defaultValue);
 }
 
 void ConfigService::SetCurrentImage(const char* value)
 {
-    SetProperty("current_image", value);
+    m_config->SetString("current_image", value);
 }
 
 void ConfigService::SetMode(unsigned value)
 {
-    SetProperty("mode", value);
+    m_config->SetNumber("mode", value);
 }
 
 void ConfigService::SetDefaultVolume(unsigned value)
 {
-    SetProperty("default_volume", value);
+    m_config->SetNumber("default_volume", value);
 }
 
 void ConfigService::SetDisplayHat(const char* value)
 {
-    SetProperty("displayhat", value);
+    m_config->SetString("displayhat", value);
 }
 
 void ConfigService::SetTimezone(const char* value)
 {
-    SetProperty("timezone", value);
+    m_config->SetString("timezone", value);
 }
 
 void ConfigService::SetLogLevel(unsigned value)
 {
     char buffer[2];
     snprintf(buffer, sizeof(buffer), "%u", value);
-    cmdline.SetValue("loglevel", buffer);
-    cmdlineIsDirty=true;
+    m_cmdline->SetValue("loglevel", buffer);
 }
 
 void ConfigService::SetLogfile(const char* value)
 {
-    SetProperty("logfile", value);
+    m_config->SetString("logfile", value);
 }
 
 void ConfigService::SetScreenTimeout(unsigned value)
 {
-    SetProperty("screen_timeout", value);
+    m_config->SetNumber("screen_timeout", value);
 }
 
 void ConfigService::SetST7789Brightness(unsigned value)
 {
-    SetProperty("st7789_brightness", value);
+    m_config->SetNumber("st7789_brightness", value);
 }
 
 void ConfigService::SetST7789SleepBrightness(unsigned value)
 {
-    SetProperty("st7789_sleep_brightness", value);
+    m_config->SetNumber("st7789_sleep_brightness", value);
 }
 
-void ConfigService::SetProperty(const char* key, const char* value)
+unsigned ConfigService::GetProperty(const char* key, unsigned defaultValue, const char* section)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetString(key, value);
-    configIsDirty = true;
+    return m_config->GetNumber(key, defaultValue, section);
 }
 
-void ConfigService::SetProperty(const char* key, unsigned value)
+const char* ConfigService::GetProperty(const char* key, const char* defaultValue, const char* section)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetNumber(key, value);
-    configIsDirty = true;
+    return m_config->GetString(key, defaultValue, section);
 }
 
-const char* ConfigService::GetProperty(const char* key, const char* defaultValue)
+void ConfigService::SetProperty(const char* key, const char* value, const char* section)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetString(key, defaultValue);
+    m_config->SetString(key, value, section);
 }
 
-unsigned ConfigService::GetProperty(const char* key, unsigned defaultValue)
+void ConfigService::SetProperty(const char* key, unsigned value, const char* section)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetNumber(key, defaultValue);
+    m_config->SetNumber(key, value, section);
 }
 
 bool ConfigService::IsDirty() {
-	return configIsDirty || cmdlineIsDirty;
+	return m_config->IsDirty() || m_cmdline->IsDirty();
 }
 
 bool ConfigService::Save() {
-	bool ok = true;
-	if (ok && configIsDirty) {
-		ok = m_properties->Save();
-		configIsDirty = false;
-	}
+	bool ok = m_config->Save();
 
-	if (ok && cmdlineIsDirty) {
-		ok = cmdline.Save("SD:/cmdline.txt");
-		cmdlineIsDirty = false;
+	if (ok) {
+		ok = m_cmdline->Save();
 	}
 
 	return ok;

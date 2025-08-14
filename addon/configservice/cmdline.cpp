@@ -17,11 +17,13 @@ bool CmdLine::Load(const char* filename) {
     UINT bytesRead;
     char line[MAX_LINE_LEN];
 
+    LOGNOTE("Opening file %s", CMDLINE_FILE);
     res = f_open(&file, filename, FA_READ);
     if (res != FR_OK) {
         return false;
     }
 
+    LOGNOTE("Reading file %s", CMDLINE_FILE);
     res = f_read(&file, line, sizeof(line) - 1, &bytesRead);
     f_close(&file);
     if (res != FR_OK || bytesRead == 0) {
@@ -37,6 +39,7 @@ bool CmdLine::Load(const char* filename) {
     }
 
     count = 0;
+    LOGNOTE("Processing file %s", CMDLINE_FILE);
     char* saveptr = nullptr;
     char* token = strtok_r(line, " ", &saveptr);
     while (token && count < MAX_PAIRS) {
@@ -54,17 +57,26 @@ bool CmdLine::Load(const char* filename) {
         }
         token = strtok_r(nullptr, " ", &saveptr);
     }
+    LOGNOTE("Done");
     return true;
 }
 
-bool CmdLine::Save(const char* filename) const {
+bool CmdLine::IsDirty() {
+	return dirty;
+}
+
+bool CmdLine::Save() {
+
+    if (!dirty)
+	    return true;
+    
     FIL file;
     FRESULT res;
     UINT bytesWritten;
 
-    LOGNOTE("Opening file %s", filename);
+    LOGNOTE("Opening file %s", CMDLINE_FILE);
 
-    res = f_open(&file, filename, FA_WRITE | FA_CREATE_ALWAYS);
+    res = f_open(&file, CMDLINE_FILE, FA_WRITE | FA_CREATE_ALWAYS);
     if (res != FR_OK) {
         LOGNOTE("Failed to open file");
         return false;
@@ -103,7 +115,7 @@ bool CmdLine::Save(const char* filename) const {
         return false;
     }
 
-    LOGNOTE("Writing %u bytes: '%.*s'", (unsigned)pos, (int)pos, line);
+    LOGNOTE("Writing %u bytes: %s", (unsigned)pos, line);
 
     res = f_write(&file, line, pos, &bytesWritten);
     f_close(&file);
@@ -119,6 +131,7 @@ bool CmdLine::Save(const char* filename) const {
     }
 
     LOGNOTE("Written successfully");
+    dirty = false;
     return true;
 }
 
@@ -132,30 +145,19 @@ bool CmdLine::SetValue(const char* key, const char* value) {
     if (i >= 0) {
         strncpy(pairs[i].value, value, MAX_VALUE_LEN - 1);
         pairs[i].value[MAX_VALUE_LEN - 1] = '\0';
-        return true;
+	dirty = true;
+	return true;
     } else if (count < MAX_PAIRS) {
         strncpy(pairs[count].key, key, MAX_KEY_LEN - 1);
         pairs[count].key[MAX_KEY_LEN - 1] = '\0';
         strncpy(pairs[count].value, value, MAX_VALUE_LEN - 1);
         pairs[count].value[MAX_VALUE_LEN - 1] = '\0';
         ++count;
-        return true;
+	dirty = true;
+	return true;
     }
     return false;
 }
-
-/*
-int CmdLine::GetLogLevel() const {
-    const char* val = GetValue("loglevel");
-    return val ? atoi(val) : -1;
-}
-
-bool CmdLine::SetLogLevel(int level) {
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%d", level);
-    return SetValue("loglevel", buf);
-}
-*/
 
 int CmdLine::find_index(const char* key) const {
     for (int i = 0; i < count; ++i) {

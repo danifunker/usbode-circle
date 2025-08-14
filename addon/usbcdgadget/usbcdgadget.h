@@ -26,7 +26,6 @@
 #include <circle/device.h>
 #include <circle/interrupt.h>
 #include <circle/macros.h>
-#include <circle/new.h>
 #include <circle/synchronize.h>
 #include <circle/types.h>
 #include <circle/usb/gadget/dwusbgadget.h>

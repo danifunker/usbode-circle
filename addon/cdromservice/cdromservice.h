@@ -22,7 +22,6 @@
 
 #include <circle/machineinfo.h>
 #include <circle/sched/task.h>
-#include <circle/new.h>
 #include <circle/time.h>
 #include <circle/timer.h>
 #include <circle/types.h>

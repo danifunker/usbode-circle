@@ -10,6 +10,7 @@
 #include <circle/types.h>
 #include <circle/util.h>
 #include <linux/kernel.h>
+#include <configservice/configservice.h>
 
 #include "idisplay.h"
 
@@ -27,6 +28,7 @@ class DisplayService : public CTask {
     static DisplayService* s_pThis;
     bool isInitialized = false;
     IDisplay* m_IDisplay = nullptr;
+    ConfigService* config;
 };
 
 #endif

@@ -21,6 +21,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include <assert.h>
+#include <circle/new.h>
 #include <scsitbservice/scsitbservice.h>
 #include <cdplayer/cdplayer.h>
 #include <circle/koptions.h>

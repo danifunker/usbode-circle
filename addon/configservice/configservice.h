@@ -1,9 +1,11 @@
 #ifndef CONFIG_SERVICE_H
 #define CONFIG_SERVICE_H
 
-#include "cmdline.h"
-#include <Properties/propertiesfatfsfile.h>
 #include <circle/sched/task.h>
+
+// forward declarations
+class Config;
+class CmdLine;
 
 class ConfigService : public CTask 
 {
@@ -21,7 +23,6 @@ public:
     bool GetUSBFullSpeed();
     unsigned GetST7789Brightness(unsigned defaultValue=1024);
     unsigned GetST7789SleepBrightness(unsigned defaultValue=32);
-
     void SetSoundDev(const char* value);
     const char* GetSoundDev(const char* defaultValue="none");
 
@@ -37,19 +38,19 @@ public:
     void SetST7789Brightness(unsigned value);
     void SetST7789SleepBrightness(unsigned value);
 
+    const char* GetProperty(const char* button, const char* defaultValue, const char* section="usbode");
+    unsigned GetProperty(const char* button, unsigned defaultValue, const char* section="usbode");
+    void SetProperty(const char* button, unsigned value, const char* section="usbode");
+    void SetProperty(const char* button, const char* value, const char* section="usbode");
+
     bool IsDirty();
 
     void Run(void);
 
 private:
-    unsigned GetProperty(const char* key, unsigned defaultValue);
-    const char* GetProperty(const char* key, const char* defaultValue);
-    void SetProperty(const char* key, unsigned value);
-    void SetProperty(const char* key, const char* value);
-    CPropertiesFatFsFile* m_properties;
-    CmdLine cmdline;
-    bool cmdlineIsDirty = false;
-    bool configIsDirty = false;
+
+    CmdLine* m_cmdline;
+    Config* m_config;
     static ConfigService *s_pThis;
     bool Save();
 };
