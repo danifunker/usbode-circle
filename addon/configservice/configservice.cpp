@@ -63,15 +63,13 @@ const char* ConfigService::GetSoundDev(const char* defaultValue)
 
 const char* ConfigService::GetCurrentImage(const char *defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetString("current_image", defaultValue);
+    return GetProperty("current_image", defaultValue);
 }
 
 //TODO bounds checking
 unsigned ConfigService::GetDefaultVolume(unsigned defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetNumber("default_volume", defaultValue);
+    return GetProperty("default_volume", defaultValue);
 }
 
 //TODO bounds checking
@@ -90,80 +88,63 @@ unsigned ConfigService::GetLogLevel(unsigned defaultValue)
 
 unsigned ConfigService::GetMode(unsigned defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetNumber("mode", defaultValue);
+    return GetProperty("mode", defaultValue);
 }
 
 const char* ConfigService::GetLogfile(const char *defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetString("logfile", defaultValue);
+    return GetProperty("logfile", defaultValue);
 }
 
 // TODO enum
 const char* ConfigService::GetDisplayHat(const char *defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetString("displayhat", defaultValue);
+    return GetProperty("displayhat", defaultValue);
 }
 
 const char* ConfigService::GetTimezone(const char *defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetString("timezone", defaultValue);
+    return GetProperty("timezone", defaultValue);
 }
 
 unsigned ConfigService::GetScreenTimeout(unsigned defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetNumber("screen_timeout", defaultValue);
+    return GetProperty("screen_timeout", defaultValue);
 }
 
 unsigned ConfigService::GetST7789Brightness(unsigned defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetNumber("st7789_brightness", defaultValue);
+    return GetProperty("st7789_brightness", defaultValue);
 }
 
 unsigned ConfigService::GetST7789SleepBrightness(unsigned defaultValue)
 {
-    m_properties->SelectSection("usbode");
-    return m_properties->GetNumber("st7789_sleep_brightness", defaultValue);
+    return GetProperty("st7789_sleep_brightness", defaultValue);
 }
 
 void ConfigService::SetCurrentImage(const char* value)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetString("current_image", value);
-    configIsDirty=true;
+    SetProperty("current_image", value);
 }
 
 void ConfigService::SetMode(unsigned value)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetNumber("mode", value);
-    configIsDirty=true;
+    SetProperty("mode", value);
 }
 
 void ConfigService::SetDefaultVolume(unsigned value)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetNumber("default_volume", value);
-    configIsDirty=true;
+    SetProperty("default_volume", value);
 }
 
 void ConfigService::SetDisplayHat(const char* value)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetString("displayhat", value);
-    configIsDirty=true;
+    SetProperty("displayhat", value);
 }
 
 void ConfigService::SetTimezone(const char* value)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetString("timezone", value);
-    configIsDirty=true;
+    SetProperty("timezone", value);
 }
 
 void ConfigService::SetLogLevel(unsigned value)
@@ -176,30 +157,48 @@ void ConfigService::SetLogLevel(unsigned value)
 
 void ConfigService::SetLogfile(const char* value)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetString("logfile", value);
-    configIsDirty=true;
+    SetProperty("logfile", value);
 }
 
 void ConfigService::SetScreenTimeout(unsigned value)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetNumber("screen_timeout", value);
-    configIsDirty=true;
+    SetProperty("screen_timeout", value);
 }
 
 void ConfigService::SetST7789Brightness(unsigned value)
 {
-    m_properties->SelectSection("usbode");
-    m_properties->SetNumber("st7789_brightness", value);
-    configIsDirty=true;
+    SetProperty("st7789_brightness", value);
 }
 
 void ConfigService::SetST7789SleepBrightness(unsigned value)
 {
+    SetProperty("st7789_sleep_brightness", value);
+}
+
+void ConfigService::SetProperty(const char* key, const char* value)
+{
     m_properties->SelectSection("usbode");
-    m_properties->SetNumber("st7789_sleep_brightness", value);
-    configIsDirty=true;
+    m_properties->SetString(key, value);
+    configIsDirty = true;
+}
+
+void ConfigService::SetProperty(const char* key, unsigned value)
+{
+    m_properties->SelectSection("usbode");
+    m_properties->SetNumber(key, value);
+    configIsDirty = true;
+}
+
+const char* ConfigService::GetProperty(const char* key, const char* defaultValue)
+{
+    m_properties->SelectSection("usbode");
+    return m_properties->GetString(key, defaultValue);
+}
+
+unsigned ConfigService::GetProperty(const char* key, unsigned defaultValue)
+{
+    m_properties->SelectSection("usbode");
+    return m_properties->GetNumber(key, defaultValue);
 }
 
 bool ConfigService::IsDirty() {

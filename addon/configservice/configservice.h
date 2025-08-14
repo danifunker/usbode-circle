@@ -42,6 +42,10 @@ public:
     void Run(void);
 
 private:
+    unsigned GetProperty(const char* key, unsigned defaultValue);
+    const char* GetProperty(const char* key, const char* defaultValue);
+    void SetProperty(const char* key, unsigned value);
+    void SetProperty(const char* key, const char* value);
     CPropertiesFatFsFile* m_properties;
     CmdLine cmdline;
     bool cmdlineIsDirty = false;
