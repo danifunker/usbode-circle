@@ -102,7 +102,11 @@ const char* ST7789HomePage::GetVersionString() {
 }
 
 const char* ST7789HomePage::GetCurrentImage() {
-    return m_Service->GetCurrentCDName();
+    const char* name = m_Service->GetCurrentCDName();
+    if (name == nullptr)
+            return "Loading...";
+    else
+            return name;
 }
 
 const char* ST7789HomePage::GetUSBSpeed() {

@@ -29,7 +29,7 @@
 //#define SH1106_BUTTONOK 24
 
 #define DEFAULT_TIMEOUT 10
-#define SLEEP_WARNING_DURATION 2000000  // 2 seconds in microseconds
+#define SLEEP_WARNING_DURATION 2 * 1000  // 2 seconds in milliseconds
 
 class SH1106Display : public IDisplay {
    public:
@@ -70,15 +70,13 @@ class SH1106Display : public IDisplay {
     const int cancel_pin;
     const int left_pin;
     const int right_pin;
-    const int key3_pin;
     const int center_pin;
+    const int key3_pin;
 
     ConfigService* configservice;
 
     int backlightTimer;
     bool sleeping = false;
-    bool showingSleepWarning = false;
-    unsigned sleepWarningStartTime = 0;
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };

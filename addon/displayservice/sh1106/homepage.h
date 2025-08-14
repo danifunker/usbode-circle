@@ -26,7 +26,7 @@ class SH1106HomePage : public IPage {
     void ScrollDown();
     void SelectItem();
     void DrawNavigationBar(const char* screenType);
-    const char* GetIPAddress();
+    void GetIPAddress(char* buffer, size_t size);
     const char* GetCurrentImage();
     const char* GetVersionString();
     const char* GetUSBSpeed();
@@ -38,7 +38,7 @@ class SH1106HomePage : public IPage {
     CSH1106Display* m_Display;
     C2DGraphics* m_Graphics;
     SCSITBService* m_Service = nullptr;
-    const char* pIPAddress;
+    char pIPAddress[14];
     const char* pISOName;
     const char* pUSBSpeed;
     const char* pTitle;
