@@ -27,6 +27,7 @@ class ST7789HomePage : public IPage {
     void SelectItem();
     void DrawNavigationBar(const char* screenType);
     const char* GetIPAddress();
+    void GetIPAddress(char* buffer, size_t size);
     const char* GetCurrentImage();
     const char* GetVersionString();
     const char* GetUSBSpeed();
@@ -38,7 +39,7 @@ class ST7789HomePage : public IPage {
     CST7789Display* m_Display;
     C2DGraphics* m_Graphics;
     SCSITBService* m_Service = nullptr;
-    const char* pIPAddress;
+    char pIPAddress[14];
     const char* pISOName;
     const char* pUSBSpeed;
     const char* pTitle;

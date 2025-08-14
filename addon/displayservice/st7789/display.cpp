@@ -199,8 +199,6 @@ void ST7789Display::Wake() {
     if (sleeping) {
         unsigned brightness = configservice->GetST7789Brightness(1024);
         m_PWMOutput.Write(2, brightness);
-
-	// Force a redraw
         m_PageManager.Refresh(true);
     }
 
@@ -229,8 +227,9 @@ void ST7789Display::Refresh() {
                 Sleep();
         }
 
-        m_PageManager.Refresh();
     }
+
+    m_PageManager.Refresh();
 }
 
 // Debounce the key presses
@@ -249,7 +248,7 @@ bool ST7789Display::Debounce(Button button) {
 // and then pass on the keypress to page manager (and ultimately the page) to handle
 void ST7789Display::HandleButtonPress(void* pParam) {
     ButtonHandlerContext* context = static_cast<ButtonHandlerContext*>(pParam);
-    LOGNOTE("Got button press %d", context->button);
+    //LOGNOTE("Got button press %d", context->button);
     if (context) {
         if (context->display->Debounce(context->button))
             return;

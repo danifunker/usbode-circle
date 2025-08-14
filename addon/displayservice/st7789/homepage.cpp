@@ -23,7 +23,7 @@ void ST7789HomePage::OnEnter() {
     pTitle = GetVersionString();
     pUSBSpeed = GetUSBSpeed();
     pISOName = GetCurrentImage();
-    pIPAddress = GetIPAddress();
+    GetIPAddress(pIPAddress, sizeof(pIPAddress));
     Draw();
 }
 
@@ -76,22 +76,24 @@ void ST7789HomePage::Refresh() {
         Draw();
     }
 
-    const char* IPAddress = GetIPAddress();
+    char IPAddress[14];
+    GetIPAddress(IPAddress, sizeof(IPAddress));
     if (strcmp(IPAddress, pIPAddress) != 0) {
-	pIPAddress = IPAddress;
+	strcpy(pIPAddress, IPAddress);
         Draw();
     }
 
 }
 
-const char* ST7789HomePage::GetIPAddress() {
+void ST7789HomePage::GetIPAddress(char* buffer, size_t size) {
     CNetSubSystem* net = CKernel::Get()->GetNetwork();
     if (net && net->IsRunning()) {
         CString IPString;
         net->GetConfig()->GetIPAddress()->Format(&IPString);
-        return (const char*)IPString;
+        strncpy(buffer, IPString.c_str(), size);
+        buffer[size-1] = '\0';
     } else {
-        return "Not Connected";
+        strncpy(buffer, "Not Connected", size);
     }
 }
 
