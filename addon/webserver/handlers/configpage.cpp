@@ -80,12 +80,12 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             
             if (pCDPlayer) {
                 if (pCDPlayer->SoundTest()) {
-                    success_message = "Sound test executed successfully";
+                    context["message"] = "Sound test executed successfully";
                 } else {
-                    error_message = "Sound test failed";
+                    context["message"] = "Sound test failed";
                 }
             } else {
-                error_message = "Error: CD Player not available (sound not enabled)";
+                context["message"] = "Error: CD Player not available (sound not enabled)";
             }
         } else {
             // Handle regular configuration updates
@@ -119,10 +119,11 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
                     }
                     config->SetLogfile(logfile.c_str());
                 }
-                if (form_params.count("default_volume"))
-                { 
-                    config->SetDefaultVolume(std::atoi(form_params["default_volume"].c_str()));
-                }
+            }
+            
+            // Default volume configuration  
+            if (form_params.count("default_volume")) { 
+                config->SetDefaultVolume(std::atoi(form_params["default_volume"].c_str()));
             }
             
             // Sound device configuration
