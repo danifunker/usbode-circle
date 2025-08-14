@@ -38,10 +38,10 @@ public:
     void SetST7789Brightness(unsigned value);
     void SetST7789SleepBrightness(unsigned value);
 
-    const char* GetProperty(const char* button, const char* defaultValue, const char* section="usbode");
-    unsigned GetProperty(const char* button, unsigned defaultValue, const char* section="usbode");
-    void SetProperty(const char* button, unsigned value, const char* section="usbode");
-    void SetProperty(const char* button, const char* value, const char* section="usbode");
+    const char* GetProperty(const char* property, const char* defaultValue, const char* section="usbode");
+    unsigned GetProperty(const char* property, unsigned defaultValue, const char* section="usbode");
+    void SetProperty(const char* property, unsigned value, const char* section="usbode");
+    void SetProperty(const char* property, const char* value, const char* section="usbode");
 
     bool IsDirty();
 
