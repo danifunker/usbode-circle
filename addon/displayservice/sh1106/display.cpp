@@ -92,7 +92,7 @@ bool SH1106Display::Initialize() {
     m_PageManager.RegisterPage("timeoutconfigpage", new SH1106TimeoutConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("infopage", new SH1106InfoPage(&m_Display, &m_Graphics));
 
-    // Set the stating page
+    // Set the starting page
     m_PageManager.SetActivePage("homepage");
     LOGNOTE("Registered pages");
 

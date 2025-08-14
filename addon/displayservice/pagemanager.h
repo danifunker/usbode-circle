@@ -16,7 +16,7 @@ class PageManager {
     void RegisterPage(const char* name, IPage* page);
     void SetActivePage(IPage* page);
     void SetActivePage(const char* name);
-    void Refresh();
+    void Refresh(bool redraw = false);
 
     IPage* GetPage(const char* name);
     IPage* GetCurrentPage() const { return currentPage; }

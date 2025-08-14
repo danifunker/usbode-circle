@@ -24,7 +24,7 @@
 
 LOGMODULE("st7789display");
 
-#define SLEEP_WARNING_DURATION 2000000  // 2 seconds in microseconds
+#define SLEEP_WARNING_DURATION 2 * 1000  // 2 seconds in milliseconds
 #define LOW_BRIGHTNESS_THRESHOLD 16     // Show warning only if sleep brightness < 16
 
 // Constructor
@@ -168,7 +168,6 @@ void ST7789Display::DrawSleepWarning() {
     const char* message = "Entering Sleep...";
     // Center text horizontally and vertically in the box
     m_Graphics.DrawText(boxX + 30, boxY + 25, COLOR2D(255, 255, 255), message, C2DGraphics::AlignLeft, Font8x16);
-    
     m_Graphics.UpdateDisplay();
 }
 
@@ -178,26 +177,35 @@ void ST7789Display::Sleep() {
         return;
 
     LOGNOTE("Sleeping");
-    sleeping = true;
+    
+    // Check if sleep brightness is low enough to warrant showing warning
     unsigned sleepBrightness = configservice->GetST7789SleepBrightness(32);
+    if (sleepBrightness < LOW_BRIGHTNESS_THRESHOLD) {
+        DrawSleepWarning();
+        CScheduler::Get()->MsSleep(SLEEP_WARNING_DURATION);
+        m_PageManager.Refresh(true);
+    }
+
+    sleeping = true;
     m_PWMOutput.Write(2, sleepBrightness);
 }
 
 // Wake the screen
 void ST7789Display::Wake() {
+    // reset the backlight timer on this keypress
     backlightTimer = CTimer::Get()->GetClockTicks();
+
+    // Wake up if we were sleeping
     if (sleeping) {
         unsigned brightness = configservice->GetST7789Brightness(1024);
         m_PWMOutput.Write(2, brightness);
-        LOGNOTE("Waking");
-        // Force complete page redraw by calling OnEnter again
-        IPage* currentPage = m_PageManager.GetCurrentPage();
-        if (currentPage) {
-            currentPage->OnEnter();
-        }
+
+	// Force a redraw
+        m_PageManager.Refresh(true);
     }
+
+    // Regardless, we're definitely not sleeping now
     sleeping = false;
-    showingSleepWarning = false;
 }
 
 bool ST7789Display::IsSleeping() {
@@ -208,55 +216,19 @@ bool ST7789Display::IsSleeping() {
 // necessary. Pass on the refresh call to the page manager
 void ST7789Display::Refresh() {
     unsigned backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+
+    // If we're asleep and the timeout got changed to zero
     if (!backlightTimeout && sleeping)
             Wake();
 
-    if (backlightTimeout) {
-        unsigned now = CTimer::Get()->GetClockTicks();
-        
-        // Check if we're on the images page - disable sleep for this page
-        IPage* currentPage = m_PageManager.GetCurrentPage();
-        bool isImagesPage = (currentPage == m_PageManager.GetPage("imagespage"));
-        
-        // Only proceed with sleep logic if not on images page
-        if (!isImagesPage) {
-            // Check if sleep brightness is low enough to warrant showing warning
-            unsigned sleepBrightness = configservice->GetST7789SleepBrightness(32);
-            bool shouldShowWarning = (sleepBrightness < LOW_BRIGHTNESS_THRESHOLD);
-            
-            // Check if we should show sleep warning
-            if (!sleeping && !showingSleepWarning && shouldShowWarning &&
-                now - backlightTimer > (backlightTimeout - SLEEP_WARNING_DURATION)) {
-                showingSleepWarning = true;
-                sleepWarningStartTime = now;
-                DrawSleepWarning();
-                return;
-            }
-            
-            // Check if we should actually sleep
-            if (!sleeping && now - backlightTimer > backlightTimeout) {
+    if (!sleeping) {
+        if (backlightTimeout) {
+            // Is it time to dim the screen?
+            unsigned now = CTimer::Get()->GetClockTicks();
+            if (now - backlightTimer > backlightTimeout)
                 Sleep();
-                return;
-            }
-            
-            // If showing sleep warning but not time to sleep yet, keep showing it
-            if (showingSleepWarning && !sleeping) {
-                return;
-            }
-        } else {
-            // On images page - clear any existing sleep warning
-            if (showingSleepWarning) {
-                showingSleepWarning = false;
-                // Redraw the page to clear the sleep warning
-                if (currentPage) {
-                    currentPage->OnEnter();
-                }
-            }
         }
-    }
 
-    // Normal page refresh if not showing sleep warning
-    if (!showingSleepWarning) {
         m_PageManager.Refresh();
     }
 }

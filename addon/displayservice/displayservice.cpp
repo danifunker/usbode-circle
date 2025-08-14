@@ -117,15 +117,15 @@ void DisplayService::CreateDisplay(const char* displayType) {
             .spi_chip_select = properties->GetNumber("spi_chip_select", 1)
 	};
 
-    ButtonConfig buttons = {
-        .Up = properties->GetNumber("button_up", SH1106_BUTTONUP),
-        .Down = properties->GetNumber("button_down", SH1106_BUTTONDOWN),
-        .Left = properties->GetNumber("button_left", SH1106_BUTTONLEFT),
-        .Right = properties->GetNumber("button_right", SH1106_BUTTONRIGHT),
-        .Ok = properties->GetNumber("button_ok", SH1106_BUTTONOK),
-        .Cancel = properties->GetNumber("button_cancel", SH1106_BUTTONCANCEL),
-        .Key3 = properties->GetNumber("button_key3", SH1106_BUTTONKEY3),
-        .Center = properties->GetNumber("button_center", SH1106_BUTTONCENTER)
+        ButtonConfig buttons = {
+            .Up = properties->GetNumber("button_up", SH1106_BUTTONUP),
+            .Down = properties->GetNumber("button_down", SH1106_BUTTONDOWN),
+            .Left = properties->GetNumber("button_left", SH1106_BUTTONLEFT),
+            .Right = properties->GetNumber("button_right", SH1106_BUTTONRIGHT),
+            .Ok = properties->GetNumber("button_ok", SH1106_BUTTONOK),
+            .Cancel = properties->GetNumber("button_cancel", SH1106_BUTTONCANCEL),
+            .Key3 = properties->GetNumber("button_key3", SH1106_BUTTONKEY3),
+            .Center = properties->GetNumber("button_center", SH1106_BUTTONCENTER)
 	};
 
         m_IDisplay = new SH1106Display(&config, &buttons);

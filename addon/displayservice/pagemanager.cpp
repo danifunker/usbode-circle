@@ -62,14 +62,17 @@ IPage* PageManager::GetPage(const char* name) {
 // run loop. It uses an observer model to check if the page
 // requires transitioning and also calls it refresh method
 // to manage screen updates
-void PageManager::Refresh() {
+void PageManager::Refresh(bool redraw) {
     if (currentPage->shouldChangePage()) {
         const char* next = currentPage->nextPageName();
         if (next && strlen(next) > 0) {
             SetActivePage(next);
         }
     } else {
-        currentPage->Refresh();
+	if (redraw)
+	    currentPage->Draw();
+	else
+            currentPage->Refresh();
     }
 }
 
