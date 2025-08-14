@@ -64,28 +64,6 @@
                         <input type="number" id="default_volume" name="default_volume" min="0" max="255" value="{{current_default_volume}}">
                         <div class="current-value">Set to 0 for silent, 255 maximum (255 is default)</div>
                     </div>
-                    
-                    {{#sound_test_available}}
-                    <div class="form-group">
-                        <label>Audio Test:</label>
-                        <div class="current-value">Test audio output functionality (computer generated sound runs for about 6 seconds)</div>
-                        <form method="post" style="margin: 10px 0;">
-                            <input type="hidden" name="action" value="soundtest">
-                            <button type="submit" class="button">Execute Sound Test</button>
-                        </form>
-                    </div>
-                    {{/sound_test_available}}
-                    
-                    {{^sound_test_available}}
-                    <div class="form-group">
-                        <label>Audio Test:</label>
-                        <div class="current-value" style="color: #666; font-style: italic;">Sound test not available (not in CDROM mode or sound not enabled)</div>
-                    </div>
-                    {{/sound_test_available}}
-                    
-                    {{#message}}
-                    <div style="background-color: #E3F2FD; padding: 10px; margin: 10px 0; border-left: 4px solid #2196F3;">{{message}}</div>
-                    {{/message}}
                 </div>
 
                 <div class="form-section">
@@ -134,4 +112,33 @@
                     <a href="/" class="button button-danger">Cancel</a>
                 </div>
             </form>
+            
+            <!-- Sound test form moved outside main form -->
+            {{#sound_test_available}}
+            <div class="form-section">
+                <h3>Audio Test</h3>
+                <form method="POST" action="/config">
+                    <div class="form-group">
+                        <label>Audio Test:</label>
+                        <div class="current-value">Test audio output functionality (computer generated sound runs for about 6 seconds)</div>
+                        <input type="hidden" name="action" value="soundtest">
+                        <button type="submit" class="button">Execute Sound Test</button>
+                    </div>
+                </form>
+                
+                {{#message}}
+                <div style="background-color: #E3F2FD; padding: 10px; margin: 10px 0; border-left: 4px solid #2196F3;">{{message}}</div>
+                {{/message}}
+            </div>
+            {{/sound_test_available}}
+            
+            {{^sound_test_available}}
+            <div class="form-section">
+                <h3>Audio Test</h3>
+                <div class="form-group">
+                    <label>Audio Test:</label>
+                    <div class="current-value" style="color: #666; font-style: italic;">Sound test not available (not in CDROM mode or sound not enabled)</div>
+                </div>
+            </div>
+            {{/sound_test_available}}
 
