@@ -65,7 +65,7 @@ void ST7789TimeoutConfigPage::OnButtonPress(Button button)
 
         case Button::Cancel:
 	    LOGNOTE("Cancel");
-	    m_NextPageName = "homepage";
+	    m_NextPageName = "configpage";
             m_ShouldChangePage = true;
             break;
 

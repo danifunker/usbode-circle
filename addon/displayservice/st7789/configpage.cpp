@@ -56,7 +56,7 @@ void ST7789ConfigPage::OnButtonPress(Button button)
 	    //TODO show an acknowledgement screen rather then just doing
 	    switch (m_SelectedIndex) {
 		    case 0:
-	                    LOGNOTE("USB Configuration");
+	            LOGNOTE("USB Configuration");
 			    m_NextPageName = "usbconfigpage";
 			    m_ShouldChangePage = true;
 			    break;
@@ -70,6 +70,16 @@ void ST7789ConfigPage::OnButtonPress(Button button)
 			    m_NextPageName = "timeoutconfigpage";
 			    m_ShouldChangePage = true;
 			    break;
+            case 3:
+                LOGNOTE("Power Menu");
+                m_NextPageName = "powerpage";
+                m_ShouldChangePage = true;
+                break;
+            case 4:
+                LOGNOTE("Build Info");
+                m_NextPageName = "infopage";
+                m_ShouldChangePage = true;
+                break;
 	    }
             break;
 
