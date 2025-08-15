@@ -72,12 +72,12 @@ void ST7789ConfigPage::OnButtonPress(Button button)
 			    break;
             case 3:
                 LOGNOTE("Power Menu");
-                m_NextPageName = "powerconfigpage";
+                m_NextPageName = "powerpage";
                 m_ShouldChangePage = true;
                 break;
             case 4:
                 LOGNOTE("Build Info");
-                m_NextPageName = "buildinfopage";
+                m_NextPageName = "infopage";
                 m_ShouldChangePage = true;
                 break;
 	    }

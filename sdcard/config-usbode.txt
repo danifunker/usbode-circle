@@ -5,3 +5,5 @@ logfile=SD:/usbode-logs.txt
 displayhat=pirateaudiolineout
 default_volume=255
 screen_timeout=5
+st7789_brightness=1024
+st7789_sleep_brightness=0

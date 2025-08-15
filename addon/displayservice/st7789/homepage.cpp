@@ -49,12 +49,12 @@ void ST7789HomePage::OnButtonPress(Button button) {
             break;
 
         case Button::Down:
-            m_NextPageName = "configpage";
+            m_NextPageName = "imagespage";
             m_ShouldChangePage = true;
             break;
 
         case Button::Cancel:
-            m_NextPageName = "powerpage";
+            m_NextPageName = "configpage";
             m_ShouldChangePage = true;
             break;
 
@@ -338,16 +338,33 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType) {
     arrow_y = 225;
 
     if (strcmp(screenType, "main") == 0) {
-        // Menu bars for main screen
-        // Thicker menu bars (2px)
-        m_Graphics->DrawLine(arrow_x, arrow_y - 5, arrow_x + 15, arrow_y - 5, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(arrow_x, arrow_y - 4, arrow_x + 15, arrow_y - 4, COLOR2D(255, 255, 255));
+        // CHANGED: Show CD icon for B button (same as A button)
+        unsigned cd_x = 85;  // Adjusted X position for B button
+        unsigned cd_y = 215;
+        unsigned cd_radius = 10;
+        
+        // Draw outer circle of CD
+        m_Graphics->DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, cd_radius, COLOR2D(255, 255, 255));
 
-        m_Graphics->DrawLine(arrow_x, arrow_y, arrow_x + 15, arrow_y, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(arrow_x, arrow_y + 1, arrow_x + 15, arrow_y + 1, COLOR2D(255, 255, 255));
+        // Draw middle circle of CD
+        m_Graphics->DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, 5, COLOR2D(255, 255, 255));
 
-        m_Graphics->DrawLine(arrow_x, arrow_y + 5, arrow_x + 15, arrow_y + 5, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(arrow_x, arrow_y + 6, arrow_x + 15, arrow_y + 6, COLOR2D(255, 255, 255));
+        // Draw center hole of CD
+        m_Graphics->DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 2, COLOR2D(255, 255, 255));
+
+        // Old power icon for B button
+        /*
+        int radius = 7;            // Adjust radius as needed
+        int cx = arrow_x + radius;  // Center x
+        int cy = arrow_y;          // Center y
+
+        // Draw the circle outline
+        m_Graphics->DrawCircleOutline(cx, cy, radius, COLOR2D(255, 255, 255));
+
+        // Draw the vertical line ("I") - top center of the circle downward
+        int line_length = 6;  // Length of the line
+        m_Graphics->DrawLine(cx, cy - radius - 2, cx, cy - radius + line_length, COLOR2D(255, 255, 255));
+        */
     } else {
         // Stem (3px thick)
         m_Graphics->DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
@@ -384,19 +401,17 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType) {
     unsigned icon_y = 220;
 
     if (strcmp(screenType, "main") == 0) {
-        int radius = 7;            // Adjust radius as needed
-        int cx = icon_x + radius;  // Center x
-        int cy = icon_y + radius;  // Center y
+        // CHANGED: Show menu bars for X button (was power icon)
+        // Menu bars for main screen
+        // Thicker menu bars (2px)
+        m_Graphics->DrawLine(icon_x, icon_y - 5, icon_x + 15, icon_y - 5, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(icon_x, icon_y - 4, icon_x + 15, icon_y - 4, COLOR2D(255, 255, 255));
 
-        // Draw the circle outline
-        m_Graphics->DrawCircleOutline(cx, cy, radius, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(icon_x, icon_y, icon_x + 15, icon_y, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(icon_x, icon_y + 1, icon_x + 15, icon_y + 1, COLOR2D(255, 255, 255));
 
-        // Draw the vertical line ("I") - top center of the circle downward
-        // Start the line a little above the top of the circle for stylistic power symbol
-        int line_length = 6;  // Length of the line
-        m_Graphics->DrawLine(cx, cy - radius - 2, cx, cy - radius + line_length, COLOR2D(255, 255, 255));
-        /*
-         */
+        m_Graphics->DrawLine(icon_x, icon_y + 5, icon_x + 15, icon_y + 5, COLOR2D(255, 255, 255));
+        m_Graphics->DrawLine(icon_x, icon_y + 6, icon_x + 15, icon_y + 6, COLOR2D(255, 255, 255));
     } else {
         // Red X icon for other screens (cancel)
         m_Graphics->DrawLine(icon_x - 8, icon_y - 8, icon_x + 8, icon_y + 8, COLOR2D(255, 0, 0));

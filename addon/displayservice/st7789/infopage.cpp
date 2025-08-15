@@ -31,7 +31,7 @@ bool ST7789InfoPage::shouldChangePage() {
 }
 
 const char* ST7789InfoPage::nextPageName() {
-    return "homepage";
+    return "configpage";
 }
 
 void ST7789InfoPage::OnButtonPress(Button button) {

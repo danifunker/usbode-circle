@@ -98,9 +98,9 @@ void ST7789ImagesPage::MoveSelection(int delta) {
 
     int newIndex = static_cast<int>(m_SelectedIndex) + delta;
     if (newIndex < 0)
-        newIndex = 0;
+        newIndex = static_cast<int>(fileCount - 1);  // Wrap to last item
     else if (newIndex >= static_cast<int>(fileCount))
-        newIndex = static_cast<int>(fileCount - 1);
+        newIndex = 0;                                // Wrap to first item
 
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
         LOGDBG("%s", m_Service->GetName(newIndex));
