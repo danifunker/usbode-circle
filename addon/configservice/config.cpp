@@ -9,6 +9,7 @@ LOGMODULE("configimpl");
 Config::Config() {
     
     LOGNOTE("Config Constructor");
+    m_properties.SetSpaces(false); // no spaces around "="
 }
 
 Config::~Config() {
