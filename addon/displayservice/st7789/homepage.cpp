@@ -76,7 +76,7 @@ void ST7789HomePage::Refresh() {
         Draw();
     }
 
-    char IPAddress[14];
+    char IPAddress[16];
     GetIPAddress(IPAddress, sizeof(IPAddress));
     if (strcmp(IPAddress, pIPAddress) != 0) {
 	strcpy(pIPAddress, IPAddress);

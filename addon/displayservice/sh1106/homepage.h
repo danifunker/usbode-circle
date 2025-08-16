@@ -38,7 +38,7 @@ class SH1106HomePage : public IPage {
     CSH1106Display* m_Display;
     C2DGraphics* m_Graphics;
     SCSITBService* m_Service = nullptr;
-    char pIPAddress[14];
+    char pIPAddress[16];
     const char* pISOName;
     const char* pUSBSpeed;
     const char* pTitle;
