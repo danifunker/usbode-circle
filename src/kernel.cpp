@@ -185,65 +185,92 @@ TShutdownMode CKernel::Run(void) {
 		LOGNOTE("Started the CD Player service. Default volume is %d", volume);
 	    }
 
-	    // Add SD Card partition logging here (simplified to avoid conflicts)
+	    // Add SD Card partition logging here (comprehensive scan)
 	    LOGNOTE("Analyzing SD Card partitions...");
 	    
-	    // Check the main SD card volume that's already mounted
-	    LOGNOTE("Main SD volume (%s):", DRIVE);
-	    DWORD free_clusters;
-	    FATFS* fs;
-	    FRESULT res = f_getfree(DRIVE, &free_clusters, &fs);
-	    if (res == FR_OK && fs != nullptr) {
-	        // Calculate sizes using 64-bit arithmetic to avoid overflow
-	        DWORD total_clusters = fs->n_fatent - 2;
-	        DWORD cluster_size = fs->csize; // sectors per cluster
+	    // Check multiple partitions (0: through 3:)
+	    for (int partition = 0; partition <= 3; partition++) {
+	        CString drive;
+	        drive.Format("%d:", partition);
 	        
-	        // Use 64-bit arithmetic to prevent overflow
-	        uint64_t total_bytes = (uint64_t)total_clusters * cluster_size * 512;
-	        uint64_t free_bytes = (uint64_t)free_clusters * cluster_size * 512;
+	        LOGNOTE("Checking partition %d (%s):", partition, (const char*)drive);
 	        
-	        // Convert to MB and GB for display
-	        uint32_t total_mb = (uint32_t)(total_bytes / (1024 * 1024));
-	        uint32_t free_mb = (uint32_t)(free_bytes / (1024 * 1024));
-	        uint32_t total_gb = (uint32_t)(total_bytes / (1024 * 1024 * 1024));
-	        uint32_t free_gb = (uint32_t)(free_bytes / (1024 * 1024 * 1024));
+	        DWORD free_clusters;
+	        FATFS* fs;
+	        FRESULT res = f_getfree((const char*)drive, &free_clusters, &fs);
 	        
-	        // Get filesystem type
-	        const char* fs_type = "Unknown";
-	        switch (fs->fs_type) {
-	            case FS_FAT12: fs_type = "FAT12"; break;
-	            case FS_FAT16: fs_type = "FAT16"; break;
-	            case FS_FAT32: fs_type = "FAT32"; break;
-	            case FS_EXFAT: fs_type = "exFAT"; break;
-	        }
-	        
-	        // Display sizes in GB for large drives, MB for smaller ones
-	        if (total_gb > 0) {
-	            LOGNOTE("  Mounted: %s, %u GB total, %u GB free", fs_type, total_gb, free_gb);
+	        if (res == FR_OK && fs != nullptr) {
+	            // Calculate sizes using 64-bit arithmetic to avoid overflow
+	            DWORD total_clusters = fs->n_fatent - 2;
+	            DWORD cluster_size = fs->csize; // sectors per cluster
+	            
+	            // Use 64-bit arithmetic to prevent overflow
+	            uint64_t total_bytes = (uint64_t)total_clusters * cluster_size * 512;
+	            uint64_t free_bytes = (uint64_t)free_clusters * cluster_size * 512;
+	            
+	            // Convert to MB and GB for display
+	            uint32_t total_mb = (uint32_t)(total_bytes / (1024 * 1024));
+	            uint32_t free_mb = (uint32_t)(free_bytes / (1024 * 1024));
+	            uint32_t total_gb = (uint32_t)(total_bytes / (1024 * 1024 * 1024));
+	            uint32_t free_gb = (uint32_t)(free_bytes / (1024 * 1024 * 1024));
+	            
+	            // Get filesystem type
+	            const char* fs_type = "Unknown";
+	            switch (fs->fs_type) {
+	                case FS_FAT12: fs_type = "FAT12"; break;
+	                case FS_FAT16: fs_type = "FAT16"; break;
+	                case FS_FAT32: fs_type = "FAT32"; break;
+	                case FS_EXFAT: fs_type = "exFAT"; break;
+	            }
+	            
+	            // Display sizes in GB for large drives, MB for smaller ones
+	            if (total_gb > 0) {
+	                LOGNOTE("  Mounted: %s, %u GB total, %u GB free", fs_type, total_gb, free_gb);
+	            } else {
+	                LOGNOTE("  Mounted: %s, %u MB total, %u MB free", fs_type, total_mb, free_mb);
+	            }
+	            
+	            // Get volume label
+	            char label[12];
+	            if (f_getlabel((const char*)drive, label, nullptr) == FR_OK && strlen(label) > 0) {
+	                LOGNOTE("  Label: '%s'", label);
+	            }
+	            
+	            // Show partition purpose
+	            if (partition == 0) {
+	                LOGNOTE("  Purpose: Boot partition (USBODE system files)");
+	            } else if (partition == 1) {
+	                LOGNOTE("  Purpose: Data partition (ISO images and user data)");
+	            }
+	            
 	        } else {
-	            LOGNOTE("  Mounted: %s, %u MB total, %u MB free", fs_type, total_mb, free_mb);
+	            if (partition == 0) {
+	                LOGERR("  ERROR: Boot partition mount failed (error %d)", res);
+	            } else {
+	                LOGNOTE("  Not mounted or not present (error %d)", res);
+	            }
 	        }
-	        
-	        // Debug info to help troubleshoot
-	        LOGNOTE("  Debug: clusters=%u, cluster_size=%u sectors, total_sectors=%llu", 
-	               total_clusters, cluster_size, (uint64_t)total_clusters * cluster_size);
-	        
-	        // Get volume label
-	        char label[12];
-	        if (f_getlabel(DRIVE, label, nullptr) == FR_OK && strlen(label) > 0) {
-	            LOGNOTE("  Label: '%s'", label);
-	        }
-	        
-	        LOGNOTE("  Code reference: \"%s\"", DRIVE);
-	    } else {
-	        LOGNOTE("  Mount failed or no filesystem (error %d)", res);
 	    }
-
+	    
 	    LOGNOTE("Partition scanning complete");
 
-    // Check if second partition exists and set it up if needed
+    // Check if setup is required BEFORE starting any services
+    LOGNOTE("Checking if setup is required...");
     SetupStatus* setupStatus = SetupStatus::Get();
-    boolean setupRequired = !setupStatus->checkPartitionExists(1);
+    
+    // Use a more reliable partition check that matches the kernel scan
+    bool partition1Exists = false;
+    DWORD free_clusters;
+    FATFS* fs;
+    FRESULT res = f_getfree("1:", &free_clusters, &fs);
+    if (res == FR_OK && fs != nullptr) {
+        partition1Exists = true;
+        LOGNOTE("Partition 1 verified as accessible via f_getfree");
+    } else {
+        LOGNOTE("Partition 1 not accessible via f_getfree (error %d)", res);
+    }
+    
+    bool setupRequired = !partition1Exists;
     setupStatus->setSetupRequired(setupRequired);
     
     if (setupRequired) {
@@ -255,27 +282,27 @@ TShutdownMode CKernel::Run(void) {
         }
         
         // Give a moment for the display to show completion
-        CScheduler::Get()->MsSleep(2000); // 2 second delay
+        CScheduler::Get()->MsSleep(2000);
         
         LOGNOTE("Rebooting device to complete setup...");
         setupStatus->setStatusMessage("Rebooting to complete setup...");
         
         // Trigger automatic reboot
         DeviceState::Get().setShutdownMode(ShutdownReboot);
-    }
-
-    // Only start CDROM and SCSITB services if second partition exists
-    if (setupStatus->checkPartitionExists(1)) {
+        
+        // IMPORTANT: Don't start services if we're rebooting
+        LOGNOTE("Setup initiated reboot - skipping service startup");
+    } else {
+        LOGNOTE("Second partition exists - starting services normally");
+        
+        // Only start CDROM and SCSITB services if second partition exists
         // Initialize USB CD Service
-        // TODO get USB speed from Properties
         new CDROMService();
         LOGNOTE("Started CDROM service");
 
         // Load our SCSITB Service
         new SCSITBService();
         LOGNOTE("Started SCSITB service");
-    } else {
-        LOGERR("Second partition not available - CDROM and SCSITB services not started");
     }
 
     // Load our Display Service, if needed (this can run without second partition)
