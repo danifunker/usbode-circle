@@ -148,7 +148,7 @@ TShutdownMode CKernel::Run(void) {
     ConfigService* config = new ConfigService();
     LOGNOTE("Started Config service");
 
-    // Start the SetupStatus service early (like FileLogDaemon)
+    // Start the SetupStatus service early
     new SetupStatus();
     LOGNOTE("Started SetupStatus service");
 
@@ -242,50 +242,30 @@ TShutdownMode CKernel::Run(void) {
 	    LOGNOTE("Partition scanning complete");
 
     // Check if second partition exists and set it up if needed
-    boolean setupRequired = !CheckPartitionExists(1);
-    SetupStatus::Get()->setSetupRequired(setupRequired);
+    SetupStatus* setupStatus = SetupStatus::Get();
+    boolean setupRequired = !setupStatus->checkPartitionExists(1);
+    setupStatus->setSetupRequired(setupRequired);
     
     if (setupRequired) {
-        LOGNOTE("Second partition not found - setup required");
+        LOGNOTE("Second partition not found - performing setup");
         
-        SetupStatus::Get()->setSetupInProgress(true);
-        SetupStatus::Get()->setStatusMessage("Setting up partition...");
-        SetupStatus::Get()->setProgress(1, 3);
-        
-        if (!SetupSecondPartition()) {
-            LOGERR("Failed to setup second partition");
-            SetupStatus::Get()->setStatusMessage("Setup failed!");
+        if (!setupStatus->performSetup()) {
+            LOGERR("Setup failed");
             return ShutdownHalt;
         }
-        
-        SetupStatus::Get()->setStatusMessage("Copying files...");
-        SetupStatus::Get()->setProgress(2, 3);
-        
-        // Copy images from 0:/images to 1:/
-        if (!CopyImagesDirectory()) {
-            LOGERR("Failed to copy images directory");
-            SetupStatus::Get()->setStatusMessage("Copy failed!");
-            return ShutdownHalt;
-        }
-        
-        SetupStatus::Get()->setStatusMessage("Finalizing setup...");
-        SetupStatus::Get()->setProgress(3, 3);
-        
-        LOGNOTE("Setup completed successfully");
-        SetupStatus::Get()->setSetupComplete(true);
         
         // Give a moment for the display to show completion
         CScheduler::Get()->MsSleep(2000); // 2 second delay
         
         LOGNOTE("Rebooting device to complete setup...");
-        SetupStatus::Get()->setStatusMessage("Rebooting to complete setup...");
+        setupStatus->setStatusMessage("Rebooting to complete setup...");
         
         // Trigger automatic reboot
         DeviceState::Get().setShutdownMode(ShutdownReboot);
     }
 
     // Only start CDROM and SCSITB services if second partition exists
-    if (CheckPartitionExists(1)) {
+    if (setupStatus->checkPartitionExists(1)) {
         // Initialize USB CD Service
         // TODO get USB speed from Properties
         new CDROMService();

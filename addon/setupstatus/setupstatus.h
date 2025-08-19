@@ -37,10 +37,19 @@ public:
     int getCurrentProgress() const;
     int getTotalProgress() const;
 
+    // Setup operations - NEW
+    bool checkPartitionExists(int partition);
+    bool performSetup();
+
 private:
     static SetupStatus* s_pThis;
     
-    // Status variables (no spinlock needed for simple reads/writes)
+    // Setup helper methods
+    bool setupSecondPartition();
+    bool formatPartition();  // Add this line
+    bool copyImagesDirectory();
+    
+    // Status variables
     volatile bool m_setupRequired;
     volatile bool m_setupInProgress;
     volatile bool m_setupComplete;
