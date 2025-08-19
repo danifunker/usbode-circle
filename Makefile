@@ -349,6 +349,7 @@ package-both: armstub
 	@$(MAKE) multi-arch ARCH_MODE=32 CURRENT_DIST_DIR=dist
 	@$(MAKE) multi-arch-64 ARCH_MODE=64 CURRENT_DIST_DIR=dist64
 
+
 package: package-both
 
 release: 
@@ -357,12 +358,17 @@ release:
 		exit 1; \
 	fi
 	@$(MAKE) package BUILD_NUMBER="$(BUILD_NUMBER)"
+	@$(MAKE) images-dist
 
-image-dist:
+image-single:
 	@echo "Creating image distribution package..."
 	@mkdir -p $(CURRENT_DIST_DIR)/../imgout
 	@scripts/create-img.sh -s $(CURRENT_DIST_DIR) -o $(CURRENT_DIST_DIR)/../imgout -n $(CURRENT_IMG_NAME)
 	@echo "Image distribution package $(CURRENT_IMG_NAME) created in $(CURRENT_DIST_DIR)/../imgout"
+
+images-dist: 
+	@$(MAKE) image-single ARCH_MODE=32 CURRENT_DIST_DIR=dist CURRENT_IMG_NAME=usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT).img
+	@$(MAKE) image-single ARCH_MODE=64 CURRENT_DIST_DIR=dist64 CURRENT_IMG_NAME=usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)-64bit.img
 
 show-build-info:
 	@echo "BASE_VERSION = $(BASE_VERSION)"
@@ -391,3 +397,4 @@ show-config:
 	@echo "USBCDGADGET_CPPFLAGS = $(USBCDGADGET_CPPFLAGS)"
 	@echo "CURRENT_DIST_DIR = $(CURRENT_DIST_DIR)"
 	@echo "CURRENT_ZIP_NAME = $(CURRENT_ZIP_NAME)"
+	@echo "CURRENT_IMG_NAME = $(CURRENT_IMG_NAME)"
