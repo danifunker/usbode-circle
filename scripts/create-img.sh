@@ -87,7 +87,7 @@ echo "Setting up loop device for partition..."
 LOOP_DEVICE=$(sudo losetup --find --show --partscan "$IMG_PATH")
 
 echo "Creating FAT32 filesystem on partition..."
-sudo mkfs.fat -F 32 -n "BOOT" "${LOOP_DEVICE}p1"
+sudo mkfs.fat -F 32 -n "bootfs" "${LOOP_DEVICE}p1"
 
 echo "Creating mount point..."
 mkdir -p "$MOUNT_POINT"
