@@ -189,8 +189,78 @@ TShutdownMode CKernel::Run(void) {
 	    new SCSITBService();
 	    LOGNOTE("Started SCSITB service");
 
+	    // Add SD Card partition logging here
+	    LOGNOTE("Analyzing SD Card partitions...");
+	    
+	    // Check the main SD card volume that's already mounted
+	    LOGNOTE("Main SD volume (%s):", DRIVE);
+	    DWORD free_clusters;
+	    FATFS* fs;
+	    FRESULT res = f_getfree(DRIVE, &free_clusters, &fs);
+	    if (res == FR_OK && fs != nullptr) {
+	        // Calculate sizes
+	        DWORD total_clusters = fs->n_fatent - 2;
+	        DWORD total_mb = (total_clusters * fs->csize * 512) / (1024 * 1024);
+	        DWORD free_mb = (free_clusters * fs->csize * 512) / (1024 * 1024);
+	        
+	        // Get filesystem type
+	        const char* fs_type = "Unknown";
+	        switch (fs->fs_type) {
+	            case FS_FAT12: fs_type = "FAT12"; break;
+	            case FS_FAT16: fs_type = "FAT16"; break;
+	            case FS_FAT32: fs_type = "FAT32"; break;
+	            case FS_EXFAT: fs_type = "exFAT"; break;
+	        }
+	        
+	        LOGNOTE("  Mounted: %s, %u MB total, %u MB free", fs_type, total_mb, free_mb);
+	        
+	        // Get volume label
+	        char label[12];
+	        if (f_getlabel(DRIVE, label, nullptr) == FR_OK && strlen(label) > 0) {
+	            LOGNOTE("  Label: '%s'", label);
+	        }
+	    } else {
+	        LOGNOTE("  Mount failed or no filesystem");
+	    }
+	    
+	    // Try to detect other partitions by attempting to mount them
+	    const char* partition_names[] = {"0:", "1:", "2:", "3:"};
+	    for (int i = 0; i < 4; i++) {
+	        FATFS test_fs;
+	        FRESULT mount_res = f_mount(&test_fs, partition_names[i], 1);
+	        if (mount_res == FR_OK) {
+	            LOGNOTE("Partition %s:", partition_names[i]);
+	            
+	            DWORD part_free;
+	            FATFS* part_fs;
+	            if (f_getfree(partition_names[i], &part_free, &part_fs) == FR_OK) {
+	                DWORD part_total = part_fs->n_fatent - 2;
+	                DWORD part_total_mb = (part_total * part_fs->csize * 512) / (1024 * 1024);
+	                DWORD part_free_mb = (part_free * part_fs->csize * 512) / (1024 * 1024);
+	                
+	                const char* part_type = "Unknown";
+	                switch (part_fs->fs_type) {
+	                    case FS_FAT12: part_type = "FAT12"; break;
+	                    case FS_FAT16: part_type = "FAT16"; break;
+	                    case FS_FAT32: part_type = "FAT32"; break;
+	                    case FS_EXFAT: part_type = "exFAT"; break;
+	                }
+	                
+	                LOGNOTE("  %s, %u MB total, %u MB free", part_type, part_total_mb, part_free_mb);
+	                
+	                char part_label[12];
+	                if (f_getlabel(partition_names[i], part_label, nullptr) == FR_OK && strlen(part_label) > 0) {
+	                    LOGNOTE("  Label: '%s'", part_label);
+	                }
+	            }
+	            
+	            // Unmount the test partition
+	            f_mount(nullptr, partition_names[i], 0);
+	        }
+	    }
+
 	    // Load our Display Service, if needed
-            const char* displayType = config->GetDisplayHat();
+        const char* displayType = config->GetDisplayHat();
 	    if (strcmp(displayType, "none") != 0 ) {
 	        new DisplayService(displayType);
 	        LOGNOTE("Started DisplayService service");
