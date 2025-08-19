@@ -1,7 +1,34 @@
 diff --git a/addon/fatfs/ffconf.h b/addon/fatfs/ffconf.h
-index 6a1efcfe..4c721fc0 100644
+index 6a1efcfe..0b3bf4b1 100644
 --- a/addon/fatfs/ffconf.h
 +++ b/addon/fatfs/ffconf.h
+@@ -30,7 +30,7 @@
+ /  f_findnext(). (0:Disable, 1:Enable 2:Enable with matching altname[] too) */
+ 
+ 
+-#define FF_USE_MKFS		0
++#define FF_USE_MKFS		1
+ /* This option switches f_mkfs(). (0:Disable or 1:Enable) */
+ 
+ 
+@@ -38,7 +38,7 @@
+ /* This option switches fast seek feature. (0:Disable or 1:Enable) */
+ 
+ 
+-#define FF_USE_EXPAND	0
++#define FF_USE_EXPAND	1
+ /* This option switches f_expand(). (0:Disable or 1:Enable) */
+ 
+ 
+@@ -47,7 +47,7 @@
+ /  (0:Disable or 1:Enable) Also FF_FS_READONLY needs to be 0 to enable this option. */
+ 
+ 
+-#define FF_USE_LABEL	0
++#define FF_USE_LABEL	1
+ /* This option switches volume label API functions, f_getlabel() and f_setlabel().
+ /  (0:Disable or 1:Enable) */
+ 
 @@ -184,7 +184,7 @@
  */
  
