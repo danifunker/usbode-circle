@@ -11,18 +11,21 @@ LOGMODULE("setupstatus");
 SetupStatus* SetupStatus::s_pThis = nullptr;
 
 SetupStatus::SetupStatus()
-    : m_setupRequired(false),
-      m_setupInProgress(false),
+    : CTask(TASK_STACK_SIZE),
+      m_setupRequired(false),
+      m_setupInProgress(false), 
       m_setupComplete(false),
       m_currentProgress(0),
-      m_totalProgress(0)
-{
-    // I am the one and only!
-    assert(s_pThis == nullptr);
-    s_pThis = this;
+      m_totalProgress(0) {
     
-    SetName(FromSetupStatus);
+    s_pThis = this;
     LOGNOTE("SetupStatus service initialized");
+    
+    // Log initial state
+    LOGNOTE("Initial state: required=%s, inProgress=%s, complete=%s", 
+           m_setupRequired ? "YES" : "NO",
+           m_setupInProgress ? "YES" : "NO", 
+           m_setupComplete ? "YES" : "NO");
 }
 
 SetupStatus::~SetupStatus() {
@@ -32,30 +35,40 @@ SetupStatus::~SetupStatus() {
 void SetupStatus::Run() {
     LOGNOTE("SetupStatus service started");
     
+    // Log partition check results on startup
+    for (int i = 0; i <= 3; i++) {
+        bool exists = checkPartitionExists(i);
+        LOGNOTE("Partition %d exists: %s", i, exists ? "YES" : "NO");
+    }
+    
     while (true) {
-        m_Event.Clear();
+        // Log current state periodically
+        static unsigned lastStateLog = 0;
+        unsigned currentTime = CTimer::GetClockTicks();
         
-        // Simple periodic logging - no complex synchronization needed
-        if (m_setupInProgress) {
-            if (m_totalProgress > 0) {
-                LOGNOTE("Setup progress: %s (%d/%d)", 
-                       (const char*)m_statusMessage, 
-                       m_currentProgress, 
-                       m_totalProgress);
-            } else if (m_statusMessage.GetLength() > 0) {
-                LOGNOTE("Setup status: %s", (const char*)m_statusMessage);
+        if (currentTime - lastStateLog > 10 * HZ) { // Every 10 seconds
+            LOGNOTE("Current state: required=%s, inProgress=%s, complete=%s, progress=%d/%d", 
+                   m_setupRequired ? "YES" : "NO",
+                   m_setupInProgress ? "YES" : "NO", 
+                   m_setupComplete ? "YES" : "NO",
+                   m_currentProgress, m_totalProgress);
+            
+            if (m_statusMessage.GetLength() > 0) {
+                LOGNOTE("Status message: '%s'", (const char*)m_statusMessage);
             }
+            
+            lastStateLog = currentTime;
         }
         
-        m_Event.Wait();
+        // Sleep for 5 seconds
+        CScheduler::Get()->MsSleep(5000);
     }
 }
 
 void SetupStatus::setSetupRequired(bool required) {
     if (m_setupRequired != required) {
         m_setupRequired = required;
-        LOGNOTE("Setup required: %s", required ? "YES" : "NO");
-        m_Event.Set(); // Wake up the task
+        LOGNOTE("Setup required changed: %s", required ? "YES" : "NO");
     }
 }
 
@@ -66,12 +79,11 @@ bool SetupStatus::isSetupRequired() const {
 void SetupStatus::setSetupInProgress(bool inProgress) {
     if (m_setupInProgress != inProgress) {
         m_setupInProgress = inProgress;
-        LOGNOTE("Setup in progress: %s", inProgress ? "YES" : "NO");
+        LOGNOTE("Setup in progress changed: %s", inProgress ? "YES" : "NO");
         if (inProgress) {
             m_currentProgress = 0;
             m_totalProgress = 0;
         }
-        m_Event.Set(); // Wake up the task
     }
 }
 
@@ -88,6 +100,7 @@ void SetupStatus::setSetupComplete(bool complete) {
         m_Event.Set(); // Wake up the task
     } else if (!complete) {
         m_setupComplete = complete;
+        LOGNOTE("Setup complete changed: %s", complete ? "YES" : "NO");
     }
 }
 
@@ -99,7 +112,7 @@ void SetupStatus::setStatusMessage(const char* message) {
     CString newMessage = message ? message : "";
     if (m_statusMessage.Compare(newMessage) != 0) {
         m_statusMessage = newMessage;
-        m_Event.Set(); // Wake up the task for immediate logging
+        LOGNOTE("Status message changed: '%s'", (const char*)m_statusMessage);
     }
 }
 
@@ -108,9 +121,11 @@ const char* SetupStatus::getStatusMessage() const {
 }
 
 void SetupStatus::setProgress(int current, int total) {
-    m_currentProgress = current;
-    m_totalProgress = total;
-    m_Event.Set(); // Wake up the task
+    if (m_currentProgress != current || m_totalProgress != total) {
+        m_currentProgress = current;
+        m_totalProgress = total;
+        LOGNOTE("Progress changed: %d/%d", current, total);
+    }
 }
 
 int SetupStatus::getCurrentProgress() const {
@@ -125,13 +140,31 @@ bool SetupStatus::checkPartitionExists(int partition) {
     CString drive;
     drive.Format("%d:", partition);
     
+    LOGNOTE("Checking if partition %d exists...", partition);
+    
+    // First try to mount with force=0 (no format)
     FATFS fs;
     FRESULT result = f_mount(&fs, (const char*)drive, 0);
-    if (result == FR_OK) {
-        f_mount(nullptr, (const char*)drive, 0); // Unmount test mount
-        return true;
+    if (result != FR_OK) {
+        LOGNOTE("Partition %d does not exist (mount failed with error %d)", partition, result);
+        return false;
     }
-    return false;
+    
+    // Now try to access the filesystem to verify it's actually usable
+    DWORD free_clusters;
+    FATFS* fs_ptr;
+    result = f_getfree((const char*)drive, &free_clusters, &fs_ptr);
+    
+    // Unmount regardless of result
+    f_mount(nullptr, (const char*)drive, 0);
+    
+    if (result == FR_OK && fs_ptr != nullptr) {
+        LOGNOTE("Partition %d exists and is accessible", partition);
+        return true;
+    } else {
+        LOGNOTE("Partition %d mount succeeded but filesystem not accessible (error %d)", partition, result);
+        return false;
+    }
 }
 
 bool SetupStatus::performSetup() {
