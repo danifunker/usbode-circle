@@ -48,6 +48,7 @@ CURRENT_PREFIX = $(if $(filter 64,$(ARCH_MODE)),$(PREFIX64),$(PREFIX))
 CURRENT_SUPPORTED = $(if $(filter 64,$(ARCH_MODE)),$(SUPPORTED_RASPPI_64),$(SUPPORTED_RASPPI))
 CURRENT_DIST_DIR = $(if $(filter 64,$(ARCH_MODE)),$(DIST_DIR)64,$(DIST_DIR))
 CURRENT_ZIP_NAME = $(if $(filter 64,$(ARCH_MODE)),usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)-64bit.zip,$(ZIP_NAME))
+CURRENT_IMG_NAME = $(if $(filter 64,$(ARCH_MODE)),usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)-64bit.img,usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT).img)
 
 RASPPI ?= $(if $(CURRENT_SUPPORTED),$(word 1,$(CURRENT_SUPPORTED)),1)
 # Fallback if empty
@@ -356,6 +357,12 @@ release:
 		exit 1; \
 	fi
 	@$(MAKE) package BUILD_NUMBER="$(BUILD_NUMBER)"
+
+image-dist:
+	@echo "Creating image distribution package..."
+	@mkdir -p $(CURRENT_DIST_DIR)/../imgout
+	@scripts/create-img.sh -s $(CURRENT_DIST_DIR) -o $(CURRENT_DIST_DIR)/../imgout -n $(CURRENT_IMG_NAME)
+	@echo "Image distribution package $(CURRENT_IMG_NAME) created in $(CURRENT_DIST_DIR)/../imgout"
 
 show-build-info:
 	@echo "BASE_VERSION = $(BASE_VERSION)"
