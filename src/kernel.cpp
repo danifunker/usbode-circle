@@ -180,15 +180,6 @@ TShutdownMode CKernel::Run(void) {
 		LOGNOTE("Started the CD Player service. Default volume is %d", volume);
 	    }
 
-	    // Initialize USB CD Service
-	    // TODO get USB speed from Properties
-	    new CDROMService();
-	    LOGNOTE("Started CDROM service");
-
-	    // Load our SCSITB Service
-	    new SCSITBService();
-	    LOGNOTE("Started SCSITB service");
-
 	    // Add SD Card partition logging here (simplified to avoid conflicts)
 	    LOGNOTE("Analyzing SD Card partitions...");
 	    
@@ -244,6 +235,16 @@ TShutdownMode CKernel::Run(void) {
 	    }
 
 	    LOGNOTE("Partition scanning complete");
+
+	    // Initialize USB CD Service
+	    // TODO get USB speed from Properties
+	    new CDROMService();
+	    LOGNOTE("Started CDROM service");
+
+	    // Load our SCSITB Service
+	    new SCSITBService();
+	    LOGNOTE("Started SCSITB service");
+
 
 	    // Load our Display Service, if needed
 	    const char* displayType = config->GetDisplayHat();
