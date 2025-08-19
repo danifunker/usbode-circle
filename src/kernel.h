@@ -98,6 +98,11 @@ private:
 	CSPIMaster* m_pSPIMaster;
 	void InitializeNTP(const char* timezone);
 	static const char ConfigOptionTimeZone[];
+
+	// Setup functions
+	boolean SetupSecondPartition(void);
+	boolean CopyImagesDirectory(void);
+	boolean CheckPartitionExists(int partition);
 };
 
 #endif
