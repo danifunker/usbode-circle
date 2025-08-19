@@ -13,6 +13,14 @@ jobs:
     runs-on: [self-hosted]
 
     steps:
+    - name: Clean workspace
+      run: |
+        git clean -ffdx
+        git reset --hard HEAD
+        git submodule foreach --recursive git clean -ffdx
+        git submodule foreach --recursive git reset --hard HEAD
+        git submodule deinit --all --force
+    
     - uses: actions/checkout@v4
       with:
         submodules:  recursive
