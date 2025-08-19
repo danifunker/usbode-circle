@@ -31,6 +31,7 @@
 #include <circle/logger.h>
 #include <displayservice/displayservice.h>
 #include <configservice/configservice.h>
+#include <setupstatus/setupstatus.h>
 
 #include <circle/time.h>
 
@@ -147,6 +148,10 @@ TShutdownMode CKernel::Run(void) {
     ConfigService* config = new ConfigService();
     LOGNOTE("Started Config service");
 
+    // Start the SetupStatus service early (like FileLogDaemon)
+    new SetupStatus();
+    LOGNOTE("Started SetupStatus service");
+
     // Start the file logging service
     const char* logfile = config->GetLogfile();
     if (logfile) {
@@ -236,22 +241,69 @@ TShutdownMode CKernel::Run(void) {
 
 	    LOGNOTE("Partition scanning complete");
 
-	    // Initialize USB CD Service
-	    // TODO get USB speed from Properties
-	    new CDROMService();
-	    LOGNOTE("Started CDROM service");
+    // Check if second partition exists and set it up if needed
+    boolean setupRequired = !CheckPartitionExists(1);
+    SetupStatus::Get()->setSetupRequired(setupRequired);
+    
+    if (setupRequired) {
+        LOGNOTE("Second partition not found - setup required");
+        
+        SetupStatus::Get()->setSetupInProgress(true);
+        SetupStatus::Get()->setStatusMessage("Setting up partition...");
+        SetupStatus::Get()->setProgress(1, 3);
+        
+        if (!SetupSecondPartition()) {
+            LOGERR("Failed to setup second partition");
+            SetupStatus::Get()->setStatusMessage("Setup failed!");
+            return ShutdownHalt;
+        }
+        
+        SetupStatus::Get()->setStatusMessage("Copying files...");
+        SetupStatus::Get()->setProgress(2, 3);
+        
+        // Copy images from 0:/images to 1:/
+        if (!CopyImagesDirectory()) {
+            LOGERR("Failed to copy images directory");
+            SetupStatus::Get()->setStatusMessage("Copy failed!");
+            return ShutdownHalt;
+        }
+        
+        SetupStatus::Get()->setStatusMessage("Finalizing setup...");
+        SetupStatus::Get()->setProgress(3, 3);
+        
+        LOGNOTE("Setup completed successfully");
+        SetupStatus::Get()->setSetupComplete(true);
+        
+        // Give a moment for the display to show completion
+        CScheduler::Get()->MsSleep(2000); // 2 second delay
+        
+        LOGNOTE("Rebooting device to complete setup...");
+        SetupStatus::Get()->setStatusMessage("Rebooting to complete setup...");
+        
+        // Trigger automatic reboot
+        DeviceState::Get().setShutdownMode(ShutdownReboot);
+    }
 
-	    // Load our SCSITB Service
-	    new SCSITBService();
-	    LOGNOTE("Started SCSITB service");
+    // Only start CDROM and SCSITB services if second partition exists
+    if (CheckPartitionExists(1)) {
+        // Initialize USB CD Service
+        // TODO get USB speed from Properties
+        new CDROMService();
+        LOGNOTE("Started CDROM service");
 
+        // Load our SCSITB Service
+        new SCSITBService();
+        LOGNOTE("Started SCSITB service");
+    } else {
+        LOGERR("Second partition not available - CDROM and SCSITB services not started");
+    }
 
-	    // Load our Display Service, if needed
-	    const char* displayType = config->GetDisplayHat();
-	    if (strcmp(displayType, "none") != 0 ) {
-	        new DisplayService(displayType);
-	        LOGNOTE("Started DisplayService service");
-	    }
+    // Load our Display Service, if needed (this can run without second partition)
+    const char* displayType = config->GetDisplayHat();
+    if (strcmp(displayType, "none") != 0 ) {
+        new DisplayService(displayType);
+        LOGNOTE("Started DisplayService service");
+    }
 
     } else { // Mass Storage Device Mode
 	    // Start our SD Card Service
