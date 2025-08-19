@@ -98,3 +98,4 @@ gitinfo.h
 /usbode*.zip
 .vscode/
 dist64/
+imgout/
