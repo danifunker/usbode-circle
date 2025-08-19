@@ -211,6 +211,9 @@ bool ConfigService::Save() {
 void ConfigService::Run(void) {
     LOGNOTE("Configservice Run Loop entered");
 
+    // Let the system settle
+    CScheduler::Get()->MsSleep(2000);
+
     while (true) {
             // See if any configuration needs saving. The "Set" method is
             // called from an interrupt and we can't "Save" to disk in an
@@ -221,7 +224,7 @@ void ConfigService::Run(void) {
                     LOGNOTE("Saved configuration");
             }
 
-            CScheduler::Get()->MsSleep(20);
+            CScheduler::Get()->MsSleep(100);
     }
 
 }
