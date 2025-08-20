@@ -233,7 +233,7 @@ bool SetupStatus::setupSecondPartition() {
         total_sectors = 31116288; // 15.9GB default
         LOGWARN("Could not detect SD card size, using default: %lu sectors", (unsigned long)total_sectors);
     } else {
-        LOGNOTE("Using SD card size: %lu sectors (~%.1f GB)", 
+        LOGNOTE("Detected SD card size: %lu sectors (~%.1f GB)", 
                 (unsigned long)total_sectors, (float)(total_sectors * 512) / (1024*1024*1024));
     }
     
@@ -316,6 +316,51 @@ bool SetupStatus::setupSecondPartition() {
     }
     
     LOGNOTE("f_fdisk completed successfully!");
+    
+    // IMPORTANT: f_fdisk() creates partitions but doesn't format them
+    // We need to format partition 1 as FAT32 (boot partition)
+    LOGNOTE("Formatting partition 1 as FAT32 (boot partition)...");
+    
+    // Allocate working buffer for formatting partition 1
+    BYTE* format_buffer = new BYTE[work_buffer_size];
+    if (!format_buffer) {
+        LOGERR("Failed to allocate buffer for partition 1 formatting");
+        return false;
+    }
+    
+    // Set up format parameters for FAT32 (partition 1)
+    MKFS_PARM p1_fmt_params = {0};
+    p1_fmt_params.fmt = FM_FAT32;        // Format as FAT32
+    p1_fmt_params.n_fat = 2;             // FAT32 uses 2 FATs  
+    p1_fmt_params.align = 0;             // Auto alignment
+    p1_fmt_params.n_root = 0;            // Auto for FAT32
+    p1_fmt_params.au_size = 0;           // Auto cluster size
+    
+    LOGNOTE("Partition 1 format parameters:");
+    LOGNOTE("  Filesystem: FAT32");
+    LOGNOTE("  Number of FATs: %u", p1_fmt_params.n_fat);
+    LOGNOTE("  Cluster size: auto");
+    
+    // Format partition 1 as FAT32
+    result = f_mkfs("0:", &p1_fmt_params, format_buffer, work_buffer_size);
+    
+    delete[] format_buffer;
+    
+    if (result != FR_OK) {
+        LOGERR("Failed to format partition 1 as FAT32 (error %d)", result);
+        return false;
+    }
+    
+    // Set volume label for boot partition
+    result = f_setlabel("0:bootfs");
+    if (result != FR_OK) {
+        LOGWARN("Failed to set boot partition label (error %d)", result);
+    } else {
+        LOGNOTE("Boot partition labeled 'bootfs'");
+    }
+    
+    LOGNOTE("Partition 1 formatted as FAT32 successfully");
+    LOGWARN("Boot partition is empty - boot files need to be restored!");
     
     // Verify the partition table was created correctly
     LOGNOTE("Checking partition table creation...");
@@ -529,13 +574,4 @@ bool SetupStatus::copyImagesDirectory() {
     
     LOGNOTE("Images directory copy completed");
     return true;
-}
-
-// Fallback to known size if detection fails
-if (total_sectors == 0) {
-    total_sectors = 31116288; // 15.9GB default
-    LOGWARN("Could not detect SD card size, using default: %lu sectors", (unsigned long)total_sectors);
-} else {
-    LOGNOTE("Detected SD card size: %lu sectors (~%.1f GB)", 
-            (unsigned long)total_sectors, (float)(total_sectors * 512) / (1024*1024*1024));
 }
