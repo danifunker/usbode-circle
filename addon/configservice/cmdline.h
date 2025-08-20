@@ -6,7 +6,7 @@
 #define MAX_KEY_LEN 64
 #define MAX_VALUE_LEN 256
 
-#define CMDLINE_FILE "SD:/cmdline.txt"
+#define CMDLINE_FILE "0:/cmdline.txt"
 
 struct Pair {
     char key[MAX_KEY_LEN];

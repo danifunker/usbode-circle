@@ -85,7 +85,7 @@
 "                        <label for=\"logfile\">Log File Path:</label>\n"
 "                        <div class=\"current-value\">Current: {{current_logfile}}</div>\n"
 "                        <input type=\"text\" name=\"logfile\" id=\"logfile\" value=\"{{logfile}}\" size=\"30\">\n"
-"                        <div class=\"current-value\">Leave empty to disable file logging. Will be automatically prefixed with SD:/</div>\n"
+"                        <div class=\"current-value\">Leave empty to disable file logging. Will be automatically prefixed with 0:/</div>\n"
 "                    </div>\n"
 "                    <div class=\"form-group\">\n"
 "                        <label for=\"loglevel\">Log Level:</label>\n"

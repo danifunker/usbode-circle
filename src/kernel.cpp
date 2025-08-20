@@ -45,7 +45,7 @@
 #define SPI_MASTER_DEVICE 0
 
 // Define the images directory
-#define IMAGES_DIR "0:/images"
+#define IMAGES_DIR "1:/"
 
 LOGMODULE("kernel");
 

@@ -3,7 +3,7 @@
 
 #include "simpleini.hpp"
 
-#define CONFIG_FILE "SD:/config.txt"
+#define CONFIG_FILE "0:/config.txt"
 
 class Config
 {

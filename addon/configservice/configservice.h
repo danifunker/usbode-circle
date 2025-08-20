@@ -19,7 +19,7 @@ public:
     unsigned GetScreenTimeout(unsigned defaultValue=30);
     unsigned GetLogLevel(unsigned defaultValue=4);
     unsigned GetMode(unsigned defaultValue=0);
-    const char* GetLogfile(const char *defaultValue="SD:/usbode-log.txt");
+    const char* GetLogfile(const char *defaultValue="0:/usbode-log.txt");
     bool GetUSBFullSpeed();
     unsigned GetST7789Brightness(unsigned defaultValue=1024);
     unsigned GetST7789SleepBrightness(unsigned defaultValue=32);
