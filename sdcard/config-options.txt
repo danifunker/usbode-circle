@@ -16,6 +16,6 @@ usbspeed=full                   Overrides the USB speed to match 1.1 specificati
 config.txt options
 [usbode]
 current_image=image.iso         Filename of the current image. If an image is incompabile with USBOE, it's possible to update this file from a different computer to force a known-good image to load. This option is also updated by USBODE. All images should exist in the /images folder
-logfile=SD:/usbode-logs.txt     Sets the filename for the logs. If this option is removed no logfile is created. This is important for debugging and troubleshooting
+logfile=0:/usbode-logs.txt     Sets the filename for the logs. If this option is removed no logfile is created. This is important for debugging and troubleshooting
 displayhat=pirateaudiolineout   This sets the display HAT and GPIO buttons to work with the pirate audio line out device model PIM 483. The other options that are valid here is waveshare and none. I have not seen any issues by setting this option to pirateaudiolineout and not having the pirateaudio connected. However if the option is set incorrectly (i.e. the waveshare is connected by the pirateaudio is setup in the options) then the display will not work correctly.
 

@@ -18,7 +18,7 @@
 #include "st7789/display.h"
 #include "sh1106/display.h"
 
-#define CONFIG_FILE "SD:/config.txt"
+#define CONFIG_FILE "0:/config.txt"
 
 LOGMODULE("displayservice");
 

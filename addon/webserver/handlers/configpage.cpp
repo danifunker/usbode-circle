@@ -113,9 +113,9 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             if (form_params.count("logfile")) {
                 std::string logfile = form_params["logfile"];
                 if (!logfile.empty()) {
-                    // Ensure SD:/ prefix
-                    if (logfile.find("SD:/") != 0) {
-                        logfile = "SD:/" + logfile;
+                    // Ensure 0:/ prefix
+                    if (logfile.find("0:/") != 0) {
+                        logfile = "0:/" + logfile;
                     }
                     config->SetLogfile(logfile.c_str());
                 }
@@ -173,8 +173,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string current_usbspeed = config->GetUSBFullSpeed() ? "full" : "high";
     std::string current_logfile = config->GetLogfile();
     
-    // Remove SD:/ prefix from logfile for display
-    if (current_logfile.find("SD:/") == 0) {
+    // Remove 0:/ prefix from logfile for display
+    if (current_logfile.find("0:/") == 0) {
         current_logfile = current_logfile.substr(4);
     }
     
