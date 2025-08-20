@@ -7,12 +7,6 @@
 static const char FromSetupStatus[] = "setupstatus";
 LOGMODULE("setupstatus");
 
-// Global partition mapping for FatFs
-PARTITION VolToPart[FF_VOLUMES] = {
-    {0, 1},    // Volume 0: SD card, partition 1 (first partition)
-    {0, 2}     // Volume 1: SD card, partition 2 (second partition)
-};
-
 SetupStatus* SetupStatus::s_pThis = nullptr;
 
 SetupStatus::SetupStatus(CEMMCDevice* pEMMC, const PARTITION* partitionMap)
