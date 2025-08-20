@@ -148,7 +148,7 @@ bool SCSITBService::RefreshCache() {
     // Read our directory of images
     // and populate m_FileEntries
     DIR dir;
-    FRESULT fr = f_opendir(&dir, "/images");
+    FRESULT fr = f_opendir(&dir, "1:");
     if (fr != FR_OK) {
         // TODO: handle error as needed
         return false;
