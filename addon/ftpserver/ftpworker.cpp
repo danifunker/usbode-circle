@@ -130,7 +130,7 @@ CFTPWorker::CFTPWorker(CSocket* pControlSocket, const char* pExpectedUser, const
       m_Password(),
       m_DataType(TDataType::ASCII),
       m_TransferMode(TTransferMode::Active),
-      m_CurrentPath("SD:"),
+      m_CurrentPath("1:"),
       m_RenameFrom() {
     ++s_nInstanceCount;
     m_LogName.Format("ftpd[%d]", s_nInstanceCount);
@@ -212,12 +212,12 @@ void CFTPWorker::Run() {
 
     // Try to change to images directory after successful connection
     DIR Dir;
-    if (f_opendir(&Dir, "SD:/images") == FR_OK) {
+    if (f_opendir(&Dir, "1:/") == FR_OK) {
         f_closedir(&Dir);
-        m_CurrentPath = "SD:/images";
-        LOGNOTE("Starting in images directory");
+        m_CurrentPath = "1:/";
+        LOGNOTE("Starting in IMGSTORE Partition");
     } else {
-        LOGNOTE("Starting in SD root directory (images directory not found)");
+        LOGNOTE("Starting in 0:/ root directory (IMGSTORE Partition not found)");
     }
 
     CTimer* const pTimer = CTimer::Get();

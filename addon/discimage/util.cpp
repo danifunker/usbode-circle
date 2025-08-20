@@ -121,7 +121,7 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
 ICueDevice* loadCueBinFileDevice(const char* imageName) {
     // Construct full path
     char fullPath[255];  // FIXME limits
-    snprintf(fullPath, sizeof(fullPath), "SD:/images/%s", imageName);
+    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
 
     FIL* imageFile = new FIL();
     char* cue_str = nullptr;
