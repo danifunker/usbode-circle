@@ -143,8 +143,6 @@ CKernel* CKernel::Get() {
 }
 
 TShutdownMode CKernel::Run(void) {
-	
-
     // Initialize our config service
     ConfigService* config = new ConfigService();
     LOGNOTE("Started Config service");
@@ -173,153 +171,85 @@ TShutdownMode CKernel::Run(void) {
     int mode = config->GetMode();
     LOGNOTE("Got mode = %d", mode);
 
+    // Start Display Service NOW - after initial logging but before setup check
+    const char* displayType = config->GetDisplayHat();
+    if (strcmp(displayType, "none") != 0) {
+        new DisplayService(displayType);
+        LOGNOTE("Started DisplayService service (early for setup progress)");
+        
+        // Give the display a moment to initialize
+        CScheduler::Get()->MsSleep(500);
+    }
+
     if (mode == 0) { // CDROM Mode
 
-
-	    // Initialize the CD Player service
-	    const char* pSoundDevice = m_Options.GetSoundDevice();
-	    
-	    //Currently supporting PWM and I2S sound devices. HDMI needs more work.
-	    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
-    		unsigned int volume = config->GetDefaultVolume();
-		if (volume > 0xff)
-			volume = 0xff;
-		CCDPlayer* player = new CCDPlayer(pSoundDevice);
-		player->SetDefaultVolume((u8)volume);
-		LOGNOTE("Started the CD Player service. Default volume is %d", volume);
-	    }
-
-	    // Add SD Card partition logging here (comprehensive scan)
-	    LOGNOTE("Analyzing SD Card partitions...");
-	    
-	    // Check multiple partitions (0: through 3:)
-	    for (int partition = 0; partition <= 3; partition++) {
-	        CString drive;
-	        drive.Format("%d:", partition);
-	        
-	        LOGNOTE("Checking partition %d (%s):", partition, (const char*)drive);
-	        
-	        DWORD free_clusters;
-	        FATFS* fs;
-	        FRESULT res = f_getfree((const char*)drive, &free_clusters, &fs);
-	        
-	        if (res == FR_OK && fs != nullptr) {
-	            // Calculate sizes using 64-bit arithmetic to avoid overflow
-	            DWORD total_clusters = fs->n_fatent - 2;
-	            DWORD cluster_size = fs->csize; // sectors per cluster
-	            
-	            // Use 64-bit arithmetic to prevent overflow
-	            uint64_t total_bytes = (uint64_t)total_clusters * cluster_size * 512;
-	            uint64_t free_bytes = (uint64_t)free_clusters * cluster_size * 512;
-	            
-	            // Convert to MB and GB for display
-	            uint32_t total_mb = (uint32_t)(total_bytes / (1024 * 1024));
-	            uint32_t free_mb = (uint32_t)(free_bytes / (1024 * 1024));
-	            uint32_t total_gb = (uint32_t)(total_bytes / (1024 * 1024 * 1024));
-	            uint32_t free_gb = (uint32_t)(free_bytes / (1024 * 1024 * 1024));
-	            
-	            // Get filesystem type
-	            const char* fs_type = "Unknown";
-	            switch (fs->fs_type) {
-	                case FS_FAT12: fs_type = "FAT12"; break;
-	                case FS_FAT16: fs_type = "FAT16"; break;
-	                case FS_FAT32: fs_type = "FAT32"; break;
-	                case FS_EXFAT: fs_type = "exFAT"; break;
-	            }
-	            
-	            // Display sizes in GB for large drives, MB for smaller ones
-	            if (total_gb > 0) {
-	                LOGNOTE("  Mounted: %s, %u GB total, %u GB free", fs_type, total_gb, free_gb);
-	            } else {
-	                LOGNOTE("  Mounted: %s, %u MB total, %u MB free", fs_type, total_mb, free_mb);
-	            }
-	            
-	            // Get volume label
-	            char label[12];
-	            if (f_getlabel((const char*)drive, label, nullptr) == FR_OK && strlen(label) > 0) {
-	                LOGNOTE("  Label: '%s'", label);
-	            }
-	            
-	            // Show partition purpose
-	            if (partition == 0) {
-	                LOGNOTE("  Purpose: Boot partition (USBODE system files)");
-	            } else if (partition == 1) {
-	                LOGNOTE("  Purpose: Data partition (ISO images and user data)");
-	            }
-	            
-	        } else {
-	            if (partition == 0) {
-	                LOGERR("  ERROR: Boot partition mount failed (error %d)", res);
-	            } else {
-	                LOGNOTE("  Not mounted or not present (error %d)", res);
-	            }
-	        }
-	    }
-	    
-	    LOGNOTE("Partition scanning complete");
-
-    // Check if setup is required BEFORE starting any services
-    LOGNOTE("Checking if setup is required...");
-    SetupStatus* setupStatus = SetupStatus::Get();
-    
-    // Use a more reliable partition check that matches the kernel scan
-    bool partition1Exists = false;
-    DWORD free_clusters;
-    FATFS* fs;
-    FRESULT res = f_getfree("1:", &free_clusters, &fs);
-    if (res == FR_OK && fs != nullptr) {
-        partition1Exists = true;
-        LOGNOTE("Partition 1 verified as accessible via f_getfree");
-    } else {
-        LOGNOTE("Partition 1 not accessible via f_getfree (error %d)", res);
-    }
-    
-    bool setupRequired = !partition1Exists;
-    setupStatus->setSetupRequired(setupRequired);
-    
-    if (setupRequired) {
-        LOGNOTE("Second partition not found - performing setup");
+        // Initialize the CD Player service
+        const char* pSoundDevice = m_Options.GetSoundDevice();
         
-        if (!setupStatus->performSetup()) {
-            LOGERR("Setup failed");
-            return ShutdownHalt;
+        //Currently supporting PWM and I2S sound devices. HDMI needs more work.
+        if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
+            unsigned int volume = config->GetDefaultVolume();
+            if (volume > 0xff)
+                volume = 0xff;
+            CCDPlayer* player = new CCDPlayer(pSoundDevice);
+            player->SetDefaultVolume((u8)volume);
+            LOGNOTE("Started the CD Player service. Default volume is %d", volume);
         }
-        
-        // Give a moment for the display to show completion
-        CScheduler::Get()->MsSleep(2000);
-        
-        LOGNOTE("Rebooting device to complete setup...");
-        setupStatus->setStatusMessage("Rebooting to complete setup...");
-        
-        // Trigger automatic reboot
-        DeviceState::Get().setShutdownMode(ShutdownReboot);
-        
-        // IMPORTANT: Don't start services if we're rebooting
-        LOGNOTE("Setup initiated reboot - skipping service startup");
-    } else {
-        LOGNOTE("Second partition exists - starting services normally");
-        
-        // Only start CDROM and SCSITB services if second partition exists
-        // Initialize USB CD Service
-        new CDROMService();
-        LOGNOTE("Started CDROM service");
 
-        // Load our SCSITB Service
-        new SCSITBService();
-        LOGNOTE("Started SCSITB service");
-    }
+        // Check setup status and handle setup if needed
+        LOGNOTE("Checking setup status...");
+        SetupStatus* setupStatus = SetupStatus::Get();
+        
+        if (setupStatus->isSetupRequired()) {
+            LOGNOTE("Setup is required - starting setup process");
+            
+            if (!setupStatus->performSetup()) {
+                LOGERR("Setup failed");
+                return ShutdownHalt;
+            }
+            
+            // Give a moment for the display to show completion
+            CScheduler::Get()->MsSleep(2000);
+            
+            LOGNOTE("Rebooting device to complete setup...");
+            setupStatus->setStatusMessage("Rebooting to complete setup...");
+            
+            // Trigger automatic reboot
+            DeviceState::Get().setShutdownMode(ShutdownReboot);
+            
+            // IMPORTANT: Don't start services if we're rebooting
+            LOGNOTE("Setup initiated reboot - skipping service startup");
+        } else {
+            LOGNOTE("Setup not required - mounting partitions and starting services");
+            
+            // Mount both partitions for normal operation
+            LOGNOTE("Mounting partitions for normal operation...");
+            
+            // Partition 0 should already be mounted from initialization
+            // But let's verify partition 1 is mounted
+            FATFS fs1;
+            FRESULT fr1 = f_mount(&fs1, "1:", 1);
+            if (fr1 != FR_OK) {
+                LOGERR("Failed to mount partition 1: %d", fr1);
+                return ShutdownHalt;
+            }
+            LOGNOTE("Partition 1 (data/images) mounted successfully");
+            
+            // Now start services that depend on both partitions
+            new CDROMService();
+            LOGNOTE("Started CDROM service");
 
-    // Load our Display Service, if needed (this can run without second partition)
-    const char* displayType = config->GetDisplayHat();
-    if (strcmp(displayType, "none") != 0 ) {
-        new DisplayService(displayType);
-        LOGNOTE("Started DisplayService service");
-    }
+            new SCSITBService();
+            LOGNOTE("Started SCSITB service");
+        }
+
+        // Display service was already started earlier
+        // (No need to start it again here - remove the duplicate)
 
     } else { // Mass Storage Device Mode
-	    // Start our SD Card Service
-	    new SDCARDService(&m_EMMC);
-	    LOGNOTE("Started SDCARD Service");
+        // Start our SD Card Service
+        new SDCARDService(&m_EMMC);
+        LOGNOTE("Started SDCARD Service");
     }
 
     static const char ServiceName[] = HOSTNAME;

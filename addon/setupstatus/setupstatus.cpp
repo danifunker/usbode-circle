@@ -82,6 +82,8 @@ void SetupStatus::displayPartitionTable() {
 
     MBRPartitionEntry *partitions = reinterpret_cast<MBRPartitionEntry*>(mbr + 0x1BE);
 
+    LOGNOTE("=== SD Card Partition Table ===");
+    
     for (int i = 0; i < 4; ++i) {
         MBRPartitionEntry &p = partitions[i];
 
@@ -90,12 +92,104 @@ void SetupStatus::displayPartitionTable() {
             continue;
         }
 
+        // Calculate partition size in MB
+        uint64_t size_bytes = (uint64_t)p.numSectors * 512;
+        uint32_t size_mb = (uint32_t)(size_bytes / (1024 * 1024));
+
+        // Get partition type description
+        const char* type_desc = "Unknown";
+        switch (p.type) {
+            case 0x0C: type_desc = "FAT32 LBA"; break;
+            case 0x0B: type_desc = "FAT32"; break;
+            case 0x06: type_desc = "FAT16"; break;
+            case 0x01: type_desc = "FAT12"; break;
+            case 0x07: type_desc = "NTFS/exFAT"; break;
+            case 0x83: type_desc = "Linux"; break;
+            case 0x82: type_desc = "Linux Swap"; break;
+            default: 
+                type_desc = "Other";
+                break;
+        }
+
         LOGNOTE("Partition %d:", i+1);
-        LOGNOTE("  Boot: 0x%02X", p.boot);
-        LOGNOTE("  Type: 0x%02X", p.type);
+        LOGNOTE("  Boot: 0x%02X %s", p.boot, (p.boot & 0x80) ? "(Bootable)" : "");
+        LOGNOTE("  Type: 0x%02X (%s)", p.type, type_desc);
         LOGNOTE("  Start LBA: %u", p.startLBA);
-        LOGNOTE("  Num Sectors: %u", p.numSectors);
+        LOGNOTE("  Num Sectors: %u (%u MB)", p.numSectors, size_mb);
+        
+        // Check FatFs accessibility for first 4 partitions
+        if (i < 2) { // Only check partitions 1 and 2 (0: and 1: in FatFs)
+            CString drive;
+            drive.Format("%d:", i);
+            
+            LOGNOTE("  FatFs Access: %s", (const char*)drive);
+            
+            // Try to access via FatFs
+            DWORD free_clusters;
+            FATFS* fs_ptr;
+            FRESULT result = f_getfree((const char*)drive, &free_clusters, &fs_ptr);
+            
+            if (result == FR_OK && fs_ptr != nullptr) {
+                // Get filesystem type
+                const char* fs_type = "Unknown";
+                switch (fs_ptr->fs_type) {
+                    case FS_FAT12: fs_type = "FAT12"; break;
+                    case FS_FAT16: fs_type = "FAT16"; break;
+                    case FS_FAT32: fs_type = "FAT32"; break;
+                    case FS_EXFAT: fs_type = "exFAT"; break;
+                }
+                
+                // Calculate filesystem sizes
+                DWORD total_clusters = fs_ptr->n_fatent - 2;
+                DWORD cluster_size = fs_ptr->csize; // sectors per cluster
+                uint64_t total_bytes = (uint64_t)total_clusters * cluster_size * 512;
+                uint64_t free_bytes = (uint64_t)free_clusters * cluster_size * 512;
+                uint32_t total_mb = (uint32_t)(total_bytes / (1024 * 1024));
+                uint32_t free_mb = (uint32_t)(free_bytes / (1024 * 1024));
+                
+                // Get volume label
+                char label[12];
+                CString labelStr = "<no label>";
+                if (f_getlabel((const char*)drive, label, nullptr) == FR_OK && strlen(label) > 0) {
+                    labelStr = label;
+                }
+                
+                LOGNOTE("  Status: MOUNTED as %s", fs_type);
+                LOGNOTE("  Label: '%s'", (const char*)labelStr);
+                LOGNOTE("  Capacity: %u MB total, %u MB free", total_mb, free_mb);
+                
+                // Show programming access methods
+                if (i == 0) {
+                    LOGNOTE("  Programming Access: \"0:\" or \"SD:\" (boot/system partition)");
+                } else if (i == 1) {
+                    LOGNOTE("  Programming Access: \"1:\" (data/images partition)");
+                }
+                
+            } else {
+                LOGNOTE("  Status: NOT ACCESSIBLE (FatFs error %d)", result);
+                LOGNOTE("  Programming Access: %s (unavailable)", (const char*)drive);
+            }
+        } else {
+            // For partitions 3 and 4, show potential access but don't test
+            LOGNOTE("  Potential FatFs Access: %d: (not configured in VolToPart)", i);
+        }
+        
+        LOGNOTE(""); // Empty line for readability
     }
+    
+    LOGNOTE("=== FatFs Drive Mapping ===");
+    extern PARTITION VolToPart[FF_VOLUMES];
+    for (int vol = 0; vol < FF_VOLUMES; vol++) {
+        LOGNOTE("Volume %d: -> Physical Drive %d, Partition %d", 
+               vol, VolToPart[vol].pd, VolToPart[vol].pt);
+    }
+    
+    LOGNOTE("=== Alternative Access Methods ===");
+    LOGNOTE("SD Card Root: \"SD:\" (typically maps to \"0:\")");
+    LOGNOTE("USB Storage: \"USB:\" (when USB device connected)");
+    LOGNOTE("Floppy: \"FD:\" (if floppy interface available)");
+    
+    LOGNOTE("Partition table analysis complete");
 }
 
 bool SetupStatus::resizeSecondPartition() {
@@ -373,7 +467,7 @@ bool SetupStatus::checkPartitionExists(int partition) {
     CString drive;
     drive.Format("%d:", partition);
     
-    LOGNOTE("Checking if partition %d exists...", partition);
+    LOGNOTE("Checking if partition %d exists and is adequate size...", partition);
     
     // Try to get free space to verify partition exists and is accessible
     DWORD free_clusters;
@@ -381,7 +475,23 @@ bool SetupStatus::checkPartitionExists(int partition) {
     FRESULT result = f_getfree((const char*)drive, &free_clusters, &fs_ptr);
     
     if (result == FR_OK && fs_ptr != nullptr) {
-        LOGNOTE("Partition %d exists and is accessible", partition);
+        // Calculate total size using 64-bit arithmetic
+        DWORD total_clusters = fs_ptr->n_fatent - 2;
+        DWORD cluster_size = fs_ptr->csize; // sectors per cluster
+        uint64_t total_bytes = (uint64_t)total_clusters * cluster_size * 512;
+        uint32_t total_mb = (uint32_t)(total_bytes / (1024 * 1024));
+        
+        LOGNOTE("Partition %d exists: %u MB total", partition, total_mb);
+        
+        // For partition 1 (data partition), check if it's adequately sized
+        if (partition == 1) {
+            if (total_mb <= 10) {
+                LOGNOTE("Partition %d size is too small (%u MB <= 10 MB)", partition, total_mb);
+                return false;
+            }
+            LOGNOTE("Partition %d size is adequate (%u MB > 10 MB)", partition, total_mb);
+        }
+        
         return true;
     } else {
         LOGNOTE("Partition %d not accessible (error %d)", partition, result);
@@ -394,12 +504,12 @@ bool SetupStatus::performSetup() {
     
     setSetupInProgress(true);
     setStatusMessage("Displaying partition table...");
-    setProgress(1, 4);
+    setProgress(1, 5); // Changed to 5 steps
     
     displayPartitionTable();
     
     setStatusMessage("Resizing second partition...");
-    setProgress(2, 4);
+    setProgress(2, 5);
     
     if (!resizeSecondPartition()) {
         LOGERR("Failed to resize second partition");
@@ -408,7 +518,7 @@ bool SetupStatus::performSetup() {
     }
     
     setStatusMessage("Formatting partition...");
-    setProgress(3, 4);
+    setProgress(3, 5);
     
     if (!formatPartitionAsExFAT()) {
         LOGERR("Failed to format partition as exFAT");
@@ -417,7 +527,7 @@ bool SetupStatus::performSetup() {
     }
     
     setStatusMessage("Copying files...");
-    setProgress(4, 4);
+    setProgress(4, 5);
     
     if (!copyImagesDirectory()) {
         LOGERR("Failed to copy images directory");
@@ -425,7 +535,38 @@ bool SetupStatus::performSetup() {
         return false;
     }
     
-    LOGNOTE("Setup completed successfully");
+    // Mount both partitions for normal operation after setup
+    setStatusMessage("Mounting partitions...");
+    setProgress(5, 5);
+    LOGNOTE("Mounting partitions after successful setup...");
+    
+    // Mount partition 0 (boot/system partition) - should already be mounted but verify
+    FATFS fs0;
+    FRESULT fr0 = f_mount(&fs0, "0:", 1);
+    if (fr0 != FR_OK) {
+        LOGERR("Failed to mount partition 0 after setup: %d", fr0);
+        setStatusMessage("Mount failed!");
+        return false;
+    }
+    LOGNOTE("Partition 0 (boot) mounted successfully");
+    
+    // Mount partition 1 (data/images partition)
+    FATFS fs1;
+    FRESULT fr1 = f_mount(&fs1, "1:", 1);
+    if (fr1 != FR_OK) {
+        LOGERR("Failed to mount partition 1 after setup: %d", fr1);
+        // Unmount partition 0 since we failed
+        f_mount(0, "0:", 0);
+        setStatusMessage("Mount failed!");
+        return false;
+    }
+    LOGNOTE("Partition 1 (data/images) mounted successfully");
+    
+    // Verify the setup by displaying the partition table again
+    LOGNOTE("Verifying setup completion...");
+    displayPartitionTable();
+    
+    LOGNOTE("Setup completed successfully - both partitions mounted and ready");
     setSetupComplete(true);
     setStatusMessage("Setup complete!");
     
