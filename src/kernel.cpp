@@ -20,6 +20,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "kernel.h"
+#include "fatfs_partition.h"  // Include the consolidated header
 
 #include <ftpserver/ftpdaemon.h>
 #include <string.h>
@@ -148,9 +149,12 @@ TShutdownMode CKernel::Run(void) {
     ConfigService* config = new ConfigService();
     LOGNOTE("Started Config service");
 
-    // Start the SetupStatus service early
-    new SetupStatus();
-    LOGNOTE("Started SetupStatus service");
+    // Initialize FatFs partitions
+    InitFatFsPartitions();
+    
+    // Start the SetupStatus service with partition mapping
+    new SetupStatus(&m_EMMC, s_VolToPart);
+    LOGNOTE("Started SetupStatus service with partition mapping");
 
     // Start the file logging service
     const char* logfile = config->GetLogfile();
