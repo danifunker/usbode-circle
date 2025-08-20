@@ -54,9 +54,20 @@ void ST7789SetupPage::Refresh() {
     // Check if setup is complete
     if (setupStatus->isSetupComplete()) {
         m_ShouldChangePage = true;
-        m_statusText = "Setup complete!";
+        m_statusText = "Setup complete! Rebooting...";
         Draw();
         return;
+    }
+    
+    // Start setup if required and not yet started
+    if (setupStatus->isSetupRequired() && !m_setupStarted && !setupStatus->isSetupInProgress()) {
+        LOGNOTE("Starting setup process from UI");
+        m_setupStarted = true;
+        // Trigger setup in the background
+        if (!setupStatus->performSetup()) {
+            m_statusText = "Setup failed!";
+            m_setupStarted = false; // Allow retry
+        }
     }
     
     // Get current status from the service
@@ -75,8 +86,10 @@ void ST7789SetupPage::Refresh() {
         for (int i = 0; i < dots; i++) {
             m_statusText += ".";
         }
-    } else if (setupStatus->isSetupRequired()) {
+    } else if (setupStatus->isSetupRequired() && !m_setupStarted) {
         m_statusText = "Setup required - starting...";
+    } else if (setupStatus->isSetupRequired() && m_setupStarted) {
+        m_statusText = "Preparing setup...";
     } else {
         m_statusText = "Waiting for setup...";
     }
@@ -109,7 +122,7 @@ void ST7789SetupPage::Draw() {
     }
 
     // Draw a simple spinner/activity indicator
-    if (setupStatus && setupStatus->isSetupInProgress()) {
+    if (setupStatus && (setupStatus->isSetupInProgress() || (setupStatus->isSetupRequired() && m_setupStarted))) {
         int spinnerFrame = (m_refreshCounter / 5) % 8;
         int centerX = m_Display->GetWidth() / 2;
         int centerY = 120;
@@ -117,7 +130,7 @@ void ST7789SetupPage::Draw() {
         // Draw spinning circle segments
         for (int i = 0; i < 8; i++) {
             int alpha = (i == spinnerFrame) ? 255 : (i == ((spinnerFrame - 1) % 8)) ? 128 : 64;
-            T2DColor color = COLOR2D(alpha, alpha, alpha);  // Fixed: T2DColor instead of TColor2D
+            T2DColor color = COLOR2D(alpha, alpha, alpha);
             
             // Simple dot pattern in circle - simplified without cos/sin
             int x = centerX;
@@ -135,6 +148,12 @@ void ST7789SetupPage::Draw() {
             
             m_Graphics->DrawRect(x-2, y-2, 4, 4, color);
         }
+    }
+
+    // Show additional info if setup is complete
+    if (setupStatus && setupStatus->isSetupComplete()) {
+        m_Graphics->DrawText(10, 150, COLOR2D(0, 128, 0), "Setup completed successfully!", C2DGraphics::AlignLeft);
+        m_Graphics->DrawText(10, 170, COLOR2D(0, 0, 0), "Device will reboot shortly...", C2DGraphics::AlignLeft);
     }
 
     DrawNavigationBar("setup");
@@ -166,11 +185,15 @@ void ST7789SetupPage::DrawProgressBar(int current, int total) {
     m_Graphics->DrawText(textX, textY, COLOR2D(255, 255, 255), (const char*)progressText, C2DGraphics::AlignLeft);
 }
 
-// TODO: put in common place (same comment as other pages)
 void ST7789SetupPage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom (same style as other pages)
     m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     
-    // Show "Please wait..." message instead of interactive buttons
-    m_Graphics->DrawText(10, 218, COLOR2D(255, 255, 255), "Please wait - setup in progress...", C2DGraphics::AlignLeft);
+    // Show different messages based on setup state
+    SetupStatus* setupStatus = SetupStatus::Get();
+    if (setupStatus && setupStatus->isSetupComplete()) {
+        m_Graphics->DrawText(10, 218, COLOR2D(255, 255, 255), "Rebooting - please wait...", C2DGraphics::AlignLeft);
+    } else {
+        m_Graphics->DrawText(10, 218, COLOR2D(255, 255, 255), "Please wait - setup in progress...", C2DGraphics::AlignLeft);
+    }
 }
