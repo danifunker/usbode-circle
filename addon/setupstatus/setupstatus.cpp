@@ -474,16 +474,22 @@ bool SetupStatus::checkPartitionExists(int partition) {
     
     LOGNOTE("Checking if partition %d exists and is adequate size...", partition);
     
-    // First try to mount the partition if it's not already mounted
-    if (partition == 1) {
-        FATFS fs1;
-        FRESULT mountResult = f_mount(&fs1, "1:", 1);
-        if (mountResult != FR_OK) {
-            LOGNOTE("Failed to mount partition %d: %d", partition, mountResult);
-            return false;
-        }
-        LOGNOTE("Successfully mounted partition %d", partition);
+    // Check if the partition number is valid for our FatFs configuration
+    extern PARTITION VolToPart[FF_VOLUMES];
+    LOGNOTE("FF_VOLUMES is configured for %d volumes", FF_VOLUMES);
+    
+    if (partition >= FF_VOLUMES) {
+        LOGNOTE("Partition %d exceeds FF_VOLUMES limit (%d)", partition, FF_VOLUMES);
+        return false;
     }
+    
+    // Log the current volume mapping for this partition
+    LOGNOTE("Volume %d maps to: Physical Drive %d, Partition %d", 
+           partition, VolToPart[partition].pd, VolToPart[partition].pt);
+    
+    // Don't try to mount here - just check if we can access it
+    // The mounting should happen elsewhere in a controlled manner
+    LOGNOTE("Attempting to check partition %d accessibility without mounting...", partition);
     
     // Try to get free space to verify partition exists and is accessible
     DWORD free_clusters;
@@ -511,6 +517,42 @@ bool SetupStatus::checkPartitionExists(int partition) {
         return true;
     } else {
         LOGNOTE("Partition %d not accessible (error %d)", partition, result);
+        
+        // If we can't access it, it might not be mounted yet
+        // Try to mount it once and test again
+        if (partition == 1) {
+            LOGNOTE("Attempting to mount partition %d...", partition);
+            static FATFS fs1; // Make it static to persist
+            FRESULT mountResult = f_mount(&fs1, "1:", 1);
+            if (mountResult == FR_OK) {
+                LOGNOTE("Successfully mounted partition %d", partition);
+                
+                // Try f_getfree again after mounting
+                result = f_getfree((const char*)drive, &free_clusters, &fs_ptr);
+                if (result == FR_OK && fs_ptr != nullptr) {
+                    DWORD total_clusters = fs_ptr->n_fatent - 2;
+                    DWORD cluster_size = fs_ptr->csize;
+                    uint64_t total_bytes = (uint64_t)total_clusters * cluster_size * 512;
+                    uint32_t total_mb = (uint32_t)(total_bytes / (1024 * 1024));
+                    
+                    LOGNOTE("Partition %d exists after mount: %u MB total", partition, total_mb);
+                    
+                    if (total_mb <= 10) {
+                        LOGNOTE("Partition %d size is too small (%u MB <= 10 MB)", partition, total_mb);
+                        return false;
+                    }
+                    LOGNOTE("Partition %d size is adequate (%u MB > 10 MB)", partition, total_mb);
+                    return true;
+                } else {
+                    LOGNOTE("Partition %d still not accessible after mount (error %d)", partition, result);
+                    return false;
+                }
+            } else {
+                LOGNOTE("Failed to mount partition %d: %d", partition, mountResult);
+                return false;
+            }
+        }
+        
         return false;
     }
 }

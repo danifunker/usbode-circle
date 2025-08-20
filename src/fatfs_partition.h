@@ -5,6 +5,11 @@
 
 #if FF_MULTI_PARTITION
 
+// Make sure FF_VOLUMES is at least 2 for our use case
+#if FF_VOLUMES < 2
+#error "FF_VOLUMES must be at least 2 to support both boot and data partitions"
+#endif
+
 // Define the volume to partition mapping table
 // Format: {physical_drive, partition} where:
 // - physical_drive: 0=SD/eMMC, 1=USB1, 2=USB2, etc.
