@@ -44,10 +44,15 @@ void SetupStatus::Run() {
     // Display partition table on startup
     displayPartitionTable();
     
-    // Check if setup is needed
-    if (!checkPartitionExists(1)) {
-        LOGNOTE("Second partition not found - setup required");
+    // Check if setup is needed - use the enhanced partition check
+    bool partition1OK = checkPartitionExists(1);
+    
+    if (!partition1OK) {
+        LOGNOTE("Second partition not found or too small - setup required");
         setSetupRequired(true);
+    } else {
+        LOGNOTE("Second partition exists and is adequate size - no setup required");
+        setSetupRequired(false);
     }
     
     while (true) {
@@ -468,6 +473,17 @@ bool SetupStatus::checkPartitionExists(int partition) {
     drive.Format("%d:", partition);
     
     LOGNOTE("Checking if partition %d exists and is adequate size...", partition);
+    
+    // First try to mount the partition if it's not already mounted
+    if (partition == 1) {
+        FATFS fs1;
+        FRESULT mountResult = f_mount(&fs1, "1:", 1);
+        if (mountResult != FR_OK) {
+            LOGNOTE("Failed to mount partition %d: %d", partition, mountResult);
+            return false;
+        }
+        LOGNOTE("Successfully mounted partition %d", partition);
+    }
     
     // Try to get free space to verify partition exists and is accessible
     DWORD free_clusters;

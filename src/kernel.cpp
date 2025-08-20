@@ -211,37 +211,30 @@ TShutdownMode CKernel::Run(void) {
             // Give a moment for the display to show completion
             CScheduler::Get()->MsSleep(2000);
             
-            LOGNOTE("Rebooting device to complete setup...");
-            setupStatus->setStatusMessage("Rebooting to complete setup...");
+            LOGNOTE("Setup completed successfully - continuing with normal startup");
+            setupStatus->setStatusMessage("Setup complete - starting services...");
             
-            // Trigger automatic reboot
-            DeviceState::Get().setShutdownMode(ShutdownReboot);
-            
-            // IMPORTANT: Don't start services if we're rebooting
-            LOGNOTE("Setup initiated reboot - skipping service startup");
-        } else {
-            LOGNOTE("Setup not required - mounting partitions and starting services");
-            
-            // Mount both partitions for normal operation
-            LOGNOTE("Mounting partitions for normal operation...");
-            
-            // Partition 0 should already be mounted from initialization
-            // But let's verify partition 1 is mounted
-            FATFS fs1;
-            FRESULT fr1 = f_mount(&fs1, "1:", 1);
-            if (fr1 != FR_OK) {
-                LOGERR("Failed to mount partition 1: %d", fr1);
-                return ShutdownHalt;
-            }
-            LOGNOTE("Partition 1 (data/images) mounted successfully");
-            
-            // Now start services that depend on both partitions
-            new CDROMService();
-            LOGNOTE("Started CDROM service");
-
-            new SCSITBService();
-            LOGNOTE("Started SCSITB service");
+            // Continue with normal service startup - no reboot needed
         }
+        
+        // Always continue with service startup (whether setup was needed or not)
+        LOGNOTE("Starting normal services...");
+        
+        // Mount partition 1 for normal operation
+        FATFS fs1;
+        FRESULT fr1 = f_mount(&fs1, "1:", 1);
+        if (fr1 != FR_OK) {
+            LOGERR("Failed to mount partition 1: %d", fr1);
+            return ShutdownHalt;
+        }
+        LOGNOTE("Partition 1 (data/images) mounted successfully");
+        
+        // Start services that depend on both partitions
+        new CDROMService();
+        LOGNOTE("Started CDROM service");
+
+        new SCSITBService();
+        LOGNOTE("Started SCSITB service");
 
         // Display service was already started earlier
         // (No need to start it again here - remove the duplicate)
