@@ -5,11 +5,23 @@
 #include <circle/sched/synchronizationevent.h>
 #include <circle/string.h>
 #include <circle/types.h>
+#include <SDCard/emmc.h>
+#include <fatfs/ff.h>
 #include <assert.h>
+
+// Partition entry structure (16 bytes)
+struct MBRPartitionEntry {
+    uint8_t boot;          // 0x80 = bootable
+    uint8_t startCHS[3];   // obsolete
+    uint8_t type;          // partition type
+    uint8_t endCHS[3];     // obsolete
+    uint32_t startLBA;     // little-endian
+    uint32_t numSectors;   // little-endian
+};
 
 class SetupStatus : public CTask {
 public:
-    SetupStatus();
+    SetupStatus(CEMMCDevice* pEMMC, const PARTITION* partitionMap = nullptr);
     ~SetupStatus();
 
     static SetupStatus* Get() {
@@ -37,16 +49,23 @@ public:
     int getCurrentProgress() const;
     int getTotalProgress() const;
 
-    // Setup operations - NEW
+    // Setup operations
     bool checkPartitionExists(int partition);
     bool performSetup();
 
 private:
     static SetupStatus* s_pThis;
     
-    // Setup helper methods
-    bool setupSecondPartition();
-    bool formatPartition();  // Add this line
+    // Hardware reference
+    CEMMCDevice* m_pEMMC;
+    
+    // Partition mapping (optional - if provided will copy to global VolToPart)
+    const PARTITION* m_pPartitionMap;
+    
+    // Setup helper methods - ported from kernel.cpp
+    void displayPartitionTable();
+    bool resizeSecondPartition();
+    bool formatPartitionAsExFAT();
     bool copyImagesDirectory();
     
     // Status variables
