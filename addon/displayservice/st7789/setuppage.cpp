@@ -54,23 +54,12 @@ void ST7789SetupPage::Refresh() {
     // Check if setup is complete
     if (setupStatus->isSetupComplete()) {
         m_ShouldChangePage = true;
-        m_statusText = "Setup complete! Rebooting...";
+        m_statusText = "Setup complete!";
         Draw();
         return;
     }
     
-    // Start setup if required and not yet started
-    if (setupStatus->isSetupRequired() && !m_setupStarted && !setupStatus->isSetupInProgress()) {
-        LOGNOTE("Starting setup process from UI");
-        m_setupStarted = true;
-        // Trigger setup in the background
-        if (!setupStatus->performSetup()) {
-            m_statusText = "Setup failed!";
-            m_setupStarted = false; // Allow retry
-        }
-    }
-    
-    // Get current status from the service
+    // Just display status - don't trigger setup (kernel handles that)
     if (setupStatus->isSetupInProgress()) {
         const char* statusMsg = setupStatus->getStatusMessage();
         CString statusString = statusMsg ? statusMsg : "";
@@ -86,10 +75,8 @@ void ST7789SetupPage::Refresh() {
         for (int i = 0; i < dots; i++) {
             m_statusText += ".";
         }
-    } else if (setupStatus->isSetupRequired() && !m_setupStarted) {
+    } else if (setupStatus->isSetupRequired()) {
         m_statusText = "Setup required - starting...";
-    } else if (setupStatus->isSetupRequired() && m_setupStarted) {
-        m_statusText = "Preparing setup...";
     } else {
         m_statusText = "Waiting for setup...";
     }
