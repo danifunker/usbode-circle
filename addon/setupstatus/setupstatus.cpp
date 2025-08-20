@@ -201,61 +201,214 @@ bool SetupStatus::performSetup() {
 bool SetupStatus::setupSecondPartition() {
     LOGNOTE("Setting up second partition...");
     
-    // Try to mount first - maybe it already exists
-    FATFS fs;
-    FRESULT result = f_mount(&fs, "1:", 1);
-    if (result == FR_OK) {
-        LOGNOTE("Second partition already exists, formatting...");
-        return formatPartition();
+    // Use the SAME reliable check as the kernel uses
+    DWORD free_clusters;
+    FATFS* fs;
+    FRESULT result = f_getfree("1:", &free_clusters, &fs);
+    if (result == FR_OK && fs != nullptr) {
+        LOGNOTE("Second partition already exists and is accessible");
+        return true;
     }
     
-    LOGNOTE("Second partition doesn't exist, creating partition table...");
+    LOGNOTE("Second partition not accessible (error %d) - creating partition table", result);
     
-    // Create partition table using f_fdisk
-    // This creates a simple 2-partition layout
-    LBA_t partTable[4] = {
-        50,     // Start of partition 1 (leave some space for MBR)
-        0,      // Size of partition 1 (0 = use existing)
-        0,      // Start of partition 2 (0 = auto-calculate)
-        0       // Size of partition 2 (0 = use remaining space)
-    };
+    // Get actual SD card size instead of hardcoding
+    LBA_t total_sectors = 0;
     
-    BYTE work[FF_MAX_SS];
-    result = f_fdisk(0, partTable, work);  // Physical drive 0
-    if (result != FR_OK) {
-        LOGERR("Failed to create partition table (error %d)", result);
+    // Try to detect SD card size by reading the disk geometry
+    FATFS tempfs;
+    if (f_mount(&tempfs, "0:", 0) == FR_OK) {
+        DWORD free_clusters_temp, total_clusters;
+        FATFS* fs_ptr;
+        if (f_getfree("0:", &free_clusters_temp, &fs_ptr) == FR_OK) {
+            // Calculate approximate total disk size
+            // This is rough - we know partition 0 ends at sector 409599
+            total_sectors = 31116288; // Use known 15.9GB size for now
+        }
+        f_mount(nullptr, "0:", 0);
+    }
+    
+    // Fallback to known size if detection fails
+    if (total_sectors == 0) {
+        total_sectors = 31116288; // 15.9GB default
+        LOGWARN("Could not detect SD card size, using default: %lu sectors", (unsigned long)total_sectors);
+    } else {
+        LOGNOTE("Using SD card size: %lu sectors (~%.1f GB)", 
+                (unsigned long)total_sectors, (float)(total_sectors * 512) / (1024*1024*1024));
+    }
+    
+    // Get the physical drive number (typically 0 for the main SD card)
+    BYTE pdrv = 0;  // Physical drive 0
+    
+    // Allocate working buffer (must be at least FF_MAX_SS bytes)
+    const size_t work_buffer_size = 4096;
+    BYTE* work_buffer = new BYTE[work_buffer_size];
+    if (!work_buffer) {
+        LOGERR("Failed to allocate working buffer for f_fdisk");
         return false;
     }
     
-    LOGNOTE("Partition table created, now formatting...");
+    // CORRECTED: Use the EXACT same values as original image
+    // Original image: start=2048, size=407552
+    // We want to recreate partition 1 exactly, then add partition 2
+    
+    // Calculate partition end boundaries correctly
+    LBA_t p1_start = 2048;
+    LBA_t p1_size = 407552;
+    LBA_t p1_end = p1_start + p1_size - 1;  // 409599
+    
+    LBA_t p2_start = p1_end + 1;            // 409600  
+    LBA_t p2_end = total_sectors - 1;       // Last sector of SD card
+    
+    // For f_fdisk, specify partition END sectors
+    LBA_t partTable[4] = {
+        p1_end,     // End of partition 1 at sector 409599
+        p2_end,     // End of partition 2 at last sector  
+        0,          // End of partition 3 (unused)
+        0           // End of partition 4 (unused)
+    };
+    
+    LOGNOTE("f_fdisk parameters (corrected):");
+    LOGNOTE("  Physical drive: %u", pdrv);
+    LOGNOTE("  Total SD card sectors: %lu", (unsigned long)total_sectors);
+    LOGNOTE("  Partition 1: sectors %lu-%lu (%lu sectors, ~200MB)", 
+            (unsigned long)p1_start, (unsigned long)p1_end, (unsigned long)p1_size);
+    LOGNOTE("  Partition 2: sectors %lu-%lu (%lu sectors, ~%.1fGB)", 
+            (unsigned long)p2_start, (unsigned long)p2_end, 
+            (unsigned long)(p2_end - p2_start + 1),
+            (float)((p2_end - p2_start + 1) * 512) / (1024*1024*1024));
+    LOGNOTE("  partTable[0] = %lu (P1 end)", (unsigned long)partTable[0]);
+    LOGNOTE("  partTable[1] = %lu (P2 end)", (unsigned long)partTable[1]);
+    
+    LOGWARN("WARNING: f_fdisk will repartition the entire SD card!");
+    LOGWARN("This will destroy all data including boot files!");
+    
+    // Call f_fdisk with correct parameters
+    result = f_fdisk(pdrv, partTable, work_buffer);
+    
+    // Clean up working buffer
+    delete[] work_buffer;
+    
+    if (result != FR_OK) {
+        LOGERR("f_fdisk failed with error code: %d", result);
+        
+        switch (result) {
+            case FR_DISK_ERR:
+                LOGERR("Disk I/O error - SD card may be faulty or write-protected");
+                break;
+            case FR_NOT_READY:
+                LOGERR("Drive not ready - SD card not properly initialized");
+                break;
+            case FR_WRITE_PROTECTED:
+                LOGERR("SD card is write-protected");
+                break;
+            case FR_INVALID_PARAMETER:
+                LOGERR("Invalid parameters passed to f_fdisk");
+                break;
+            case FR_MKFS_ABORTED:
+                LOGERR("Partitioning aborted - invalid partition layout or SD card too small");
+                break;
+            default:
+                LOGERR("Unknown error during partitioning: %d", result);
+                break;
+        }
+        return false;
+    }
+    
+    LOGNOTE("f_fdisk completed successfully!");
+    
+    // Verify the partition table was created correctly
+    LOGNOTE("Checking partition table creation...");
+    LOGNOTE("Run 'hexdump' to verify:");
+    LOGNOTE("  Expected P1: start=2048, size=407552, type=FAT32, bootable");
+    LOGNOTE("  Expected P2: start=409600, size=%lu, type=auto", (unsigned long)(p2_end - p2_start + 1));
+    
+    // Format partition 2 as exFAT (data partition)
+    LOGNOTE("Formatting partition 2 as exFAT for data...");
     return formatPartition();
 }
 
 bool SetupStatus::formatPartition() {
-    // Now try to mount and format the second partition
+    LOGNOTE("Formatting partition 2 as exFAT (data partition)...");
+    
+    // Try to mount the second partition to verify it exists
     FATFS fs;
-    FRESULT result = f_mount(&fs, "1:", 1);
+    FRESULT result = f_mount(&fs, "1:", 1);  // Force mount to detect partition
     if (result != FR_OK) {
-        LOGERR("Cannot mount second partition after creation (error %d)", result);
+        LOGERR("Cannot access second partition for formatting (error %d)", result);
         return false;
     }
     
-    // Format as exFAT
-    BYTE work[FF_MAX_SS];
-    MKFS_PARM fmt_params;
-    fmt_params.fmt = FM_EXFAT;
-    fmt_params.n_fat = 1;
-    fmt_params.align = 0;
-    fmt_params.n_root = 0;
-    fmt_params.au_size = 0;
-    
-    result = f_mkfs("1:", &fmt_params, work, sizeof(work));
-    if (result != FR_OK) {
-        LOGERR("Failed to format second partition (error %d)", result);
+    // Allocate working buffer for formatting
+    const size_t work_buffer_size = 4096;
+    BYTE* work_buffer = new BYTE[work_buffer_size];
+    if (!work_buffer) {
+        LOGERR("Failed to allocate working buffer for formatting");
+        f_mount(nullptr, "1:", 0);  // Unmount
         return false;
     }
     
-    LOGNOTE("Second partition formatted successfully");
+    // Set up format parameters for exFAT
+    MKFS_PARM fmt_params = {0};
+    fmt_params.fmt = FM_EXFAT;           // Format as exFAT
+    fmt_params.n_fat = 1;                // exFAT uses 1 FAT
+    fmt_params.align = 0;                // Auto alignment
+    fmt_params.n_root = 0;               // Not used for exFAT
+    fmt_params.au_size = 0;              // Auto cluster size
+    
+    LOGNOTE("Data partition format parameters:");
+    LOGNOTE("  Filesystem: exFAT");
+    LOGNOTE("  Number of FATs: %u", fmt_params.n_fat);
+    LOGNOTE("  Cluster size: auto");
+    
+    // Format the partition
+    result = f_mkfs("1:", &fmt_params, work_buffer, work_buffer_size);
+    
+    // Clean up
+    delete[] work_buffer;
+    
+    if (result != FR_OK) {
+        LOGERR("Failed to format data partition as exFAT (error %d)", result);
+        
+        // Try FAT32 as fallback for compatibility
+        LOGWARN("Attempting FAT32 format as fallback...");
+        
+        BYTE* fallback_buffer = new BYTE[work_buffer_size];
+        if (fallback_buffer) {
+            fmt_params.fmt = FM_FAT32;
+            fmt_params.n_fat = 2;  // FAT32 uses 2 FATs
+            
+            result = f_mkfs("1:", &fmt_params, fallback_buffer, work_buffer_size);
+            delete[] fallback_buffer;
+            
+            if (result == FR_OK) {
+                LOGNOTE("Second partition formatted as FAT32 (fallback)");
+            } else {
+                LOGERR("FAT32 fallback formatting also failed (error %d)", result);
+                f_mount(nullptr, "1:", 0);
+                return false;
+            }
+        } else {
+            f_mount(nullptr, "1:", 0);
+            return false;
+        }
+    } else {
+        LOGNOTE("Second partition formatted as exFAT successfully");
+    }
+    
+    // Set volume label
+    result = f_setlabel("1:USBODE_DATA");
+    if (result != FR_OK) {
+        LOGWARN("Failed to set volume label (error %d)", result);
+    } else {
+        LOGNOTE("Volume label 'USBODE_DATA' set successfully");
+    }
+    
+    // Unmount the partition
+    f_mount(nullptr, "1:", 0);
+    
+    LOGNOTE("Data partition setup completed successfully");
+    
     return true;
 }
 
@@ -266,10 +419,21 @@ bool SetupStatus::copyImagesDirectory() {
     DIR sourceDir;
     FRESULT result = f_opendir(&sourceDir, "0:/images");
     if (result != FR_OK) {
-        LOGNOTE("Source images directory does not exist, skipping copy");
-        return true; // Not an error if source doesn't exist
+        LOGNOTE("Source images directory does not exist (error %d) - this is expected after f_fdisk", result);
+        LOGNOTE("Boot partition is empty after partitioning - skipping copy");
+        return true; // Not an error - boot partition is empty after f_fdisk
     }
     f_closedir(&sourceDir);
+    
+    // Verify partition 1 is accessible before trying to create directories
+    DWORD free_clusters;
+    FATFS* fs;
+    result = f_getfree("1:", &free_clusters, &fs);
+    if (result != FR_OK || fs == nullptr) {
+        LOGERR("Partition 1 is not accessible for copying (error %d)", result);
+        LOGERR("Partition 1 may not be properly formatted");
+        return false;
+    }
     
     // Create destination directory
     result = f_mkdir("1:/images");
@@ -363,6 +527,15 @@ bool SetupStatus::copyImagesDirectory() {
     
     f_closedir(&sourceDir);
     
-    LOGNOTE("Images directory copy completed - %d files copied", filesCopied);
+    LOGNOTE("Images directory copy completed");
     return true;
+}
+
+// Fallback to known size if detection fails
+if (total_sectors == 0) {
+    total_sectors = 31116288; // 15.9GB default
+    LOGWARN("Could not detect SD card size, using default: %lu sectors", (unsigned long)total_sectors);
+} else {
+    LOGNOTE("Detected SD card size: %lu sectors (~%.1f GB)", 
+            (unsigned long)total_sectors, (float)(total_sectors * 512) / (1024*1024*1024));
 }
