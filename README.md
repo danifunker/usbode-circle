@@ -37,21 +37,22 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 
 ## Initial Setup
 
-1.  Download the [latest release](https://github.com/danifunker/usbode-circle/releases).
-2.  Mount the MicroSD card on the setup computer. Format it using FAT32 (See [Card Size Limitations](#Card-Size-Limitations) if you need to do this on a card larger than 32 GB). We recommend using the Raspberry Pi Imager to format the SDCard as FAT32. To perform this:
+1.  Download the [latest release](https://github.com/danifunker/usbode-circle/releases) `.img` file. For Raspberry Pi Zero W (not 2) use the 32-bit build, all other supported Raspberry Pis can use either builds, but be aware 32-bit is tested more thoroughly.
+2.  Mount the MicroSD card on the setup computer. Using the Raspberry Pi Imager, flash the latest release image to the MicroSD card. To perform this:
     - Open the Raspberry Pi Imager.
     - Under Raspberry Pi Device, choose No Filtering
-    - Under Operating System, choose Erase (near the bottom).
-    - Under Storage, select the SD card you would like to format.
-    - Click Next. If the Imager gives you an error, try using diskpart's Clean command, or check out our [Discord](https://discord.gg/na2qNrvdFY).
-3.  Open the USBODE ZIP file that was downloaded previously. Extract the files within to the root of the MicroSD card.
-4.  On the MicroSD card, open the file labeled “wpa_supplicant.conf”.
-5.  Under `country=GB`, replace “GB” with the [two digit code for your country](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#Officially_assigned_code_elements) if needed. Different countries use different WiFi frequencies; if you are in the US, the device will not connect to US wifi unless you change this line to `country=US`.
-6.  Under `ssid=”MySSID”`, type in the name of your WiFi network between the quotes. Keep in mind that the Pi supports only 2.4 GHz wifi signals.
-7.  Under `psk=”WirelessPassword”`, type in your WiFi’s password between the quotes.
-8.  The other lines in this file likely don’t need to be changed. However, if your network uses different key management or other security configurations, this file can be modified to comply with those settings.
-9.  If desired, image files can now be copied into the Images folder on the card.
-10. Eject the MicroSD card from the setup computer and put it into the Pi.
+    - Under Operating System, choose `Use Custom`
+    - Select the `.img` file that was downloaded in step 1
+    - Under Storage, select the SD card to flash
+    - Click Next. If the Imager gives you an error, try using diskpart's Clean command, then try again, or check out our [Discord](https://discord.gg/na2qNrvdFY).
+3.  If required, re-insert the MicroSD card if a `bootfs` volume is not listed. Open the `bootfs` volume on the MicroSD card, open the file labeled “wpa_supplicant.conf”.
+4.  Under `country=GB`, replace “GB” with the [two digit code for your country](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#Officially_assigned_code_elements) if needed. Different countries use different WiFi frequencies; if you are in the US, the device will not connect to US wifi unless you change this line to `country=US`.
+5.  Under `ssid=”MySSID”`, type in the name of your WiFi network between the quotes. Keep in mind that the Pi supports only 2.4 GHz wifi signals.
+6.  Under `psk=”WirelessPassword”`, type in your WiFi’s password between the quotes.
+7.  The other lines in this file likely don’t need to be changed. However, if your network uses different key management or other security configurations, this file can be modified to comply with those settings.
+8. Safely remove the MicroSD Card from the computer as to reduce the likelyhood of corrupt files.
+8. Plug the MicroSD card into the Raspberry Pi and connect the Raspberry Pi to a computer to complete setup. If using a pirateaudiolineout (PIM483) screen, a setup screen will appear. The device will reboot itself automatically within 60 seconds once setup has completed. Be aware, no networking is available during this phase.
+9. Once the initial setup has completed, remove the MicroSD card from the Raspberry Pi and copy image files to the IMGSTORE volume on the SDCard. Remember to always Safely remove the MicroSD card from the computer, however it is safe to just pull the power from the Pi in most instances.
 
 Setup is now complete. See the instructions below to learn how to use the USBODE.
 
@@ -95,7 +96,7 @@ On the USBODE homepage, click *Shutdown USBODE*. The LED indicator on the Pi wil
 
 ## Copying Images onto USBODE
 
-USBODE stores images on the MicroSD card in a folder labeled Images. You'll need to put .ISO and .BIN/.CUE files directly into this folder. This can be done by connecting the SD card to the setup computer and copying files, or by connecting to the Pi via FTP (see [Using FTP](#Using-FTP)). Mounting the card to the setup computer is the fastest method by a significant margin.
+USBODE stores images on the MicroSD partition labeled IMGSTORE. You'll need to put .ISO and .BIN/.CUE files directly onto this volume. This can be done by connecting the SD card to the setup computer and copying files, or by connecting to the Pi via FTP (see [Using FTP](#Using-FTP)). Mounting the card to the setup computer is the fastest method by a significant margin.
 
 
 ## Using USBODE with a HAT
@@ -109,11 +110,6 @@ USBODE stores images on the MicroSD card in a folder labeled Images. You'll need
 
 BIN/CUE images with multiple .BIN files do not yet work correctly. There is a workaround, however: [CDFix](https://web.archive.org/web/20240112090553/https://krikzz.com/pub/support/mega-everdrive/pro-series/cdfix/) will merge all of the .BIN files into one. Remember to make a backup of the image files before running this utility.
 
-### Card Size Limitations
-
-- Cards larger than 32 GB will have issues on versions of Windows prior to 11. The Windows GUI format utility and the DISKPART command line utility will refuse to make FAT32 partitions larger than 32 GB. To bypass this, we recommend using the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) or [FAT32FormatterGUI](https://www.softpedia.com/get/System/Hard-Disk-Utils/FAT32format-GUI.shtml).
-- Cards larger than 256 GB will not boot on the Pi, and we do not currently have a good workaround. If a card of that capacity is your only option, you must create a primary partition smaller than 256 GB. USBODE cannot yet navigate to different partitions, so this effectively leaves half or more of your card unusable, but it will at least boot.
-
 ### Using FTP:
 
 1.  Open the FTP client of your choice.
@@ -121,7 +117,7 @@ BIN/CUE images with multiple .BIN files do not yet work correctly. There is a wo
 3.  Enter the USBODE's IP address (see the [Web Interface instructions](#Using-the-USBODE-Web-Interface)) into the Host Name field.
 4.  Ensure the Port number is 21.
 5.  If available, check the "Anonymous login" box. Otherwise, enter "anonymous" as the username.
-6.  Navigate to the Images folder, and drop image files into it.
+6.  Navigate to 1:/ (this is the internal name for the second partition), and drop image files into it.
 
 ## Notes about versions
 
@@ -130,10 +126,9 @@ BIN/CUE images with multiple .BIN files do not yet work correctly. There is a wo
 
 ## Other Limitations / Known Bugs
 - ITX-Llama is not able to boot from USBODE-circle at this time, it is currently being investigated but no ETA for resolution
-- ISO files must be smaller than 4GB due to FAT32 filesystem limitation (another item that is being investigated, but no ETA for resolution)
-- Some modern OSes have a hard time picking up USBODE-circle, this device is designed for retro computers and has been tested in almost all cases up to Windows 7
+- Some modern OSes have a hard time picking up USBODE-circle, this device is designed for retro computers and has been tested in almost all cases up to Windows 7, it is currently being investigated but no ETA for resolution
 - Raspberry Pi 5 is not supported yet due to the dependency chain not supporting USB host mode on pi5s. This may change in the future
-- Network Initialization can be a little bit slow, please give the device 10-15 seconds to initialize, this should be resolved in the future with a dependency chain update
+- Network Initialization can be a little bit slow, please give the device 10-15 seconds to initialize, this should be resolved in the future with a dependency chain update* This may be resolved but we are awaiting user feedback
 
 ## CD Audio Cable Creation to Soundcard
 One of the developers purchased this: https://www.amazon.com/dp/B0BZWHVK4B?ref_=ppx_hzsearch_conn_dt_b_fed_asin_title_2&th=1
@@ -154,7 +149,7 @@ It's also possible to use dupont headers to chain these audio cables together, w
 
 ## Other notes
 
-- Do not delete “image.iso” in the Images folder. It is required as a fallback.
+- Do not delete “image.iso” on the IMGSTORE partition. It is required as a fallback.
 - The image "usb-audio-sampler" can be used to test your Line-In settings and USBODE's audio settings. It can be safely deleted if space is at a premium. To test, use Windows 98 CD Player and play track 2. Be aware this audio test has a section near the begining of the track where only audio should come from "L", and when audio should only come from "R". This is to help troubleshoot stereo related issues with custom built cables. The track starts in stereo until around 11 seconds, then goes to "L" only from 11-18.5 seconds, then goes to "R" only from 19 seconds until about 25 seconds, at which point the track stays at stereo for the rest of the time. 
 
 ## Discord Server
