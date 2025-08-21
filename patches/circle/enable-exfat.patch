@@ -1,0 +1,49 @@
+diff --git a/addon/fatfs/ffconf.h b/addon/fatfs/ffconf.h
+index 6a1efcfe..88c60dbc 100644
+--- a/addon/fatfs/ffconf.h
++++ b/addon/fatfs/ffconf.h
+@@ -30,7 +30,7 @@
+ /  f_findnext(). (0:Disable, 1:Enable 2:Enable with matching altname[] too) */
+ 
+ 
+-#define FF_USE_MKFS		0
++#define FF_USE_MKFS		1
+ /* This option switches f_mkfs(). (0:Disable or 1:Enable) */
+ 
+ 
+@@ -47,7 +47,7 @@
+ /  (0:Disable or 1:Enable) Also FF_FS_READONLY needs to be 0 to enable this option. */
+ 
+ 
+-#define FF_USE_LABEL	0
++#define FF_USE_LABEL	1
+ /* This option switches volume label API functions, f_getlabel() and f_setlabel().
+ /  (0:Disable or 1:Enable) */
+ 
+@@ -184,7 +184,7 @@
+ */
+ 
+ 
+-#define FF_MULTI_PARTITION	0
++#define FF_MULTI_PARTITION	1
+ /* This option switches support for multiple volumes on the physical drive.
+ /  By default (0), each logical drive number is bound to the same physical drive
+ /  number and only an FAT volume found on the physical drive will be mounted.
+@@ -203,7 +203,7 @@
+ /  GET_SECTOR_SIZE command. */
+ 
+ 
+-#define FF_LBA64		0
++#define FF_LBA64		1
+ /* This option switches support for 64-bit LBA. (0:Disable or 1:Enable)
+ /  To enable the 64-bit LBA, also exFAT needs to be enabled. (FF_FS_EXFAT == 1) */
+ 
+@@ -231,7 +231,7 @@
+ /  buffer in the filesystem object (FATFS) is used for the file data transfer. */
+ 
+ 
+-#define FF_FS_EXFAT		0
++#define FF_FS_EXFAT		1
+ /* This option switches support for exFAT filesystem. (0:Disable or 1:Enable)
+ /  To enable exFAT, also LFN needs to be enabled. (FF_USE_LFN >= 1)
+ /  Note that enabling exFAT discards ANSI C (C89) compatibility. */

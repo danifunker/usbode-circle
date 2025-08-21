@@ -31,7 +31,7 @@
 #define MAX_FILES_PER_PAGE 50
 #define MAX_FILENAME 255
 #define VERSION "2.0.1"
-#define DRIVE "SD:"
+#define DRIVE "0:"
 #define CONFIG_FILE DRIVE "/config.txt"
 
 LOGMODULE("webserver");

@@ -51,6 +51,7 @@
 #include <scsitbservice/scsitbservice.h>
 #include <cdromservice/cdromservice.h>
 #include <sdcardservice/sdcardservice.h>
+#include <setupstatus/setupstatus.h>
 
 
 #ifndef TSHUTDOWNMODE
@@ -98,6 +99,11 @@ private:
 	CSPIMaster* m_pSPIMaster;
 	void InitializeNTP(const char* timezone);
 	static const char ConfigOptionTimeZone[];
+
+	// Setup functions
+	boolean SetupSecondPartition(void);
+	boolean CopyImagesDirectory(void);
+	boolean CheckPartitionExists(int partition);
 };
 
 #endif

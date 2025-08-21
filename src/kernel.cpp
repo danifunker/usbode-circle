@@ -31,10 +31,11 @@
 #include <circle/logger.h>
 #include <displayservice/displayservice.h>
 #include <configservice/configservice.h>
+#include <setupstatus/setupstatus.h>
 
 #include <circle/time.h>
 
-#define DRIVE "SD:"
+#define DRIVE "0:"
 #define FIRMWARE_PATH DRIVE "/firmware/"
 #define SUPPLICANT_CONFIG_FILE DRIVE "/wpa_supplicant.conf"
 #define CONFIG_FILE DRIVE "/config.txt"
@@ -43,7 +44,7 @@
 #define SPI_MASTER_DEVICE 0
 
 // Define the images directory
-#define IMAGES_DIR "SD:/images"
+#define IMAGES_DIR "1:/"
 
 LOGMODULE("kernel");
 
@@ -141,8 +142,6 @@ CKernel* CKernel::Get() {
 }
 
 TShutdownMode CKernel::Run(void) {
-	
-
     // Initialize our config service
     ConfigService* config = new ConfigService();
     LOGNOTE("Started Config service");
@@ -154,52 +153,85 @@ TShutdownMode CKernel::Run(void) {
         LOGNOTE("Started the Log File service");
     }
 
-    // Announce ourselves
+    // Announce ourselves as early as possible
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
     LOGNOTE("=====================================");
 
+    // Initialize SetupStatus
+    SetupStatus::Init(&m_EMMC);
+    LOGNOTE("Initialized SetupStatus"); 
+
+    // Do we need to do first time setup?
+    if (SetupStatus::Get()->isSetupRequired()) {
+	    // Start Display Service for setup screen
+	    const char* displayType = config->GetDisplayHat();
+	    if (strcmp(displayType, "none") != 0) {
+		new DisplayService(displayType);
+		LOGNOTE("Started DisplayService service");
+		
+		// Give the display a moment to initialize
+		CScheduler::Get()->MsSleep(500);
+	    }
+
+	    if (SetupStatus::Get()->performSetup()) {
+		    LOGNOTE("Setup successful, rebooting");
+		    // Give a moment for the display to show completion
+		    CScheduler::Get()->MsSleep(5000);
+		    return ShutdownReboot;
+	    } else {
+		    LOGERR("Setup failed, shutting down");
+		    return ShutdownHalt;
+	    }
+    }
+
     int mode = config->GetMode();
     LOGNOTE("Got mode = %d", mode);
 
     if (mode == 0) { // CDROM Mode
 
+        // Initialize the CD Player service
+        const char* pSoundDevice = m_Options.GetSoundDevice();
+        
+        //Currently supporting PWM and I2S sound devices. HDMI needs more work.
+        if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
+            unsigned int volume = config->GetDefaultVolume();
+            if (volume > 0xff)
+                volume = 0xff;
+            CCDPlayer* player = new CCDPlayer(pSoundDevice);
+            player->SetDefaultVolume((u8)volume);
+            LOGNOTE("Started the CD Player service. Default volume is %d", volume);
+        }
 
-	    // Initialize the CD Player service
-	    const char* pSoundDevice = m_Options.GetSoundDevice();
-	    
-	    //Currently supporting PWM and I2S sound devices. HDMI needs more work.
-	    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
-    		unsigned int volume = config->GetDefaultVolume();
-		if (volume > 0xff)
-			volume = 0xff;
-		CCDPlayer* player = new CCDPlayer(pSoundDevice);
-		player->SetDefaultVolume((u8)volume);
-		LOGNOTE("Started the CD Player service. Default volume is %d", volume);
-	    }
+        // Mount partition 1 for normal operation
+        FATFS fs1;
+        FRESULT fr1 = f_mount(&fs1, "1:", 1);
+        if (fr1 != FR_OK) {
+            LOGERR("Failed to mount partition 1: %d", fr1);
+            return ShutdownHalt;
+        }
+        LOGNOTE("Partition 1 (data/images) mounted successfully");
+        
+        // Start services that depend on both partitions
+        new CDROMService();
+        LOGNOTE("Started CDROM service");
 
-	    // Initialize USB CD Service
-	    // TODO get USB speed from Properties
-	    new CDROMService();
-	    LOGNOTE("Started CDROM service");
+        new SCSITBService();
+        LOGNOTE("Started SCSITB service");
 
-	    // Load our SCSITB Service
-	    new SCSITBService();
-	    LOGNOTE("Started SCSITB service");
-
-	    // Load our Display Service, if needed
-            const char* displayType = config->GetDisplayHat();
-	    if (strcmp(displayType, "none") != 0 ) {
-	        new DisplayService(displayType);
-	        LOGNOTE("Started DisplayService service");
-	    }
+        // Start display services for normal running mode
+	const char* displayType = config->GetDisplayHat();
+	if (strcmp(displayType, "none") != 0) {
+	    new DisplayService(displayType);
+            LOGNOTE("Started DisplayService service");
+	}
 
     } else { // Mass Storage Device Mode
-	    // Start our SD Card Service
-	    new SDCARDService(&m_EMMC);
-	    LOGNOTE("Started SDCARD Service");
+        // Start our SD Card Service
+        new SDCARDService(&m_EMMC);
+        LOGNOTE("Started SDCARD Service");
     }
 
     static const char ServiceName[] = HOSTNAME;

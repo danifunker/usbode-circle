@@ -24,7 +24,8 @@ ST7789ImagesPage::~ST7789ImagesPage() {
 void ST7789ImagesPage::OnEnter() {
     LOGNOTE("Drawing imagespage");
     const char* name = m_Service->GetCurrentCDName();
-    SetSelectedName(name);
+    LOGNOTE("Current CD Name is %s", name);
+    m_SelectedIndex = m_Service->GetCurrentCD();
     m_MountedIndex = m_SelectedIndex;
     Draw();
 }
@@ -74,10 +75,12 @@ void ST7789ImagesPage::OnButtonPress(Button button) {
     }
 }
 
+/*
 void ST7789ImagesPage::SetSelectedName(const char* name) {
     if (!m_Service || !name) return;
 
     size_t fileCount = m_Service->GetCount();
+    LOGNOTE("fileCount is %d", fileCount);
     for (size_t i = 0; i < fileCount; ++i) {
         const char* currentName = m_Service->GetName(i);
         if (strcmp(currentName, name) == 0) {
@@ -89,6 +92,8 @@ void ST7789ImagesPage::SetSelectedName(const char* name) {
     // Optional: fallback to 0 if name not found
     m_SelectedIndex = 0;
 }
+*/
+
 
 void ST7789ImagesPage::MoveSelection(int delta) {
     if (!m_Service) return;

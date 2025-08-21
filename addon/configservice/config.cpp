@@ -22,8 +22,12 @@ bool Config::Load(const char* filename) {
 
 void Config::SetString(const char* key, const char* value, const char* section)
 {
-    m_properties.SetValue(section, key, value);
-    dirty = true;
+    const char* current = m_properties.GetValue(section, key, "");
+
+    if (strcmp(current, value) != 0) {
+        m_properties.SetValue(section, key, value);
+        dirty = true;
+    }
 }
 
 void Config::SetNumber(const char* key, unsigned value, const char* section)

@@ -39,9 +39,9 @@ class ST7789ImagesPage : public IPage {
 
    private:
     bool m_ShouldChangePage = false;
+    SCSITBService* m_Service = nullptr;
     CST7789Display* m_Display;
     C2DGraphics* m_Graphics;
-    SCSITBService* m_Service = nullptr;
     size_t m_TotalFiles;
     size_t m_SelectedIndex = 0;
     size_t m_MountedIndex = 0;

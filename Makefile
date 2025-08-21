@@ -48,6 +48,7 @@ CURRENT_PREFIX = $(if $(filter 64,$(ARCH_MODE)),$(PREFIX64),$(PREFIX))
 CURRENT_SUPPORTED = $(if $(filter 64,$(ARCH_MODE)),$(SUPPORTED_RASPPI_64),$(SUPPORTED_RASPPI))
 CURRENT_DIST_DIR = $(if $(filter 64,$(ARCH_MODE)),$(DIST_DIR)64,$(DIST_DIR))
 CURRENT_ZIP_NAME = $(if $(filter 64,$(ARCH_MODE)),usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)-64bit.zip,$(ZIP_NAME))
+CURRENT_IMG_NAME = $(if $(filter 64,$(ARCH_MODE)),usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)-64bit.img,usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT).img)
 
 RASPPI ?= $(if $(CURRENT_SUPPORTED),$(word 1,$(CURRENT_SUPPORTED)),1)
 # Fallback if empty
@@ -65,7 +66,8 @@ endif
 # Define USBODE addon modules (from /addon directory)
 USBODE_ADDONS = gitinfo sdcardservice cdromservice scsitbservice usbcdgadget \
 				shutdown usbmsdgadget discimage cueparser filelogdaemon \
-				webserver ftpserver configservice libsh1106 displayservice cdplayer
+				webserver ftpserver configservice libsh1106 displayservice cdplayer \
+				setupstatus
 
 # Only the Circle addons we actually need
 CIRCLE_ADDONS = linux Properties display
@@ -348,6 +350,7 @@ package-both: armstub
 	@$(MAKE) multi-arch ARCH_MODE=32 CURRENT_DIST_DIR=dist
 	@$(MAKE) multi-arch-64 ARCH_MODE=64 CURRENT_DIST_DIR=dist64
 
+
 package: package-both
 
 release: 
@@ -356,6 +359,17 @@ release:
 		exit 1; \
 	fi
 	@$(MAKE) package BUILD_NUMBER="$(BUILD_NUMBER)"
+	@$(MAKE) images-dist
+
+image-single:
+	@echo "Creating image distribution package..."
+	@mkdir -p $(CURRENT_DIST_DIR)/../imgout
+	@scripts/create-img.sh -s $(CURRENT_DIST_DIR) -o $(CURRENT_DIST_DIR)/../imgout -n $(CURRENT_IMG_NAME)
+	@echo "Image distribution package $(CURRENT_IMG_NAME) created in $(CURRENT_DIST_DIR)/../imgout"
+
+images-dist: 
+	@$(MAKE) image-single ARCH_MODE=32 CURRENT_DIST_DIR=dist CURRENT_IMG_NAME=usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT).img
+	@$(MAKE) image-single ARCH_MODE=64 CURRENT_DIST_DIR=dist64 CURRENT_IMG_NAME=usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)-64bit.img
 
 show-build-info:
 	@echo "BASE_VERSION = $(BASE_VERSION)"
@@ -384,3 +398,4 @@ show-config:
 	@echo "USBCDGADGET_CPPFLAGS = $(USBCDGADGET_CPPFLAGS)"
 	@echo "CURRENT_DIST_DIR = $(CURRENT_DIST_DIR)"
 	@echo "CURRENT_ZIP_NAME = $(CURRENT_ZIP_NAME)"
+	@echo "CURRENT_IMG_NAME = $(CURRENT_IMG_NAME)"

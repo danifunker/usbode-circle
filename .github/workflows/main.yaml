@@ -58,6 +58,26 @@ jobs:
         overwrite: true
         include-hidden-files: false
 
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.get-filename.outputs.filename }}-images IMG
+        path: imgout/${{ steps.get-filename.outputs.filename }}.img.xz
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.get-filename.outputs.filename }}-images-64bit IMG
+        path: imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false
+
     - name: Create Release (on main only)
       if: github.ref == 'refs/heads/main'
       id: create-release
@@ -68,6 +88,8 @@ jobs:
         files: | 
           ${{ steps.get-filename.outputs.filename }}.zip
           ${{ steps.get-filename.outputs.filename }}-64bit.zip
+          imgout/${{ steps.get-filename.outputs.filename }}.img.xz
+          imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

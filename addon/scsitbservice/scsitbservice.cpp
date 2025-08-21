@@ -59,7 +59,6 @@ int compareFileEntries(const void* a, const void* b) {
 SCSITBService *SCSITBService::s_pThis = 0;
 
 SCSITBService::SCSITBService()
-: 	m_FileCount(0) 
 {
     LOGNOTE("SCSITBService::SCSITBService() called");
     
@@ -71,7 +70,7 @@ SCSITBService::SCSITBService()
     configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
     assert(cdromservice != nullptr && "Failed to get cdromservice");
 
-    m_FileEntries = new FileEntry[MAX_FILES];
+    m_FileEntries = new FileEntry[MAX_FILES]();
     bool ok = RefreshCache();
     assert(ok && "Failed to refresh SCSITBService on construction");
     SetName("scsitbservice");
@@ -79,6 +78,7 @@ SCSITBService::SCSITBService()
 
 SCSITBService::~SCSITBService() {
     delete[] m_FileEntries;
+    m_FileEntries = nullptr;
 }
 
 size_t SCSITBService::GetCount() const {
@@ -121,23 +121,21 @@ const char* SCSITBService::GetCurrentCDName() {
 
 bool SCSITBService::SetNextCDByName(const char* file_name) {
 
-	LOGNOTE("SCSITBService::SetNextCDByName %s", file_name);
 	int index = 0;
         for (const FileEntry* it = begin(); it != end(); ++it, ++index) {
 		//LOGNOTE("SCSITBService::SetNextCDByName testing %s", it->name);
                 if (strcmp(file_name, it->name) == 0) {
-			LOGNOTE("SCSITBService::SetNextCDByName found %s", it->name);
                         return SetNextCD(index);
                 }
         }
 
-	LOGNOTE("SCSITBService::SetNextCDByName not found");
 	return false;
 }
 
 
 bool SCSITBService::RefreshCache() {
     LOGNOTE("SCSITBService::RefreshCache() called");
+    m_Lock.Acquire ();
 
     // Get current loaded image
     const char* current_image = configservice->GetCurrentImage(DEFAULT_IMAGE_FILENAME);
@@ -148,7 +146,7 @@ bool SCSITBService::RefreshCache() {
     // Read our directory of images
     // and populate m_FileEntries
     DIR dir;
-    FRESULT fr = f_opendir(&dir, "/images");
+    FRESULT fr = f_opendir(&dir, "1:/");
     if (fr != FR_OK) {
         // TODO: handle error as needed
         return false;
@@ -164,48 +162,50 @@ bool SCSITBService::RefreshCache() {
         if (strcmp(fno.fname, ".") == 0 || strcmp(fno.fname, "..") == 0)
             continue;
 
-	//LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
+	LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
         const char* ext = strrchr(fno.fname, '.');
         if (ext != nullptr) {
             if (iequals(ext, ".iso") || iequals(ext, ".bin")) {
 		if (m_FileCount >= MAX_FILES)
                     break;
+		//LOGNOTE("SCSITBService::RefreshCache() adding file %s to m_FileEntries", fno.fname);
                 size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);
                 memcpy(m_FileEntries[m_FileCount].name, fno.fname, len);
                 m_FileEntries[m_FileCount].name[len] = '\0';
-
                 m_FileEntries[m_FileCount].size = fno.fsize;
-
                 m_FileCount++;
-
             }
         }
     }
 
     // Sort m_FileEntries by filename alphabetically
-    qsort(m_FileEntries, m_FileCount, sizeof(m_FileEntries[0]), compareFileEntries);
+    if (m_FileCount > 1)
+        qsort(m_FileEntries, m_FileCount, sizeof(m_FileEntries[0]), compareFileEntries);
 
     // Find the index of current_image in m_FileEntries
     for (size_t i = 0; i < m_FileCount; ++i) {
+	//LOGNOTE("i is %u, m_FileCount is %u, current_image is %s, m_FileEntries is %s", i, m_FileCount, current_image, m_FileEntries[i].name);
         if (strcmp(m_FileEntries[i].name, current_image) == 0) {
 	    
 	    // If we don't yet have a current_cd e.g. we've 
 	    // just booted, then mount it
-	    if (current_cd < 0) 
+	    if (current_cd < 0)  {
 		next_cd = i;
-	    else
+	    } else {
             	current_cd = i;
+	    }
 		    
             break;
         }
     }
 
-    //TODO handle case where we can't find the CD in the last, fall back to 
+    //TODO handle case where we can't find the CD in the list, fall back to 
     //the default image
 
     LOGNOTE("SCSITBService::RefreshCache() RefreshCache() done");
 
     f_closedir(&dir);
+    m_Lock.Release ();
     return true;
 }
 
@@ -214,11 +214,12 @@ void SCSITBService::Run() {
 
 	while (true) {
 
+		m_Lock.Acquire ();
 		// Do we have a next cd?
 		if (next_cd > -1) {
 
 			// Check if it's valid
-			if (next_cd > (int)m_FileCount) {
+			if ((size_t)next_cd > m_FileCount) {
 				next_cd = -1;
 				continue;
 			}
@@ -231,6 +232,7 @@ void SCSITBService::Run() {
     			cdromservice->SetDevice(cueBinFileDevice);
 
 			// Save current mounted image name
+			// TODO only if different
 			configservice->SetCurrentImage(imageName);
 
 			current_cd = next_cd;
@@ -238,6 +240,7 @@ void SCSITBService::Run() {
 			// Mark done
 			next_cd = -1;
 		}
+		m_Lock.Release ();
 		CScheduler::Get()->MsSleep(100);
 	}
 }

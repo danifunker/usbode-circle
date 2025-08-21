@@ -34,6 +34,13 @@ To build for a single architecture with build number:
 
 The build number will be displayed as `2.2.5-123` but stored internally as just `123`.
 
+## Build Images
+To build images, Linux is required and special sudo permissions are required. They have been limited as much as possible. Please follow these instructions on setting up sudo for the build images script:
+
+1. `sudo visudo -f /etc/sudoers.d/mount-nopasswd`
+2. Paste in the following line into the file: `%sudo ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount, /sbin/losetup, /sbin/mkfs.fat, /sbin/fdisk`
+3. execute `make image-dist` to create the image file for the dist folder (32-bit) under the imgout folder.
+
 ##Mac Build Notes
 - Install complete xcode suite & cli tools
 - Install the following packages through brew: `bash`, `gnu-getopt`, `texinfo`
