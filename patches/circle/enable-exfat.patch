@@ -1,5 +1,5 @@
 diff --git a/addon/fatfs/ffconf.h b/addon/fatfs/ffconf.h
-index 6a1efcfe..0b3bf4b1 100644
+index 6a1efcfe..88c60dbc 100644
 --- a/addon/fatfs/ffconf.h
 +++ b/addon/fatfs/ffconf.h
 @@ -30,7 +30,7 @@
@@ -9,15 +9,6 @@ index 6a1efcfe..0b3bf4b1 100644
 -#define FF_USE_MKFS		0
 +#define FF_USE_MKFS		1
  /* This option switches f_mkfs(). (0:Disable or 1:Enable) */
- 
- 
-@@ -38,7 +38,7 @@
- /* This option switches fast seek feature. (0:Disable or 1:Enable) */
- 
- 
--#define FF_USE_EXPAND	0
-+#define FF_USE_EXPAND	1
- /* This option switches f_expand(). (0:Disable or 1:Enable) */
  
  
 @@ -47,7 +47,7 @@
@@ -38,6 +29,15 @@ index 6a1efcfe..0b3bf4b1 100644
  /* This option switches support for multiple volumes on the physical drive.
  /  By default (0), each logical drive number is bound to the same physical drive
  /  number and only an FAT volume found on the physical drive will be mounted.
+@@ -203,7 +203,7 @@
+ /  GET_SECTOR_SIZE command. */
+ 
+ 
+-#define FF_LBA64		0
++#define FF_LBA64		1
+ /* This option switches support for 64-bit LBA. (0:Disable or 1:Enable)
+ /  To enable the 64-bit LBA, also exFAT needs to be enabled. (FF_FS_EXFAT == 1) */
+ 
 @@ -231,7 +231,7 @@
  /  buffer in the filesystem object (FATFS) is used for the file data transfer. */
  
