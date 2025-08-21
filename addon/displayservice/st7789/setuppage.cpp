@@ -19,7 +19,7 @@ void ST7789SetupPage::OnEnter() {
     m_ShouldChangePage = false;
     m_refreshCounter = 0;
     m_setupStarted = false;
-    m_statusText = "Init Setup. Wait up to 30s";
+    m_statusText = "Init Setup. Wait 60 seconds";
     Draw();
 }
 
