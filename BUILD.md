@@ -2,6 +2,7 @@
 2. Install the latest Arm GNU Toolchain for your OS/architecture. https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads. 
     - for MacOS using apple silicon use the package `arm-gnu-toolchain-14.2.rel1-darwin-arm64-arm-none-eabi.pkg`
     - for Linux on x64 use `arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz`
+4. Install `texinfo` - on ubuntu `sudo apt install -y texinfo`
 4. Run `make multi-arch` to compile a build for all supported architectures.
 5. Output will be located in the `dist/` folder.
 
