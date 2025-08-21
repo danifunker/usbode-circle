@@ -4,76 +4,58 @@
 #include <circle/timer.h>
 #include <circle/util.h>
 
+PARTITION VolToPart[FF_VOLUMES] = {
+    {0, 1},    // Volume 0: SD card, partition 1 (first partition)
+    {0, 2}     // Volume 1: SD card, partition 2 (second partition)
+};
+
 static const char FromSetupStatus[] = "setupstatus";
 LOGMODULE("setupstatus");
 
 SetupStatus* SetupStatus::s_pThis = nullptr;
 
-SetupStatus::SetupStatus(CEMMCDevice* pEMMC, const PARTITION* partitionMap)
-    : CTask(TASK_STACK_SIZE),
-      m_pEMMC(pEMMC),
-      m_pPartitionMap(partitionMap),
+SetupStatus::SetupStatus(CEMMCDevice* pEMMC)
+    : m_pEMMC(pEMMC),
       m_setupRequired(false),
       m_setupInProgress(false), 
       m_setupComplete(false),
       m_currentProgress(0),
-      m_totalProgress(0) {
+      m_totalProgress(0),
+      m_statusMessage("Setup starting...")
+{
     
     assert(m_pEMMC != nullptr);
     
-    // If partition map was provided, copy it to the global VolToPart array
-    if (m_pPartitionMap != nullptr) {
-        extern PARTITION VolToPart[FF_VOLUMES];
-        for (int i = 0; i < FF_VOLUMES; i++) {
-            VolToPart[i] = m_pPartitionMap[i];
-        }
-        LOGNOTE("Partition mapping initialized for FatFs");
-    }
-    
     s_pThis = this;
     LOGNOTE("SetupStatus service initialized");
+    
+    // Display partition table on startup
+    displayPartitionTable();
+    
+    // Check if setup is needed - use the enhanced partition check
+    if (checkPartitionExists(1)) {
+        LOGNOTE("Second partition exists and is adequate size - no setup required");
+        m_setupRequired = false;
+    } else {
+        LOGNOTE("Second partition not found or too small - setup required");
+        m_setupRequired = true;
+    }
 }
 
 SetupStatus::~SetupStatus() {
     s_pThis = nullptr;
 }
 
-void SetupStatus::Run() {
-    LOGNOTE("SetupStatus service started");
-    
-    // Display partition table on startup
-    displayPartitionTable();
-    
-    // Check if setup is needed - use the enhanced partition check
-    bool partition1OK = checkPartitionExists(1);
-    
-    if (!partition1OK) {
-        LOGNOTE("Second partition not found or too small - setup required");
-        setSetupRequired(true);
-    } else {
-        LOGNOTE("Second partition exists and is adequate size - no setup required");
-        setSetupRequired(false);
-    }
-    
-    while (true) {
-        // Log current state periodically
-        static unsigned lastStateLog = 0;
-        unsigned currentTime = CTimer::GetClockTicks();
-        
-        if (currentTime - lastStateLog > 10 * HZ) { // Every 10 seconds
-            LOGNOTE("Current state: required=%s, inProgress=%s, complete=%s, progress=%d/%d", 
-                   m_setupRequired ? "YES" : "NO",
-                   m_setupInProgress ? "YES" : "NO", 
-                   m_setupComplete ? "YES" : "NO",
-                   m_currentProgress, m_totalProgress);
-            lastStateLog = currentTime;
-        }
-        
-        // Sleep for 5 seconds
-        CScheduler::Get()->MsSleep(5000);
-    }
+void SetupStatus::Init(CEMMCDevice* pEMMC) {
+    assert(!s_pThis && "SetupStatus::Init() must not be called more than once");
+    s_pThis = new SetupStatus(pEMMC);
 }
 
+SetupStatus* SetupStatus::Get() {
+    assert(s_pThis && "SetupStatus::Init() must be called first");
+    return s_pThis;
+}
+    
 void SetupStatus::displayPartitionTable() {
     LOGNOTE("Reading partition table...");
     
@@ -122,7 +104,7 @@ void SetupStatus::displayPartitionTable() {
         LOGNOTE("  Start LBA: %u", p.startLBA);
         LOGNOTE("  Num Sectors: %u (%u MB)", p.numSectors, size_mb);
         
-        // Check FatFs accessibility for first 4 partitions
+        // Check FatFs accessibility
         if (i < 2) { // Only check partitions 1 and 2 (0: and 1: in FatFs)
             CString drive;
             drive.Format("%d:", i);
@@ -181,18 +163,6 @@ void SetupStatus::displayPartitionTable() {
         
         LOGNOTE(""); // Empty line for readability
     }
-    
-    LOGNOTE("=== FatFs Drive Mapping ===");
-    extern PARTITION VolToPart[FF_VOLUMES];
-    for (int vol = 0; vol < FF_VOLUMES; vol++) {
-        LOGNOTE("Volume %d: -> Physical Drive %d, Partition %d", 
-               vol, VolToPart[vol].pd, VolToPart[vol].pt);
-    }
-    
-    LOGNOTE("=== Alternative Access Methods ===");
-    LOGNOTE("SD Card Root: \"SD:\" (typically maps to \"0:\")");
-    LOGNOTE("USB Storage: \"USB:\" (when USB device connected)");
-    LOGNOTE("Floppy: \"FD:\" (if floppy interface available)");
     
     LOGNOTE("Partition table analysis complete");
 }
@@ -350,7 +320,7 @@ bool SetupStatus::copyImagesDirectory() {
             if (srcResult == FR_OK) {
                 FRESULT dstResult = f_open(&dst, dstPath, FA_WRITE | FA_CREATE_ALWAYS);
                 if (dstResult == FR_OK) {
-                    BYTE buffer[1024];
+                    BYTE buffer[32 * 1024];
                     UINT br, bw;
                     DWORD totalBytes = 0;
                     boolean copySuccess = TRUE;
@@ -370,12 +340,14 @@ bool SetupStatus::copyImagesDirectory() {
                         fileCount++;
                         
                         // Delete the source file after successful copy
+			/*
                         FRESULT delResult = f_unlink(srcPath);
                         if (delResult == FR_OK) {
                             LOGNOTE("Deleted source file: %s", fno.fname);
                         } else {
                             LOGNOTE("Failed to delete source file %s: %d", fno.fname, delResult);
                         }
+			*/
                     }
                 } else {
                     LOGNOTE("Failed to open destination %s: %d", (const char*)dstPath, dstResult);
@@ -397,67 +369,20 @@ bool SetupStatus::copyImagesDirectory() {
     return true;
 }
 
-void SetupStatus::setSetupRequired(bool required) {
-    if (m_setupRequired != required) {
-        m_setupRequired = required;
-        LOGNOTE("Setup required changed: %s", required ? "YES" : "NO");
-    }
-}
-
-bool SetupStatus::isSetupRequired() const {
-    return m_setupRequired;
-}
-
-void SetupStatus::setSetupInProgress(bool inProgress) {
-    if (m_setupInProgress != inProgress) {
-        m_setupInProgress = inProgress;
-        LOGNOTE("Setup in progress changed: %s", inProgress ? "YES" : "NO");
-        if (inProgress) {
-            m_currentProgress = 0;
-            m_totalProgress = 0;
-        }
-    }
-}
-
 bool SetupStatus::isSetupInProgress() const {
     return m_setupInProgress;
-}
-
-void SetupStatus::setSetupComplete(bool complete) {
-    if (complete && !m_setupComplete) {
-        m_setupComplete = true;
-        m_setupInProgress = false;
-        m_setupRequired = false;
-        LOGNOTE("Setup completed successfully");
-        m_Event.Set(); // Wake up the task
-    } else if (!complete) {
-        m_setupComplete = complete;
-        LOGNOTE("Setup complete changed: %s", complete ? "YES" : "NO");
-    }
 }
 
 bool SetupStatus::isSetupComplete() const {
     return m_setupComplete;
 }
 
-void SetupStatus::setStatusMessage(const char* message) {
-    CString newMessage = message ? message : "";
-    if (m_statusMessage.Compare(newMessage) != 0) {
-        m_statusMessage = newMessage;
-        LOGNOTE("Status message changed: '%s'", (const char*)m_statusMessage);
-    }
+bool SetupStatus::isSetupRequired() const {
+    return m_setupRequired;
 }
 
 const char* SetupStatus::getStatusMessage() const {
     return m_statusMessage;
-}
-
-void SetupStatus::setProgress(int current, int total) {
-    if (m_currentProgress != current || m_totalProgress != total) {
-        m_currentProgress = current;
-        m_totalProgress = total;
-        LOGNOTE("Progress changed: %d/%d", current, total);
-    }
 }
 
 int SetupStatus::getCurrentProgress() const {
@@ -473,19 +398,6 @@ bool SetupStatus::checkPartitionExists(int partition) {
     drive.Format("%d:", partition);
     
     LOGNOTE("Checking if partition %d exists and is adequate size...", partition);
-    
-    // Check if the partition number is valid for our FatFs configuration
-    extern PARTITION VolToPart[FF_VOLUMES];
-    LOGNOTE("FF_VOLUMES is configured for %d volumes", FF_VOLUMES);
-    
-    if (partition >= FF_VOLUMES) {
-        LOGNOTE("Partition %d exceeds FF_VOLUMES limit (%d)", partition, FF_VOLUMES);
-        return false;
-    }
-    
-    // Log the current volume mapping for this partition
-    LOGNOTE("Volume %d maps to: Physical Drive %d, Partition %d", 
-           partition, VolToPart[partition].pd, VolToPart[partition].pt);
     
     // Don't try to mount here - just check if we can access it
     // The mounting should happen elsewhere in a controlled manner
@@ -559,51 +471,40 @@ bool SetupStatus::checkPartitionExists(int partition) {
 
 bool SetupStatus::performSetup() {
     LOGNOTE("Starting setup process...");
+    m_setupInProgress = true;
     
-    setSetupInProgress(true);
-    setStatusMessage("Displaying partition table...");
-    setProgress(1, 5); // Changed to 5 steps
-    
-    displayPartitionTable();
-    
-    setStatusMessage("Resizing second partition...");
-    setProgress(2, 5);
-    
+    m_statusMessage = "Resizing second partition...";
+    m_currentProgress = 1;
     if (!resizeSecondPartition()) {
         LOGERR("Failed to resize second partition");
-        setStatusMessage("Resize failed!");
+        m_statusMessage = "Resize failed!";
         return false;
     }
     
-    setStatusMessage("Formatting partition...");
-    setProgress(3, 5);
-    
+    m_statusMessage = "Formatting partition...";
+    m_currentProgress = 2;
     if (!formatPartitionAsExFAT()) {
         LOGERR("Failed to format partition as exFAT");
-        setStatusMessage("Format failed!");
+        m_statusMessage = "Format failed!";
         return false;
     }
     
-    setStatusMessage("Copying files...");
-    setProgress(4, 5);
-    
+    m_statusMessage = "Copying files...";
+    m_currentProgress = 3;
     if (!copyImagesDirectory()) {
         LOGERR("Failed to copy images directory");
-        setStatusMessage("Copy failed!");
+        m_statusMessage = "Copy failed!";
         return false;
     }
     
     // Mount both partitions for normal operation after setup
-    setStatusMessage("Mounting partitions...");
-    setProgress(5, 5);
-    LOGNOTE("Mounting partitions after successful setup...");
-    
-    // Mount partition 0 (boot/system partition) - should already be mounted but verify
+    m_statusMessage = "Mounting partitions...";
+    m_currentProgress = 4;
     FATFS fs0;
     FRESULT fr0 = f_mount(&fs0, "0:", 1);
     if (fr0 != FR_OK) {
         LOGERR("Failed to mount partition 0 after setup: %d", fr0);
-        setStatusMessage("Mount failed!");
+        m_statusMessage = "Mount failed!";
         return false;
     }
     LOGNOTE("Partition 0 (boot) mounted successfully");
@@ -615,7 +516,7 @@ bool SetupStatus::performSetup() {
         LOGERR("Failed to mount partition 1 after setup: %d", fr1);
         // Unmount partition 0 since we failed
         f_mount(0, "0:", 0);
-        setStatusMessage("Mount failed!");
+        m_statusMessage = "Mount failed!";
         return false;
     }
     LOGNOTE("Partition 1 (data/images) mounted successfully");
@@ -625,8 +526,9 @@ bool SetupStatus::performSetup() {
     displayPartitionTable();
     
     LOGNOTE("Setup completed successfully - both partitions mounted and ready");
-    setSetupComplete(true);
-    setStatusMessage("Setup complete!");
+    m_currentProgress = 5;
+    m_setupComplete = true;
     
     return true;
 }
+

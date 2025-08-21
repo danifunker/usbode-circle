@@ -47,40 +47,26 @@ void ST7789SetupPage::Refresh() {
     SetupStatus* setupStatus = SetupStatus::Get();
     if (!setupStatus) {
         m_statusText = "Setup service unavailable";
+        LOGNOTE("Could not get setupstatus");
         Draw();
         return;
     }
     
-    // Check if setup is complete
-    if (setupStatus->isSetupComplete()) {
-        m_ShouldChangePage = true;
-        m_statusText = "Setup complete!";
-        Draw();
-        return;
-    }
-    
-    // Just display status - don't trigger setup (kernel handles that)
-    if (setupStatus->isSetupInProgress()) {
-        const char* statusMsg = setupStatus->getStatusMessage();
-        CString statusString = statusMsg ? statusMsg : "";
+    const char* statusMsg = setupStatus->getStatusMessage();
+    CString statusString = statusMsg ? statusMsg : "";
         
-        if (statusString.GetLength() > 0) {
-            m_statusText = statusString;
-        } else {
-            m_statusText = "Setup in progress...";
-        }
-        
-        // Add animation dots
-        int dots = (m_refreshCounter / 10) % 4;
-        for (int i = 0; i < dots; i++) {
-            m_statusText += ".";
-        }
-    } else if (setupStatus->isSetupRequired()) {
-        m_statusText = "Setup required - starting...";
+    if (statusString.GetLength() > 0) {
+        m_statusText = statusString;
     } else {
-        m_statusText = "Waiting for setup...";
+        m_statusText = "Setup in progress...";
     }
     
+    // Add animation dots
+    int dots = (m_refreshCounter / 10) % 4;
+    for (int i = 0; i < dots; i++) {
+        m_statusText += ".";
+    }
+
     // Redraw every few refresh cycles to show animation
     if (m_refreshCounter % 10 == 0) {
         Draw();

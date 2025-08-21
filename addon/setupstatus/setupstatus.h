@@ -1,7 +1,6 @@
 #ifndef SETUPSTATUS_H
 #define SETUPSTATUS_H
 
-#include <circle/sched/task.h>
 #include <circle/sched/synchronizationevent.h>
 #include <circle/string.h>
 #include <circle/types.h>
@@ -19,33 +18,25 @@ struct MBRPartitionEntry {
     uint32_t numSectors;   // little-endian
 };
 
-class SetupStatus : public CTask {
+class SetupStatus {
 public:
-    SetupStatus(CEMMCDevice* pEMMC, const PARTITION* partitionMap = nullptr);
-    ~SetupStatus();
 
-    static SetupStatus* Get() {
-        return s_pThis;
-    }
+    void Run();
 
-    // Task interface
-    void Run() override;
+    // Singleton getter
+    static SetupStatus* Get();
+    
+    // Disable copy and assignment
+    SetupStatus(const SetupStatus&) = delete;
+    SetupStatus& operator=(const SetupStatus&) = delete;
+
+    static void Init(CEMMCDevice* pEMMC);
 
     // Status management
-    void setSetupRequired(bool required);
     bool isSetupRequired() const;
-    
-    void setSetupInProgress(bool inProgress);
     bool isSetupInProgress() const;
-    
-    void setSetupComplete(bool complete);
     bool isSetupComplete() const;
-    
-    void setStatusMessage(const char* message);
     const char* getStatusMessage() const;
-
-    // Progress tracking
-    void setProgress(int current, int total);
     int getCurrentProgress() const;
     int getTotalProgress() const;
 
@@ -54,13 +45,13 @@ public:
     bool performSetup();
 
 private:
+    SetupStatus(CEMMCDevice* pEMMC);
+    ~SetupStatus();
+
     static SetupStatus* s_pThis;
     
     // Hardware reference
     CEMMCDevice* m_pEMMC;
-    
-    // Partition mapping (optional - if provided will copy to global VolToPart)
-    const PARTITION* m_pPartitionMap;
     
     // Setup helper methods - ported from kernel.cpp
     void displayPartitionTable();
@@ -69,12 +60,12 @@ private:
     bool copyImagesDirectory();
     
     // Status variables
-    volatile bool m_setupRequired;
-    volatile bool m_setupInProgress;
-    volatile bool m_setupComplete;
-    CString m_statusMessage;
-    volatile int m_currentProgress;
-    volatile int m_totalProgress;
+    volatile bool m_setupRequired = false;
+    volatile bool m_setupInProgress = false;
+    volatile bool m_setupComplete = false;
+    volatile int m_currentProgress = 1;
+    volatile int m_totalProgress = 5;
+    const char*  m_statusMessage;
     
     // Event for waking up the task
     CSynchronizationEvent m_Event;

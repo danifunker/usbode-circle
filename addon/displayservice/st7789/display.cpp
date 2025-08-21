@@ -11,6 +11,7 @@
 #include <circle/timer.h>
 #include <displayservice/buttonhandler.h>
 #include <displayservice/buttons.h>
+#include <setupstatus/setupstatus.h>
 
 #include "configpage.h"
 #include "homepage.h"
@@ -95,11 +96,13 @@ bool ST7789Display::Initialize() {
     m_PageManager.RegisterPage("timeoutconfigpage", new ST7789TimeoutConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("infopage", new ST7789InfoPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("setuppage", new ST7789SetupPage(&m_Display, &m_Graphics));
-
-
-    // Set the stating page
-    m_PageManager.SetActivePage("splashpage");
     LOGNOTE("Registered pages");
+
+    // Set the starting page
+    if (SetupStatus::Get()->isSetupRequired())
+	m_PageManager.SetActivePage("setuppage");
+    else 
+    	m_PageManager.SetActivePage("splashpage");
 
     // register buttons
     // TODO: move to base class
@@ -178,6 +181,9 @@ void ST7789Display::DrawSleepWarning() {
 void ST7789Display::Sleep() {
     if (!pwm_configured)
         return;
+
+    if (SetupStatus::Get()->isSetupInProgress())
+	    return;
 
     LOGNOTE("Sleeping");
     

@@ -51,6 +51,7 @@
 #include <scsitbservice/scsitbservice.h>
 #include <cdromservice/cdromservice.h>
 #include <sdcardservice/sdcardservice.h>
+#include <setupstatus/setupstatus.h>
 
 
 #ifndef TSHUTDOWNMODE

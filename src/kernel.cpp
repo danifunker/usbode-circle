@@ -20,7 +20,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "kernel.h"
-#include "fatfs_partition.h"  // Include the consolidated header
 
 #include <ftpserver/ftpdaemon.h>
 #include <string.h>
@@ -147,13 +146,6 @@ TShutdownMode CKernel::Run(void) {
     ConfigService* config = new ConfigService();
     LOGNOTE("Started Config service");
 
-    // Initialize FatFs partitions
-    InitFatFsPartitions();
-    
-    // Start the SetupStatus service with partition mapping
-    new SetupStatus(&m_EMMC, s_VolToPart);
-    LOGNOTE("Started SetupStatus service with partition mapping");
-
     // Start the file logging service
     const char* logfile = config->GetLogfile();
     if (logfile) {
@@ -161,25 +153,42 @@ TShutdownMode CKernel::Run(void) {
         LOGNOTE("Started the Log File service");
     }
 
-    // Announce ourselves
+    // Announce ourselves as early as possible
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
     LOGNOTE("=====================================");
 
+    // Initialize SetupStatus
+    SetupStatus::Init(&m_EMMC);
+    LOGNOTE("Initialized SetupStatus"); 
+
+    // Do we need to do first time setup?
+    if (SetupStatus::Get()->isSetupRequired()) {
+	    // Start Display Service for setup screen
+	    const char* displayType = config->GetDisplayHat();
+	    if (strcmp(displayType, "none") != 0) {
+		new DisplayService(displayType);
+		LOGNOTE("Started DisplayService service");
+		
+		// Give the display a moment to initialize
+		CScheduler::Get()->MsSleep(500);
+	    }
+
+	    if (SetupStatus::Get()->performSetup()) {
+		    LOGNOTE("Setup successful, rebooting");
+		    // Give a moment for the display to show completion
+		    CScheduler::Get()->MsSleep(5000);
+		    return ShutdownReboot;
+	    } else {
+		    LOGERR("Setup failed, shutting down");
+		    return ShutdownHalt;
+	    }
+    }
+
     int mode = config->GetMode();
     LOGNOTE("Got mode = %d", mode);
-
-    // Start Display Service NOW - after initial logging but before setup check
-    const char* displayType = config->GetDisplayHat();
-    if (strcmp(displayType, "none") != 0) {
-        new DisplayService(displayType);
-        LOGNOTE("Started DisplayService service (early for setup progress)");
-        
-        // Give the display a moment to initialize
-        CScheduler::Get()->MsSleep(500);
-    }
 
     if (mode == 0) { // CDROM Mode
 
@@ -196,30 +205,6 @@ TShutdownMode CKernel::Run(void) {
             LOGNOTE("Started the CD Player service. Default volume is %d", volume);
         }
 
-        // Check setup status and handle setup if needed
-        LOGNOTE("Checking setup status...");
-        SetupStatus* setupStatus = SetupStatus::Get();
-        
-        if (setupStatus->isSetupRequired()) {
-            LOGNOTE("Setup is required - starting setup process");
-            
-            if (!setupStatus->performSetup()) {
-                LOGERR("Setup failed");
-                return ShutdownHalt;
-            }
-            
-            // Give a moment for the display to show completion
-            CScheduler::Get()->MsSleep(2000);
-            
-            LOGNOTE("Setup completed successfully - continuing with normal startup");
-            setupStatus->setStatusMessage("Setup complete - starting services...");
-            
-            // Continue with normal service startup - no reboot needed
-        }
-        
-        // Always continue with service startup (whether setup was needed or not)
-        LOGNOTE("Starting normal services...");
-        
         // Mount partition 1 for normal operation
         FATFS fs1;
         FRESULT fr1 = f_mount(&fs1, "1:", 1);
@@ -236,8 +221,12 @@ TShutdownMode CKernel::Run(void) {
         new SCSITBService();
         LOGNOTE("Started SCSITB service");
 
-        // Display service was already started earlier
-        // (No need to start it again here - remove the duplicate)
+        // Start display services for normal running mode
+	const char* displayType = config->GetDisplayHat();
+	if (strcmp(displayType, "none") != 0) {
+	    new DisplayService(displayType);
+            LOGNOTE("Started DisplayService service");
+	}
 
     } else { // Mass Storage Device Mode
         // Start our SD Card Service
