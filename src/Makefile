@@ -32,7 +32,6 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(CIRCLEHOME)/addon/SDCard/libsdcard.a \
 	$(CIRCLEHOME)/addon/Properties/libproperties.a \
 	$(CIRCLEHOME)/addon/display/libdisplay.a \
-	$(CIRCLEHOME)/addon/vc4/interface/vmcs_host/libvmcs_host.a \
 	$(USBODEHOME)/addon/webserver/libwebserver.a \
 	$(USBODEHOME)/addon/usbcdgadget/libusbcdgadget.a \
 	$(USBODEHOME)/addon/usbmsdgadget/libusbmsdgadget.a \
