@@ -31,6 +31,7 @@ public:
     SetupStatus& operator=(const SetupStatus&) = delete;
 
     static void Init(CEMMCDevice* pEMMC);
+    static void Shutdown();
 
     // Status management
     bool isSetupRequired() const;

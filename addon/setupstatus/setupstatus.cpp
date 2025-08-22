@@ -51,6 +51,11 @@ void SetupStatus::Init(CEMMCDevice* pEMMC) {
     s_pThis = new SetupStatus(pEMMC);
 }
 
+void SetupStatus::Shutdown() {
+    delete s_pThis;
+    s_pThis = nullptr;
+}
+
 SetupStatus* SetupStatus::Get() {
     assert(s_pThis && "SetupStatus::Init() must be called first");
     return s_pThis;

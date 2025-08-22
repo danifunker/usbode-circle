@@ -187,6 +187,9 @@ TShutdownMode CKernel::Run(void) {
 	    }
     }
 
+    // Clean up SetupStatus
+    SetupStatus::Shutdown();
+
     int mode = config->GetMode();
     LOGNOTE("Got mode = %d", mode);
 
