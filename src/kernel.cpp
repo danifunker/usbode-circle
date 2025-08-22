@@ -209,25 +209,23 @@ TShutdownMode CKernel::Run(void) {
         LOGNOTE("Started the CD Player service. Default volume is %d", volume);
     }
 
-    if (strcmp(pSoundDevice, "sndhdmi") == 0 ) {
-        VCHI_INSTANCE_T vchi_instance;
-        VCHI_CONNECTION_T *vchi_connection;
-
-        // Initialize VCHI first
-        vchi_initialise(&vchi_instance);
-        vchi_connect(NULL, 0, vchi_instance);
-
-        // Initialize TV service
-        vc_vchi_tv_init(vchi_instance, &vchi_connection, 1);
-
-        // Power on HDMI with preferred settings
-        vc_tv_hdmi_power_on_preferred();   
+    if (strcmp(pSoundDevice, "sndhdmi") == 0) {
+        // Initialize basic HDMI display to enable audio
+        // Use Circle's screen device to activate HDMI
+        CScreenDevice hdmiScreen(1920, 1080, false); // false = no console output
+        if (hdmiScreen.Initialize()) {
+            LOGNOTE("HDMI display initialized for audio support");
+            
             unsigned int volume = config->GetDefaultVolume();
-        if (volume > 0xff)
-            volume = 0xff;
-        CCDPlayer* player = new CCDPlayer(pSoundDevice);
-        player->SetDefaultVolume((u8)volume);
-        LOGNOTE("Started the CD Player with sndhdmi not fully supported yet. Default volume is %d", volume);
+            if (volume > 0xff)
+                volume = 0xff;
+            CCDPlayer* player = new CCDPlayer(pSoundDevice);
+            player->SetDefaultVolume((u8)volume);
+            LOGNOTE("Started CD Player with HDMI audio. Default volume is %d", volume);
+        } else {
+            LOGERR("Failed to initialize HDMI display - HDMI audio not available");
+            LOGNOTE("Consider using PWM or I2S audio instead");
+        }
     }
 
     // Mount images partition for normal operation
