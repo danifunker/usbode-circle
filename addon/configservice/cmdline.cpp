@@ -70,6 +70,8 @@ bool CmdLine::Save() {
     if (!dirty)
 	    return true;
     
+    dirty = false;
+
     FIL file;
     FRESULT res;
     UINT bytesWritten;
@@ -131,7 +133,6 @@ bool CmdLine::Save() {
     }
 
     LOGNOTE("Written successfully");
-    dirty = false;
     return true;
 }
 

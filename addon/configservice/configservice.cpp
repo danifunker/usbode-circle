@@ -9,14 +9,14 @@
 
 LOGMODULE("configservice");
 
-ConfigService *ConfigService::s_pThis = 0;
+ConfigService *ConfigService::s_pThis = nullptr;
 
 ConfigService::ConfigService() 
 :  m_cmdline(new CmdLine()),
  m_config(new Config())
 {
     // I am the one and only!
-    assert(s_pThis == 0);
+    assert(s_pThis == nullptr);
     s_pThis = this;
 
     bool ok = m_cmdline->Load(CMDLINE_FILE);
@@ -31,6 +31,7 @@ ConfigService::ConfigService()
 ConfigService::~ConfigService()
 {
     delete m_config;
+    delete m_cmdline;
 }
 
 bool ConfigService::GetUSBFullSpeed()
