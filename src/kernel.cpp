@@ -35,16 +35,17 @@
 
 #include <circle/time.h>
 
-#define DRIVE "0:"
-#define FIRMWARE_PATH DRIVE "/firmware/"
-#define SUPPLICANT_CONFIG_FILE DRIVE "/wpa_supplicant.conf"
-#define CONFIG_FILE DRIVE "/config.txt"
-#define LOG_FILE DRIVE "/logfile.txt"
+#define ROOTDRIVE "0:"
+#define IMAGESDRIVE "1:"
+#define FIRMWARE_PATH ROOTDRIVE "/firmware/"
+#define SUPPLICANT_CONFIG_FILE ROOTDRIVE "/wpa_supplicant.conf"
+#define CONFIG_FILE ROOTDRIVE "/config.txt"
+#define LOG_FILE ROOTDRIVE "/logfile.txt"
 #define HOSTNAME "usbode"
 #define SPI_MASTER_DEVICE 0
 
 // Define the images directory
-#define IMAGES_DIR "1:/"
+#define IMAGES_DIR IMAGESDRIVE "/"
 
 LOGMODULE("kernel");
 
@@ -70,6 +71,8 @@ CKernel::~CKernel(void) {
         m_pSPIMaster = nullptr;
     }
     //TODO delete more here!
+    //but do we really care? 
+    //We're shutting down or rebooting anyway
 }
 
 boolean CKernel::Initialize(void) {
@@ -111,8 +114,8 @@ boolean CKernel::Initialize(void) {
     }
 
     if (bOK) {
-        if (f_mount(&m_FileSystem, DRIVE, 1) != FR_OK) {
-            LOGERR("Cannot mount drive: %s", DRIVE);
+        if (f_mount(&m_RootFileSystem, ROOTDRIVE, 1) != FR_OK) {
+            LOGERR("Cannot mount drive: %s", ROOTDRIVE);
 
             bOK = FALSE;
         }
@@ -190,51 +193,38 @@ TShutdownMode CKernel::Run(void) {
     // Clean up SetupStatus
     SetupStatus::Shutdown();
 
-    int mode = config->GetMode();
-    LOGNOTE("Got mode = %d", mode);
-
-    if (mode == 0) { // CDROM Mode
-
-        // Initialize the CD Player service
-        const char* pSoundDevice = m_Options.GetSoundDevice();
+    // Initialize the CD Player service
+    const char* pSoundDevice = m_Options.GetSoundDevice();
         
-        //Currently supporting PWM and I2S sound devices. HDMI needs more work.
-        if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
-            unsigned int volume = config->GetDefaultVolume();
-            if (volume > 0xff)
-                volume = 0xff;
-            CCDPlayer* player = new CCDPlayer(pSoundDevice);
-            player->SetDefaultVolume((u8)volume);
-            LOGNOTE("Started the CD Player service. Default volume is %d", volume);
-        }
+    //Currently supporting PWM and I2S sound devices. HDMI needs more work.
+    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
+        unsigned int volume = config->GetDefaultVolume();
+        if (volume > 0xff)
+            volume = 0xff;
+        CCDPlayer* player = new CCDPlayer(pSoundDevice);
+        player->SetDefaultVolume((u8)volume);
+        LOGNOTE("Started the CD Player service. Default volume is %d", volume);
+    }
 
-        // Mount partition 1 for normal operation
-        FATFS fs1;
-        FRESULT fr1 = f_mount(&fs1, "1:", 1);
-        if (fr1 != FR_OK) {
-            LOGERR("Failed to mount partition 1: %d", fr1);
-            return ShutdownHalt;
-        }
-        LOGNOTE("Partition 1 (data/images) mounted successfully");
+    // Mount images partition for normal operation
+    if (f_mount(&m_ImagesFileSystem, IMAGESDRIVE, 1) != FR_OK) {
+        LOGERR("Failed to mount images partition %s", IMAGESDRIVE);
+        return ShutdownHalt;
+    }
+    LOGNOTE("Partition 1 (data/images) mounted successfully");
         
-        // Start services that depend on both partitions
-        new CDROMService();
-        LOGNOTE("Started CDROM service");
+    // Start services that depend on both partitions
+    new CDROMService();
+    LOGNOTE("Started CDROM service");
 
-        new SCSITBService();
-        LOGNOTE("Started SCSITB service");
+    new SCSITBService();
+    LOGNOTE("Started SCSITB service");
 
-        // Start display services for normal running mode
-	const char* displayType = config->GetDisplayHat();
-	if (strcmp(displayType, "none") != 0) {
+    // Start display services for normal running mode
+    const char* displayType = config->GetDisplayHat();
+    if (strcmp(displayType, "none") != 0) {
 	    new DisplayService(displayType);
             LOGNOTE("Started DisplayService service");
-	}
-
-    } else { // Mass Storage Device Mode
-        // Start our SD Card Service
-        new SDCARDService(&m_EMMC);
-        LOGNOTE("Started SDCARD Service");
     }
 
     static const char ServiceName[] = HOSTNAME;
@@ -246,7 +236,7 @@ TShutdownMode CKernel::Run(void) {
     bool ntpInitialized = false;
 
     // Main Loop
-    for (unsigned nCount = 0; 1; nCount++) {
+    for (;;) {
 
         // Start the Web Server
         if (m_Net.IsRunning() && !pCWebServer) {
@@ -277,7 +267,7 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Start the FTP Server
-        if (mode == 0 && m_Net.IsRunning() && !m_pFTPDaemon) {
+        if (m_Net.IsRunning() && !m_pFTPDaemon) {
             m_pFTPDaemon = new CFTPDaemon("cdrom", "cdrom");
             if (!m_pFTPDaemon->Initialize()) {
                 LOGERR("Failed to init FTP daemon");
@@ -291,7 +281,8 @@ TShutdownMode CKernel::Run(void) {
 	if (DeviceState::Get().getShutdownMode() != ShutdownNone) {
 		// Unmount & flush before we reboot or shutdown
 		LOGNOTE("Flushing SD card writes");
-		f_mount(0, DRIVE, 1);
+		f_mount(0, ROOTDRIVE, 1);
+		f_mount(0, IMAGESDRIVE, 1);
 
 		// Do it!
 		if (DeviceState::Get().getShutdownMode() == ShutdownHalt) {
@@ -308,6 +299,7 @@ TShutdownMode CKernel::Run(void) {
 
     }
 
+    // Unreachable
     LOGNOTE("ShutdownHalt");
     return ShutdownHalt;
 }
@@ -367,6 +359,8 @@ CNetSubSystem* CKernel::GetNetwork() {
 	return &m_Net;
 }
 
+/*
 FATFS* CKernel::GetFileSystem() {
 	return &m_FileSystem;
 }
+*/
