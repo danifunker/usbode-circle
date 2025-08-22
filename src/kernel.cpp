@@ -199,7 +199,7 @@ TShutdownMode CKernel::Run(void) {
     const char* pSoundDevice = m_Options.GetSoundDevice();
         
     //Currently supporting PWM and I2S sound devices. HDMI needs more work.
-    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
+    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0 || strcmp(pSoundDevice, "sndhdmi") == 0) {
         unsigned int volume = config->GetDefaultVolume();
         if (volume > 0xff)
             volume = 0xff;
