@@ -265,10 +265,18 @@ void CUSBCDGadget::AddEndpoints(void) {
 void CUSBCDGadget::SetDevice(ICueDevice* dev) {
     MLOGNOTE("CUSBCDGadget::SetDevice", "entered");
  
+    // Hand the new device to the CD Player
+    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
+    if (cdplayer) {
+        cdplayer->SetDevice(dev);
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
+    }
+
     // Are we changing the device?
     if (m_pDevice && m_pDevice != dev) {
         MLOGNOTE("CUSBCDGadget::SetDevice", "Changing device");
 
+    	// We own this pointer now, so free the memory
         delete m_pDevice;
         m_pDevice = nullptr;
 
@@ -293,12 +301,6 @@ void CUSBCDGadget::SetDevice(ICueDevice* dev) {
     m_CDReady = true;
     MLOGNOTE("CUSBCDGadget::SetDevice", "Block size is %d, m_CDReady = %d", block_size, m_CDReady);
 
-    // Hand the device to the CD Player
-    CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
-    if (cdplayer) {
-        cdplayer->SetDevice(dev);
-        MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
-    }
 }
 
 int CUSBCDGadget::GetBlocksize() {
