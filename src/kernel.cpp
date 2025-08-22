@@ -212,8 +212,8 @@ TShutdownMode CKernel::Run(void) {
     if (strcmp(pSoundDevice, "sndhdmi") == 0) {
         // Initialize basic HDMI display to enable audio
         // Use Circle's screen device to activate HDMI
-        CScreenDevice hdmiScreen(1920, 1080, false); // false = no console output
-        if (hdmiScreen.Initialize()) {
+        CScreenDevice* hdmiScreen = new CScreenDevice(1920, 1080); // false = no console output
+        if (hdmiScreen->Initialize()) {
             LOGNOTE("HDMI display initialized for audio support");
             
             unsigned int volume = config->GetDefaultVolume();
