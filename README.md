@@ -117,7 +117,7 @@ BIN/CUE images with multiple .BIN files do not yet work correctly. There is a wo
 3.  Enter the USBODE's IP address (see the [Web Interface instructions](#Using-the-USBODE-Web-Interface)) into the Host Name field.
 4.  Ensure the Port number is 21.
 5.  If available, check the "Anonymous login" box. Otherwise, enter "anonymous" as the username.
-6.  Navigate to 1:/ aka `USB` (1:/ is the internal name for the second partition, USB is incorrectly labeled), and drop image files into it.
+6.  Navigate to `1:/` aka `USB` (`1:/` is the internal name for the second partition, USB is the incorrectly labeled drive name available through the FTP server), and drop image files into it.
 
 ## Notes about versions
 
