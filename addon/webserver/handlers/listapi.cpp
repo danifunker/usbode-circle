@@ -16,7 +16,6 @@ THTTPStatus ListAPIHandler::GetJson(nlohmann::json& j,
                 const char *pParams,
                 const char *pFormData)
 {
-
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     if (!svc) {
             LOGERR("Couldn't fetch SCSITB Service");
@@ -24,9 +23,8 @@ THTTPStatus ListAPIHandler::GetJson(nlohmann::json& j,
     }
 
     for (const FileEntry* it = svc->begin(); it != svc->end(); ++it) {
-	    j["names"].push_back(it->name);
+        j["names"].push_back(url_encode(it->name));
     }
 
     return HTTPOK;
-
 }

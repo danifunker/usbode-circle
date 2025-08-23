@@ -20,6 +20,22 @@ std::string url_decode(const std::string& str) {
     return result;
 }
 
+std::string url_encode(const std::string& str) {
+    std::string result;
+    for (size_t i = 0; i < str.length(); ++i) {
+        char c = str[i];
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || 
+            (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+            result += c;
+        } else {
+            char hex[4];
+            sprintf(hex, "%%%02X", (unsigned char)c);
+            result += hex;
+        }
+    }
+    return result;
+}
+
 std::map<std::string, std::string> parse_query_params(const char* pParams) {
     std::map<std::string, std::string> params;
     if (pParams == nullptr) return params;
