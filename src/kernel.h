@@ -72,7 +72,7 @@ class CKernel
 
     boolean Initialize(void);
     boolean SetDevice(char *imageName);
-    FATFS* GetFileSystem();
+    //FATFS* GetFileSystem();
     CNetSubSystem* GetNetwork();
     static CKernel* Get();
     TShutdownMode Run(void);
@@ -91,7 +91,8 @@ private:
 	CScheduler              m_Scheduler;
 
 	CEMMCDevice		m_EMMC;
-	FATFS                   m_FileSystem;
+	FATFS                   m_RootFileSystem;
+	FATFS                   m_ImagesFileSystem;
 	CBcm4343Device          m_WLAN;
         CNetSubSystem           m_Net;
         CWPASupplicant          m_WPASupplicant;
