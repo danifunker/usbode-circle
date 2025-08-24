@@ -45,7 +45,11 @@
 #define SPI_MASTER_DEVICE 0
 
 // Define the images directory
+<<<<<<< HEAD
 #define IMAGES_DIR IMAGESDRIVE "/"
+=======
+#define IMAGES_DIR "1:/"
+>>>>>>> add-second-partition-with-logging
 
 LOGMODULE("kernel");
 
