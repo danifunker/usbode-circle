@@ -32,6 +32,7 @@
 #include <displayservice/displayservice.h>
 #include <configservice/configservice.h>
 #include <setupstatus/setupstatus.h>
+#include <circle/memory.h>
 
 #include <circle/time.h>
 
@@ -134,7 +135,7 @@ boolean CKernel::Initialize(void) {
 
     if (bOK) {
         bOK = m_WPASupplicant.Initialize();
-        LOGNOTE("Initialized WAP supplicant");
+        LOGNOTE("Initialized WPA supplicant");
     }
 
     return bOK;
@@ -161,6 +162,7 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
+    LOGNOTE("Memory Size: %u", CMemorySystem::Get()->GetMemSize());
     LOGNOTE("=====================================");
 
     // Initialize SetupStatus
@@ -236,6 +238,7 @@ TShutdownMode CKernel::Run(void) {
     bool ntpInitialized = false;
 
     // Main Loop
+    //int counter = 0;
     for (;;) {
 
         // Start the Web Server
@@ -248,12 +251,12 @@ TShutdownMode CKernel::Run(void) {
 
         // Run NTP
         if (m_Net.IsRunning() && !ntpInitialized) {
-                // Read timezone from config.txt
-                const char* timezone = config->GetTimezone();
+            // Read timezone from config.txt
+            const char* timezone = config->GetTimezone();
 
-                // Initialize NTP with the timezone
-                InitializeNTP(timezone);
-                ntpInitialized = true;
+            // Initialize NTP with the timezone
+            InitializeNTP(timezone);
+            ntpInitialized = true;
         }
 
         // Publish mDNS
@@ -273,8 +276,9 @@ TShutdownMode CKernel::Run(void) {
                 LOGERR("Failed to init FTP daemon");
                 delete m_pFTPDaemon;
                 m_pFTPDaemon = nullptr;
-            } else
+            } else {
                 LOGNOTE("Started FTP service");
+	    }
         }
 
         // Check if we should shutdown or halt
@@ -295,7 +299,17 @@ TShutdownMode CKernel::Run(void) {
 	}
 
 	// Give other tasks a chance to run
-	m_Scheduler.Yield();
+	//m_Scheduler.Yield();
+	CScheduler::Get()->MsSleep(100);
+
+	/*
+	if (counter >= 100) {
+            counter = 0;    // reset counter
+	    CMemorySystem::DumpStatus();
+    	    LOGDBG("Heap Free Memory %u", CMemorySystem::Get()->GetHeapFreeSpace(HEAP_ANY));
+        }
+	counter++;
+	*/
 
     }
 

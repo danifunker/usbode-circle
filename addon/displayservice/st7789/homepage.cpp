@@ -69,6 +69,7 @@ void ST7789HomePage::OnButtonPress(Button button) {
 }
 
 void ST7789HomePage::Refresh() {
+
     // We shouldn't redraw everything all the time!
     const char* ISOName = GetCurrentImage();
     if (strcmp(ISOName, pISOName) != 0) {

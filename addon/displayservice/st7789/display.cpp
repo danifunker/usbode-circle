@@ -102,7 +102,7 @@ bool ST7789Display::Initialize() {
     // Set the starting page
     if (SetupStatus::Get()->isSetupRequired())
 	m_PageManager.SetActivePage("setuppage");
-    else 
+    else
     	m_PageManager.SetActivePage("splashpage");
 
     // register buttons
@@ -183,7 +183,8 @@ void ST7789Display::Sleep() {
     if (!pwm_configured)
         return;
 
-    if (SetupStatus::Get()->isSetupInProgress())
+    // Do not sleep if we're in the First Boot Setup phase
+    if (SetupStatus::Get() && SetupStatus::Get()->isSetupInProgress())
 	    return;
 
     LOGNOTE("Sleeping");

@@ -30,12 +30,12 @@
 static const char FromFileLogDaemon[] = "filelogd";
 LOGMODULE("filelogdaemon");
 
-CFileLogDaemon *CFileLogDaemon::s_pThis = 0;
+CFileLogDaemon *CFileLogDaemon::s_pThis = nullptr;
 
 CFileLogDaemon::CFileLogDaemon(const char *pLogFilePath)
     : m_pLogFilePath(pLogFilePath) {
     // I am the one and only!
-    assert(s_pThis == 0);
+    assert(s_pThis == nullptr);
     s_pThis = this;
 
     SetName(FromFileLogDaemon);
@@ -71,7 +71,7 @@ boolean CFileLogDaemon::Initialize() {
 }
 
 CFileLogDaemon::~CFileLogDaemon(void) {
-    s_pThis = 0;
+    s_pThis = nullptr;
 
     if (m_bFileInitialized)
         f_close(&m_LogFile);
@@ -79,7 +79,7 @@ CFileLogDaemon::~CFileLogDaemon(void) {
 
 void CFileLogDaemon::Run(void) {
     CLogger *pLogger = CLogger::Get();
-    assert(pLogger != 0);
+    assert(pLogger != nullptr);
 
     // Register ourselves as the notification handler
     pLogger->RegisterEventNotificationHandler(EventNotificationHandler);

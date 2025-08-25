@@ -119,9 +119,9 @@ configure: check-vars check-config
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
 	if [ "$(RASPPI)" = "4" ]; then \
-		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o USE_USB_FIQ ; \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o HEAP_BLOCK_BUCKET_SIZES=0x40,0x400,0x1000,0x4000,0x10000,0x40000,0x80000,0x100000 ; \
 	else \
-		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o USE_USB_FIQ; \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS -o HEAP_BLOCK_BUCKET_SIZES=0x40,0x400,0x1000,0x4000,0x10000,0x40000,0x80000,0x100000 ; \
 	fi
 
 # Build Circle stdlib

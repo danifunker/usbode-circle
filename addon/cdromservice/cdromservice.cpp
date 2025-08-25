@@ -31,14 +31,14 @@
 
 LOGMODULE("cdrom");
 
-CDROMService *CDROMService::s_pThis = 0;
+CDROMService *CDROMService::s_pThis = nullptr;
 
 CDROMService::CDROMService()
 : CTask (CDROM_STACK_SIZE)
 {
       
     // I am the one and only!
-    assert(s_pThis == 0);
+    assert(s_pThis == nullptr);
     s_pThis = this;
 
     LOGNOTE("CDROM starting");
@@ -69,7 +69,7 @@ boolean CDROMService::Initialize() {
 }
 
 CDROMService::~CDROMService(void) {
-    s_pThis = 0;
+    s_pThis = nullptr;
 }
 
 void CDROMService::Run(void) {

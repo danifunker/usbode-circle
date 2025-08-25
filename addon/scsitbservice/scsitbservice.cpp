@@ -56,21 +56,20 @@ int compareFileEntries(const void* a, const void* b) {
     return strcasecmp(fa->name, fb->name);
 }
 
-SCSITBService *SCSITBService::s_pThis = 0;
+SCSITBService *SCSITBService::s_pThis = nullptr;
 
 SCSITBService::SCSITBService()
 {
     LOGNOTE("SCSITBService::SCSITBService() called");
     
     // I am the one and only!
-    assert(s_pThis == 0);
+    assert(s_pThis == nullptr);
     s_pThis = this;
 
     cdromservice = static_cast<CDROMService*>(CScheduler::Get()->GetTask("cdromservice"));
     configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
     assert(cdromservice != nullptr && "Failed to get cdromservice");
 
-    m_FileEntries = new FileEntry[MAX_FILES]();
     bool ok = RefreshCache();
     assert(ok && "Failed to refresh SCSITBService on construction");
     SetName("scsitbservice");
@@ -151,9 +150,31 @@ bool SCSITBService::RefreshCache() {
         // TODO: handle error as needed
         return false;
     }
+    LOGNOTE("SCSITBService::RefreshCache() opened directory");
+
+    int filecount = 0;
+    FILINFO fno;
+    while (true) {
+        fr = f_readdir(&dir, &fno);
+        if (fr != FR_OK || fno.fname[0] == 0)
+            break;
+
+        if (strcmp(fno.fname, ".") == 0 || strcmp(fno.fname, "..") == 0)
+            continue;
+
+        LOGNOTE("SCSITBService::RefreshCache() counting file %s", fno.fname);
+        const char* ext = strrchr(fno.fname, '.');
+        if (ext != nullptr) {
+            if (iequals(ext, ".iso") || iequals(ext, ".bin")) {
+		    filecount++;
+            }
+        }
+    }
+
+    delete[] m_FileEntries;
+    m_FileEntries = new FileEntry[filecount];
 
     LOGNOTE("SCSITBService::RefreshCache() opened directory");
-    FILINFO fno;
     while (true) {
         fr = f_readdir(&dir, &fno);
         if (fr != FR_OK || fno.fname[0] == 0)

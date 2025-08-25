@@ -22,11 +22,11 @@
 
 LOGMODULE("displayservice");
 
-DisplayService* DisplayService::s_pThis = 0;
+DisplayService* DisplayService::s_pThis = nullptr;
 
 DisplayService::DisplayService(const char* displayType) {
     // I am the one and only!
-    assert(s_pThis == 0);
+    assert(s_pThis == nullptr);
     s_pThis = this;
 
     config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
@@ -36,8 +36,8 @@ DisplayService::DisplayService(const char* displayType) {
 
     CreateDisplay(displayType);
 
-    boolean ok = Initialize();
-    assert(ok == true);
+    bool ok = Initialize();
+    assert(ok && "Could not initialize display");
 }
 
 // Create the initial display driver. This is called from the constructor
@@ -164,7 +164,7 @@ boolean DisplayService::Initialize() {
 
 // Destructor
 DisplayService::~DisplayService(void) {
-    s_pThis = 0;
+    s_pThis = nullptr;
     delete m_IDisplay;
 }
 

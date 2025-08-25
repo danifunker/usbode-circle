@@ -47,14 +47,13 @@ CSH1106Display::CSH1106Display(CSPIMaster *pSPIMaster, unsigned nDCPin, unsigned
 {
     m_nBufferSize = (m_nWidth * m_nHeight) / 8;  // 1 bit per pixel
     m_pFrameBuffer = new u8[m_nBufferSize];
-    
     memset(m_pFrameBuffer, 0, m_nBufferSize);
 }
 
 CSH1106Display::~CSH1106Display(void)
 {
     delete[] m_pFrameBuffer;
-    m_pFrameBuffer = 0;
+    m_pFrameBuffer = nullptr;
 }
 
 boolean CSH1106Display::Initialize(void)

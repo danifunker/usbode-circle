@@ -57,7 +57,6 @@ void SetupStatus::Shutdown() {
 }
 
 SetupStatus* SetupStatus::Get() {
-    assert(s_pThis && "SetupStatus::Init() must be called first");
     return s_pThis;
 }
     

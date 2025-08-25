@@ -87,26 +87,23 @@ void change_extension_to_cue(char* fullPath) {
 bool ReadFileToString(const char* fullPath, char** out_str) {
     if (!out_str) return false;  // safeguard
 
-    FIL* file = new FIL();
-    FRESULT result = f_open(file, fullPath, FA_READ);
+    FIL file;
+    FRESULT result = f_open(&file, fullPath, FA_READ);
     if (result != FR_OK) {
         LOGERR("Cannot open file for reading");
-        delete file;
         return false;
     }
 
-    DWORD file_size = f_size(file);
+    DWORD file_size = f_size(&file);
     char* buffer = new char[file_size + 1];
     if (!buffer) {
-        f_close(file);
-        delete file;
+        f_close(&file);
         return false;
     }
 
     UINT bytes_read = 0;
-    result = f_read(file, buffer, file_size, &bytes_read);
-    f_close(file);
-    delete file;
+    result = f_read(&file, buffer, file_size, &bytes_read);
+    f_close(&file);
 
     if (result != FR_OK || bytes_read != file_size) {
         delete[] buffer;
@@ -137,6 +134,7 @@ ICueDevice* loadCueBinFileDevice(const char* imageName) {
         // Load the cue
         //LOGNOTE("This is a cue file, loading cue");
         if (!ReadFileToString(fullPath, &cue_str)) {
+	    delete[] cue_str;
             return nullptr;
         }
         LOGNOTE("Loaded cue %s", cue_str);
@@ -151,6 +149,7 @@ ICueDevice* loadCueBinFileDevice(const char* imageName) {
     FRESULT Result = f_open(imageFile, fullPath, FA_READ);
     if (Result != FR_OK) {
         LOGERR("Cannot open image file for reading");
+	delete[] cue_str;
         delete imageFile;
         return nullptr;
     }
@@ -160,8 +159,7 @@ ICueDevice* loadCueBinFileDevice(const char* imageName) {
     ICueDevice* ccueBinFileDevice = new CCueBinFileDevice(imageFile, cue_str);
 
     // Cleanup
-    if (cue_str != nullptr)
-        delete[] cue_str;
+    delete[] cue_str;
 
     return ccueBinFileDevice;
 }

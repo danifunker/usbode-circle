@@ -26,7 +26,7 @@
 
 LOGMODULE("cdplayer");
 
-CCDPlayer *CCDPlayer::s_pThis = 0;
+CCDPlayer *CCDPlayer::s_pThis = nullptr;
 
 CCDPlayer::CCDPlayer(const char *pSoundDevice)
     : m_pSoundDevice(pSoundDevice),
@@ -34,7 +34,7 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
       m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE) {
 
     // I am the one and only!
-    assert(s_pThis == 0);
+    assert(s_pThis == nullptr);
     s_pThis = this;
 
     LOGNOTE("CD Player starting");
@@ -98,7 +98,7 @@ boolean CCDPlayer::Initialize() {
 }
 
 CCDPlayer::~CCDPlayer(void) {
-    s_pThis = 0;
+    s_pThis = nullptr;
 }
 
 u8 CCDPlayer::GetVolume() {
