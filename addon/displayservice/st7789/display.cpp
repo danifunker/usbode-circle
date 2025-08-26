@@ -100,7 +100,7 @@ bool ST7789Display::Initialize() {
     LOGNOTE("Registered pages");
 
     // Set the starting page
-    if (SetupStatus::Get()->isSetupRequired())
+    if (SetupStatus::Get() && SetupStatus::Get()->isSetupRequired())
 	m_PageManager.SetActivePage("setuppage");
     else
     	m_PageManager.SetActivePage("splashpage");
