@@ -230,7 +230,7 @@ TShutdownMode CKernel::Run(void) {
     }
 
     static const char ServiceName[] = HOSTNAME;
-    CmDNSPublisher* pmDNSPublisher = nullptr;
+    //CmDNSPublisher* pmDNSPublisher = nullptr;
     CWebServer* pCWebServer = nullptr;
     CFTPDaemon* m_pFTPDaemon = nullptr;
 
@@ -260,6 +260,7 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Publish mDNS
+	/* Disabled for now until but is fixed
         if (m_Net.IsRunning() && !pmDNSPublisher) {
             static const char* ppText[] = {"path=/index.html", nullptr};
             pmDNSPublisher = new CmDNSPublisher(&m_Net);
@@ -268,6 +269,7 @@ TShutdownMode CKernel::Run(void) {
             }
             LOGNOTE("Started mDNS service");
         }
+	*/
 
         // Start the FTP Server
         if (m_Net.IsRunning() && !m_pFTPDaemon) {
