@@ -175,7 +175,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     
     // Remove 0:/ prefix from logfile for display
     if (current_logfile.find("0:/") == 0) {
-        current_logfile = current_logfile.substr(4);
+        current_logfile = current_logfile.substr(3);
     }
     
     // Set context variables
