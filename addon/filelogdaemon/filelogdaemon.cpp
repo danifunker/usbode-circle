@@ -67,14 +67,6 @@ boolean CFileLogDaemon::Initialize() {
     // All good!
     LOGNOTE("Enhanced logger initialized successfully");
     m_bFileInitialized = TRUE;
-
-    // Register event handlers immediately so we catch early log messages
-    CLogger *pLogger = CLogger::Get();
-    if (pLogger != nullptr) {
-        pLogger->RegisterEventNotificationHandler(EventNotificationHandler);
-        pLogger->RegisterPanicHandler(PanicHandler);
-    }
-
     return TRUE;
 }
 
@@ -87,6 +79,12 @@ CFileLogDaemon::~CFileLogDaemon(void) {
 
 void CFileLogDaemon::Run(void) {
     CLogger *pLogger = CLogger::Get();
+    assert(pLogger != nullptr);
+
+    // Register ourselves as the notification handler
+    pLogger->RegisterEventNotificationHandler(EventNotificationHandler);
+    pLogger->RegisterPanicHandler(PanicHandler);
+
     while (true) {
         m_Event.Clear();
 

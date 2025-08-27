@@ -154,11 +154,13 @@ TShutdownMode CKernel::Run(void) {
     // Start the file logging service
     const char* logfile = config->GetLogfile();
     if (logfile) {
-        new CFileLogDaemon(logfile);
+        new CFileLogDaemon(logfile);        
+        // Give the file logger task time to start and register handlers
+        CScheduler::Get()->MsSleep(100);
         LOGNOTE("Started the Log File service");
     }
 
-    // Announce ourselves as early as possible
+    // Now announce ourselves - file logger should be ready
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
