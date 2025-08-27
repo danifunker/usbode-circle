@@ -205,7 +205,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     // Set sound device options
     context["sounddev_sndpwm"] = (current_sounddev == "sndpwm");
     context["sounddev_sndi2s"] = (current_sounddev == "sndi2s");
-    
+    context["sounddev_sndhdmi"] = (current_sounddev == "sndhdmi");
+
     // Set USB speed options
     context["usbspeed_high"] = (current_usbspeed == "high");
     context["usbspeed_full"] = (current_usbspeed == "full");
