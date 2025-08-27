@@ -301,8 +301,8 @@ TShutdownMode CKernel::Run(void) {
 	}
 
 	// Give other tasks a chance to run
-	//m_Scheduler.Yield();
-	CScheduler::Get()->MsSleep(100);
+	m_Scheduler.Yield();
+	//CScheduler::Get()->MsSleep(100);
 
 	/*
 	if (counter >= 100) {
