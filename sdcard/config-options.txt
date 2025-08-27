@@ -9,6 +9,8 @@ In addition to the options listed in the official circle documentation,
 USBODE custom cmdline.txt options:
 
 sounddev=sndi2s                 sets the CDROM audio output to i2s mode, this is used for pirateaudio hats and any custom PCM 5102 
+sounddev=sndhdmi                sets the CDROM audio output to HDMI mode, this option is new and not fully tested.
+sounddev=sndpwm                 sets the CDROM audio output to PWM mode, this option has been tested but provides sub-par audio output. Good to use in a pinch especially if using a 3A+ or 4B.
 For additional details, please consult this site - https://www.instructables.com/Raspberry-Pi-HQ-Audio-PCM5102-and-MPD/
 
 usbspeed=full                   Overrides the USB speed to match 1.1 specifications (useful for retro computers). If this option is not set, the USB port will operate in High-Speed (USB 2.0)
