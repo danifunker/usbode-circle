@@ -34,6 +34,7 @@
 #include <setupstatus/setupstatus.h>
 #include <circle/memory.h>
 
+#include <vc4/interface/vmcs_host/vc_tvservice.h>
 #include <circle/time.h>
 
 #define ROOTDRIVE "0:"
@@ -199,13 +200,34 @@ TShutdownMode CKernel::Run(void) {
     const char* pSoundDevice = m_Options.GetSoundDevice();
         
     //Currently supporting PWM and I2S sound devices. HDMI needs more work.
-    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0 || strcmp(pSoundDevice, "sndhdmi") == 0) {
+    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0 ) {
         unsigned int volume = config->GetDefaultVolume();
         if (volume > 0xff)
             volume = 0xff;
         CCDPlayer* player = new CCDPlayer(pSoundDevice);
         player->SetDefaultVolume((u8)volume);
         LOGNOTE("Started the CD Player service. Default volume is %d", volume);
+    }
+
+    if (strcmp(pSoundDevice, "sndhdmi") == 0 ) {
+        VCHI_INSTANCE_T vchi_instance;
+        VCHI_CONNECTION_T *vchi_connection;
+
+        // Initialize VCHI first
+        vchi_initialise(&vchi_instance);
+        vchi_connect(NULL, 0, vchi_instance);
+
+        // Initialize TV service
+        vc_vchi_tv_init(vchi_instance, &vchi_connection, 1);
+
+        // Power on HDMI with preferred settings
+        vc_tv_hdmi_power_on_preferred();   
+            unsigned int volume = config->GetDefaultVolume();
+        if (volume > 0xff)
+            volume = 0xff;
+        CCDPlayer* player = new CCDPlayer(pSoundDevice);
+        player->SetDefaultVolume((u8)volume);
+        LOGNOTE("Started the CD Player with sndhdmi not fully supported yet. Default volume is %d", volume);
     }
 
     // Mount images partition for normal operation
