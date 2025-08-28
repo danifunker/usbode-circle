@@ -162,7 +162,7 @@ bool SCSITBService::RefreshCache() {
         if (strcmp(fno.fname, ".") == 0 || strcmp(fno.fname, "..") == 0)
             continue;
 
-	LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
+	//LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
         const char* ext = strrchr(fno.fname, '.');
         if (ext != nullptr) {
             if (iequals(ext, ".iso") || iequals(ext, ".bin")) {
@@ -176,6 +176,7 @@ bool SCSITBService::RefreshCache() {
                 m_FileCount++;
             }
         }
+        LOGNOTE("SCSITBService::RefreshCache() Found %d files", m_FileCount);
     }
 
     // Sort m_FileEntries by filename alphabetically
