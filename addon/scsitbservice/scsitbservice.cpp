@@ -162,6 +162,10 @@ bool SCSITBService::RefreshCache() {
         if (strcmp(fno.fname, ".") == 0 || strcmp(fno.fname, "..") == 0)
             continue;
 
+        // Exclude Mac cache files
+        if (strncmp(fno.fname, "._", 2) == 0 || strcmp(fno.fname, ".DS_Store") == 0)
+            continue;            
+
 	//LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
         const char* ext = strrchr(fno.fname, '.');
         if (ext != nullptr) {
