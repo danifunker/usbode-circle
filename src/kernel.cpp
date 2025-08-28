@@ -61,7 +61,8 @@ CKernel::CKernel(void)
       m_WLAN(FIRMWARE_PATH),
       m_Net(0, 0, 0, 0, HOSTNAME, NetDeviceTypeWLAN),
       m_WPASupplicant(SUPPLICANT_CONFIG_FILE),
-      m_pSPIMaster(nullptr)
+      m_pSPIMaster(nullptr),
+      m_pConfigService(nullptr)  // Initialize to nullptr
 {
     // Initialize the global kernel pointer 
     g_pKernel = this;
@@ -118,10 +119,23 @@ boolean CKernel::Initialize(void) {
     if (bOK) {
         if (f_mount(&m_RootFileSystem, ROOTDRIVE, 1) != FR_OK) {
             LOGERR("Cannot mount drive: %s", ROOTDRIVE);
-
             bOK = FALSE;
         }
         LOGNOTE("Initialized filesystem");
+        
+        // Initialize ConfigService immediately after filesystem mount
+        if (bOK) {
+            m_pConfigService = new ConfigService();
+            LOGNOTE("Initialized Config service");
+            
+            // Start file logging with proper config
+            const char* logfile = m_pConfigService->GetLogfile();
+            if (logfile) {
+                new CFileLogDaemon(logfile);
+                CScheduler::Get()->MsSleep(100);
+                LOGNOTE("Started early file logging");
+            }
+        }
     }
 
     if (bOK) {
@@ -147,19 +161,12 @@ CKernel* CKernel::Get() {
 }
 
 TShutdownMode CKernel::Run(void) {
-    // Initialize our config service
-    ConfigService* config = new ConfigService();
-    LOGNOTE("Started Config service");
-
-    // Start the file logging service
-    const char* logfile = config->GetLogfile();
-    if (logfile) {
-        new CFileLogDaemon(logfile);        
-        // Give the file logger task time to start and register handlers
-        CScheduler::Get()->MsSleep(100);
-        LOGNOTE("Started the Log File service");
-    }
-
+    // Use the existing ConfigService instance
+    ConfigService* config = m_pConfigService;
+    
+    // Remove the old "new ConfigService()" line
+    // config is already initialized and file logger is already running
+    
     // Now announce ourselves - file logger should be ready
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");

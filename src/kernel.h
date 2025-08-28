@@ -105,6 +105,8 @@ private:
 	boolean SetupSecondPartition(void);
 	boolean CopyImagesDirectory(void);
 	boolean CheckPartitionExists(int partition);
+
+	ConfigService* m_pConfigService;
 };
 
 #endif
