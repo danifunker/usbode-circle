@@ -138,14 +138,24 @@ void ST7789InfoPage::Draw() {
     m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), kernel_line, C2DGraphics::AlignLeft);
     y_pos += line_spacing;
 
-    // Line 6: Git branch (with star if main)
+    // Line 6: Git branch (with star if main) - limit to display width
     char branch_line[64];
+    const int max_branch_chars = 20; // Reserve space for "Branch: " (8 chars) + " *" (2 chars) = 10 chars overhead
+    
     if (strcmp(pGitBranch, "main") == 0) {
-        snprintf(branch_line, sizeof(branch_line), "Branch: %s *", pGitBranch);
+        snprintf(branch_line, sizeof(branch_line), "Branch: %.*s *", max_branch_chars, pGitBranch);
     } else {
-        snprintf(branch_line, sizeof(branch_line), "Branch: %s", pGitBranch);
+        // For non-main branches, truncate if too long
+        if (strlen(pGitBranch) > max_branch_chars) {
+            char truncated_branch[32];
+            snprintf(truncated_branch, sizeof(truncated_branch), "%.*s...", max_branch_chars - 3, pGitBranch);
+            snprintf(branch_line, sizeof(branch_line), "Branch: %s", truncated_branch);
+        } else {
+            snprintf(branch_line, sizeof(branch_line), "Branch: %s", pGitBranch);
+        }
     }
     m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), branch_line, C2DGraphics::AlignLeft);
+    y_pos += line_spacing;
 
     // Add git hash at the bottom of the content area (before navigation bar)
     char hash_line[64];
