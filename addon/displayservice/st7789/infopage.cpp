@@ -68,7 +68,7 @@ void ST7789InfoPage::Draw() {
     const char* pBuildDate = __DATE__ " " __TIME__;
     const char* pGitBranch = CGitInfo::Get()->GetBranch();
     const char* pGitCommit = CGitInfo::Get()->GetCommit();
-    const char* pKernelTarget = CGitInfo::Get()->GetKernelTarget();
+    const char* pKernelName = CGitInfo::Get()->GetKernelName();
     const char* pArchType = CGitInfo::Get()->GetArchType();
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
@@ -134,7 +134,7 @@ void ST7789InfoPage::Draw() {
 
     // Line 5: Kernel information
     char kernel_line[64];
-    snprintf(kernel_line, sizeof(kernel_line), "Kernel: %s %s", pKernelTarget, pArchType);
+    snprintf(kernel_line, sizeof(kernel_line), "Kernel: %s %s", pKernelName, pArchType);
     m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), kernel_line, C2DGraphics::AlignLeft);
     y_pos += line_spacing;
 
