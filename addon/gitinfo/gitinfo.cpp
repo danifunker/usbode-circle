@@ -13,6 +13,10 @@ CGitInfo::CGitInfo(void)
     , m_BuildNumber(BUILD_NUMBER)
     , m_GitBranch(GIT_BRANCH)
     , m_GitCommit(GIT_COMMIT)
+    , m_ArchType(ARCH_TYPE)
+    , m_KernelTarget(KERNEL_TARGET)
+    , m_ArchBits(AARCH_BITS)
+    , m_RaspPiModel(RASPPI_MODEL)
 {
     UpdateFormattedVersions();
 }
@@ -61,6 +65,31 @@ const char* CGitInfo::GetCommit(void) const
     return m_GitCommit;
 }
 
+const char* CGitInfo::GetArchType(void) const
+{
+    return m_ArchType;
+}
+
+const char* CGitInfo::GetKernelName(void) const
+{
+    return m_KernelTarget;
+}
+
+const char* CGitInfo::GetArchBits(void) const
+{
+    return m_ArchBits;
+}
+
+const char* CGitInfo::GetRaspPiModel(void) const
+{
+    return m_RaspPiModel;
+}
+
+bool CGitInfo::Is64Bit(void) const
+{
+    return (strcmp(m_ArchBits, "64") == 0);
+}
+
 const char* CGitInfo::GetVersionString(void) const
 {
     return m_FormattedVersion;
@@ -79,6 +108,11 @@ const char* CGitInfo::GetFullVersionString(void) const
 const char* CGitInfo::GetShortVersionString(void) const
 {
     return m_ShortVersionString;
+}
+
+const char* CGitInfo::GetPlatformString(void) const
+{
+    return m_PlatformString;
 }
 
 void CGitInfo::UpdateFormattedVersions(void)
@@ -127,7 +161,14 @@ void CGitInfo::UpdateFormattedVersions(void)
     // Create the full formatted version including build date/time
     m_FullFormattedVersion.Format("%s (built %s %s)", 
                                 (const char*)m_FormattedVersion,
+                                m_ArchType,
                                 __DATE__, __TIME__);
+    
+    // Create platform string
+    m_PlatformString.Format("%s Pi %s (%s)", 
+                           m_ArchType, 
+                           m_RaspPiModel,
+                           m_KernelTarget);
     
     // Create a very short version string for display (18 chars max)
     CString shortVersionBase;

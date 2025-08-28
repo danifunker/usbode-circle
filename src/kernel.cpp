@@ -172,6 +172,8 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
+    LOGNOTE("Kernel Name: %s", CGitInfo::Get()->GetKernelName());
+    LOGNOTE("Architecture: %s", CGitInfo::Get()->GetArchBits());
     LOGNOTE("Memory Size: %u", CMemorySystem::Get()->GetMemSize());
     LOGNOTE("=====================================");
 

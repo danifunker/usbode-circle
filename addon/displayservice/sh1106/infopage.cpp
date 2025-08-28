@@ -65,10 +65,12 @@ void SH1106InfoPage::Draw() {
 	
     // Create clean version string without "USBODE v" prefix
     char pVersionInfo[32];
-    snprintf(pVersionInfo, sizeof(pVersionInfo), "%s.%s.%s",
+    snprintf(pVersionInfo, sizeof(pVersionInfo), "%s.%s.%s-%s/%s",
              CGitInfo::Get()->GetMajorVersion(),
              CGitInfo::Get()->GetMinorVersion(),
-             CGitInfo::Get()->GetPatchVersion());
+             CGitInfo::Get()->GetPatchVersion(),
+             CGitInfo::Get()->GetArchBits(),
+             CGitInfo::Get()->GetKernelName());
 
     //const char* pBuildNumber = CGitInfo::Get()->GetBuildNumber();
     //const char* pBuildDate = __DATE__ " " __TIME__;

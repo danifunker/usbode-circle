@@ -40,7 +40,36 @@ if [ -n "$USBODE_BUILD_NUMBER" ]; then
     echo "Using build number: $USBODE_BUILD_NUMBER"
 fi
 
-# Create header file with git and version info
+# Get architecture and platform information from environment/makefile variables
+AARCH="${AARCH:-32}"
+RASPPI="${RASPPI:-1}"
+
+# Determine architecture type
+if [ "$AARCH" = "64" ]; then
+    ARCH_TYPE="AARCH64"
+else
+    ARCH_TYPE="AARCH32"
+fi
+
+# Determine kernel target name based on AARCH and RASPPI values
+if [ "$AARCH" = "32" ]; then
+    case "$RASPPI" in
+        1) KERNEL_TARGET="kernel.img" ;;
+        2) KERNEL_TARGET="kernel7.img" ;;
+        3) KERNEL_TARGET="kernel8-32.img" ;;
+        4) KERNEL_TARGET="kernel7l.img" ;;
+        *) KERNEL_TARGET="unknown kernel 32" ;;
+    esac
+else # AARCH=64
+    case "$RASPPI" in
+        3) KERNEL_TARGET="kernel8.img" ;;
+        4) KERNEL_TARGET="kernel8-rpi4.img" ;;
+        5) KERNEL_TARGET="kernel_2712.img" ;;
+        *) KERNEL_TARGET="unknown kernel 64" ;;
+    esac
+fi
+
+# Create header file with git, version, and architecture info
 cat > ./gitinfo.h << EOF
 // Auto-generated file - Do not edit
 #ifndef _gitinfo_h
@@ -58,6 +87,12 @@ cat > ./gitinfo.h << EOF
 #define VERSION_MINOR "${MINOR_VERSION}"
 #define VERSION_PATCH "${PATCH_VERSION}"
 #define BUILD_NUMBER "${BUILD_NUMBER}"
+
+// Architecture and platform information
+#define ARCH_TYPE "${ARCH_TYPE}"
+#define KERNEL_TARGET "${KERNEL_TARGET}"
+#define AARCH_BITS "${AARCH}"
+#define RASPPI_MODEL "${RASPPI}"
 
 class CGitInfo
 {
@@ -78,11 +113,19 @@ public:
     const char* GetBranch(void) const;
     const char* GetCommit(void) const;
     
+    // Get architecture and platform information
+    const char* GetArchType(void) const;
+    const char* GetKernelName(void) const;
+    const char* GetArchBits(void) const;
+    const char* GetRaspPiModel(void) const;
+    bool Is64Bit(void) const;
+    
     // Get formatted version strings
     const char* GetVersionString(void) const;
     const char* GetVersionWithBuildString(void) const; // Version with build number only
     const char* GetFullVersionString(void) const; // Includes build date/time
     const char* GetShortVersionString(void) const; // For displays (max 18 chars)
+    const char* GetPlatformString(void) const; // Architecture and model info
     
 private:
     // Private constructor (singleton pattern)
@@ -105,14 +148,27 @@ private:
     const char* m_GitBranch;
     const char* m_GitCommit;
     
+    // Architecture and platform information
+    const char* m_ArchType;
+    const char* m_KernelTarget;
+    const char* m_ArchBits;
+    const char* m_RaspPiModel;
+    
     // Formatted version strings
     CString m_FormattedVersion;
     CString m_VersionWithBuildString;
     CString m_FullFormattedVersion;
     CString m_ShortVersionString;
+    CString m_PlatformString;
 };
 
 #endif
 EOF
 
-echo "Generated gitinfo.h with branch ${BRANCH}, commit ${COMMIT}${DIRTY}, version ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}${BUILD_NUMBER}"
+echo "Generated gitinfo.h with:"
+echo "  Branch: ${BRANCH}"
+echo "  Commit: ${COMMIT}${DIRTY}"
+echo "  Version: ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}${BUILD_NUMBER}"
+echo "  Architecture: ${ARCH_TYPE} (${AARCH}-bit)"
+echo "  Raspberry Pi: Model ${RASPPI}"
+echo "  Kernel Target: ${KERNEL_TARGET}"
