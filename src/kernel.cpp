@@ -164,10 +164,9 @@ TShutdownMode CKernel::Run(void) {
     // Use the existing ConfigService instance
     ConfigService* config = m_pConfigService;
     
-    // Remove the old "new ConfigService()" line
-    // config is already initialized and file logger is already running
-    
-    // Now announce ourselves - file logger should be ready
+    // Initialize SetupStatus
+    SetupStatus::Init(&m_EMMC);
+    LOGNOTE("Initialized SetupStatus"); 
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
@@ -177,9 +176,6 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("Memory Size: %u", CMemorySystem::Get()->GetMemSize());
     LOGNOTE("=====================================");
 
-    // Initialize SetupStatus
-    SetupStatus::Init(&m_EMMC);
-    LOGNOTE("Initialized SetupStatus"); 
 
     // Do we need to do first time setup?
     if (SetupStatus::Get()->isSetupRequired()) {
