@@ -132,7 +132,7 @@ boolean CKernel::Initialize(void) {
             const char* logfile = m_pConfigService->GetLogfile();
             if (logfile) {
                 new CFileLogDaemon(logfile);
-                CScheduler::Get()->MsSleep(100);
+                //CScheduler::Get()->MsSleep(100);
                 LOGNOTE("Started early file logging");
             }
         }

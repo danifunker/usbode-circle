@@ -181,7 +181,6 @@ bool SCSITBService::RefreshCache() {
                 m_FileCount++;
             }
         }
-        LOGNOTE("SCSITBService::RefreshCache() Found %d files", m_FileCount);
     }
 
     // Sort m_FileEntries by filename alphabetically
@@ -208,7 +207,7 @@ bool SCSITBService::RefreshCache() {
     //TODO handle case where we can't find the CD in the list, fall back to 
     //the default image
 
-    LOGNOTE("SCSITBService::RefreshCache() RefreshCache() done");
+    LOGNOTE("SCSITBService::RefreshCache() Found %d images (.ISO and BIN total)", m_FileCount);
 
     f_closedir(&dir);
     m_Lock.Release ();
