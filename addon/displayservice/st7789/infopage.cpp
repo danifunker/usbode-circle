@@ -59,22 +59,22 @@ void ST7789InfoPage::Refresh() {
 void ST7789InfoPage::Draw() {
     // Create clean version string without "USBODE v" prefix
     char pVersionInfo[32];
-    snprintf(pVersionInfo, sizeof(pVersionInfo), "%s.%s.%s-%s/%s",
+    snprintf(pVersionInfo, sizeof(pVersionInfo), "%s.%s.%s",
              CGitInfo::Get()->GetMajorVersion(),
              CGitInfo::Get()->GetMinorVersion(),
-             CGitInfo::Get()->GetPatchVersion(),
-             CGitInfo::Get()->GetArchBits(),
-             CGitInfo::Get()->GetKernelName());
-
+             CGitInfo::Get()->GetPatchVersion());
+    
     const char* pBuildNumber = CGitInfo::Get()->GetBuildNumber();
     const char* pBuildDate = __DATE__ " " __TIME__;
-    const char* pGitBranch = GIT_BRANCH;
-    const char* pGitCommit = GIT_COMMIT;
+    const char* pGitBranch = CGitInfo::Get()->GetBranch();
+    const char* pGitCommit = CGitInfo::Get()->GetCommit();
+    const char* pKernelTarget = CGitInfo::Get()->GetKernelTarget();
+    const char* pArchType = CGitInfo::Get()->GetArchType();
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
-    const char* pTitle = "Information";
+    const char* pTitle = "      Information";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
@@ -106,7 +106,7 @@ void ST7789InfoPage::Draw() {
     m_Graphics->DrawRectOutline(5, 40, m_Display->GetWidth() - 10, 160, COLOR2D(58, 124, 165));
 
     // Improved layout with better space utilization
-    const unsigned int line_spacing = 25;  // Slightly reduced spacing to fit more content
+    const unsigned int line_spacing = 22;  // Reduced spacing to fit kernel line
     const unsigned int left_margin = 15;
     unsigned int y_pos = 55;  // Start position for content
 
@@ -126,13 +126,19 @@ void ST7789InfoPage::Draw() {
 
     // Line 3: Build Date label
     m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), "Build Date:", C2DGraphics::AlignLeft);
-    y_pos += 20;  // Smaller spacing for the date line
+    y_pos += 18;  // Smaller spacing for the date line
 
     // Line 4: Build Date value (on second line)
     m_Graphics->DrawText(left_margin + 10, y_pos, COLOR2D(0, 0, 140), pBuildDate, C2DGraphics::AlignLeft);
     y_pos += line_spacing;
 
-    // Line 5: Git branch (with star if main)
+    // Line 5: Kernel information
+    char kernel_line[64];
+    snprintf(kernel_line, sizeof(kernel_line), "Kernel: %s %s", pKernelTarget, pArchType);
+    m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), kernel_line, C2DGraphics::AlignLeft);
+    y_pos += line_spacing;
+
+    // Line 6: Git branch (with star if main)
     char branch_line[64];
     if (strcmp(pGitBranch, "main") == 0) {
         snprintf(branch_line, sizeof(branch_line), "Branch: %s *", pGitBranch);
