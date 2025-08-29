@@ -63,11 +63,11 @@ ifneq ($(BUILD_NUMBER),)
 export USBODE_BUILD_NUMBER = $(BUILD_NUMBER)
 endif
 
-# Define USBODE addon modules (from /addon directory)
-USBODE_ADDONS = gitinfo sdcardservice cdromservice scsitbservice usbcdgadget \
-				shutdown usbmsdgadget discimage cueparser filelogdaemon \
-				webserver ftpserver configservice libsh1106 displayservice cdplayer \
-				setupstatus
+# Define USBODE addon modules (from /addon directory) - gitinfo built separately first
+USBODE_ADDONS = sdcardservice cdromservice scsitbservice usbcdgadget \
+                shutdown usbmsdgadget discimage cueparser filelogdaemon \
+                webserver ftpserver configservice libsh1106 displayservice cdplayer \
+                setupstatus
 
 # Only the Circle addons we actually need
 CIRCLE_ADDONS = linux Properties display fatfs SDCard wlan wlan/firmware
@@ -148,16 +148,21 @@ $(CIRCLE_ADDONS): circle-deps
 	@echo "Building Circle addon: $@"
 	cd $(CIRCLEHOME)/addon/$@ && $(MAKE) clean && $(MAKE)
 
-# Build all USBODE addon modules
-usbode-addons: circle-addons $(USBODE_ADDONS)
+# Build all USBODE addon modules - gitinfo first, then the rest
+usbode-addons: circle-addons gitinfo $(USBODE_ADDONS)
+
+# Build gitinfo first (generates headers needed by other modules)
+gitinfo: circle-addons
+	@echo "Building USBODE addon: $@"
+	cd addon/$@ && $(MAKE) clean && $(MAKE)
 
 # Special rule for usbcdgadget with custom CPPFLAGS
-usbcdgadget: circle-addons
+usbcdgadget: gitinfo
 	@echo "Building usbcdgadget with custom flags..."
 	cd addon/$@ && $(MAKE) clean && $(MAKE) EXTRA_CPPFLAGS="$(USBCDGADGET_CPPFLAGS)"
 
 # General rule for other USBODE addon modules
-$(filter-out usbcdgadget,$(USBODE_ADDONS)): circle-addons
+$(filter-out usbcdgadget,$(USBODE_ADDONS)): gitinfo
 	@echo "Building USBODE addon: $@"
 	cd addon/$@ && $(MAKE) clean && $(MAKE)
 
