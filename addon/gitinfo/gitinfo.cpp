@@ -159,7 +159,7 @@ void CGitInfo::UpdateFormattedVersions(void)
     m_FormattedVersion.Format("%s-%s", (const char*)baseVersion, (const char*)shortHash);
     
     // Create the full formatted version including build date/time
-    m_FullFormattedVersion.Format("%s (built %s %s)", 
+    m_FullFormattedVersion.Format("%s (%s) (built %s)", 
                                 (const char*)m_FormattedVersion,
                                 m_ArchType,
                                 __DATE__, __TIME__);
