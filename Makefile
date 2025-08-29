@@ -303,6 +303,11 @@ clean-dist:
 	@rm -f $(CURRENT_ZIP_NAME)
 	@mkdir -p $(CURRENT_DIST_DIR)
 
+clean-imagesfolder: 
+	@echo "Cleaning images folder after build..."
+	@rm -rf ./dist/images
+	@rm -rf ./dist64/images
+
 # 32-bit specific targets
 all-32: 
 	@$(MAKE) multi-arch ARCH_MODE=32

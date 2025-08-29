@@ -38,6 +38,29 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
+        name: ${{ steps.get-filename.outputs.filename }}-images IMG
+        path: imgout/${{ steps.get-filename.outputs.filename }}.img.xz
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.get-filename.outputs.filename }}-images-64bit IMG
+        path: imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false
+
+    - name: Clean Images Folder
+      run: make clean-imagesfolder
+
+    - uses: actions/upload-artifact@v4
+      with:
         # Using the extracted filename as the artifact name
         name: ${{ steps.get-filename.outputs.filename }}
         path: dist/*
@@ -56,27 +79,7 @@ jobs:
         retention-days: 90
         compression-level: 6
         overwrite: true
-        include-hidden-files: false
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.get-filename.outputs.filename }}-images IMG
-        path: imgout/${{ steps.get-filename.outputs.filename }}.img.xz
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 6
-        overwrite: true
-        include-hidden-files: false
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.get-filename.outputs.filename }}-images-64bit IMG
-        path: imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 6
-        overwrite: true
-        include-hidden-files: false
+        include-hidden-files: false        
 
     - name: Create Release (on main only)
       if: github.ref == 'refs/heads/main'
