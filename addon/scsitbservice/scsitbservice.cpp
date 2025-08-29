@@ -6,6 +6,7 @@
 //
 //
 // Copyright (C) 2025 Ian Cass
+// Copyright (C) 2025 Dani Sarfati
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -162,7 +163,11 @@ bool SCSITBService::RefreshCache() {
         if (strcmp(fno.fname, ".") == 0 || strcmp(fno.fname, "..") == 0)
             continue;
 
-	LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
+        // Exclude Mac cache files
+        if (strncmp(fno.fname, "._", 2) == 0 || strcmp(fno.fname, ".DS_Store") == 0)
+            continue;            
+
+	//LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
         const char* ext = strrchr(fno.fname, '.');
         if (ext != nullptr) {
             if (iequals(ext, ".iso") || iequals(ext, ".bin")) {
@@ -202,7 +207,7 @@ bool SCSITBService::RefreshCache() {
     //TODO handle case where we can't find the CD in the list, fall back to 
     //the default image
 
-    LOGNOTE("SCSITBService::RefreshCache() RefreshCache() done");
+    LOGNOTE("SCSITBService::RefreshCache() Found %d images (.ISO and BIN total)", m_FileCount);
 
     f_closedir(&dir);
     m_Lock.Release ();

@@ -56,6 +56,7 @@
 "                        <select name=\"sounddev\" id=\"sounddev\">\n"
 "                            <option value=\"sndpwm\" {{#sounddev_sndpwm}}selected{{/sounddev_sndpwm}}>PWM Audio (3.5mm jack)</option>\n"
 "                            <option value=\"sndi2s\" {{#sounddev_sndi2s}}selected{{/sounddev_sndi2s}}>I2S Audio (HATs)</option>\n"
+"                            <option value=\"sndhdmi\" {{#sounddev_sndhdmi}}selected{{/sounddev_sndhdmi}}>HDMI Audio</option>\n"
 "                        </select>\n"
 "                    </div>\n"
 "                    <div class=\"form-group\">\n"

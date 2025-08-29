@@ -12,6 +12,7 @@ Ever wanted a GoTek for CDs? If you have a Raspberry Pi Zero W or 2 W, USBODE tu
 - Or, use the [Pirate Audio Line Out/LCD HAT](https://shop.pimoroni.com/products/pirate-audio-line-out) (`PIM483`), which also has a Line Out, enabling CD audio.
 - Ability to use PWM audio for CD Audio (low quality, but works in a pinch), needs to be configured in the settings menu through the web UI.
 - Some users have reported success with the IQaudio DAC+, however this would have to be used with a zero without headers since the headers on this device are backwards.
+- Audio via the HDMI port (this might be the most expensive option though). Read details below.
 
 
 Note: Some forms of CD-ROM copy protection won’t work with USBODE.
@@ -34,6 +35,7 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 
 - USBODE supports the Waveshare OLED HAT and the PirateAudio Line Out/LCD HAT. The Pirate Audio HAT requires no configuration. The Waveshare requires that you change one line in the `config.txt` file. See Initial Setup below.
 - The PirateAudio HAT also enables CD audio. An aux cable going into your sound card's Line In port will play that audio over your computer's speakers. Additionally, enterprising users have created 8mm-to-4-pin converter cables, allowing them to connect their Pi to their sound card's internal Line In port. You'll need to know your sound card's pinout to make one for yourself, as they vary between models.
+- For Audio setup via HDMI, a number of additional components (~$30 USD) is required in order for it to work, read below for further details
 
 ## Initial Setup
 
@@ -75,7 +77,7 @@ If you have any difficulties, help is available on [Discord](https://discord.gg/
 
 ## Using the USBODE Web Interface
 
-The browser interface is used to load images, shutdown/reboot the device, configure settings, and view logs.To access the interface, you’ll need the IP address of the Pi. Once it connects to your WiFi, this address can be viewed from your router’s configuration page. It should appear as “usbode” in the list of connected devices. If you use a display HAT, the display will also show the IP address. Use that IP address preceded by “http://” (not “https://”). For example, if your Pi’s IP address is 192.168.0.4, you would enter `http://192.168.0.4` into your browser’s address bar.
+The browser interface is used to load images, shutdown/reboot the device, configure settings, and view logs.To access the interface, you’ll need the IP address of the Pi. Once it connects to your WiFi, this address can be viewed from your router’s configuration page. It should appear as “usbode” in the list of connected devices. If you use a display HAT, the display will also show the IP address. Use that IP address preceded by “http://” (not “https://”). For example, if your Pi’s IP address is 192.168.0.4, you would enter `http://192.168.0.4` into your browser’s address bar. The address http://usbode or http://usbode.local should also work as well.
 
 ### Loading an Image via the Browser Interface:
 
@@ -117,7 +119,18 @@ BIN/CUE images with multiple .BIN files do not yet work correctly. There is a wo
 3.  Enter the USBODE's IP address (see the [Web Interface instructions](#Using-the-USBODE-Web-Interface)) into the Host Name field.
 4.  Ensure the Port number is 21.
 5.  If available, check the "Anonymous login" box. Otherwise, enter "anonymous" as the username.
-6.  Navigate to 1:/ aka `USB` (1:/ is the internal name for the second partition, USB is incorrectly labeled), and drop image files into it.
+6.  Navigate to `1:/` aka `USB` (`1:/` is the internal name for the second partition, USB is the incorrectly labeled drive name available through the FTP server), and drop image files into it.
+
+## HDMI Audio Support
+USBODE version 2.6.0 introduces HDMI audio support. Testing & development revealed some quirks about getting this configuration setup. In order to support HDMI audio out, the following components are required:
+
+- HDMI Cable: Pi Zero W / Zero 2 W uses Mini HDMI, Pi 3A+ Uses Standard HDMI and Pi4B uses MicroHDMI. For reference, the Pi5 also uses MicroHDMI. It is also possible to use adapter to switch the connector types, but be aware there isn't much space on much of these Pis!
+- HDMI Audio Splitter. One of the developers had purchased this specific one from [Amazon](https://www.amazon.com/dp/B017B6WFP8) however it should work with most / all HDMI audio splitters
+- HDMI Dummy Dummy Plug: One of the developers purchased this specific Pack of 3 HDMI 4K Dummy plugs from [Amazon](https://www.amazon.com/dp/B0CKKLTWMN?ref=ppx_yo2ov_dt_b_fed_asin_title&th=1)
+- Sound Cable to connect 3.5" sound cable into sound card (same audio aux cable would work from the PirateAudioLineOut solution)
+*Keep in mind that the HDMI audio splitter will probably require it's own power as well.
+
+The developer believes other sound outputs would work fine, however the above configuration replicates behavior of a traditional CDROM drive best, as it runs directly through the soundcard.
 
 ## Notes about versions
 

@@ -20,7 +20,7 @@ gitinfo.o: gitinfo.h
 
 gitinfo.h: gitinfo.sh
 	@echo "  SH    $@"
-	@./gitinfo.sh
+	@AARCH=$(AARCH) RASPPI=$(RASPPI) ./gitinfo.sh
 
 .PHONY: clean
 

@@ -63,16 +63,18 @@ void ST7789InfoPage::Draw() {
              CGitInfo::Get()->GetMajorVersion(),
              CGitInfo::Get()->GetMinorVersion(),
              CGitInfo::Get()->GetPatchVersion());
-
+    
     const char* pBuildNumber = CGitInfo::Get()->GetBuildNumber();
     const char* pBuildDate = __DATE__ " " __TIME__;
-    const char* pGitBranch = GIT_BRANCH;
-    const char* pGitCommit = GIT_COMMIT;
+    const char* pGitBranch = CGitInfo::Get()->GetBranch();
+    const char* pGitCommit = CGitInfo::Get()->GetCommit();
+    const char* pKernelName = CGitInfo::Get()->GetKernelName();
+    const char* pArchType = CGitInfo::Get()->GetArchType();
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
-    const char* pTitle = "Information";
+    const char* pTitle = "      Information";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
@@ -104,7 +106,7 @@ void ST7789InfoPage::Draw() {
     m_Graphics->DrawRectOutline(5, 40, m_Display->GetWidth() - 10, 160, COLOR2D(58, 124, 165));
 
     // Improved layout with better space utilization
-    const unsigned int line_spacing = 25;  // Slightly reduced spacing to fit more content
+    const unsigned int line_spacing = 22;  // Reduced spacing to fit kernel line
     const unsigned int left_margin = 15;
     unsigned int y_pos = 55;  // Start position for content
 
@@ -124,20 +126,36 @@ void ST7789InfoPage::Draw() {
 
     // Line 3: Build Date label
     m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), "Build Date:", C2DGraphics::AlignLeft);
-    y_pos += 20;  // Smaller spacing for the date line
+    y_pos += 18;  // Smaller spacing for the date line
 
     // Line 4: Build Date value (on second line)
     m_Graphics->DrawText(left_margin + 10, y_pos, COLOR2D(0, 0, 140), pBuildDate, C2DGraphics::AlignLeft);
     y_pos += line_spacing;
 
-    // Line 5: Git branch (with star if main)
+    // Line 5: Kernel information
+    char kernel_line[64];
+    snprintf(kernel_line, sizeof(kernel_line), "Kernel: %s %s", pKernelName, pArchType);
+    m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), kernel_line, C2DGraphics::AlignLeft);
+    y_pos += line_spacing;
+
+    // Line 6: Git branch (with star if main) - limit to display width
     char branch_line[64];
+    const int max_branch_chars = 20; // Reserve space for "Branch: " (8 chars) + " *" (2 chars) = 10 chars overhead
+    
     if (strcmp(pGitBranch, "main") == 0) {
-        snprintf(branch_line, sizeof(branch_line), "Branch: %s *", pGitBranch);
+        snprintf(branch_line, sizeof(branch_line), "Branch: %.*s *", max_branch_chars, pGitBranch);
     } else {
-        snprintf(branch_line, sizeof(branch_line), "Branch: %s", pGitBranch);
+        // For non-main branches, truncate if too long
+        if (strlen(pGitBranch) > max_branch_chars) {
+            char truncated_branch[32];
+            snprintf(truncated_branch, sizeof(truncated_branch), "%.*s...", max_branch_chars - 3, pGitBranch);
+            snprintf(branch_line, sizeof(branch_line), "Branch: %s", truncated_branch);
+        } else {
+            snprintf(branch_line, sizeof(branch_line), "Branch: %s", pGitBranch);
+        }
     }
     m_Graphics->DrawText(left_margin, y_pos, COLOR2D(0, 0, 140), branch_line, C2DGraphics::AlignLeft);
+    y_pos += line_spacing;
 
     // Add git hash at the bottom of the content area (before navigation bar)
     char hash_line[64];

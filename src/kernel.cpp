@@ -34,6 +34,7 @@
 #include <setupstatus/setupstatus.h>
 #include <circle/memory.h>
 
+#include <vc4/interface/vmcs_host/vc_tvservice.h>
 #include <circle/time.h>
 
 #define ROOTDRIVE "0:"
@@ -60,7 +61,8 @@ CKernel::CKernel(void)
       m_WLAN(FIRMWARE_PATH),
       m_Net(0, 0, 0, 0, HOSTNAME, NetDeviceTypeWLAN),
       m_WPASupplicant(SUPPLICANT_CONFIG_FILE),
-      m_pSPIMaster(nullptr)
+      m_pSPIMaster(nullptr),
+      m_pConfigService(nullptr)  // Initialize to nullptr
 {
     // Initialize the global kernel pointer 
     g_pKernel = this;
@@ -117,10 +119,23 @@ boolean CKernel::Initialize(void) {
     if (bOK) {
         if (f_mount(&m_RootFileSystem, ROOTDRIVE, 1) != FR_OK) {
             LOGERR("Cannot mount drive: %s", ROOTDRIVE);
-
             bOK = FALSE;
         }
         LOGNOTE("Initialized filesystem");
+        
+        // Initialize ConfigService immediately after filesystem mount
+        if (bOK) {
+            m_pConfigService = new ConfigService();
+            LOGNOTE("Initialized Config service");
+            
+            // Start file logging with proper config
+            const char* logfile = m_pConfigService->GetLogfile();
+            if (logfile) {
+                new CFileLogDaemon(logfile);
+                //CScheduler::Get()->MsSleep(100);
+                LOGNOTE("Started early file logging");
+            }
+        }
     }
 
     if (bOK) {
@@ -146,28 +161,21 @@ CKernel* CKernel::Get() {
 }
 
 TShutdownMode CKernel::Run(void) {
-    // Initialize our config service
-    ConfigService* config = new ConfigService();
-    LOGNOTE("Started Config service");
-
-    // Start the file logging service
-    const char* logfile = config->GetLogfile();
-    if (logfile) {
-        new CFileLogDaemon(logfile);
-        LOGNOTE("Started the Log File service");
-    }
-
-    // Announce ourselves as early as possible
+    // Use the existing ConfigService instance
+    ConfigService* config = m_pConfigService;
+    
+    // Initialize SetupStatus
+    SetupStatus::Init(&m_EMMC);
+    LOGNOTE("Initialized SetupStatus"); 
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
+    LOGNOTE("Kernel Name: %s", CGitInfo::Get()->GetKernelName());
+    LOGNOTE("Architecture: %s", CGitInfo::Get()->GetArchBits());
     LOGNOTE("Memory Size: %u", CMemorySystem::Get()->GetMemSize());
     LOGNOTE("=====================================");
 
-    // Initialize SetupStatus
-    SetupStatus::Init(&m_EMMC);
-    LOGNOTE("Initialized SetupStatus"); 
 
     // Do we need to do first time setup?
     if (SetupStatus::Get()->isSetupRequired()) {
@@ -199,13 +207,32 @@ TShutdownMode CKernel::Run(void) {
     const char* pSoundDevice = m_Options.GetSoundDevice();
         
     //Currently supporting PWM and I2S sound devices. HDMI needs more work.
-    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
+    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0 ) {
         unsigned int volume = config->GetDefaultVolume();
         if (volume > 0xff)
             volume = 0xff;
         CCDPlayer* player = new CCDPlayer(pSoundDevice);
         player->SetDefaultVolume((u8)volume);
         LOGNOTE("Started the CD Player service. Default volume is %d", volume);
+    }
+
+    if (strcmp(pSoundDevice, "sndhdmi") == 0) {
+        // Initialize basic HDMI display to enable audio
+        // Use Circle's screen device to activate HDMI
+        CScreenDevice* hdmiScreen = new CScreenDevice(1920, 1080); // false = no console output
+        if (hdmiScreen->Initialize()) {
+            LOGNOTE("HDMI display initialized for audio support");
+            
+            unsigned int volume = config->GetDefaultVolume();
+            if (volume > 0xff)
+                volume = 0xff;
+            CCDPlayer* player = new CCDPlayer(pSoundDevice);
+            player->SetDefaultVolume((u8)volume);
+            LOGNOTE("Started CD Player with HDMI audio. Default volume is %d", volume);
+        } else {
+            LOGERR("Failed to initialize HDMI display - HDMI audio not available");
+            LOGNOTE("Consider using PWM or I2S audio instead");
+        }
     }
 
     // Mount images partition for normal operation
