@@ -265,7 +265,7 @@ dist-files:
 	
 	# Create zip file
 	@echo "Creating $(CURRENT_ZIP_NAME)..."
-	@cd $(CURRENT_DIST_DIR) && zip -r ../$(CURRENT_ZIP_NAME) ./*
+	@cd $(CURRENT_DIST_DIR) && zip -r ../$(CURRENT_ZIP_NAME) . -x "images/*" "images/**"
 	@echo "Built $(CURRENT_ZIP_NAME). Copy the contents of the zip file to a freshly formatted SDCard (FAT32 or EXFAT) and try the build!"
 
 # Clean everything
