@@ -248,12 +248,13 @@ dist-files:
 	cp $(CIRCLEHOME)/boot/COPYING.linux $(CURRENT_DIST_DIR)/firmware/
 
 	# Create config.txt based on architecture
+	@echo "hdmi_edid_file=1" >> $(CURRENT_DIST_DIR)/config.txt
 	@if [ "$(ARCH_MODE)" = "64" ]; then \
 		echo "Using 64-bit config"; \
-		cp $(CIRCLEHOME)/boot/config64.txt $(CURRENT_DIST_DIR)/config.txt; \
+		cat $(CIRCLEHOME)/boot/config64.txt >> $(CURRENT_DIST_DIR)/config.txt; \
 	else \
 		echo "Using 32-bit config"; \
-		cp $(CIRCLEHOME)/boot/config32.txt $(CURRENT_DIST_DIR)/config.txt; \
+		cat $(CIRCLEHOME)/boot/config32.txt >> $(CURRENT_DIST_DIR)/config.txt; \
 	fi
 	# Remove problematic lines from pi4 config.txt
 	sed -i.bak -e 's/^\(max_framebuffers=2\)/#\1/' $(CURRENT_DIST_DIR)/config.txt && rm $(CURRENT_DIST_DIR)/config.txt.bak
