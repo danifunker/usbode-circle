@@ -263,6 +263,7 @@ dist-files:
 	cat sdcard/config-usbode.txt >> $(CURRENT_DIST_DIR)/config.txt
 	cp sdcard/config-options.txt $(CURRENT_DIST_DIR)/
 	cp sdcard/cmdline.txt $(CURRENT_DIST_DIR)/
+	cp sdcard/edid.dat $(CURRENT_DIST_DIR)/
 	
 	# Create zip file
 	@echo "Creating $(CURRENT_ZIP_NAME)..."

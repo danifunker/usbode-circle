@@ -126,11 +126,14 @@ USBODE version 2.6.0 introduces HDMI audio support. Testing & development reveal
 
 - HDMI Cable: Pi Zero W / Zero 2 W uses Mini HDMI, Pi 3A+ Uses Standard HDMI and Pi4B uses MicroHDMI. For reference, the Pi5 also uses MicroHDMI. It is also possible to use adapter to switch the connector types, but be aware there isn't much space on much of these Pis!
 - HDMI Audio Splitter. One of the developers had purchased this specific one from [Amazon](https://www.amazon.com/dp/B017B6WFP8) however it should work with most / all HDMI audio splitters
-- HDMI Dummy Dummy Plug: One of the developers purchased this specific Pack of 3 HDMI 4K Dummy plugs from [Amazon](https://www.amazon.com/dp/B0CKKLTWMN?ref=ppx_yo2ov_dt_b_fed_asin_title&th=1)
+- ~HDMI Dummy Dummy Plug: One of the developers purchased this specific Pack of 3 HDMI 4K Dummy plugs from [Amazon](https://www.amazon.com/dp/B0CKKLTWMN?ref=ppx_yo2ov_dt_b_fed_asin_title&th=1)~ (fairly sure this is no longer required with the supplied `edid.dat`)
 - Sound Cable to connect 3.5" sound cable into sound card (same audio aux cable would work from the PirateAudioLineOut solution)
 *Keep in mind that the HDMI audio splitter will probably require it's own power as well.
 
 The developer believes other sound outputs would work fine, however the above configuration replicates behavior of a traditional CDROM drive best, as it runs directly through the soundcard.
+
+### Create Custom edid.dat to match exact sound setup
+If HDMI audio doesn't seem to be working correctly, a great way to test it would be to create a custom edid.dat. In order to perform this, use another SDcard and flash debian bullseye onto it. Connect the pi to the HDMI chain, e.g. pi to hdmi extractor, to dummy plug (this may, or may not be required). Boot into Linux, and possibly through a VNC connection, or through ssh, run the following command: `sudo bash -c 'hexdump -C /sys/devices/platform/gpu/drm/card0/card0-HDMI-A-1/edid > /boot/firmware/edid.dat` where the `?` is the HDMI port number on the Pi. In the above case, a Raspberry Pi 4B was being used and the output was 1. Be aware that running Linux on the RPi Zero/2W can be quite slow, so please be patient. Once the command completes sucessfully, turn off the Pi and there will be a file called `edid.dat` on the `bootfs` partition of the Linux SDCard. Replace the `edid.dat` that is packaged with USBODE (will be located in the root of the bootfs partition) with the custom one, and be sure to keep a backup of it somewhere because this file may be lost during upgrades. Try to boot USBODE again, and see if HDMI audio is working correctly. If HDMI audio still isn't working, a different HDMI audio splitter may be required.
 
 ## Notes about versions
 

@@ -231,6 +231,7 @@ TShutdownMode CKernel::Run(void) {
             LOGNOTE("Started CD Player with HDMI audio. Default volume is %d", volume);
         } else {
             LOGERR("Failed to initialize HDMI display - HDMI audio not available");
+            LOGERR("Try creating a custom EDID.DAT file for your device. See EDID Creation Instructions in the README");
             LOGNOTE("Consider using PWM or I2S audio instead");
         }
     }
