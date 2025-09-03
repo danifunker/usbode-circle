@@ -43,6 +43,6 @@ To build images, Linux is required and special sudo permissions are required. Th
 
 ##Mac Build Notes
 - Install complete xcode suite & cli tools
-- Install the following packages through brew: `bash`, `gnu-getopt`, `texinfo`
+- Install the following packages through brew: `bash`, `gnu-getopt`, `texinfo`, `wget`, `rom-tools`
 - Add gnu-getopt to your path then restart the shell.
 - build-usbode.sh should work correctly now.
