@@ -248,6 +248,9 @@ void CCDPlayer::Run(void) {
 
     while (true) {
         if (state == SEEKING || state == SEEKING_PLAYING) {
+            if (m_WriteChunk) {
+                memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
+            }            
             LOGNOTE("Seeking to sector %u (byte %u)", address, unsigned(address * SECTOR_SIZE));
             u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
 
