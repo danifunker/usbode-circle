@@ -55,52 +55,30 @@ void SH1106SetupPage::Refresh() {
         }
     }
 
-    // Only redraw the whole screen if the status text changed
-    if (strncmp(m_statusText, newStatus, sizeof(m_statusText)) != 0) {
+    // Redraw the whole screen if the status text changed or every 8 ticks for animation
+    if (strncmp(m_statusText, newStatus, sizeof(m_statusText)) != 0 ||
+        (m_refreshCounter % 8 == 0)) {
         strncpy(m_statusText, newStatus, sizeof(m_statusText) - 1);
         m_statusText[sizeof(m_statusText) - 1] = '\0';
         Draw();
-        return;
     }
-
-    // Always update the dots and "Please wait" message
-    // Draw only the dots and message area to avoid flicker
-    int dotY = 48;
-    int dotX = 60;
-    int waitMsgY = 36;
-
-    // Clear the area for dots and wait message
-    m_Graphics->DrawRect(0, waitMsgY, m_Display->GetWidth(), 20, COLOR2D(0, 0, 0));
-
-    // Draw "Please wait 60 seconds..." above the dots
-    m_Graphics->DrawText(4, waitMsgY, COLOR2D(255, 255, 255), "Please wait 60 seconds...", C2DGraphics::AlignLeft, Font6x7);
-
-    // Draw animated progress dots
-    int numDots = 1 + ((m_refreshCounter / 8) % 3);
-    for (int i = 0; i < numDots; ++i) {
-        m_Graphics->DrawText(dotX + (i * 8), dotY, COLOR2D(255, 255, 255), ".", C2DGraphics::AlignLeft, Font8x8);
-    }
-
-    m_Graphics->UpdateDisplay();
 }
 
 void SH1106SetupPage::Draw() {
     m_Graphics->ClearScreen(COLOR2D(0, 0, 0));
 
-    // Draw header bar
+    // Header bar
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 10, COLOR2D(255, 255, 255));
     m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), "Setup", C2DGraphics::AlignLeft, Font8x8);
 
-    // Draw status text (centered vertically)
-    int textY = 20;
-    m_Graphics->DrawText(4, textY, COLOR2D(255, 255, 255), m_statusText, C2DGraphics::AlignLeft, Font6x7);
+    // Status text (like infopage, y=16)
+    m_Graphics->DrawText(4, 16, COLOR2D(255, 255, 255), m_statusText, C2DGraphics::AlignLeft, Font6x7);
 
-    // Draw "Please wait 60 seconds..." above the dots
-    int waitMsgY = 36;
-    m_Graphics->DrawText(4, waitMsgY, COLOR2D(255, 255, 255), "Please wait 60 seconds...", C2DGraphics::AlignLeft, Font6x7);
+    // Wait message (y=28, clear and visible)
+    m_Graphics->DrawText(4, 28, COLOR2D(255, 255, 255), "Wait 60 seconds...", C2DGraphics::AlignLeft, Font6x7);
 
-    // Draw animated progress dots
-    int dotY = 48;
+    // Animated dots (y=44, centered)
+    int dotY = 44;
     int dotX = 60;
     int numDots = 1 + ((m_refreshCounter / 8) % 3);
     for (int i = 0; i < numDots; ++i) {
