@@ -96,9 +96,9 @@ bool SH1106Display::Initialize() {
 
     // Set the starting page
     if (SetupStatus::Get() && SetupStatus::Get()->isSetupRequired())
-	m_PageManager.SetActivePage("setuppage");
+	    m_PageManager.SetActivePage("setuppage");
     else
-    	m_PageManager.SetActivePage("splashpage");
+    	m_PageManager.SetActivePage("homepage");
 
     LOGNOTE("Registered pages");
 
