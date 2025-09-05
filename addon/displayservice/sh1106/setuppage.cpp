@@ -40,26 +40,20 @@ void SH1106SetupPage::Refresh() {
     m_refreshCounter++;
 
     SetupStatus* setupStatus = SetupStatus::Get();
-    char newStatus[sizeof(m_statusText)];
-    if (!setupStatus) {
-        strncpy(newStatus, "Setup unavailable", sizeof(newStatus) - 1);
-        newStatus[sizeof(newStatus) - 1] = '\0';
-    } else {
+    if (setupStatus) {
         const char* statusMsg = setupStatus->getStatusMessage();
         if (statusMsg && statusMsg[0]) {
-            strncpy(newStatus, statusMsg, sizeof(newStatus) - 1);
-            newStatus[sizeof(newStatus) - 1] = '\0';
-        } else {
-            strncpy(newStatus, "Setting up device", sizeof(newStatus) - 1);
-            newStatus[sizeof(newStatus) - 1] = '\0';
+            strncpy(m_statusText, statusMsg, sizeof(m_statusText) - 1);
+            m_statusText[sizeof(m_statusText) - 1] = '\0';
         }
+    } else {
+        // Handle setup unavailable case
+        strncpy(m_statusText, "Setup unavailable", sizeof(m_statusText) - 1);
+        m_statusText[sizeof(m_statusText) - 1] = '\0';
     }
 
-    // Redraw the whole screen if the status text changed or every 8 ticks for animation
-    if (strncmp(m_statusText, newStatus, sizeof(m_statusText)) != 0 ||
-        (m_refreshCounter % 8 == 0)) {
-        strncpy(m_statusText, newStatus, sizeof(m_statusText) - 1);
-        m_statusText[sizeof(m_statusText) - 1] = '\0';
+    // Always redraw every 8 ticks to ensure dots animate
+    if (m_refreshCounter % 8 == 0) {
         Draw();
     }
 }
