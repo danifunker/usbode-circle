@@ -34,7 +34,6 @@
 #include <setupstatus/setupstatus.h>
 #include <circle/memory.h>
 
-#include <vc4/interface/vmcs_host/vc_tvservice.h>
 #include <circle/time.h>
 
 #define ROOTDRIVE "0:"
