@@ -12,7 +12,7 @@
 #include <circle/timer.h>
 #include <displayservice/buttonhandler.h>
 #include <displayservice/buttons.h>
-
+#include <setupstatus/setupstatus.h>
 #include "configpage.h"
 #include "homepage.h"
 #include "imagespage.h"
@@ -21,6 +21,7 @@
 #include "timeoutconfigpage.h"
 #include "powerpage.h"
 #include "usbconfigpage.h"
+#include "setuppage.h"
 
 LOGMODULE("sh1106display");
 
@@ -91,9 +92,14 @@ bool SH1106Display::Initialize() {
     m_PageManager.RegisterPage("logconfigpage", new SH1106LogConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("timeoutconfigpage", new SH1106TimeoutConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("infopage", new SH1106InfoPage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("setuppage", new SH1106SetupPage(&m_Display, &m_Graphics));
 
     // Set the starting page
-    m_PageManager.SetActivePage("homepage");
+    if (SetupStatus::Get() && SetupStatus::Get()->isSetupRequired())
+	    m_PageManager.SetActivePage("setuppage");
+    else
+    	m_PageManager.SetActivePage("homepage");
+
     LOGNOTE("Registered pages");
 
     // register buttons
@@ -165,7 +171,11 @@ void SH1106Display::Clear() {
 
 // Dim the screen or even turn it off
 void SH1106Display::Sleep() {
-    LOGNOTE("Sleep warning for %d ms" , SLEEP_WARNING_DURATION);
+    // Do not sleep if we're in the First Boot Setup phase
+    if (SetupStatus::Get() && SetupStatus::Get()->isSetupInProgress())
+        return;
+
+    LOGNOTE("Sleep warning for %d ms", SLEEP_WARNING_DURATION);
     DrawSleepWarning();
     CScheduler::Get()->MsSleep(SLEEP_WARNING_DURATION);
     LOGNOTE("Sleeping");

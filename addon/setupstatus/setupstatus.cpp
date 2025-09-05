@@ -309,6 +309,8 @@ bool SetupStatus::copyImagesDirectory() {
     }
     
     int fileCount = 0;
+    u32 lastYieldTime = CTimer::Get()->GetTicks();
+    
     while (fr == FR_OK && fno.fname[0]) {
         LOGNOTE("Found: %s (attr: 0x%02X)", fno.fname, fno.fattrib);
         
@@ -336,6 +338,13 @@ bool SetupStatus::copyImagesDirectory() {
                             break;
                         }
                         totalBytes += bw;
+                        
+                        // Only yield every 500ms to avoid impacting file copy performance
+                        u32 currentTime = CTimer::Get()->GetTicks();
+                        if (currentTime - lastYieldTime >= 500000) { // 500ms in microseconds
+                            CScheduler::Get()->Yield();
+                            lastYieldTime = currentTime;
+                        }
                     }
                     f_close(&dst);
                     
@@ -360,6 +369,10 @@ bool SetupStatus::copyImagesDirectory() {
             } else {
                 LOGNOTE("Failed to open source %s: %d", (const char*)srcPath, srcResult);
             }
+            
+            // Always yield after completing each file to allow display updates
+            CScheduler::Get()->Yield();
+            lastYieldTime = CTimer::Get()->GetTicks();
         }
         fr = f_findnext(&dir, &fno);
     }
@@ -484,7 +497,8 @@ bool SetupStatus::performSetup() {
         m_statusMessage = "Resize failed!";
         return false;
     }
-    
+    CScheduler::Get()->Yield(); 
+    CScheduler::Get()->MsSleep(100);
     m_statusMessage = "Formatting partition...";
     m_currentProgress = 2;
     if (!formatPartitionAsExFAT()) {
@@ -492,7 +506,9 @@ bool SetupStatus::performSetup() {
         m_statusMessage = "Format failed!";
         return false;
     }
-    
+    CScheduler::Get()->Yield(); 
+    CScheduler::Get()->MsSleep(100);
+        
     m_statusMessage = "Copying files...";
     m_currentProgress = 3;
     if (!copyImagesDirectory()) {
