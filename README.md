@@ -167,7 +167,7 @@ It's also possible to use dupont headers to chain these audio cables together, w
 
 ## Discord Server
 
-For updates on this project please visit the discord server here: (https://discord.gg/na2qNrvdFY)
+For updates on this project please visit the discord server here: [https://discord.gg/8qfuuUPBts](https://discord.gg/8qfuuUPBts)
 
 Feel free to contribute to the project.
 
