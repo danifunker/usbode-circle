@@ -12,7 +12,7 @@
 #include <circle/timer.h>
 #include <displayservice/buttonhandler.h>
 #include <displayservice/buttons.h>
-
+#include <setupstatus/setupstatus.h>
 #include "configpage.h"
 #include "homepage.h"
 #include "imagespage.h"
@@ -95,7 +95,11 @@ bool SH1106Display::Initialize() {
     m_PageManager.RegisterPage("setuppage", new SH1106SetupPage(&m_Display, &m_Graphics));
 
     // Set the starting page
-    m_PageManager.SetActivePage("homepage");
+    if (SetupStatus::Get() && SetupStatus::Get()->isSetupRequired())
+	m_PageManager.SetActivePage("setuppage");
+    else
+    	m_PageManager.SetActivePage("splashpage");
+
     LOGNOTE("Registered pages");
 
     // register buttons
