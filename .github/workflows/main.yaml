@@ -6,6 +6,9 @@ permissions:
 on:
   push:
     branches: [ "*" ]
+  paths-ignore:
+    - "README.md"
+    - ".github/**"
 
 jobs:
   build:
