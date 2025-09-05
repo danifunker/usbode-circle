@@ -171,7 +171,11 @@ void SH1106Display::Clear() {
 
 // Dim the screen or even turn it off
 void SH1106Display::Sleep() {
-    LOGNOTE("Sleep warning for %d ms" , SLEEP_WARNING_DURATION);
+    // Do not sleep if we're in the First Boot Setup phase
+    if (SetupStatus::Get() && SetupStatus::Get()->isSetupInProgress())
+        return;
+
+    LOGNOTE("Sleep warning for %d ms", SLEEP_WARNING_DURATION);
     DrawSleepWarning();
     CScheduler::Get()->MsSleep(SLEEP_WARNING_DURATION);
     LOGNOTE("Sleeping");

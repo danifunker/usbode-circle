@@ -28,7 +28,7 @@ private:
     bool m_ShouldChangePage = false;
     CSH1106Display* m_Display;
     C2DGraphics* m_Graphics;
-    char m_statusText[64]; // Use a char buffer for status text
+    char m_statusText[64];
     unsigned m_refreshCounter = 0;
 };
 
