@@ -21,6 +21,7 @@
 #include "timeoutconfigpage.h"
 #include "powerpage.h"
 #include "usbconfigpage.h"
+#include "setuppage.h"
 
 LOGMODULE("sh1106display");
 
@@ -91,6 +92,7 @@ bool SH1106Display::Initialize() {
     m_PageManager.RegisterPage("logconfigpage", new SH1106LogConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("timeoutconfigpage", new SH1106TimeoutConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("infopage", new SH1106InfoPage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("setuppage", new SH1106SetupPage(&m_Display, &m_Graphics));
 
     // Set the starting page
     m_PageManager.SetActivePage("homepage");
