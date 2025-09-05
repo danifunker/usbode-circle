@@ -6,6 +6,7 @@
 #include <libsh1106/sh1106display.h>
 #include <displayservice/buttons.h>
 #include <displayservice/ipage.h>
+#include <string.h>
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
@@ -27,7 +28,7 @@ private:
     bool m_ShouldChangePage = false;
     CSH1106Display* m_Display;
     C2DGraphics* m_Graphics;
-    CString m_statusText;
+    char m_statusText[64]; // Use a char buffer for status text
     unsigned m_refreshCounter = 0;
 };
 

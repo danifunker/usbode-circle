@@ -1,18 +1,22 @@
 #include "setuppage.h"
 #include <setupstatus/setupstatus.h>
 #include <circle/logger.h>
+#include <string.h>
 
 LOGMODULE("sh1106setuppage");
 
 SH1106SetupPage::SH1106SetupPage(CSH1106Display* display, C2DGraphics* graphics)
-    : m_Display(display), m_Graphics(graphics) {}
+    : m_Display(display), m_Graphics(graphics) {
+    m_statusText[0] = '\0';
+}
 
 SH1106SetupPage::~SH1106SetupPage() {}
 
 void SH1106SetupPage::OnEnter() {
     m_ShouldChangePage = false;
     m_refreshCounter = 0;
-    m_statusText = "Setting up device";
+    strncpy(m_statusText, "Setting up device", sizeof(m_statusText) - 1);
+    m_statusText[sizeof(m_statusText) - 1] = '\0';
     Draw();
 }
 
@@ -37,16 +41,19 @@ void SH1106SetupPage::Refresh() {
 
     SetupStatus* setupStatus = SetupStatus::Get();
     if (!setupStatus) {
-        m_statusText = "Setup unavailable";
+        strncpy(m_statusText, "Setup unavailable", sizeof(m_statusText) - 1);
+        m_statusText[sizeof(m_statusText) - 1] = '\0';
         Draw();
         return;
     }
 
     const char* statusMsg = setupStatus->getStatusMessage();
     if (statusMsg && statusMsg[0]) {
-        m_statusText = statusMsg;
+        strncpy(m_statusText, statusMsg, sizeof(m_statusText) - 1);
+        m_statusText[sizeof(m_statusText) - 1] = '\0';
     } else {
-        m_statusText = "Setting up device";
+        strncpy(m_statusText, "Setting up device", sizeof(m_statusText) - 1);
+        m_statusText[sizeof(m_statusText) - 1] = '\0';
     }
 
     // Redraw every 8 ticks for animation
@@ -64,7 +71,7 @@ void SH1106SetupPage::Draw() {
 
     // Draw status text (centered vertically)
     int textY = 28;
-    m_Graphics->DrawText(4, textY, COLOR2D(255, 255, 255), (const char*)m_statusText, C2DGraphics::AlignLeft, Font6x7);
+    m_Graphics->DrawText(4, textY, COLOR2D(255, 255, 255), m_statusText, C2DGraphics::AlignLeft, Font6x7);
 
     // Draw animated progress dots
     DrawProgressDots();

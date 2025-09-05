@@ -29,7 +29,8 @@ OBJS    = displayservice.o \
 	sh1106/logconfigpage.o \
 	sh1106/timeoutconfigpage.o \
 	sh1106/imagespage.o \
-	sh1106/infopage.o
+	sh1106/infopage.o \
+	sh1106/setuppage.o
 
 libdisplayservice.a: $(OBJS)
 	@echo "  AR    $@"
