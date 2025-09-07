@@ -6,10 +6,10 @@ permissions:
 on:
   push:
     branches: [ "*" ]
-  paths-ignore:
-    - "README.md"
-    - ".github/**"
-    - "version.txt"
+    paths-ignore:
+      - "README.md"
+      - ".github/**"
+      - "version.txt"
 
 jobs:
   build:
