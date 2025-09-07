@@ -6,9 +6,10 @@ permissions:
 on:
   push:
     branches: [ "*" ]
-  paths-ignore:
-    - "README.md"
-    - ".github/**"
+    paths-ignore:
+      - "README.md"
+      - ".github/**"
+      - "version.txt"
 
 jobs:
   build:
@@ -82,7 +83,36 @@ jobs:
         retention-days: 90
         compression-level: 6
         overwrite: true
-        include-hidden-files: false        
+        include-hidden-files: false
+
+    - name: Create upgrade packages
+      run: |
+        # Create upgrade directory
+        mkdir -p upgrade
+        
+        # Create 32-bit upgrade tar and CRC
+        tar -cf upgrade32.tar -C dist .
+        crc32 upgrade32.tar > upgrade32.crc
+        
+        # Create 64-bit upgrade tar and CRC
+        tar -cf upgrade64.tar -C dist64 .
+        crc32 upgrade64.tar > upgrade64.crc
+        
+        # Move all upgrade files to upgrade directory
+        mv upgrade32.tar upgrade32.crc upgrade64.tar upgrade64.crc upgrade/
+        
+        # Create final combined tarball
+        tar -cf ${{ steps.get-filename.outputs.filename }}-upgrade.tar -C upgrade .
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.get-filename.outputs.filename }}-upgrade
+        path: ${{ steps.get-filename.outputs.filename }}-upgrade.tar
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false
 
     - name: Create Release (on main only)
       if: github.ref == 'refs/heads/main'
@@ -96,6 +126,7 @@ jobs:
           ${{ steps.get-filename.outputs.filename }}-64bit.zip
           imgout/${{ steps.get-filename.outputs.filename }}.img.xz
           imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
+          ${{ steps.get-filename.outputs.filename }}-upgrade.tar
         prerelease: true
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
