@@ -95,18 +95,17 @@ jobs:
         tar -cf ../upgrade/upgrade32.tar *
         cd ../upgrade
         crc32 upgrade32.tar > upgrade32.crc
-        
+        cd ..
+
         # Create 64-bit upgrade tar and CRC
         cd dist64
         tar -cf ../upgrade/upgrade64.tar *
         cd ../upgrade
         crc32 upgrade64.tar > upgrade64.crc
-        
-        # Move all upgrade files to upgrade directory
-        mv upgrade32.tar upgrade32.crc upgrade64.tar upgrade64.crc upgrade/
-        
+                
         # Create final combined tarball
-        tar -cf ${{ steps.get-filename.outputs.filename }}-upgrade.tar -C upgrade .
+        tar -cf sysupgrade.tar *
+        cd ..
 
     - uses: actions/upload-artifact@v4
       with:
