@@ -91,11 +91,15 @@ jobs:
         mkdir -p upgrade
         
         # Create 32-bit upgrade tar and CRC
-        tar -cf upgrade32.tar -C dist .
+        cd dist
+        tar -cf ../upgrade/upgrade32.tar *
+        cd ../upgrade
         crc32 upgrade32.tar > upgrade32.crc
         
         # Create 64-bit upgrade tar and CRC
-        tar -cf upgrade64.tar -C dist64 .
+        cd dist64
+        tar -cf ../upgrade/upgrade64.tar *
+        cd ../upgrade
         crc32 upgrade64.tar > upgrade64.crc
         
         # Move all upgrade files to upgrade directory
