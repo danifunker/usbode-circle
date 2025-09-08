@@ -129,7 +129,7 @@ jobs:
           ${{ steps.get-filename.outputs.filename }}-64bit.zip
           imgout/${{ steps.get-filename.outputs.filename }}.img.xz
           imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
-          ${{ steps.get-filename.outputs.filename }}-upgrade.tar
+          sysupgrade.tar
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
