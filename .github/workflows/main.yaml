@@ -104,7 +104,7 @@ jobs:
         crc32 upgrade64.tar > upgrade64.crc
                 
         # Create final combined tarball
-        tar -cf sysupgrade.tar *
+        tar -cf ../sysupgrade.tar *
         cd ..
 
     - uses: actions/upload-artifact@v4
