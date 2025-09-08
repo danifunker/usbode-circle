@@ -109,8 +109,8 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: ${{ steps.get-filename.outputs.filename }}-upgrade
-        path: ${{ steps.get-filename.outputs.filename }}-upgrade.tar
+        name: sysupgrade
+        path: sysupgrade.tar
         if-no-files-found: error
         retention-days: 90
         compression-level: 6
