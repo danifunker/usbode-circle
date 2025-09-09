@@ -12,6 +12,7 @@
 #include <displayservice/buttonhandler.h>
 #include <displayservice/buttons.h>
 #include <setupstatus/setupstatus.h>
+#include <upgradestatus/upgradestatus.h>
 
 #include "configpage.h"
 #include "homepage.h"
@@ -23,6 +24,7 @@
 #include "splashpage.h"
 #include "usbconfigpage.h"
 #include "setuppage.h"
+#include "upgradepage.h"
 
 LOGMODULE("st7789display");
 
@@ -96,12 +98,17 @@ bool ST7789Display::Initialize() {
     m_PageManager.RegisterPage("timeoutconfigpage", new ST7789TimeoutConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("infopage", new ST7789InfoPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("setuppage", new ST7789SetupPage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("upgradepage", new ST7789UpgradePage(&m_Display, &m_Graphics));
 
     LOGNOTE("Registered pages");
 
     // Set the starting page
-    if (SetupStatus::Get() && SetupStatus::Get()->isSetupRequired())
+    auto setup = SetupStatus::Get();
+    auto upgrade = UpgradeStatus::Get();
+    if (setup->isSetupRequired()) 
 	m_PageManager.SetActivePage("setuppage");
+    else if (upgrade->isUpgradeRequired()) 
+	m_PageManager.SetActivePage("upgradepage");
     else
     	m_PageManager.SetActivePage("splashpage");
 
@@ -184,7 +191,8 @@ void ST7789Display::Sleep() {
         return;
 
     // Do not sleep if we're in the First Boot Setup phase
-    if (SetupStatus::Get() && SetupStatus::Get()->isSetupInProgress())
+    // or updating
+    if (SetupStatus::Get()->isSetupInProgress() || UpgradeStatus::Get()->isUpgradeInProgress())
 	    return;
 
     LOGNOTE("Sleeping");

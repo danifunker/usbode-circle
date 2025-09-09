@@ -125,8 +125,6 @@ void SH1106ImagesPage::DrawText(unsigned nX, unsigned nY, T2DColor Color, const 
                                 const TFont& rFont,
                                 CCharGenerator::TFontFlags FontFlags) {
     CCharGenerator Font(rFont, FontFlags);
-    int m_nWidth = m_Graphics->GetWidth();
-    int m_nHeight = m_Graphics->GetHeight();
 
     unsigned nWidth = 0;
     for (const char* p = pText; *p != '\0'; ++p) {
@@ -157,8 +155,8 @@ void SH1106ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
                                         CCharGenerator::TFontFlags FontFlags) {
     CCharGenerator Font(rFont, FontFlags);
 
-    int m_nWidth = m_Graphics->GetWidth();
-    int m_nHeight = m_Graphics->GetHeight();
+    unsigned m_nWidth = m_Graphics->GetWidth();
+    unsigned m_nHeight = m_Graphics->GetHeight();
     unsigned drawX = nX - pixelOffset;
 
     for (; *pText != '\0'; ++pText) {
@@ -166,7 +164,7 @@ void SH1106ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
         for (unsigned y = 0; y < Font.GetUnderline(); y++) {
             CCharGenerator::TPixelLine Line = Font.GetPixelLine(*pText, y);
             for (unsigned x = 0; x < Font.GetCharWidth(); x++) {
-                int finalX = drawX + x;
+                unsigned finalX = drawX + x;
                 if (finalX >= 0 && finalX < m_nWidth && (nY + y) < m_nHeight) {
                     if (Font.GetPixel(x, Line)) {
                         m_Graphics->DrawPixel(finalX, nY + y, Color);
@@ -279,7 +277,7 @@ void SH1106ImagesPage::Draw() {
 
     // Draw page indicator
     char pageText[16];
-    snprintf(pageText, sizeof(pageText), "%d/%d", currentPage + 1, totalPages);
+    snprintf(pageText, sizeof(pageText), "%d/%d", (short)currentPage + 1, (short)totalPages);
     m_Graphics->DrawText(85, 1, COLOR2D(0,0,0), pageText, C2DGraphics::AlignLeft, Font6x7);
 
     m_Graphics->UpdateDisplay();

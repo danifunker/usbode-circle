@@ -3,20 +3,19 @@
 #include <circle/sched/scheduler.h>
 #include <circle/timer.h>
 #include <circle/util.h>
+#include "../../src/kernel.h"
 
 PARTITION VolToPart[FF_VOLUMES] = {
     {0, 1},    // Volume 0: SD card, partition 1 (first partition)
     {0, 2}     // Volume 1: SD card, partition 2 (second partition)
 };
 
-static const char FromSetupStatus[] = "setupstatus";
 LOGMODULE("setupstatus");
 
 SetupStatus* SetupStatus::s_pThis = nullptr;
 
-SetupStatus::SetupStatus(CEMMCDevice* pEMMC)
-    : m_pEMMC(pEMMC),
-      m_setupRequired(false),
+SetupStatus::SetupStatus()
+    : m_setupRequired(false),
       m_setupInProgress(false), 
       m_setupComplete(false),
       m_currentProgress(0),
@@ -24,9 +23,9 @@ SetupStatus::SetupStatus(CEMMCDevice* pEMMC)
       m_statusMessage("Setup starting...")
 {
     
+    m_pEMMC = CKernel::Get()->GetEMMC();
     assert(m_pEMMC != nullptr);
     
-    s_pThis = this;
     LOGNOTE("SetupStatus service initialized");
     
     // Display partition table on startup
@@ -42,21 +41,9 @@ SetupStatus::SetupStatus(CEMMCDevice* pEMMC)
     }
 }
 
-SetupStatus::~SetupStatus() {
-    s_pThis = nullptr;
-}
-
-void SetupStatus::Init(CEMMCDevice* pEMMC) {
-    assert(!s_pThis && "SetupStatus::Init() must not be called more than once");
-    s_pThis = new SetupStatus(pEMMC);
-}
-
-void SetupStatus::Shutdown() {
-    delete s_pThis;
-    s_pThis = nullptr;
-}
-
 SetupStatus* SetupStatus::Get() {
+    if (s_pThis == nullptr)
+        s_pThis = new SetupStatus();
     return s_pThis;
 }
     

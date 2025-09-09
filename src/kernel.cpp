@@ -32,6 +32,7 @@
 #include <displayservice/displayservice.h>
 #include <configservice/configservice.h>
 #include <setupstatus/setupstatus.h>
+#include <upgradestatus/upgradestatus.h>
 #include <circle/memory.h>
 
 #include <circle/time.h>
@@ -163,8 +164,6 @@ TShutdownMode CKernel::Run(void) {
     // Use the existing ConfigService instance
     ConfigService* config = m_pConfigService;
     
-    // Initialize SetupStatus
-    SetupStatus::Init(&m_EMMC);
     LOGNOTE("Initialized SetupStatus"); 
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
@@ -176,9 +175,12 @@ TShutdownMode CKernel::Run(void) {
     LOGNOTE("=====================================");
 
 
-    // Do we need to do first time setup?
-    if (SetupStatus::Get()->isSetupRequired()) {
-	    // Start Display Service for setup screen
+    // Do we need to do setup or upgrade??
+    auto setup = SetupStatus::Get();
+    auto upgrade = UpgradeStatus::Get();
+    if (setup->isSetupRequired() || upgrade->isUpgradeRequired()) {
+
+	    // Start Display Service for setup or upgrade screen
 	    const char* displayType = config->GetDisplayHat();
 	    if (strcmp(displayType, "none") != 0) {
 		new DisplayService(displayType);
@@ -188,19 +190,24 @@ TShutdownMode CKernel::Run(void) {
 		CScheduler::Get()->MsSleep(500);
 	    }
 
-	    if (SetupStatus::Get()->performSetup()) {
-		    LOGNOTE("Setup successful, rebooting");
+            // Run the setup or upgrade
+            bool bOK = false;
+            if (setup->isSetupRequired()) {
+                bOK = setup->performSetup();
+            } else if (upgrade->isUpgradeRequired()) {
+                bOK = upgrade->performUpgrade();
+            }
+                 
+            if (bOK) {
+		    LOGNOTE("Setup or Upgrade successful, rebooting");
 		    // Give a moment for the display to show completion
-		    CScheduler::Get()->MsSleep(5000);
+		    CScheduler::Get()->MsSleep(10000);
 		    return ShutdownReboot;
 	    } else {
 		    LOGERR("Setup failed, shutting down");
 		    return ShutdownHalt;
 	    }
     }
-
-    // Clean up SetupStatus
-    SetupStatus::Shutdown();
 
     // Initialize the CD Player service
     const char* pSoundDevice = m_Options.GetSoundDevice();
@@ -256,7 +263,7 @@ TShutdownMode CKernel::Run(void) {
     }
 
     static const char ServiceName[] = HOSTNAME;
-    //CmDNSPublisher* pmDNSPublisher = nullptr;
+    CmDNSPublisher* pmDNSPublisher = nullptr;
     CWebServer* pCWebServer = nullptr;
     CFTPDaemon* m_pFTPDaemon = nullptr;
 
@@ -286,7 +293,6 @@ TShutdownMode CKernel::Run(void) {
         }
 
         // Publish mDNS
-	/* Disabled for now until but is fixed
         if (m_Net.IsRunning() && !pmDNSPublisher) {
             static const char* ppText[] = {"path=/index.html", nullptr};
             pmDNSPublisher = new CmDNSPublisher(&m_Net);
@@ -295,7 +301,6 @@ TShutdownMode CKernel::Run(void) {
             }
             LOGNOTE("Started mDNS service");
         }
-	*/
 
         // Start the FTP Server
         if (m_Net.IsRunning() && !m_pFTPDaemon) {
@@ -327,8 +332,8 @@ TShutdownMode CKernel::Run(void) {
 	}
 
 	// Give other tasks a chance to run
-	m_Scheduler.Yield();
-	//CScheduler::Get()->MsSleep(100);
+	//m_Scheduler.Yield();
+	CScheduler::Get()->MsSleep(100);
 
 	/*
 	if (counter >= 100) {
@@ -399,6 +404,10 @@ void CKernel::InitializeNTP(const char* timezone) {
 
 CNetSubSystem* CKernel::GetNetwork() {
 	return &m_Net;
+}
+
+CEMMCDevice* CKernel::GetEMMC() {
+	return &m_EMMC;
 }
 
 /*

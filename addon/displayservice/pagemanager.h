@@ -29,7 +29,7 @@ class PageManager {
         IPage* page;
     };
 
-    static constexpr int MAX_PAGES = 10;
+    static constexpr int MAX_PAGES = 20;
     PageEntry pages[MAX_PAGES];
     int pageCount = 0;
 

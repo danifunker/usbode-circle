@@ -26,13 +26,6 @@ public:
     // Singleton getter
     static SetupStatus* Get();
     
-    // Disable copy and assignment
-    SetupStatus(const SetupStatus&) = delete;
-    SetupStatus& operator=(const SetupStatus&) = delete;
-
-    static void Init(CEMMCDevice* pEMMC);
-    static void Shutdown();
-
     // Status management
     bool isSetupRequired() const;
     bool isSetupInProgress() const;
@@ -46,8 +39,10 @@ public:
     bool performSetup();
 
 private:
-    SetupStatus(CEMMCDevice* pEMMC);
-    ~SetupStatus();
+    SetupStatus();
+    ~SetupStatus() = default;
+    SetupStatus(const SetupStatus&) = delete;
+    SetupStatus& operator=(const SetupStatus&) = delete;
 
     static SetupStatus* s_pThis;
     

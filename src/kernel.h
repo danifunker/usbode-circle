@@ -74,6 +74,7 @@ class CKernel
     boolean SetDevice(char *imageName);
     //FATFS* GetFileSystem();
     CNetSubSystem* GetNetwork();
+    CEMMCDevice* GetEMMC();
     static CKernel* Get();
     TShutdownMode Run(void);
 

@@ -12,7 +12,6 @@ ST7789HomePage::ST7789HomePage(CST7789Display* display, C2DGraphics* graphics)
       m_Graphics(graphics) {
     m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
-    LOGNOTE("Homepage starting");
 }
 
 ST7789HomePage::~ST7789HomePage() {

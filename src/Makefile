@@ -38,6 +38,7 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(USBODEHOME)/addon/discimage/libdiscimage.a \
 	$(USBODEHOME)/addon/filelogdaemon/libfilelogdaemon.a \
 	$(USBODEHOME)/addon/setupstatus/libsetupstatus.a \
+	$(USBODEHOME)/addon/upgradestatus/libupgradestatus.a \
 	$(USBODEHOME)/addon/cueparser/libcueparser.a \
 	$(USBODEHOME)/addon/ftpserver/libftpserver.a \
 	$(USBODEHOME)/addon/cdplayer/libcdplayer.a \

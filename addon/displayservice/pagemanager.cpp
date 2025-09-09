@@ -17,7 +17,7 @@ PageManager::PageManager() {
 
 // Destructor
 PageManager::~PageManager() {
-    for (unsigned i = 0; i < pageCount; ++i) {
+    for (int i = 0; i < pageCount; ++i) {
         delete pages[i].page;
         pages[i].page = nullptr;
     }
@@ -69,10 +69,11 @@ void PageManager::Refresh(bool redraw) {
             SetActivePage(next);
         }
     } else {
-	if (redraw)
+	if (redraw) {
 	    currentPage->Draw();
-	else
+	} else {
             currentPage->Refresh();
+        }
     }
 }
 

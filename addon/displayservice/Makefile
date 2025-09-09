@@ -20,6 +20,7 @@ OBJS    = displayservice.o \
 	st7789/infopage.o \
 	st7789/infopage.o \
 	st7789/display.o \
+	st7789/upgradepage.o \
 	st7789/setuppage.o \
 	sh1106/display.o \
 	sh1106/homepage.o \

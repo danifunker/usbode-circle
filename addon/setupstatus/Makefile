@@ -18,5 +18,6 @@ libsetupstatus.a: $(OBJS)
 
 include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
+CFLAGS += -I ../../addon
 
 -include $(DEPS)
