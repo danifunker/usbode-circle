@@ -307,6 +307,12 @@ clean-imagesfolder:
 	@echo "Cleaning images folder after build..."
 	@rm -rf ./dist/images
 	@rm -rf ./dist64/images
+	@rm -rf ./dist/wpa_supplicant.conf
+	@rm -rf ./dist64/wpa_supplicant.conf
+	@rm -rf ./dist/cmdline.txt
+	@rm -rf ./dist64/cmdline.txt
+	@rm -rf ./dist/config.txt
+	@rm -rf ./dist64/config.txt
 
 # 32-bit specific targets
 all-32: 

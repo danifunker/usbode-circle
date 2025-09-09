@@ -6,9 +6,10 @@ permissions:
 on:
   push:
     branches: [ "*" ]
-  paths-ignore:
-    - "README.md"
-    - ".github/**"
+    paths-ignore:
+      - "README.md"
+      - ".github/**"
+      - "version.txt"
 
 jobs:
   build:
@@ -82,7 +83,39 @@ jobs:
         retention-days: 90
         compression-level: 6
         overwrite: true
-        include-hidden-files: false        
+        include-hidden-files: false
+
+    - name: Create upgrade packages
+      run: |
+        # Create upgrade directory
+        mkdir -p upgrade
+        
+        # Create 32-bit upgrade tar and CRC
+        cd dist
+        tar -cf ../upgrade/upgrade32.tar *
+        cd ../upgrade
+        crc32 upgrade32.tar > upgrade32.crc
+        cd ..
+
+        # Create 64-bit upgrade tar and CRC
+        cd dist64
+        tar -cf ../upgrade/upgrade64.tar *
+        cd ../upgrade
+        crc32 upgrade64.tar > upgrade64.crc
+                
+        # Create final combined tarball
+        tar -cf ../sysupgrade.tar *
+        cd ..
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: sysupgrade
+        path: sysupgrade.tar
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false
 
     - name: Create Release (on main only)
       if: github.ref == 'refs/heads/main'
@@ -96,6 +129,7 @@ jobs:
           ${{ steps.get-filename.outputs.filename }}-64bit.zip
           imgout/${{ steps.get-filename.outputs.filename }}.img.xz
           imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
+          sysupgrade.tar
         prerelease: true
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
