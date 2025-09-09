@@ -67,7 +67,7 @@ endif
 USBODE_ADDONS = sdcardservice cdromservice scsitbservice usbcdgadget \
                 shutdown usbmsdgadget discimage cueparser filelogdaemon \
                 webserver ftpserver configservice libsh1106 displayservice cdplayer \
-                setupstatus
+                upgradestatus setupstatus
 
 # Only the Circle addons we actually need
 CIRCLE_ADDONS = linux Properties display fatfs SDCard wlan wlan/firmware
