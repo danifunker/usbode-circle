@@ -11,6 +11,7 @@ on:
       - ".github/**"
       - "version.txt"
       - "os-sublist.json"
+      - "docs/**"
 
 jobs:
   build:

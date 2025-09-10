@@ -1,0 +1,41 @@
+{
+  "os_list": [
+    {
+      "name": "USBODE 32-bit",
+      "description": "Use Your Raspberry Pi as a USB CDROM Device for Retro PCs! (Only for use with Zero/Zero2/3A+/4B)",
+      "url": "https://github.com/danifunker/usbode-circle/releases/download/build-465/usbode-2.7.0-465-main-e9404a5.img.xz",
+      "icon": "https://path.to/your/logo-as-svg-or-png-40x40.svg",
+      "website": "https://github.com/danifunker/usbode-circle",
+      "release_date": "2025-09-09",
+      "extract_size": 214958080,
+      "extract_sha256": "f2c89e26b194788a15ed8a6360d8217e91a3b98afd07c5d97ea7987ed7042c8e",
+      "image_download_size": 36778060,
+      "image_download_sha256": "e339220442abe9843ff40e8fece1bca17f1d7c7ad17f5e173776fe043d0558cf",
+      "devices": [
+        "pi4-32bit",
+        "pi3-32bit",
+        "pi1-32bit"
+      ],
+      "init_format": "none",
+      "architecture": "armhf"
+    },
+    {
+      "name": "USBODE 64-bit",
+      "description": "Use Your Raspberry Pi as a USB CDROM Device for Retro PCs! (64-bit) (Only for use with Zero2/3A+/4B)",
+      "url": "https://github.com/danifunker/usbode-circle/releases/download/build-465/usbode-2.7.0-465-main-e9404a5-64bit.img.xz",
+      "icon": "https://path.to/your/logo-as-svg-or-png-40x40.svg",
+      "website": "https://github.com/danifunker/usbode-circle",
+      "release_date": "2025-09-09",
+      "extract_size": 214958080,
+      "extract_sha256": "ab1c726f03b91d81d432646c304b52d546814dec2acf173b2d218db259e8e52f",
+      "image_download_size": 36099644,
+      "image_download_sha256": "c33cd43944d8e4c27f744fd4a8ee00676d98adefa9d45e9b90fe88eed6c45819",
+      "devices": [
+        "pi4-64bit",
+        "pi3-64bit"
+      ],
+      "init_format": "none",
+      "architecture": "armv8"
+    }
+  ]
+}
