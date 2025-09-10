@@ -164,7 +164,9 @@ jobs:
           imgout/${{ steps.get-filename.outputs.filename }}.img.xz
           imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
           upgrade/sysupgrade32.tar
+          update/sysupgrade32.crc
           upgrade/sysupgrade64.tar
+          upgrade/sysupgrade64.crc
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
