@@ -13,6 +13,13 @@ on:
       - "os-sublist.json"
       - "docs/**"
       - "/update-os-sublist.sh"
+  workflow_dispatch:
+    branches: [ "main" ]
+    inputs:
+      release-tag:
+        description: 'Release tag to build'
+        required: true
+        default: 'latest'
 
 jobs:
   build:
