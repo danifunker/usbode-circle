@@ -125,6 +125,15 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
+        name: sysupgrade32crc
+        path: upgrade/sysupgrade32.crc
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+
+    - uses: actions/upload-artifact@v4
+      with:
         name: sysupgrade64
         path: upgrade/sysupgrade64.tar
         if-no-files-found: error
@@ -132,6 +141,15 @@ jobs:
         compression-level: 6
         overwrite: true
         include-hidden-files: false
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: sysupgrade64crc
+        path: upgrade/sysupgrade64.crc
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
 
     - name: Create Release (on main only)
       if: github.ref == 'refs/heads/main'
