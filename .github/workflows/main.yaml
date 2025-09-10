@@ -102,25 +102,31 @@ jobs:
         
         # Create 32-bit upgrade tar and CRC
         cd dist
-        tar -cf ../upgrade/upgrade32.tar *
+        tar -cf ../upgrade/sysupgrade32.tar *
         cd ../upgrade
-        crc32 upgrade32.tar > upgrade32.crc
+        crc32 sysupgrade32.tar > sysupgrade32.crc
         cd ..
 
         # Create 64-bit upgrade tar and CRC
         cd dist64
-        tar -cf ../upgrade/upgrade64.tar *
+        tar -cf ../upgrade/sysupgrade64.tar *
         cd ../upgrade
-        crc32 upgrade64.tar > upgrade64.crc
-                
-        # Create final combined tarball
-        tar -cf ../sysupgrade.tar *
+        crc32 sysupgrade64.tar > sysupgrade64.crc
         cd ..
 
     - uses: actions/upload-artifact@v4
       with:
-        name: sysupgrade
-        path: sysupgrade.tar
+        name: sysupgrade32
+        path: upgrade/sysupgrade32.tar
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: sysupgrade64
+        path: upgrade/sysupgrade64.tar
         if-no-files-found: error
         retention-days: 90
         compression-level: 6
@@ -139,7 +145,8 @@ jobs:
           ${{ steps.get-filename.outputs.filename }}-64bit.zip
           imgout/${{ steps.get-filename.outputs.filename }}.img.xz
           imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
-          sysupgrade.tar
+          upgrade/sysupgrade32.tar
+          upgrade/sysupgrade64.tar
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
