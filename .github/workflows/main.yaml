@@ -12,6 +12,7 @@ on:
       - "version.txt"
       - "os-sublist.json"
       - "docs/**"
+      - "/update-os-sublist.sh"
 
 jobs:
   build:
