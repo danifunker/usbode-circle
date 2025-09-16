@@ -160,7 +160,7 @@ jobs:
         name: USBODE build-${{ github.run_number }}
         body: |
           USBODE build-${{ github.run_number }}
-          Commit: ${{ steps.get-commit.outputs.commit_hash }}
+          ==commit-${{ steps.get-commit.outputs.commit_hash }}== 
         files: | 
           ${{ steps.get-filename.outputs.filename }}.zip
           ${{ steps.get-filename.outputs.filename }}-64bit.zip
