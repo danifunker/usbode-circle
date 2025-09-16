@@ -45,6 +45,11 @@ jobs:
         echo "Found file: $FILENAME"
         echo "filename=$FILENAME" >> $GITHUB_OUTPUT
 
+    - name: Get commit hash
+      id: get-commit
+      run: |
+        echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
     - uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.get-filename.outputs.filename }}-images IMG
@@ -153,6 +158,9 @@ jobs:
       with:
         tag_name: build-${{ github.run_number }}
         name: USBODE build-${{ github.run_number }}
+        body: |
+          USBODE build-${{ github.run_number }}
+          Commit: ${{ steps.get-commit.outputs.commit_hash }}
         files: | 
           ${{ steps.get-filename.outputs.filename }}.zip
           ${{ steps.get-filename.outputs.filename }}-64bit.zip
