@@ -95,7 +95,9 @@ tmp/
 /circle.geany
 dist/
 gitinfo.h
+buildtime.h
 /usbode*.zip
 .vscode/
 dist64/
 imgout/
+buildinfo.json

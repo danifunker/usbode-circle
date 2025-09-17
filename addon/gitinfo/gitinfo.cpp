@@ -65,6 +65,41 @@ const char* CGitInfo::GetCommit(void) const
     return m_GitCommit;
 }
 
+const char* CGitInfo::GetBuildTimestamp(void) const
+{
+    return BUILD_TIMESTAMP_UTC;
+}
+
+const char* CGitInfo::GetBuildTimestampISO(void) const
+{
+    return BUILD_TIMESTAMP_ISO;
+}
+
+const char* CGitInfo::GetBuildDate(void) const
+{
+    return BUILD_DATE_UTC;
+}
+
+const char* CGitInfo::GetBuildTime(void) const
+{
+    return BUILD_TIME_UTC;
+}
+
+const char* CGitInfo::GetBuildUnixTimestamp(void) const
+{
+    return BUILD_UNIX_TIMESTAMP;
+}
+
+const char* CGitInfo::GetBuildDateCompact(void) const
+{
+    return USBODE_BUILD_DATE;
+}
+
+const char* CGitInfo::GetBuildTimeCompact(void) const
+{
+    return USBODE_BUILD_TIME;
+}
+
 const char* CGitInfo::GetArchType(void) const
 {
     return m_ArchType;
@@ -158,11 +193,12 @@ void CGitInfo::UpdateFormattedVersions(void)
     // Create the formatted version string
     m_FormattedVersion.Format("%s-%s", (const char*)baseVersion, (const char*)shortHash);
     
-    // Create the full formatted version including build date/time
-    m_FullFormattedVersion.Format("%s (%s) (built %s)", 
+    // Create the full formatted version including build date/time (using consistent timestamps)
+    m_FullFormattedVersion.Format("%s (%s) (built %s %s)", 
                                 (const char*)m_FormattedVersion,
                                 m_ArchType,
-                                __DATE__, __TIME__);
+                                USBODE_BUILD_DATE,
+                                USBODE_BUILD_TIME);
     
     // Create platform string
     m_PlatformString.Format("%s Pi %s (%s)", 
@@ -196,8 +232,9 @@ void CGitInfo::UpdateFormattedVersions(void)
     
     // Log the version information for debugging
     CLogger::Get()->Write("gitinfo", LogNotice, 
-                         "Version: %s, Short: %s, Full: %s", 
+                         "Version: %s, Short: %s, Full: %s, Build: %s", 
                          (const char*)m_FormattedVersion,
                          (const char*)m_ShortVersionString,
-                         (const char*)m_FullFormattedVersion);
+                         (const char*)m_FullFormattedVersion,
+                         BUILD_TIMESTAMP_UTC);
 }

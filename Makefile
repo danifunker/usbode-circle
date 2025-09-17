@@ -76,11 +76,24 @@ CIRCLE_ADDONS = linux Properties display fatfs SDCard wlan wlan/firmware
 USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0x0d01
 
 .PHONY: all clean-all clean-dist check-config check-vars configure circle-stdlib\
-	 circle-deps circle-addons usbode-addons kernel dist-files apply-patches reset-patches check-patches
+     circle-deps circle-addons usbode-addons kernel dist-files apply-patches reset-patches check-patches\
+     generate-buildinfo
+
 .PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS) dist-single multi-arch package release\
 	 show-build-info rebuild show-config all-32 all-64 multi-arch-64 package-both
 
-all: clean-all clean-dist configure circle-deps circle-addons usbode-addons kernel dist-files
+# Generate build info once per build process
+generate-buildinfo:
+	@echo "Generating build timestamp and version information..."
+	@chmod +x scripts/generate-buildinfo.sh
+	@scripts/generate-buildinfo.sh
+	@if [ ! -f "addon/gitinfo/buildtime.h" ]; then \
+		echo "ERROR: buildtime.h was not generated properly"; \
+		exit 1; \
+	fi
+	@echo "Build timestamp generated successfully"
+
+all: generate-buildinfo clean-all clean-dist configure circle-deps circle-addons usbode-addons kernel dist-files
 
 check-vars:
 	@if [ -n "$(RASSPI)" ]; then \
@@ -179,7 +192,7 @@ kernel: usbode-addons
 	@echo "Building final kernel..."
 	cd src && $(MAKE) clean && $(MAKE) V=1
 
-dist-single: check-vars kernel clean-dist
+dist-single: check-vars kernel clean-dist generate-buildinfo
 	@echo "Creating single-architecture distribution package for RASPPI=$(RASPPI) ($(ARCH_MODE)-bit)..."
 	
 	# Copy kernel files for current RASPPI architecture
@@ -323,7 +336,7 @@ all-64:
 	@$(MAKE) multi-arch-64 ARCH_MODE=64
 
 # Multi-architecture build for 32-bit
-multi-arch: clean-dist
+multi-arch: clean-dist generate-buildinfo
 	@for arch in $(SUPPORTED_RASPPI); do \
 		echo "Building for RASPPI=$$arch (32-bit)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
 		if ! $(MAKE) RASPPI=$$arch ARCH_MODE=32 DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; then \
@@ -342,7 +355,7 @@ multi-arch: clean-dist
 	@$(MAKE) dist-files ARCH_MODE=32 CURRENT_DIST_DIR=dist
 
 # Multi-architecture build for 64-bit
-multi-arch-64: clean-dist
+multi-arch-64: clean-dist generate-buildinfo
 	@for arch in $(SUPPORTED_RASPPI_64); do \
 		echo "Building for RASPPI=$$arch (64-bit)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"; \
 		if ! $(MAKE) RASPPI=$$arch ARCH_MODE=64 DEBUG_FLAGS="$(DEBUG_FLAGS)" configure circle-deps circle-addons usbode-addons kernel; then \

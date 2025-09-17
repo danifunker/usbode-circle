@@ -69,7 +69,7 @@ else # AARCH=64
     esac
 fi
 
-# Create header file with git, version, and architecture info
+# Create header file with git, version, and architecture info (including buildtime.h)
 cat > ./gitinfo.h << EOF
 // Auto-generated file - Do not edit
 #ifndef _gitinfo_h
@@ -77,6 +77,7 @@ cat > ./gitinfo.h << EOF
 
 #include <circle/types.h>
 #include <circle/string.h>
+#include "buildtime.h"
 
 // Git information
 #define GIT_BRANCH "${BRANCH}"
@@ -112,6 +113,17 @@ public:
     // Get git information
     const char* GetBranch(void) const;
     const char* GetCommit(void) const;
+    
+    // Get build timestamp information
+    const char* GetBuildTimestamp(void) const;
+    const char* GetBuildTimestampISO(void) const;
+    const char* GetBuildDate(void) const;
+    const char* GetBuildTime(void) const;
+    const char* GetBuildUnixTimestamp(void) const;
+    
+    // Get replacements for __DATE__ and __TIME__
+    const char* GetBuildDateCompact(void) const;
+    const char* GetBuildTimeCompact(void) const;
     
     // Get architecture and platform information
     const char* GetArchType(void) const;
