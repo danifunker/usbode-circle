@@ -542,6 +542,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     u32 lba_to_msf(u32 lba, boolean relative = false);
     int GetSectorLengthFromMCS(uint8_t mainChannelSelection);
     int GetSkipBytesFromMCS(uint8_t mainChannelSelection);
+    bool m_unit_attention = false;
+    bool m_not_ready_state = false;
 
    private:
     ICueDevice *m_pDevice;

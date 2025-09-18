@@ -783,6 +783,17 @@ int CUSBCDGadget::GetSkipBytesFromMCS(uint8_t mainChannelSelection) {
 //
 void CUSBCDGadget::HandleSCSICommand() {
     //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    // Check for unit attention before processing most commands
+    if (m_unit_attention && m_CBW.CBWCB[0] != 0x12 && m_CBW.CBWCB[0] != 0x03) {
+        m_unit_attention = false;
+        m_SenseParams.bSenseKey = 0x06;  // Unit Attention
+        m_SenseParams.bAddlSenseCode = 0x28;  // Medium Changed
+        m_SenseParams.bAddlSenseCodeQual = 0x00;
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+        SendCSW();
+        return;
+    }
+    
     switch (m_CBW.CBWCB[0]) {
         case 0x00:  // Test unit ready
         {
@@ -819,6 +830,11 @@ void CUSBCDGadget::HandleSCSICommand() {
             m_ReqSenseReply.bAddlSenseCodeQual = m_SenseParams.bAddlSenseCodeQual;
 
             memcpy(&m_InBuffer, &m_ReqSenseReply, length);
+
+            // Clear unit attention after reporting
+            m_SenseParams.bSenseKey = 0x00;
+            m_SenseParams.bAddlSenseCode = 0x00;
+            m_SenseParams.bAddlSenseCodeQual = 0x00;
 
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                        m_InBuffer, length);
@@ -1457,19 +1473,19 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 	    u8 polled = m_CBW.CBWCB[1] & 0x01;
 	    u8 notificationClass = m_CBW.CBWCB[4]; // This is a bitmask
-            u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
+        u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification");
 
-	    if (polled = 0) {
+	    if (polled == 0) {
 		// We don't support async mode
-                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification - we don't support async notifications");
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification - we don't support async notifications");
 	        bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
-                m_SenseParams.bSenseKey = 0x05;		// ILLEGAL REQUEST
-                m_SenseParams.bAddlSenseCode = 0x24;      // INVALID FIELD IN CDB
-                m_SenseParams.bAddlSenseCodeQual = 0x00;
-            	m_CSW.bmCSWStatus = bmCSWStatus;
-                SendCSW();
+            m_SenseParams.bSenseKey = 0x05;		// ILLEGAL REQUEST
+            m_SenseParams.bAddlSenseCode = 0x24;      // INVALID FIELD IN CDB
+            m_SenseParams.bAddlSenseCodeQual = 0x00;
+            m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+            SendCSW();
 		break;
 	    }
 
@@ -2027,7 +2043,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    codepage.pageLength = 16;
 			    codepage.IMMEDAndSOTC = 0x04;
 			    codepage.CDDAOutput0Select = 0x01;  // audio channel 0
-			    codepage.Output0Volume = volume;
+			    codepage.Output0Volume = volume;  
 			    codepage.CDDAOutput1Select = 0x02;  // audio channel 1
 			    codepage.Output1Volume = volume;
 			    codepage.CDDAOutput2Select = 0x00;  // none
@@ -2204,7 +2220,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
 			    m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
 			    m_SenseParams.bAddlSenseCode = 0x24;      // INVALID FIELD IN COMMAND PACKET
-			    m_SenseParams.bAddlSenseCodeQual = 0x00;  
+			    m_SenseParams.bAddlSenseCodeQual = 0x00;
 			    break;
 			}
 		    }
