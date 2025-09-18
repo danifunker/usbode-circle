@@ -1183,10 +1183,37 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x43:  // READ TOC/PMA/ATIP
         {
             if (m_CDReady) {
-		    int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
-		    int format = m_CBW.CBWCB[2] & 0x07; // TODO implement formats. Currently we assume it's always 0x00
-		    int startingTrack = m_CBW.CBWCB[6];
-		    int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
+                int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
+                int format = m_CBW.CBWCB[2] & 0x0F; // Change from 0x07 to 0x0F to get full format field
+                int startingTrack = m_CBW.CBWCB[6];
+                int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
+
+                // Check for Matshita-style vendor commands (used by some macOS versions)
+                bool useBCD = false;
+                if (format == 0 && m_CBW.CBWCB[9] == 0x80) {
+                    format = 2;  // Full TOC
+                    useBCD = true;
+                } else if (format == 0 && m_CBW.CBWCB[9] == 0x40) {
+                    format = 1;  // Session info
+                }
+                      
+                // Check for Matshita-style vendor commands (used by some macOS versions)
+                bool useBCD = false;
+                if (format == 0 && m_CBW.CBWCB[9] == 0x80) {
+                    format = 2;  // Full TOC
+                    useBCD = true;
+                } else if (format == 0 && m_CBW.CBWCB[9] == 0x40) {
+                    format = 1;  // Session info
+                }
+
+                // Check for Matshita-style vendor commands (used by some macOS versions)
+                bool useBCD = false;
+                if (format == 0 && m_CBW.CBWCB[9] == 0x80) {
+                    format = 2;  // Full TOC
+                    useBCD = true;
+                } else if (format == 0 && m_CBW.CBWCB[9] == 0x40) {
+                    format = 1;  // Session info
+                }
 
 		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read TOC with format = %d, msf = %02x, starting track = %d, allocation length = %d, m_CDReady = %d", format, msf, startingTrack, allocationLength, m_CDReady);
 
@@ -1951,48 +1978,50 @@ void CUSBCDGadget::HandleSCSICommand() {
 			m_SenseParams.bAddlSenseCodeQual = 0x00;
 		} else {
 			
-		    // Define our response
-		    ModeSense6Header reply_header;
+		    // Define our response - adjust length calculation
+		    TModeSense6Header reply_header;
 		    memset(&reply_header, 0, sizeof(reply_header));
 		    reply_header.mediumType = GetMediumType();
+		    
+		    // Reserve space for header
+		    length = SIZE_MODE_SENSE6_HEADER;
 
 		    switch (page) {
-
 			case 0x3f: // This required all mode pages
-			MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x3f: All Mode Pages");
-			// Fall through...
+			     MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x3f: All Mode Pages");
+			     // Fall through...
 			case 0x01: {
 			    // Mode Page 0x01 (Read/Write Error Recovery Parameters Mode Page)
 			     MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x01 response");
-
-			    // Define our Code Page
-			    ModePage0x01Data codepage;
-			    memset(&codepage, 0, sizeof(codepage));
-
-			    // Copy the header & Code Page
-			    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-			    length += sizeof(codepage);
-
+			    
+			    ModePage0x01Data page01;
+			    memset(&page01, 0, sizeof(page01));
+			    page01.pageCodeAndPS = 0x01;
+			    page01.pageLength = 0x0A;
+			    page01.flags = 0x00;
+			    page01.readRetryCount = 0x03;
+			    
+			    memcpy(m_InBuffer + length, &page01, sizeof(ModePage0x01Data));
+			    length += sizeof(ModePage0x01Data);
+			    
 			    if (page != 0x3f)
 			    	break;
 			}
 
 			case 0x1a: {
-			    // Mode Page 0x1A (Power Condition)
-			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2a response");
+			    // Mode Page 0x1A (Power Condition) - keep your existing implementation
+			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x1a response");
 
-			    // Define our Code Page
 			    ModePage0x1AData codepage;
 			    memset(&codepage, 0, sizeof(codepage));
 			    codepage.pageCodeAndPS = 0x1a;
 			    codepage.pageLength = 0x0a;
 
-			    // Copy the header & Code Page
 			    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
 			    length += sizeof(codepage);
 
 			    if (page != 0x3f)
-			        break;
+				break;
 			}
 
 			case 0x2a: {
@@ -2069,14 +2098,14 @@ void CUSBCDGadget::HandleSCSICommand() {
 			}
 
 		    }
+		    
+		    reply_header.modeDataLength = htons(length - 1); // Length minus the length field itself
+		    memcpy(m_InBuffer, &reply_header, SIZE_MODE_SENSE6_HEADER);
+		}
 
-		    reply_header.modeDataLength = htons(length - 1);
-		    memcpy(m_InBuffer, &reply_header, sizeof(reply_header));
-	    }
-
-            // Trim the reply length according to what the host requested
-            if (allocationLength < length)
-                length = allocationLength;
+    // Trim the reply length according to what the host requested
+    if (allocationLength < length)
+        length = allocationLength;
 
             // MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6), Sending response with length %d", length);
 
