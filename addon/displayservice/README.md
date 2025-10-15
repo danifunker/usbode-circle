@@ -10,6 +10,15 @@ Your config.txt should have the following setting under `[usbode]` section
 displayhat=pirateaudiolineout
 ```
 
+Recently we have noticed a "Matte" version of the display being used, and those require different settings. To use that, set 
+
+```
+[usbode]
+displayhat=pirateaudiolineout-matte
+```
+
+This changes the spi_cpol to 1, whereas the glossy one is set to 0.
+
 ## Waveshare 1.3" OLED Hat
 This board is a plug and play monochrome SH1106 128x64 screen. To use this, your config.txt should have the following setting under the `usbode` section
 
