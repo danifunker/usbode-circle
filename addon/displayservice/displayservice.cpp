@@ -73,7 +73,33 @@ void DisplayService::CreateDisplay(const char* displayType) {
     // Generic ST7789 screen depends on how you wired it up. The default values
     // (mostly) mirror the wiring of the Pirate Audio screen
     // https://pinout.xyz/pinout/pirate_audio_line_out
-    } else if (strcmp(displayType, "st7789") == 0) {
+    } else if (strcmp(displayType, "pirateaudiolineout-matte") == 0) {
+
+	DisplayConfig display_config = {
+	    .dc_pin = 9,
+	    .reset_pin = 27,
+	    .backlight_pin = 13,
+	    .spi_cpol = 1,
+	    .spi_cpha = 0,
+	    .spi_clock_speed = 80000000,
+	    .spi_chip_select = 1
+	};
+
+	ButtonConfig buttons = {
+		.Up = ST7789_BUTTONUP,
+		.Down = ST7789_BUTTONDOWN,
+		.Ok = ST7789_BUTTONOK,
+		.Cancel = ST7789_BUTTONCANCEL
+	};
+
+        m_IDisplay = new ST7789Display(&display_config, &buttons);
+
+    // Generic ST7789 screen depends on how you wired it up. The default values
+    // (mostly) mirror the wiring of the Pirate Audio screen
+    // https://pinout.xyz/pinout/pirate_audio_line_out
+    }
+    
+    else if (strcmp(displayType, "st7789") == 0) {
 	const char* section = "st7789";
 
 	DisplayConfig display_config = {
