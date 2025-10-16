@@ -159,6 +159,8 @@ struct ModePage0x2AData {
     u16 bufferSize;
     u16 currentSpeed;
     u8 reserved1[4];
+    u16 maxReadSpeed;
+    u8 reserved2[2];
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X2A 20
 
@@ -523,6 +525,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     void HandleSCSICommand();
 
     void SendCSW();
+    
+    // Sense data management helpers for MacOS compatibility
+    void setSenseData(u8 senseKey, u8 asc = 0, u8 ascq = 0);
+    void clearSenseData();
+    void sendCheckCondition();
+    void sendGoodStatus();
+    
     CUETrackInfo GetTrackInfoForLBA(u32 lba);
     CUETrackInfo GetTrackInfoForTrack(int track);
     int GetSkipbytesForTrack(CUETrackInfo trackInfo);
@@ -584,6 +593,15 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     };
 
     TCDState m_nState = Init;
+
+    // Media state for proper MacOS Unit Attention handling
+    enum class MediaState {
+        NO_MEDIUM,                      // No disc present
+        MEDIUM_PRESENT_UNIT_ATTENTION,  // Disc present but needs Unit Attention
+        MEDIUM_PRESENT_READY            // Disc present and ready
+    };
+
+    MediaState m_mediaState = MediaState::NO_MEDIUM;
 
     TUSBCDCBW m_CBW;
     TUSBCDCSW m_CSW;
