@@ -78,8 +78,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
+            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
             0                  // iInterface
         },
         {
@@ -117,8 +117,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol
-            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol
+            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
+            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
             0                  // iInterface
         },
         {
@@ -153,6 +153,10 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpe
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "entered %d", isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
+    
+    // Initialize current image name buffer
+    m_currentImageName[0] = '\0';
+    
     // Fetch hardware serial number for unique USB device identification
     CBcmPropertyTags Tags;
     TPropertyTagSerial Serial;
@@ -262,8 +266,16 @@ void CUSBCDGadget::AddEndpoints(void) {
 }
 
 // must set device before usb activation
-void CUSBCDGadget::SetDevice(ICueDevice* dev) {
+void CUSBCDGadget::SetDevice(ICueDevice* dev, const char *imageName) {
     MLOGNOTE("CUSBCDGadget::SetDevice", "entered");
+
+    // Store image filename if provided
+    if (imageName) {
+        strncpy(m_currentImageName, imageName, sizeof(m_currentImageName) - 1);
+        m_currentImageName[sizeof(m_currentImageName) - 1] = '\0';
+    } else {
+        m_currentImageName[0] = '\0';
+    }
  
     // Hand the new device to the CD Player
     CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
@@ -294,6 +306,16 @@ void CUSBCDGadget::SetDevice(ICueDevice* dev) {
         
         m_pDevice = dev;
         cueParser = CUEParser(m_pDevice->GetCueSheet());  // FIXME. Ensure cuesheet is not null or empty
+
+        // Detect media type based on filename
+        if (m_currentImageName[0] != '\0' && strstr(m_currentImageName, ".dvd.iso")) {
+            m_mediaType = MediaType::MEDIA_DVD;
+            MLOGNOTE("CUSBCDGadget::SetDevice", "Detected DVD media from filename: %s", m_currentImageName);
+        } else {
+            m_mediaType = MediaType::MEDIA_CDROM;
+            MLOGNOTE("CUSBCDGadget::SetDevice", "Detected CD-ROM media (filename: %s)", 
+                     m_currentImageName[0] != '\0' ? m_currentImageName : "unknown");
+        }
 
         data_skip_bytes = GetSkipbytes();
         data_block_size = GetBlocksize();
@@ -816,6 +838,22 @@ void CUSBCDGadget::sendGoodStatus() {
 //
 void CUSBCDGadget::HandleSCSICommand() {
     //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    
+    // MacOS compatibility: Check for Unit Attention state before processing commands
+    // Per SCSI spec, when Unit Attention is pending, most commands must return CHECK CONDITION
+    // Exceptions: REQUEST SENSE (must deliver the attention) and INQUIRY (allowed by SCSI-2)
+    // This is critical for MacOS to properly detect media changes and mount filesystems
+    u8 cmd = m_CBW.CBWCB[0];
+    if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION && 
+        cmd != 0x03 &&  // REQUEST SENSE - must deliver Unit Attention
+        cmd != 0x12) {  // INQUIRY - allowed per SCSI-2 spec
+        
+        MLOGDEBUG("HandleSCSICommand", "Command 0x%02x blocked by Unit Attention", cmd);
+        setSenseData(0x06, 0x28, 0x00);  // Unit Attention, Not Ready to Ready Transition (medium may have changed)
+        sendCheckCondition();
+        return;
+    }
+    
     switch (m_CBW.CBWCB[0]) {
         case 0x00:  // Test unit ready
         {
@@ -825,8 +863,16 @@ void CUSBCDGadget::HandleSCSICommand() {
                 sendCheckCondition();
                 break;
             }
+            
+            // Check media state - Unit Attention is handled above at function entry
+            // This command just checks if we have media present and ready
+            if (m_mediaState == MediaState::NO_MEDIUM) {
+                setSenseData(0x02, 0x3A, 0x00);  // Not Ready, Medium Not Present
+                sendCheckCondition();
+                break;
+            }
 	    
-            // Unit is ready
+            // Unit is ready (either UNIT_ATTENTION or READY state)
             sendGoodStatus();
             break;
         }
@@ -2046,17 +2092,31 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    ModePage0x2AData codepage;
 			    memset(&codepage, 0, sizeof(codepage));
 			    codepage.pageCodeAndPS = 0x2a;
-			    codepage.pageLength = 18;
-			    codepage.capabilityBits[0] = 0x01;  // Can read CD-R
-			    codepage.capabilityBits[1] = 0x00;  // Can't write
-			    codepage.capabilityBits[2] = 0x01;  // AudioPlay
+			    codepage.pageLength = 22;  // Fixed: should be 22 bytes (was 18, missing maxReadSpeed fields)
+			    
+			    // Capability bits (6 bytes) - dynamic based on media type
+			    // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
+			    if (m_mediaType == MediaType::MEDIA_DVD) {
+			        codepage.capabilityBits[0] = 0x39;  // 0011 1001 = DVD-ROM + CD-R + CD-RW + Method 2
+			        MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2A: DVD capabilities");
+			    } else {
+			        codepage.capabilityBits[0] = 0x38;  // 0011 1000 = CD-R + CD-RW + Method 2 (NO DVD)
+			        MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2A: CD-ROM capabilities");
+			    }
+			    codepage.capabilityBits[1] = 0x00;  // Can't write (CD-R/RW write bits off)
+			    codepage.capabilityBits[2] = 0x71;  // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
 			    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
-			    codepage.capabilityBits[4] = 0x28;  // tray loading mechanism, with eject
-			    codepage.capabilityBits[5] = 0x00;
-			    codepage.maxSpeed = htons(706);  // 4x
-			    codepage.numVolumeLevels = htons(0x00ff);
-			    codepage.bufferSize = htons(0);
-			    codepage.currentSpeed = htons(1412);
+			    codepage.capabilityBits[4] = 0x29;  // Tray loading mechanism (bits 7-5 = 001), eject supported, lock supported  
+			    codepage.capabilityBits[5] = 0x00;  // No separate channel volume, no separate channel mute
+			    
+			    // Speed and buffer info
+			    codepage.maxSpeed = htons(706);  // 4x (obsolete but some hosts check)
+			    codepage.numVolumeLevels = htons(0x00ff);  // 256 volume levels
+			    codepage.bufferSize = htons(0);  // No buffer
+			    codepage.currentSpeed = htons(1412);  // Current speed (obsolete)
+			    // reserved1[4] is already zeroed by memset
+			    codepage.maxReadSpeed = htons(0);  // **CRITICAL**: Was missing! MacOS checks this field
+			    // reserved2[2] is already zeroed by memset
 
 			    // Copy the header & Code Page
 			    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
@@ -2202,18 +2262,31 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    ModePage0x2AData codepage;
 			    memset(&codepage, 0, sizeof(codepage));
 			    codepage.pageCodeAndPS = 0x2a;
-			    codepage.pageLength = 0x18;
-			    codepage.capabilityBits[0] = 0x3B;  // CD-R read, CD-RW read, method 2, CD-DA commands
+			    codepage.pageLength = 22;  // Fixed: should be 22 bytes (includes maxReadSpeed)
+			    
+			    // Capability bits - dynamic based on media type
+			    // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
+			    if (m_mediaType == MediaType::MEDIA_DVD) {
+			        codepage.capabilityBits[0] = 0x39;  // 0011 1001 = DVD-ROM + CD-R + CD-RW + Method 2
+			        MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: DVD capabilities");
+			    } else {
+			        codepage.capabilityBits[0] = 0x38;  // 0011 1000 = CD-R + CD-RW + Method 2 (NO DVD)
+			        MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: CD-ROM capabilities");
+			    }
 			    codepage.capabilityBits[1] = 0x00;  // Can't write
-			    codepage.capabilityBits[2] = 0x71;  // AudioPlay  multi-session, mode 2 form 2, mode 2 form 1
+			    codepage.capabilityBits[2] = 0x71;  // AudioPlay, multi-session, mode 2 form 2, mode 2 form 1
 			    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
-			    codepage.capabilityBits[4] = 0x28;  // tray loading mechanism, with eject
+			    codepage.capabilityBits[4] = 0x29;  // Tray loading mechanism, eject supported, lock supported
 			    codepage.capabilityBits[5] = 0x00;
-                codepage.maxReadSpeed = htons(1412); // 8x
-			    codepage.maxSpeed = htons(706);  // 4x
-			    codepage.numVolumeLevels = htons(0x00ff);
-			    codepage.bufferSize = htons(0);
-			    codepage.currentSpeed = htons(1412);
+			    
+			    // Speed and buffer info
+			    codepage.maxSpeed = htons(706);  // 4x (obsolete)
+			    codepage.numVolumeLevels = htons(0x00ff);  // 256 volume levels
+			    codepage.bufferSize = htons(0);  // No buffer
+			    codepage.currentSpeed = htons(1412);  // Current speed (obsolete)
+			    // reserved1[4] is already zeroed by memset
+			    codepage.maxReadSpeed = htons(1412);  // 8x max read speed
+			    // reserved2[2] is already zeroed by memset
 
 			    // Copy the header & Code Page
 			    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
@@ -2492,13 +2565,16 @@ void CUSBCDGadget::Update() {
                         return;  // Exit if read failed
                     }
 
-                    u8* dest_ptr = m_InBuffer;  // Pointer to current write position in m_InBuffer
                     u32 total_copied = 0;
+                    u8* dest_ptr = m_InBuffer;  // Start at buffer beginning
 
                     // Iterate through the *read data* in memory
 		    // TODO Optimization, if transfer_block_size and block_size are the same, and 
 		    // skip_bytes is zero, we can just copy without looping
                     for (u32 i = 0; i < blocks_to_read_in_batch; ++i) {
+                        // MacOS Fix: dest_ptr advances by transfer_block_size each iteration
+                        // This maintains natural alignment for the actual transfer size
+                        
 			if (transfer_block_size > block_size) {
 				// We've been asked to return more bytes than we've read from
 				// the underlying image. We have to generate some bytes
@@ -2555,9 +2631,11 @@ void CUSBCDGadget::Update() {
 				// Copy only the portion after skip_bytes into the destination buffer
 				memcpy(dest_ptr, current_block_start + skip_bytes, transfer_block_size);
 			}
+			// MacOS Fix: Advance by actual transfer size to maintain proper alignment
 			dest_ptr += transfer_block_size;
 			total_copied += transfer_block_size;
                     }
+                    
                     // Update m_nblock_address after the batch read
                     m_nblock_address += blocks_to_read_in_batch;
 

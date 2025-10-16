@@ -476,8 +476,9 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     ~CUSBCDGadget(void);
 
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
+    /// \param imageName Optional filename of the loaded image (for media type detection)
     /// \note Call this, if pDevice has not been specified in the constructor.
-    void SetDevice(ICueDevice *pDevice);
+    void SetDevice(ICueDevice *pDevice, const char *imageName = nullptr);
 
     /// \brief Call this periodically from TASK_LEVEL to allow I/O operations!
     void Update(void);
@@ -593,6 +594,15 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     };
 
     TCDState m_nState = Init;
+
+    // Media type for dynamic capability reporting
+    enum class MediaType {
+        MEDIA_NONE,     // No media loaded
+        MEDIA_CDROM,    // CD-ROM disc (default)
+        MEDIA_DVD       // DVD-ROM disc (detected by .dvd.iso extension)
+    };
+
+    MediaType m_mediaType = MediaType::MEDIA_NONE;
 
     // Media state for proper MacOS Unit Attention handling
     enum class MediaState {
@@ -821,6 +831,9 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     boolean m_IsFullSpeed = 0;
     boolean discChanged = false;
     uint8_t mcs = 0;
+
+    // Current image filename (for media type detection)
+    char m_currentImageName[256];
 
     // Hardware serial number for USB device identification
     char m_HardwareSerialNumber[20];   // Format: "USBODE-XXXXXXXX"

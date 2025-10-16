@@ -37,7 +37,7 @@ class CDROMService : public CTask {
     CDROMService();
     ~CDROMService(void);
     boolean Initialize();
-    void SetDevice(ICueDevice* pBinFileDevice);
+    void SetDevice(ICueDevice* pBinFileDevice, const char* imageName = nullptr);
     void Run(void);
 
    private:

@@ -233,8 +233,8 @@ void SCSITBService::Run() {
 			char* imageName = m_FileEntries[next_cd].name;
 			ICueDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
 			
-			// Set the new device in the CD gadget
-    			cdromservice->SetDevice(cueBinFileDevice);
+			// Set the new device in the CD gadget (pass filename for media type detection)
+    			cdromservice->SetDevice(cueBinFileDevice, imageName);
 
 			// Save current mounted image name
 			// TODO only if different
