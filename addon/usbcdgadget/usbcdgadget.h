@@ -368,6 +368,7 @@ struct TUSBCProfileDescriptorReply {
 #define SIZE_PROFILE_DESCRIPTOR_REPLY 4
 
 #define PROFILE_CDROM 0x0008
+#define PROFILE_DVD_ROM 0x0010
 
 struct TUSBCDCoreFeatureReply {
     u16 featureCode;
@@ -437,6 +438,17 @@ struct TUSBCDCDReadFeatureReply {
     u8 reserved3;
 } PACKED;
 #define SIZE_CD_READ_HEADER_REPLY 4
+
+struct TUSBCDDVDReadFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+    u8 MultiUnitsDUALLayerBuff;
+    u8 reserved1;
+    u8 reserved2;
+    u8 reserved3;
+} PACKED;
+#define SIZE_DVD_READ_HEADER_REPLY 8
 
 struct TUSBCDSubChannelHeaderReply {
     u8 reserved;
@@ -704,7 +716,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     TUSBCDProfileListFeatureReply profile_list = {
         htons(0x0000),  // featureCode
         0x03,           // VersionPersistentCurrent
-        0x04            // AdditionalLength
+        0x04            // AdditionalLength (4 bytes = 1 profile, dynamically changed to 8 for DVD)
     };
 
     // Profiles 0008h CD-ROM
@@ -712,6 +724,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         htons(PROFILE_CDROM),  // profileNumber
         0x01,                  // currentP
         0x00                   // reserved
+    };
+
+    // Profiles 0010h DVD-ROM
+    TUSBCProfileDescriptorReply dvd_profile = {
+        htons(PROFILE_DVD_ROM),  // profileNumber
+        0x01,                    // currentP
+        0x00                     // reserved
     };
 
     // Feature 0001h - Core
@@ -778,6 +797,17 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         0x0b,           // VersionPersistentCurrent
         0x04,           // AdditionalLength
         0x00,           // DAPC2FlagsCDText
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
+    };
+
+    // Feature 001fh - DVD Read - The ability to read DVD specific structures
+    TUSBCDDVDReadFeatureReply dvdread = {
+        htons(0x001f),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x04,           // AdditionalLength
+        0x01,           // MultiUnitsDUALLayerBuff (MULTI110=0, DUAL_L=0, BUFF=1)
         0x00,           // reserved
         0x00,           // reserved
         0x00            // reserved

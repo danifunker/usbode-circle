@@ -1079,7 +1079,24 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x25:  // Read Capacity (10))
         {
-            m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);  // this value is the Start address of last recorded lead-out minus 1
+            // CRITICAL FOR AUDIO CD DETECTION:
+            // Audio CDs use 2352-byte sectors (RAW format with subchannel data)
+            // Data CDs use 2048-byte sectors (cooked format, user data only)
+            // macOS uses this to determine if device is real optical drive vs mass storage
+            
+            int mediumType = GetMediumType();
+            u32 blockSize = 2048;  // Default for data CDs
+            
+            if (mediumType == 0x02) {  // Pure audio CD
+                blockSize = 2352;  // RAW audio sector size
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ CAPACITY for AUDIO CD - returning 2352 byte blocks");
+            } else {
+                MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "READ CAPACITY for DATA CD - returning 2048 byte blocks");
+            }
+            
+            m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);
+            m_ReadCapReply.nSectorSize = htonl(blockSize);  // Dynamic block size
+            
             memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
             m_nnumber_blocks = 0;  // nothing more after this send
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
@@ -1092,22 +1109,31 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x28:  // Read (10)
         {
             if (m_CDReady) {
-                // MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Read (10)");
-                // will be updated if read fails on any block
-                m_CSW.bmCSWStatus = bmCSWStatus;
-
                 // Where to start reading (LBA)
                 m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
+                
                 // Number of blocks to read (LBA)
                 m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
-
-                // Transfer Block Size is the size of data to return to host
-                // Block Size and Skip Bytes is worked out from cue sheet
-                // For a CDROM, this is always 2048
-                transfer_block_size = 2048;
-                block_size = data_block_size;  // set at SetDevice
-                skip_bytes = data_skip_bytes;  // set at SetDevice;
+                
+                // Check track type to determine proper handling
+                CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+                if (trackInfo.track_mode == CUETrack_AUDIO) {
+                    // AUDIO TRACK: 
+                    // Per MMC spec, READ(10) should fail for audio tracks (use READ CD instead)
+                    // However, many real drives support it by returning 2352 bytes of raw audio
+                    // macOS expects this behavior, so we support it for compatibility
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10) for audio track at LBA %lu - returning 2352-byte raw audio sectors", m_nblock_address);
+                    transfer_block_size = 2352;  // Full RAW audio sector
+                    block_size = 2352;           // Read full sector
+                    skip_bytes = 0;              // No skipping
+                } else {
+                    // DATA TRACK: Standard 2048-byte user data
+                    transfer_block_size = 2048;
+                    block_size = data_block_size;  // set at SetDevice
+                    skip_bytes = data_skip_bytes;  // set at SetDevice
+                }
+                
+                m_CSW.bmCSWStatus = bmCSWStatus;
 		mcs = 0;
 
                 m_nbyteCount = m_CBW.dCBWDataTransferLength;
@@ -1245,7 +1271,8 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    int startingTrack = m_CBW.CBWCB[6];
 		    int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
 
-		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read TOC with format = %d, msf = %02x, starting track = %d, allocation length = %d, m_CDReady = %d", format, msf, startingTrack, allocationLength, m_CDReady);
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ TOC: format=%d, msf=%d, startTrack=%d, allocLen=%d, m_CDReady=%d, mediaType=%d", 
+		             format, msf, startingTrack, allocationLength, m_CDReady, (int)m_mediaType);
 
 		    TUSBTOCData m_TOCData;
 		    TUSBTOCEntry *tocEntries;
@@ -1295,7 +1322,17 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 			    // Lead-Out LBA - critical for MacOS to know disc capacity
 			    u32 leadOutLBA = GetLeadoutLBA();
-			    tocEntries[index].ADR_Control = 0x14;  // Data track control for leadout
+			    
+			    // Leadout control byte must match disc type for proper detection
+			    // For audio CDs, macOS expects 0x10 (audio), not 0x14 (data)
+			    // This determines if macOS shows it as CD or "blank DVD"
+			    int mediumType = GetMediumType();
+			    if (mediumType == 0x02) {  // Audio CD
+			        tocEntries[index].ADR_Control = 0x10;  // Audio track control
+			    } else {
+			        tocEntries[index].ADR_Control = 0x14;  // Data track control
+			    }
+			    
 			    tocEntries[index].reserved = 0x00;
 			    tocEntries[index].TrackNumber = 0xAA;
 			    tocEntries[index].reserved2 = 0x00;
@@ -1346,6 +1383,10 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 		    // Copy the TOC entries immediately after the header
 		    memcpy(m_InBuffer + SIZE_TOC_DATA, tocEntries, numtracks * SIZE_TOC_ENTRY);
+		    
+		    // Log summary of what we're returning
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ TOC: Returning %d tracks, first=%d, last=%d, dataLen=%d", 
+		             numtracks, m_TOCData.FirstTrack, m_TOCData.LastTrack, datalen);
 
 		    delete[] tocEntries;
 
@@ -1612,7 +1653,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0xAD:  // READ DISC STRUCTURE aka "The Command I Was Avoiding"
         {
-
 	    // We don't advertise any "features" which should require this command
 	    // but certain versions of Windows e.g. Win2k sulk for a while if they
 	    // don't get a response. So, we're implementing bare minimum here to
@@ -1625,7 +1665,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             u16 allocationLength = m_CBW.CBWCB[8] << 8 | (m_CBW.CBWCB[9]);
 	    u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;
 	    u8 control = m_CBW.CBWCB[12];
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, allocation length is %lu", allocationLength);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, allocation length is %lu, mediaType=%d", allocationLength, (int)m_mediaType);
 
 	    int length = 0;
 	    switch (format) {
@@ -1713,7 +1753,8 @@ void CUSBCDGadget::HandleSCSICommand() {
             int rt = m_CBW.CBWCB[1] & 0x03;
             int feature = (m_CBW.CBWCB[2] << 8) | m_CBW.CBWCB[3];
             u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-            //MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Configuration with rt = %d and feature %lu", rt, feature);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Configuration: rt=%d, feature=0x%04x, mediaType=%d", 
+                     rt, feature, (int)m_mediaType);
 
             int dataLength = 0;
 
@@ -1721,15 +1762,48 @@ void CUSBCDGadget::HandleSCSICommand() {
                 case 0x00:  // All features supported
                 case 0x01:  // All current features supported
                 {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION rt=%d (all features): Entering with mediaType=%d, allocationLength=%d", 
+                             rt, (int)m_mediaType, allocationLength);
+                    
                     // offset to make space for the header
                     dataLength += sizeof(header);
 
-                    // Copy all features
-                    memcpy(m_InBuffer + dataLength, &profile_list, sizeof(profile_list));
-                    dataLength += sizeof(profile_list);
-
-                    memcpy(m_InBuffer + dataLength, &cdrom_profile, sizeof(cdrom_profile));
-                    dataLength += sizeof(cdrom_profile);
+                    // Dynamic profile list based on media type
+                    // CD-only media: advertise ONLY CD-ROM profile (pure CD drive)
+                    // DVD media: advertise both DVD and CD profiles (combo drive)
+                    TUSBCDProfileListFeatureReply dynProfileList = profile_list;
+                    
+                    if (m_mediaType == MediaType::MEDIA_DVD) {
+                        // Combo drive: advertise both profiles (8 bytes)
+                        dynProfileList.AdditionalLength = 0x08;
+                        memcpy(m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
+                        dataLength += sizeof(dynProfileList);
+                        
+                        // MMC spec: descending order (DVD 0x0010 before CD 0x0008)
+                        TUSBCProfileDescriptorReply activeDVD = dvd_profile;
+                        activeDVD.currentP = 0x01;  // DVD IS current
+                        memcpy(m_InBuffer + dataLength, &activeDVD, sizeof(activeDVD));
+                        dataLength += sizeof(activeDVD);
+                        
+                        TUSBCProfileDescriptorReply activeCD = cdrom_profile;
+                        activeCD.currentP = 0x00;  // CD not current
+                        memcpy(m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
+                        dataLength += sizeof(activeCD);
+                        
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION: DVD/CD combo drive, DVD current");
+                    } else {
+                        // CD-only drive: advertise only CD-ROM profile (4 bytes)
+                        dynProfileList.AdditionalLength = 0x04;
+                        memcpy(m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
+                        dataLength += sizeof(dynProfileList);
+                        
+                        TUSBCProfileDescriptorReply activeCD = cdrom_profile;
+                        activeCD.currentP = 0x01;  // CD IS current
+                        memcpy(m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
+                        dataLength += sizeof(activeCD);
+                        
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION: CD-ROM only drive");
+                    }
 
                     memcpy(m_InBuffer + dataLength, &core, sizeof(core));
                     dataLength += sizeof(core);
@@ -1743,8 +1817,16 @@ void CUSBCDGadget::HandleSCSICommand() {
                     memcpy(m_InBuffer + dataLength, &multiread, sizeof(multiread));
                     dataLength += sizeof(multiread);
 
-                    memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
-                    dataLength += sizeof(cdread);
+                    // For DVD media, add DVD Read feature instead of/in addition to CD Read
+                    if (m_mediaType == MediaType::MEDIA_DVD) {
+                        memcpy(m_InBuffer + dataLength, &dvdread, sizeof(dvdread));
+                        dataLength += sizeof(dvdread);
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x%02x): Sending DVD-Read feature (0x001f)", rt);
+                    } else {
+                        memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
+                        dataLength += sizeof(cdread);
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x%02x): Sending CD-Read feature (0x001e), mediaType=%d", rt, (int)m_mediaType);
+                    }
 
                     memcpy(m_InBuffer + dataLength, &powermanagement, sizeof(powermanagement));
                     dataLength += sizeof(powermanagement);
@@ -1752,9 +1834,17 @@ void CUSBCDGadget::HandleSCSICommand() {
                     memcpy(m_InBuffer + dataLength, &audioplay, sizeof(audioplay));
                     dataLength += sizeof(audioplay);
 
-                    // Finally copy the header
-                    header.dataLength = htonl(dataLength - 4);
-                    memcpy(m_InBuffer, &header, sizeof(header));
+                    // Set header profile and copy to buffer
+                    TUSBCDFeatureHeaderReply dynHeader = header;
+                    if (m_mediaType == MediaType::MEDIA_DVD) {
+                        dynHeader.currentProfile = htons(PROFILE_DVD_ROM);
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x%02x): Returning PROFILE_DVD_ROM (0x0010)", rt);
+                    } else {
+                        dynHeader.currentProfile = htons(PROFILE_CDROM);
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x%02x): Returning PROFILE_CDROM (0x0008)", rt);
+                    }
+                    dynHeader.dataLength = htonl(dataLength - 4);
+                    memcpy(m_InBuffer, &dynHeader, sizeof(dynHeader));
 
                     break;
                 }
@@ -1766,53 +1856,113 @@ void CUSBCDGadget::HandleSCSICommand() {
 
                     switch (feature) {
                         case 0x00: {  // Profile list
-                            memcpy(m_InBuffer + dataLength, &profile_list, sizeof(profile_list));
-                            dataLength += sizeof(profile_list);
-
-                            // and its associated profile
-                            memcpy(m_InBuffer + dataLength, &cdrom_profile, sizeof(cdrom_profile));
-                            dataLength += sizeof(cdrom_profile);
+                            // Dynamic profile list: CD-only for CDs, combo for DVDs
+                            TUSBCDProfileListFeatureReply dynProfileList = profile_list;
+                            
+                            if (m_mediaType == MediaType::MEDIA_DVD) {
+                                // Combo drive: both profiles
+                                dynProfileList.AdditionalLength = 0x08;
+                                memcpy(m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
+                                dataLength += sizeof(dynProfileList);
+                                
+                                TUSBCProfileDescriptorReply activeDVD = dvd_profile;
+                                activeDVD.currentP = 0x01;
+                                memcpy(m_InBuffer + dataLength, &activeDVD, sizeof(activeDVD));
+                                dataLength += sizeof(activeDVD);
+                                
+                                TUSBCProfileDescriptorReply activeCD = cdrom_profile;
+                                activeCD.currentP = 0x00;
+                                memcpy(m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
+                                dataLength += sizeof(activeCD);
+                                
+                                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x02, feat 0x00): DVD/CD combo, DVD current");
+                            } else {
+                                // CD-only drive: only CD profile
+                                dynProfileList.AdditionalLength = 0x04;
+                                memcpy(m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
+                                dataLength += sizeof(dynProfileList);
+                                
+                                TUSBCProfileDescriptorReply activeCD = cdrom_profile;
+                                activeCD.currentP = 0x01;
+                                memcpy(m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
+                                dataLength += sizeof(activeCD);
+                                
+                                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x02, feat 0x00): CD-ROM only drive (profile 0x0008, current=%d, length=0x%02x)", 
+                                         activeCD.currentP, dynProfileList.AdditionalLength);
+                            }
+                            break;
                         }
 
                         case 0x01: {  // Core
                             memcpy(m_InBuffer + dataLength, &core, sizeof(core));
                             dataLength += sizeof(core);
+                            break;
                         }
 
                         case 0x02: {  // Morphing
                             memcpy(m_InBuffer + dataLength, &morphing, sizeof(morphing));
                             dataLength += sizeof(morphing);
+                            break;
                         }
 
                         case 0x03: {  // Removable Medium
                             memcpy(m_InBuffer + dataLength, &mechanism, sizeof(mechanism));
                             dataLength += sizeof(mechanism);
+                            break;
                         }
 
                         case 0x1d: {  // Multiread
                             memcpy(m_InBuffer + dataLength, &multiread, sizeof(multiread));
                             dataLength += sizeof(multiread);
+                            break;
                         }
 
                         case 0x1e: {  // CD-Read
-                            memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
-                            dataLength += sizeof(cdread);
+                            if (m_mediaType != MediaType::MEDIA_DVD) {
+                                memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
+                                dataLength += sizeof(cdread);
+                            }
+                            break;
+                        }
+
+                        case 0x1f: {  // DVD-Read
+                            if (m_mediaType == MediaType::MEDIA_DVD) {
+                                memcpy(m_InBuffer + dataLength, &dvdread, sizeof(dvdread));
+                                dataLength += sizeof(dvdread);
+                            }
+                            break;
                         }
 
                         case 0x100: {  // Power Management
                             memcpy(m_InBuffer + dataLength, &powermanagement, sizeof(powermanagement));
                             dataLength += sizeof(powermanagement);
+                            break;
                         }
 
                         case 0x103: {  // Analogue Audio Play
                             memcpy(m_InBuffer + dataLength, &audioplay, sizeof(audioplay));
                             dataLength += sizeof(audioplay);
+                            break;
+                        }
+                        
+                        default: {
+                            // Log unhandled feature requests to identify what macOS is querying
+                            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x02): Unhandled feature 0x%04x requested", feature);
+                            break;
                         }
                     }
 
-                    // Finally copy the header
-                    header.dataLength = htonl(dataLength - 4);
-                    memcpy(m_InBuffer, &header, sizeof(header));
+                    // Set header profile and copy to buffer
+                    TUSBCDFeatureHeaderReply dynHeader = header;
+                    if (m_mediaType == MediaType::MEDIA_DVD) {
+                        dynHeader.currentProfile = htons(PROFILE_DVD_ROM);
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x02): Returning PROFILE_DVD_ROM (0x0010)");
+                    } else {
+                        dynHeader.currentProfile = htons(PROFILE_CDROM);
+                        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x02): Returning PROFILE_CDROM (0x0008)");
+                    }
+                    dynHeader.dataLength = htonl(dataLength - 4);
+                    memcpy(m_InBuffer, &dynHeader, sizeof(dynHeader));
                     break;
                 }
             }
@@ -2098,10 +2248,10 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
 			    if (m_mediaType == MediaType::MEDIA_DVD) {
 			        codepage.capabilityBits[0] = 0x39;  // 0011 1001 = DVD-ROM + CD-R + CD-RW + Method 2
-			        MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2A: DVD capabilities");
+			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2A: Returning DVD capabilities (0x39)");
 			    } else {
 			        codepage.capabilityBits[0] = 0x38;  // 0011 1000 = CD-R + CD-RW + Method 2 (NO DVD)
-			        MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2A: CD-ROM capabilities");
+			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2A: Returning CD-ROM capabilities (0x38)");
 			    }
 			    codepage.capabilityBits[1] = 0x00;  // Can't write (CD-R/RW write bits off)
 			    codepage.capabilityBits[2] = 0x71;  // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
@@ -2268,16 +2418,24 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
 			    if (m_mediaType == MediaType::MEDIA_DVD) {
 			        codepage.capabilityBits[0] = 0x39;  // 0011 1001 = DVD-ROM + CD-R + CD-RW + Method 2
-			        MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: DVD capabilities");
+			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning DVD capabilities (0x39)");
 			    } else {
-			        codepage.capabilityBits[0] = 0x38;  // 0011 1000 = CD-R + CD-RW + Method 2 (NO DVD)
-			        MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: CD-ROM capabilities");
+			        // CD-ROM player with Method 2 support but no write capabilities
+			        // Was 0x38 (CD-R+CD-RW+Method2) which made macOS think it's a burner
+			        // Now 0x20 (Method2 only) = pure CD-ROM player
+			        codepage.capabilityBits[0] = 0x20;  // 0010 0000 = Method 2 support only
+			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning CD-ROM capabilities (0x20 = Method2 only)");
 			    }
 			    codepage.capabilityBits[1] = 0x00;  // Can't write
 			    codepage.capabilityBits[2] = 0x71;  // AudioPlay, multi-session, mode 2 form 2, mode 2 form 1
 			    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
 			    codepage.capabilityBits[4] = 0x29;  // Tray loading mechanism, eject supported, lock supported
 			    codepage.capabilityBits[5] = 0x00;
+			    
+			    // Detailed capability bits logging
+			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A capability bits: [0]=0x%02x [1]=0x%02x [2]=0x%02x [3]=0x%02x [4]=0x%02x [5]=0x%02x",
+			             codepage.capabilityBits[0], codepage.capabilityBits[1], codepage.capabilityBits[2],
+			             codepage.capabilityBits[3], codepage.capabilityBits[4], codepage.capabilityBits[5]);
 			    
 			    // Speed and buffer info
 			    codepage.maxSpeed = htons(706);  // 4x (obsolete)
@@ -2290,6 +2448,13 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 			    // Copy the header & Code Page
 			    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+			    
+			    // Dump the actual bytes being sent (first 12 bytes of Mode Page 0x2A)
+			    u8 *pageBytes = (u8*)(m_InBuffer + length);
+			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A raw bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+			             pageBytes[0], pageBytes[1], pageBytes[2], pageBytes[3], pageBytes[4], pageBytes[5],
+			             pageBytes[6], pageBytes[7], pageBytes[8], pageBytes[9], pageBytes[10], pageBytes[11]);
+			    
 			    length += sizeof(codepage);
 
 			    if (page != 0x3f)
