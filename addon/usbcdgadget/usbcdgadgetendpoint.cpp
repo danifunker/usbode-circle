@@ -28,7 +28,7 @@
 #include <circle/util.h>
 #include <stddef.h>
 
-#define MLOGNOTE(From,...)		//CLogger::Get ()->Write (From, LogNotice, __VA_ARGS__)
+#define MLOGNOTE(From,...)		CLogger::Get ()->Write (From, LogNotice, __VA_ARGS__)
 
 CUSBCDGadgetEndpoint::CUSBCDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc,
 					      CUSBCDGadget *pGadget)
@@ -60,29 +60,6 @@ void CUSBCDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 	m_pGadget->OnTransferComplete(bIn, nLength);
 }
 
-/*
-int snprintf (char *buf, size_t size, const char *fmt, ...)
-{
-        va_list var;
-        va_start (var, fmt);
-
-        CString Msg;
-        Msg.FormatV (fmt, var);
-
-        va_end (var);
-
-        size_t len = Msg.GetLength ();
-        if (--size < len)
-        {
-                len = size;
-        }
-
-        memcpy (buf, (const char *) Msg, len);
-        buf[len] = '\0';
-
-        return len;
-}
-
 static void HexDumpBuffer(const char* prefix, const void* buffer, size_t length)
 {
     const u8* bytes = static_cast<const u8*>(buffer);
@@ -93,19 +70,16 @@ static void HexDumpBuffer(const char* prefix, const void* buffer, size_t length)
 
     for (size_t i = 0; i < dumpLen; ++i)
     {
-        // Use snprintf to safely format the byte to hex
-        int written = snprintf(ptr, 4, "%02X ", bytes[i]);
-        if (written < 0) {
-            // Handle error if snprintf fails
-            MLOGNOTE("CDEndpoint", "Error formatting byte %d", i);
-            return;
+        if (ptr + 3 <= hexline + sizeof(hexline) - 1) {
+            CString hex;
+            hex.Format("%02X ", bytes[i]);
+            memcpy(ptr, (const char*)hex, strlen((const char*)hex));
+            ptr += 3;
         }
-        ptr += 3;  // Move pointer for the next byte (2 hex digits + space)
     }
 
-    MLOGNOTE("CDEndpoint", "%s (first %d bytes): %s", prefix, dumpLen, hexline);
+    MLOGNOTE("CDEndpoint", "%s (first %zu bytes): %s", prefix, dumpLen, hexline);
 }
-*/
 
 
 void CUSBCDGadgetEndpoint::BeginTransfer (TCDTransferMode Mode, void *pBuffer, size_t nLength)
@@ -121,7 +95,7 @@ void CUSBCDGadgetEndpoint::BeginTransfer (TCDTransferMode Mode, void *pBuffer, s
 	case TCDTransferMode::TransferDataIn:
 	case TCDTransferMode::TransferCSWIn:
 		MLOGNOTE("CDEndpoint","Begin Transfer In  nlen= %i",nLength);
-		//HexDumpBuffer("Incoming data", pBuffer, nLength);
+		HexDumpBuffer("Transfer In data", pBuffer, nLength);
 		CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode::TransferDataIn, pBuffer, nLength);
 		break;
 	default:

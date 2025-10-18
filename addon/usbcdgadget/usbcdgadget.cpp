@@ -28,6 +28,7 @@
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sysconfig.h>
+#include <circle/synchronize.h>
 #include <usbcdgadget/usbcdgadget.h>
 #include <usbcdgadget/usbcdgadgetendpoint.h>
 #include <circle/util.h>
@@ -78,7 +79,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
+            0x08, 0x05, 0x50,  // bInterfaceClass, SubClass, Protocol (0x05 = SCSI transparent - MATCHES PHYSICAL DRIVE)
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
             //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
             0                  // iInterface
         },
@@ -117,7 +119,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
+            0x08, 0x05, 0x50,  // bInterfaceClass, SubClass, Protocol (0x05 = SCSI transparent - MATCHES PHYSICAL DRIVE)
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
             //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
             0                  // iInterface
         },
@@ -564,6 +567,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                 break;
             }
             case TCDState::DataIn: {
+                MLOGNOTE("onXferCmplt", "DataIn case: m_nnumber_blocks=%d, m_CDReady=%d", m_nnumber_blocks, m_CDReady);
                 if (m_nnumber_blocks > 0) {
                     if (m_CDReady) {
                         m_nState = TCDState::DataInRead;  // see Update function
@@ -578,6 +582,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                     }
                 } else  // done sending data to host
                 {
+                    MLOGNOTE("onXferCmplt", "DataIn complete (m_nnumber_blocks=0), calling SendCSW");
                     SendCSW();
                 }
                 break;
@@ -709,7 +714,8 @@ void CUSBCDGadget::OnActivate() {
 }
 
 void CUSBCDGadget::SendCSW() {
-    // MLOGNOTE ("CUSBCDGadget::SendCSW", "entered");
+    MLOGNOTE ("CUSBCDGadget::SendCSW", "Sending CSW with status=0x%02x, Tag=0x%08x, Residue=0x%08x", 
+              m_CSW.bmCSWStatus, m_CSW.dCSWTag, m_CSW.dCSWDataResidue);
     memcpy(&m_InBuffer, &m_CSW, SIZE_CSW);
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn, m_InBuffer, SIZE_CSW);
     m_nState = TCDState::SentCSW;
@@ -735,7 +741,9 @@ u32 CUSBCDGadget::lba_to_msf(u32 lba, boolean relative) {
     u8 frames = lba % 75;
     u8 reserved = 0;
 
-    return (frames << 24) | (seconds << 16) | (minutes << 8) | reserved;
+    // CRITICAL FIX: MMC spec requires [Reserved][Minutes][Seconds][Frames] format (big-endian)
+    // The original code had it backwards as [Frames][Seconds][Minutes][Reserved]
+    return (reserved << 24) | (minutes << 16) | (seconds << 8) | frames;
 }
 
 u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative) {
@@ -1279,6 +1287,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 		    int numtracks = 0;
 		    int datalen = 0;
+		    u8 bmCSWStatus = CD_CSW_STATUS_OK;  // CRITICAL FIX: Initialize status
 
 		    if (format == 0x00) { // Read TOC Data Format (With Format Field = 00b) - Standard TOC
 
@@ -1387,12 +1396,26 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    // Log summary of what we're returning
 		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ TOC: Returning %d tracks, first=%d, last=%d, dataLen=%d", 
 		             numtracks, m_TOCData.FirstTrack, m_TOCData.LastTrack, datalen);
+		    
+		    // Log the complete TOC response in hex for debugging (first 64 bytes max)
+		    int logBytes = datalen > 64 ? 64 : datalen;
+		    char hexBuf[256];
+		    char *p = hexBuf;
+		    for (int i = 0; i < logBytes && i < 32; i++) {
+		        p += sprintf(p, "%02x ", m_InBuffer[i]);
+		    }
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ TOC raw bytes: %s", hexBuf);
 
 		    delete[] tocEntries;
 
-		    // Set response length
-		    if (allocationLength < datalen)
+		    // Handle host-requested truncation (just like READ CAPACITY and MODE SENSE do)
+		    if (allocationLength < datalen) {
+		        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ TOC: Host requested %d bytes, truncating from %d bytes", 
+		                 allocationLength, datalen);
 			datalen = allocationLength;
+		    }
+		    
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ TOC: Sending %d bytes", datalen);
 
 		    m_nnumber_blocks = 0;  // nothing more after this send
 		    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
@@ -1653,12 +1676,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0xAD:  // READ DISC STRUCTURE aka "The Command I Was Avoiding"
         {
-	    // We don't advertise any "features" which should require this command
-	    // but certain versions of Windows e.g. Win2k sulk for a while if they
-	    // don't get a response. So, we're implementing bare minimum here to
-	    // keep them happy
-
-	    u8 mediaType = m_CBW.CBWCB[2] && 0x0f;
+	    // CRITICAL: READ DISC STRUCTURE is a DVD-ONLY command per MMC spec
+	    // Per QEMU's implementation: if media is CD, return INCOMPATIBLE_FORMAT error
+	    // Responding successfully to this command makes macOS think it's a DVD!
+	    
+	    u8 mediaTypeField = m_CBW.CBWCB[2] && 0x0f;
             u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 	    u8 layer = m_CBW.CBWCB[6];
 	    u8 format = m_CBW.CBWCB[7];
@@ -1666,6 +1688,14 @@ void CUSBCDGadget::HandleSCSICommand() {
 	    u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;
 	    u8 control = m_CBW.CBWCB[12];
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, allocation length is %lu, mediaType=%d", allocationLength, (int)m_mediaType);
+
+	    // Reject this command for CD media (matches QEMU behavior)
+	    if (m_mediaType != MediaType::MEDIA_DVD) {
+		MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE rejected - CD media doesn't support this DVD command");
+		setSenseData(0x05, 0x26, 0x00);  // Illegal Request, Invalid Field in Parameter List / Incompatible Format
+		sendCheckCondition();
+		break;
+	    }
 
 	    int length = 0;
 	    switch (format) {
@@ -2415,20 +2445,21 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    codepage.pageLength = 22;  // Fixed: should be 22 bytes (includes maxReadSpeed)
 			    
 			    // Capability bits - dynamic based on media type
+			    // Match QEMU's implementation for maximum macOS compatibility
 			    // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
 			    if (m_mediaType == MediaType::MEDIA_DVD) {
 			        codepage.capabilityBits[0] = 0x39;  // 0011 1001 = DVD-ROM + CD-R + CD-RW + Method 2
 			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning DVD capabilities (0x39)");
 			    } else {
-			        // CD-ROM player with Method 2 support but no write capabilities
-			        // Was 0x38 (CD-R+CD-RW+Method2) which made macOS think it's a burner
-			        // Now 0x20 (Method2 only) = pure CD-ROM player
-			        codepage.capabilityBits[0] = 0x20;  // 0010 0000 = Method 2 support only
-			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning CD-ROM capabilities (0x20 = Method2 only)");
+			        // CD-ROM: advertise CD-R/CD-RW READ capability (not write)
+			        // 0x3b = 0011 1011 = CD-R Read + CD-RW Read + DVD-RAM Read + Method 2
+			        // This matches QEMU's scsi-cd implementation
+			        codepage.capabilityBits[0] = 0x3b;
+			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning CD-ROM capabilities (0x3b = QEMU match)");
 			    }
-			    codepage.capabilityBits[1] = 0x00;  // Can't write
-			    codepage.capabilityBits[2] = 0x71;  // AudioPlay, multi-session, mode 2 form 2, mode 2 form 1
-			    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
+			    codepage.capabilityBits[1] = 0x00;  // Can't write (this prevents actual write operations)
+			    codepage.capabilityBits[2] = 0x7f;  // Match QEMU: Audio, composite, digital out, mode 2 form 1&2, multi session
+			    codepage.capabilityBits[3] = 0xff;  // Match QEMU: CD-DA, DA accurate, RW supported, RW corrected, C2 errors, ISRC, UPC, Bar code
 			    codepage.capabilityBits[4] = 0x29;  // Tray loading mechanism, eject supported, lock supported
 			    codepage.capabilityBits[5] = 0x00;
 			    
