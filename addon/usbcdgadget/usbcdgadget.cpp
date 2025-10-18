@@ -1680,7 +1680,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0xAD:  // READ DISC STRUCTURE aka "The Command I Was Avoiding"
         {
-	    // Parse command parameters first
+	    // Parse command parameters
 	    u8 mediaType = m_CBW.CBWCB[2] && 0x0f;
             u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 	    u8 layer = m_CBW.CBWCB[6];
@@ -1688,16 +1688,35 @@ void CUSBCDGadget::HandleSCSICommand() {
             u16 allocationLength = m_CBW.CBWCB[8] << 8 | (m_CBW.CBWCB[9]);
 	    u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;
 	    u8 control = m_CBW.CBWCB[12];
-            
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE: format=0x%02x, allocation=%u, mediaType=%d", 
-                     format, allocationLength, (int)m_mediaType);
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, format=0x%02x, allocation length is %lu, mediaType=%d", format, allocationLength, (int)m_mediaType);
 
 	    int length = 0;
 	    switch (format) {
 		    
-		    case 0x01: // Copyright Information
+		    case 0x00: // Physical Format Information - DVD-specific
+		    case 0x02: // Disc Key Structure - DVD-specific  
+		    case 0x03: // BCA (Burst Cutting Area) - DVD-specific
+		    case 0x04: // Manufacturing Information - DVD-specific
 		    {
-			    // This format is valid for both CD and DVD media
+			    // These formats are DVD-only. Reject for CD media with "Incompatible Format"
+			    if (m_mediaType != MediaType::MEDIA_DVD) {
+				    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE format 0x%02x rejected - CD media, DVD format requested", format);
+				    setSenseData(0x05, 0x30, 0x02);  // ILLEGAL REQUEST - Incompatible Medium Installed
+				    sendCheckCondition();
+				    return; // CRITICAL: return here to avoid sending data after error
+			    }
+			    
+			    // For DVD media, return minimal structure
+                    	TUSBCDReadDiscStructureHeader header;
+                    	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
+                    	header.dataLength = 2; // just the header
+			memcpy(m_InBuffer, &header, sizeof(TUSBCDReadDiscStructureHeader));
+			length += sizeof(TUSBCDReadDiscStructureHeader);
+			break;
+		    }
+		    
+		    case 0x01: // Copyright Information - valid for both CD and DVD
+		    {
                     	TUSBCDReadDiscStructureHeader header;
                     	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
                     	header.dataLength = 6;
@@ -1715,29 +1734,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 			break;
 		    }
 
-		    case 0x00: // Physical Format Information - DVD-specific
-		    case 0x02: // Disc Key Structure - DVD-specific
-		    case 0x03: // BCA (Burst Cutting Area) - DVD-specific
-		    case 0x04: // Manufacturing Information - DVD-specific
-		    {
-			    // These formats are DVD-only. Reject for CD media.
-			    if (m_mediaType != MediaType::MEDIA_DVD) {
-				    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE format 0x%02x rejected - CD media, DVD format requested", format);
-				    setSenseData(0x05, 0x30, 0x02);  // ILLEGAL REQUEST - Cannot Read Medium, Incompatible Format
-				    sendCheckCondition();
-				    break;
-			    }
-			    
-			    // For DVD media, return minimal structure
-                    	TUSBCDReadDiscStructureHeader header;
-                    	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
-                    	header.dataLength = 2; // just the header
-			memcpy(m_InBuffer, &header, sizeof(TUSBCDReadDiscStructureHeader));
-			length += sizeof(TUSBCDReadDiscStructureHeader);
-			break;
-		    }
-
-		    default: // Unsupported or unknown format
+		    default: // Other/unknown formats - return empty structure
 		    {
 			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE unsupported format 0x%02x", format);
                     	TUSBCDReadDiscStructureHeader header;
