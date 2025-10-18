@@ -308,7 +308,11 @@ void CUSBCDGadget::SetDevice(ICueDevice* dev, const char *imageName) {
         cueParser = CUEParser(m_pDevice->GetCueSheet());  // FIXME. Ensure cuesheet is not null or empty
 
         // Detect media type based on filename
-        if (m_currentImageName[0] != '\0' && strstr(m_currentImageName, ".dvd.iso")) {
+        // DVD media: .dvd.iso, .dvd.bin, .dvd.cue
+        if (m_currentImageName[0] != '\0' && 
+            (strstr(m_currentImageName, ".dvd.iso") || 
+             strstr(m_currentImageName, ".dvd.bin") || 
+             strstr(m_currentImageName, ".dvd.cue"))) {
             m_mediaType = MediaType::MEDIA_DVD;
             MLOGNOTE("CUSBCDGadget::SetDevice", "Detected DVD media from filename: %s", m_currentImageName);
         } else {
@@ -578,11 +582,13 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                     }
                 } else  // done sending data to host
                 {
+                    m_CSW.dCSWDataResidue = 0;  // All requested data was transferred
                     SendCSW();
                 }
                 break;
             }
             case TCDState::SendReqSenseReply: {
+                m_CSW.dCSWDataResidue = 0;  // Sense data was transferred
                 SendCSW();
                 break;
             }
@@ -609,6 +615,9 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength) {
                     break;
                 }
                 m_CSW.dCSWTag = m_CBW.dCBWTag;
+                // Initialize data residue to full request length
+                // Commands that transfer data will update this to actual residue
+                m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength;
                 if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0)  // meaningful CBW
                 {
                     HandleSCSICommand();  // will update m_nstate
@@ -704,6 +713,11 @@ void CUSBCDGadget::ProcessOut(size_t nLength) {
 void CUSBCDGadget::OnActivate() {
     MLOGNOTE("CD OnActivate", "state = %i", m_nState);
     m_CDReady = true;
+    
+    // Give USB hardware endpoints time to fully initialize after reset
+    // Without this delay, BeginTransfer calls succeed but data doesn't actually send
+    CTimer::Get()->MsDelay(10);
+    
     m_nState = TCDState::ReceiveCBW;
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
 }
@@ -790,11 +804,15 @@ void CUSBCDGadget::clearSenseData() {
 
 void CUSBCDGadget::sendCheckCondition() {
     m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+    // USB Mass Storage spec: data residue = amount of expected data not transferred
+    // For CHECK CONDITION with no data phase, residue = full requested length
+    m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength;
     SendCSW();
 }
 
 void CUSBCDGadget::sendGoodStatus() {
     m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+    m_CSW.dCSWDataResidue = 0;  // Command succeeded, all data (if any) transferred
     SendCSW();
 }
 
@@ -937,6 +955,12 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    datalen = allocationLength;
 
                 memcpy(&m_InBuffer, &m_InqReply, datalen);
+                
+                // Log the actual Inquiry response being sent
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry response (%d bytes): %02x %02x %02x %02x %02x %02x %02x %02x...",
+                         datalen, m_InBuffer[0], m_InBuffer[1], m_InBuffer[2], m_InBuffer[3],
+                         m_InBuffer[4], m_InBuffer[5], m_InBuffer[6], m_InBuffer[7]);
+                
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
                 m_nState = TCDState::DataIn;
                 m_nnumber_blocks = 0;  // nothing more after this send
@@ -1395,9 +1419,12 @@ void CUSBCDGadget::HandleSCSICommand() {
 			datalen = allocationLength;
 
 		    m_nnumber_blocks = 0;  // nothing more after this send
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ TOC: Calling BeginTransfer with %d bytes, EP state=%p", datalen, m_pEP[EPIn]);
 		    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ TOC: BeginTransfer completed, setting state to DataIn");
 		    m_nState = TCDState::DataIn;
 		    m_CSW.bmCSWStatus = bmCSWStatus;
+		    m_CSW.dCSWDataResidue = 0;  // All requested data will be transferred
 
 
             } else {
@@ -1653,11 +1680,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0xAD:  // READ DISC STRUCTURE aka "The Command I Was Avoiding"
         {
-	    // We don't advertise any "features" which should require this command
-	    // but certain versions of Windows e.g. Win2k sulk for a while if they
-	    // don't get a response. So, we're implementing bare minimum here to
-	    // keep them happy
-
+	    // Parse command parameters first
 	    u8 mediaType = m_CBW.CBWCB[2] && 0x0f;
             u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 	    u8 layer = m_CBW.CBWCB[6];
@@ -1665,13 +1688,16 @@ void CUSBCDGadget::HandleSCSICommand() {
             u16 allocationLength = m_CBW.CBWCB[8] << 8 | (m_CBW.CBWCB[9]);
 	    u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;
 	    u8 control = m_CBW.CBWCB[12];
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, allocation length is %lu, mediaType=%d", allocationLength, (int)m_mediaType);
+            
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE: format=0x%02x, allocation=%u, mediaType=%d", 
+                     format, allocationLength, (int)m_mediaType);
 
 	    int length = 0;
 	    switch (format) {
 		    
 		    case 0x01: // Copyright Information
 		    {
+			    // This format is valid for both CD and DVD media
                     	TUSBCDReadDiscStructureHeader header;
                     	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
                     	header.dataLength = 6;
@@ -1689,8 +1715,31 @@ void CUSBCDGadget::HandleSCSICommand() {
 			break;
 		    }
 
-		    default: // Empty payload
+		    case 0x00: // Physical Format Information - DVD-specific
+		    case 0x02: // Disc Key Structure - DVD-specific
+		    case 0x03: // BCA (Burst Cutting Area) - DVD-specific
+		    case 0x04: // Manufacturing Information - DVD-specific
 		    {
+			    // These formats are DVD-only. Reject for CD media.
+			    if (m_mediaType != MediaType::MEDIA_DVD) {
+				    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE format 0x%02x rejected - CD media, DVD format requested", format);
+				    setSenseData(0x05, 0x30, 0x02);  // ILLEGAL REQUEST - Cannot Read Medium, Incompatible Format
+				    sendCheckCondition();
+				    break;
+			    }
+			    
+			    // For DVD media, return minimal structure
+                    	TUSBCDReadDiscStructureHeader header;
+                    	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
+                    	header.dataLength = 2; // just the header
+			memcpy(m_InBuffer, &header, sizeof(TUSBCDReadDiscStructureHeader));
+			length += sizeof(TUSBCDReadDiscStructureHeader);
+			break;
+		    }
+
+		    default: // Unsupported or unknown format
+		    {
+			    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE unsupported format 0x%02x", format);
                     	TUSBCDReadDiscStructureHeader header;
                     	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
                     	header.dataLength = 2; // just the header
