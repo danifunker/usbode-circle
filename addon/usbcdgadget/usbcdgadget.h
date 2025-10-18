@@ -122,7 +122,8 @@ struct ModeSense10Header {
     u16 modeDataLength;
     u8 mediumType;
     u8 deviceSpecificParameter;
-    u32 blockDescriptorLength;
+    u16 reserved;                  // Reserved (was incorrectly u32 blockDescriptorLength)
+    u16 blockDescriptorLength;
 } PACKED;
 #define SIZE_MODE_SENSE10_HEADER 8
 

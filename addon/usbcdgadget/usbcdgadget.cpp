@@ -78,8 +78,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
+            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
             0                  // iInterface
         },
         {
@@ -117,8 +117,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
-            //0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
+            0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
             0                  // iInterface
         },
         {
@@ -2420,11 +2420,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 			        codepage.capabilityBits[0] = 0x39;  // 0011 1001 = DVD-ROM + CD-R + CD-RW + Method 2
 			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning DVD capabilities (0x39)");
 			    } else {
-			        // CD-ROM player with Method 2 support but no write capabilities
-			        // Was 0x38 (CD-R+CD-RW+Method2) which made macOS think it's a burner
-			        // Now 0x20 (Method2 only) = pure CD-ROM player
-			        codepage.capabilityBits[0] = 0x20;  // 0010 0000 = Method 2 support only
-			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning CD-ROM capabilities (0x20 = Method2 only)");
+			        // CD-ROM read capability (bit 3 = CD-R read, which implies CD-ROM read)
+			        // Method 2 support (bit 5) for proper CD reading
+			        // CRITICAL: Must advertise read capability or macOS will reject the disc!
+			        codepage.capabilityBits[0] = 0x28;  // 0010 1000 = CD-R Read + Method 2
+			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning CD-ROM capabilities (0x28 = CD-R + Method2)");
 			    }
 			    codepage.capabilityBits[1] = 0x00;  // Can't write
 			    codepage.capabilityBits[2] = 0x71;  // AudioPlay, multi-session, mode 2 form 2, mode 2 form 1
@@ -2509,6 +2509,12 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    
 		    reply_header.modeDataLength = htons(length - 2);
 		    memcpy(m_InBuffer, &reply_header, sizeof(reply_header));
+		    
+		    // Debug: Log the actual Mode Sense (10) header bytes being sent
+		    u8 *headerBytes = (u8*)m_InBuffer;
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) header bytes: %02x %02x %02x %02x %02x %02x %02x %02x (total length=%d)",
+		             headerBytes[0], headerBytes[1], headerBytes[2], headerBytes[3],
+		             headerBytes[4], headerBytes[5], headerBytes[6], headerBytes[7], length);
 	    }
 
             // Trim the reply length according to what the host requested
