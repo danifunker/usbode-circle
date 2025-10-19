@@ -35,11 +35,16 @@
 #include <stddef.h>
 #include <filesystem>
 #include <circle/bcmpropertytags.h>
+#include <configservice/configservice.h>
 
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...)  // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
 #define MLOGERR(From, ...) CLogger::Get()->Write(From, LogError, __VA_ARGS__)
+
+// Conditional debug logging macro - only logs if m_bDebugLogging is enabled
+#define CDROM_DEBUG_LOG(From, ...) do { if (m_bDebugLogging) MLOGNOTE(From, __VA_ARGS__); } while(0)
+
 #define DEFAULT_BLOCKS 16000
 
 const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
@@ -179,6 +184,18 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpe
     m_StringDescriptor[1] = s_StringDescriptorTemplate[1];  // Manufacturer
     m_StringDescriptor[2] = s_StringDescriptorTemplate[2];  // Product
     m_StringDescriptor[3] = m_HardwareSerialNumber;         // Hardware-based serial number    
+    
+    // Read debug logging flag from config.txt
+    ConfigService* configService = (ConfigService*)CScheduler::Get()->GetTask("configservice");
+    if (configService) {
+        m_bDebugLogging = configService->GetProperty("debug_cdrom", 0U) != 0;
+        if (m_bDebugLogging) {
+            MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "CD-ROM debug logging enabled");
+        }
+    } else {
+        m_bDebugLogging = false;  // Default to disabled if config service not available
+    }
+    
     if (pDevice)
         SetDevice(pDevice);
 }
@@ -389,11 +406,11 @@ int CUSBCDGadget::GetMediumType() {
     bool hasAudio = false;
     bool hasData = false;
     
-    MLOGNOTE("CUSBCDGadget::GetMediumType", "Starting medium type detection");
+    CDROM_DEBUG_LOG("CUSBCDGadget::GetMediumType", "Starting medium type detection");
     
     // Check all tracks to determine medium type
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-        MLOGNOTE("CUSBCDGadget::GetMediumType", "Track %d: mode=%d (AUDIO=%d)", 
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetMediumType", "Track %d: mode=%d (AUDIO=%d)", 
                  trackInfo->track_number, trackInfo->track_mode, CUETrack_AUDIO);
         if (trackInfo->track_mode == CUETrack_AUDIO) {
             hasAudio = true;
@@ -402,18 +419,18 @@ int CUSBCDGadget::GetMediumType() {
         }
     }
     
-    MLOGNOTE("CUSBCDGadget::GetMediumType", "Detection complete: hasAudio=%d, hasData=%d", 
+    CDROM_DEBUG_LOG("CUSBCDGadget::GetMediumType", "Detection complete: hasAudio=%d, hasData=%d", 
              hasAudio, hasData);
     
     // Determine medium type based on track composition
     if (hasAudio && hasData) {
-        MLOGNOTE("CUSBCDGadget::GetMediumType", "Returning 0x03 (Mixed mode CD)");
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetMediumType", "Returning 0x03 (Mixed mode CD)");
         return 0x03;  // Mixed mode CD (both audio and data tracks)
     } else if (hasAudio && !hasData) {
-        MLOGNOTE("CUSBCDGadget::GetMediumType", "Returning 0x02 (Pure audio CD)");
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetMediumType", "Returning 0x02 (Pure audio CD)");
         return 0x02;  // Pure audio CD (all tracks are audio)
     } else {
-        MLOGNOTE("CUSBCDGadget::GetMediumType", "Returning 0x01 (Data CD)");
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetMediumType", "Returning 0x01 (Data CD)");
         return 0x01;  // Data CD (all tracks are data)
     }
 }
@@ -512,14 +529,14 @@ int CUSBCDGadget::GetLastTrackNumber() {
     int lastTrack = 1;
     int trackCount = 0;
     cueParser.restart();
-    MLOGNOTE("CUSBCDGadget::GetLastTrackNumber", "Starting track count");
+    CDROM_DEBUG_LOG("CUSBCDGadget::GetLastTrackNumber", "Starting track count");
     while ((trackInfo = cueParser.next_track()) != nullptr) {
         trackCount++;
-        MLOGNOTE("CUSBCDGadget::GetLastTrackNumber", "Iteration %d: track_number=%d", trackCount, trackInfo->track_number);
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetLastTrackNumber", "Iteration %d: track_number=%d", trackCount, trackInfo->track_number);
         if (trackInfo->track_number > lastTrack)
             lastTrack = trackInfo->track_number;
     }
-    MLOGNOTE("CUSBCDGadget::GetLastTrackNumber", "Completed: %d iterations, returning lastTrack=%d", trackCount, lastTrack);
+    CDROM_DEBUG_LOG("CUSBCDGadget::GetLastTrackNumber", "Completed: %d iterations, returning lastTrack=%d", trackCount, lastTrack);
     return lastTrack;
 }
 
@@ -1167,7 +1184,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                     // 
                     // Windows sends READ(10) with dCBWDataTransferLength=0 for audio tracks, which is wrong.
                     // We must override this with the correct byte count to prevent m_nbyteCount underflow.
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10) for audio track at LBA %lu - returning 2352-byte raw audio sectors", m_nblock_address);
+                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(10) for audio track at LBA %lu - returning 2352-byte raw audio sectors", m_nblock_address);
                     transfer_block_size = 2352;
                     block_size = 2352;  // Audio CD raw sector size
                     skip_bytes = 0;
@@ -1187,12 +1204,12 @@ void CUSBCDGadget::HandleSCSICommand() {
                 // USB protocol requires we send exactly dCBWDataTransferLength bytes, not more
                 // If Windows requests 2048 bytes per block, we must truncate 2352-byte audio sectors
                 if (trackInfo.track_mode == CUETrack_AUDIO && m_nbyteCount < transfer_block_size * m_nnumber_blocks) {
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10): Windows requested %lu bytes but audio needs %d bytes per block - will truncate audio data", 
+                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(10): Windows requested %lu bytes but audio needs %d bytes per block - will truncate audio data", 
                              m_nbyteCount, transfer_block_size);
                     // Keep m_nbyteCount as-is (Windows' request) but transfer_block_size determines copy size
                     // We'll need to handle this truncation in UpdateRead
                     transfer_block_size = m_nbyteCount / m_nnumber_blocks;  // Use Windows' requested size per block
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10): Adjusted transfer_block_size to %d bytes to match Windows request", 
+                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(10): Adjusted transfer_block_size to %d bytes to match Windows request", 
                              transfer_block_size);
                 }
 
@@ -2802,11 +2819,11 @@ void CUSBCDGadget::Update() {
             int readCount = 0;
             if (m_CDReady) {
 
-                MLOGNOTE("UpdateRead", "Starting read: m_nblock_address=%lu, m_nnumber_blocks=%lu, block_size=%d, transfer_block_size=%d", 
+                CDROM_DEBUG_LOG("UpdateRead", "Starting read: m_nblock_address=%lu, m_nnumber_blocks=%lu, block_size=%d, transfer_block_size=%d", 
                          m_nblock_address, m_nnumber_blocks, block_size, transfer_block_size);
-                MLOGNOTE("UpdateRead", "Seek to %llu", (u64)block_size * m_nblock_address);
+                CDROM_DEBUG_LOG("UpdateRead", "Seek to %llu", (u64)block_size * m_nblock_address);
                 offset = m_pDevice->Seek((u64)block_size * m_nblock_address);  // Cast to u64 to prevent overflow
-                MLOGNOTE("UpdateRead", "Seek returned offset=%llu", offset);
+                CDROM_DEBUG_LOG("UpdateRead", "Seek returned offset=%llu", offset);
                 if (offset != (u64)(-1)) {
                     // Cap at MAX_BLOCKS_READ blocks. This is what a READ CD request will
 		    // require any excess blocks will be read next time around this loop
@@ -2823,10 +2840,10 @@ void CUSBCDGadget::Update() {
                     // Calculate total size of the batch read
                     u32 total_batch_size = blocks_to_read_in_batch * block_size;
 
-                    MLOGNOTE("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes)", blocks_to_read_in_batch, total_batch_size);
+                    CDROM_DEBUG_LOG("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes)", blocks_to_read_in_batch, total_batch_size);
                     // Perform the single large read
                     readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
-                    MLOGNOTE("UpdateRead", "Read %d bytes in batch (expected %lu)", readCount, total_batch_size);
+                    CDROM_DEBUG_LOG("UpdateRead", "Read %d bytes in batch (expected %lu)", readCount, total_batch_size);
 
                     if (readCount < static_cast<int>(total_batch_size)) {
                         // Handle error: partial read
@@ -2841,7 +2858,7 @@ void CUSBCDGadget::Update() {
                     u32 total_copied = 0;
                     u8* dest_ptr = m_InBuffer;  // Start at buffer beginning
 
-                    MLOGNOTE("UpdateRead", "Starting copy loop: blocks_to_read_in_batch=%lu, transfer_block_size=%d, block_size=%d, skip_bytes=%d", 
+                    CDROM_DEBUG_LOG("UpdateRead", "Starting copy loop: blocks_to_read_in_batch=%lu, transfer_block_size=%d, block_size=%d, skip_bytes=%d", 
                              blocks_to_read_in_batch, transfer_block_size, block_size, skip_bytes);
 
                     // Iterate through the *read data* in memory
@@ -2912,7 +2929,7 @@ void CUSBCDGadget::Update() {
 			total_copied += transfer_block_size;
                     }
                     
-                    MLOGNOTE("UpdateRead", "Copy loop completed: total_copied=%lu", total_copied);
+                    CDROM_DEBUG_LOG("UpdateRead", "Copy loop completed: total_copied=%lu", total_copied);
                     
                     // Update m_nblock_address after the batch read
                     m_nblock_address += blocks_to_read_in_batch;
@@ -2921,11 +2938,11 @@ void CUSBCDGadget::Update() {
                     m_nbyteCount -= total_copied;
                     m_nState = TCDState::DataIn;
 
-                    MLOGNOTE("UpdateRead", "About to BeginTransfer: total_copied=%lu, m_nbyteCount=%lu, m_nnumber_blocks=%lu, EP state=%p", 
+                    CDROM_DEBUG_LOG("UpdateRead", "About to BeginTransfer: total_copied=%lu, m_nbyteCount=%lu, m_nnumber_blocks=%lu, EP state=%p", 
                              total_copied, m_nbyteCount, m_nnumber_blocks, m_pEP[EPIn]);
                     // Begin USB transfer of the in-buffer (only valid data)
                     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, total_copied);
-                    MLOGNOTE("UpdateRead", "BeginTransfer completed, transitioning to DataIn state");
+                    CDROM_DEBUG_LOG("UpdateRead", "BeginTransfer completed, transitioning to DataIn state");
                 }
             }
             if (!m_CDReady || offset == (u64)(-1)) {
