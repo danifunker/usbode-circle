@@ -1161,13 +1161,16 @@ void CUSBCDGadget::HandleSCSICommand() {
                 CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
                 if (trackInfo.track_mode == CUETrack_AUDIO) {
                     // AUDIO TRACK: 
-                    // Per MMC spec, READ(10) should fail for audio tracks (use READ CD instead)
-                    // However, many real drives support it by returning 2352 bytes of raw audio
-                    // macOS expects this behavior, so we support it for compatibility
+                    // Note: Per MMC-4 spec section 6.1.5, READ(10) is technically not valid for CD-DA sectors
+                    // and hosts should use READ CD (0xBE) instead. However, Windows USB CD-ROM driver does
+                    // not support READ CD and will reset the device if READ(10) fails for audio.
+                    // 
+                    // Windows sends READ(10) with dCBWDataTransferLength=0 for audio tracks, which is wrong.
+                    // We must override this with the correct byte count to prevent m_nbyteCount underflow.
                     MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10) for audio track at LBA %lu - returning 2352-byte raw audio sectors", m_nblock_address);
-                    transfer_block_size = 2352;  // Full RAW audio sector
-                    block_size = 2352;           // Read full sector
-                    skip_bytes = 0;              // No skipping
+                    transfer_block_size = 2352;
+                    block_size = 2352;  // Audio CD raw sector size
+                    skip_bytes = 0;
                 } else {
                     // DATA TRACK: Standard 2048-byte user data
                     transfer_block_size = 2048;
@@ -1179,6 +1182,19 @@ void CUSBCDGadget::HandleSCSICommand() {
 		mcs = 0;
 
                 m_nbyteCount = m_CBW.dCBWDataTransferLength;
+
+                // Windows Fix: Windows expects 2048-byte sectors for READ(10) even on audio tracks
+                // USB protocol requires we send exactly dCBWDataTransferLength bytes, not more
+                // If Windows requests 2048 bytes per block, we must truncate 2352-byte audio sectors
+                if (trackInfo.track_mode == CUETrack_AUDIO && m_nbyteCount < transfer_block_size * m_nnumber_blocks) {
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10): Windows requested %lu bytes but audio needs %d bytes per block - will truncate audio data", 
+                             m_nbyteCount, transfer_block_size);
+                    // Keep m_nbyteCount as-is (Windows' request) but transfer_block_size determines copy size
+                    // We'll need to handle this truncation in UpdateRead
+                    transfer_block_size = m_nbyteCount / m_nnumber_blocks;  // Use Windows' requested size per block
+                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ(10): Adjusted transfer_block_size to %d bytes to match Windows request", 
+                             transfer_block_size);
+                }
 
                 // Calculate number of blocks if not specified (rare case)
                 if (m_nnumber_blocks == 0) {
