@@ -216,13 +216,7 @@ const void* CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t* pLength)
                 *pLength = (u8)m_StringDescriptor[0][0];
                 return m_StringDescriptor[0];
             } else if (uchDescIndex < 4) {  // We have 4 string descriptors (0-3)
-                const char* desc_name = "";
-                switch(uchDescIndex) {
-                    case 1: desc_name = "Manufacturer"; break;
-                    case 2: desc_name = "Product"; break; 
-                    case 3: desc_name = "Serial Number"; break;
-                    default: desc_name = "Unknown"; break;
-                }
+                // String descriptor: 1=Manufacturer, 2=Product, 3=Serial Number
                 return ToStringDescriptor(m_StringDescriptor[uchDescIndex], pLength);
             }
             break;
@@ -1323,7 +1317,6 @@ void CUSBCDGadget::HandleSCSICommand() {
 				while ((trackInfo = cueParser.next_track()) != nullptr) {
 				    if (trackInfo->track_number < startingTrack)
 					continue;
-				    boolean relative = false;
 				    //MLOGNOTE ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, track_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->track_start, GetAddress(trackInfo->track_start, msf));
 				    
 				    // Critical for MacOS: proper ADR/Control byte
@@ -1542,12 +1535,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x52:  // READ TRACK INFORMATION
         {
-
-	    u8 open = (m_CBW.CBWCB[1] >> 2) & 0x01;
+	    // u8 open = (m_CBW.CBWCB[1] >> 2) & 0x01;  // unused
 	    u8 addressType = m_CBW.CBWCB[1] & 0x03;
 	    u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
             u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-	    u8 control = m_CBW.CBWCB[9];
+	    // u8 control = m_CBW.CBWCB[9];  // unused
 
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Track Information");
 
@@ -1681,13 +1673,13 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0xAD:  // READ DISC STRUCTURE aka "The Command I Was Avoiding"
         {
 	    // Parse command parameters
-	    u8 mediaType = m_CBW.CBWCB[2] && 0x0f;
-            u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-	    u8 layer = m_CBW.CBWCB[6];
+	    // u8 mediaType = m_CBW.CBWCB[2] & 0x0f;  // unused (note: was buggy with && instead of &)
+            // u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];  // unused
+	    // u8 layer = m_CBW.CBWCB[6];  // unused
 	    u8 format = m_CBW.CBWCB[7];
             u16 allocationLength = m_CBW.CBWCB[8] << 8 | (m_CBW.CBWCB[9]);
-	    u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;
-	    u8 control = m_CBW.CBWCB[12];
+	    // u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;  // unused
+	    // u8 control = m_CBW.CBWCB[12];  // unused
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, format=0x%02x, allocation length is %lu, mediaType=%d", format, allocationLength, (int)m_mediaType);
 
 	    // For CD media and DVD-specific formats: return minimal empty response
@@ -2239,7 +2231,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 		int page = m_CBW.CBWCB[2] & 0x3f;
 		//int sub_page_code = m_CBW.CBWCB[3];
 		int allocationLength = m_CBW.CBWCB[4];
-		int control = m_CBW.CBWCB[5];
+		// int control = m_CBW.CBWCB[5];  // unused
 
 		int length = 0;
 
