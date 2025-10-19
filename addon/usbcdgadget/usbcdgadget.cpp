@@ -476,15 +476,15 @@ u32 CUSBCDGadget::GetLeadoutLBA() {
         track_start = trackInfo->data_start; // I think this is right
     }
 
-    u32 deviceSize = (u32)m_pDevice->GetSize();
+    u64 deviceSize = m_pDevice->GetSize();  // Use u64 to support DVDs > 4GB
 
     // We know the start position of the last track, and we know its sector length
     // and we know the file size, so we can work out the LBA of the end of the last track
     // We can't just divide the file size by sector size because sectors lengths might
     // not be consistent (e.g. multi-mode cd where track 1 is 2048
-    u32 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
-    u32 ret = track_start + lastTrackBlocks;
-    //MLOGNOTE("CUSBCDGadget::GetLeadoutLBA", "device size is %lu, last track file offset is %lu, last track sector_length is %lu, last track track_start is %lu, lastTrackBlocks = %lu, returning = %lu", deviceSize, file_offset, sector_length, track_start, lastTrackBlocks, ret);
+    u64 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
+    u32 ret = track_start + (u32)lastTrackBlocks;  // Cast back to u32 for LBA (max ~2TB disc)
+    //MLOGNOTE("CUSBCDGadget::GetLeadoutLBA", "device size is %llu, last track file offset is %lu, last track sector_length is %lu, last track track_start is %lu, lastTrackBlocks = %llu, returning = %lu", deviceSize, file_offset, sector_length, track_start, lastTrackBlocks, ret);
 
     // Some corrupted cd images might have a cue that references track that are
     // outside the bin.
@@ -950,7 +950,7 @@ void CUSBCDGadget::HandleSCSICommand() {
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
 		
 		// Set response length
-		int datalen = SIZE_INQR;
+		int datalen = SIZE_CDINQR;  // CD-ROM INQUIRY is 96 bytes
 		if (allocationLength < datalen)
 		    datalen = allocationLength;
 
@@ -1690,6 +1690,29 @@ void CUSBCDGadget::HandleSCSICommand() {
 	    u8 control = m_CBW.CBWCB[12];
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, format=0x%02x, allocation length is %lu, mediaType=%d", format, allocationLength, (int)m_mediaType);
 
+	    // For CD media and DVD-specific formats: return minimal empty response
+	    // MacOS doesn't handle CHECK CONDITION well for this command - causes USB reset
+	    // This is a workaround until we can properly implement stall-then-CSW sequence
+	    if (m_mediaType != MediaType::MEDIA_DVD && 
+	        (format == 0x00 || format == 0x02 || format == 0x03 || format == 0x04)) {
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE format 0x%02x for CD media - returning minimal response", format);
+		    // Return minimal header indicating no data available
+		    TUSBCDReadDiscStructureHeader header;
+		    memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
+		    header.dataLength = __builtin_bswap16(2);  // Just header, no payload (big-endian)
+		    
+		    int length = sizeof(TUSBCDReadDiscStructureHeader);
+		    if (allocationLength < length)
+			    length = allocationLength;
+		    
+		    memcpy(m_InBuffer, &header, length);
+		    m_nnumber_blocks = 0;
+		    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+		    m_nState = TCDState::DataIn;
+		    m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+		    break;  // Exit case 0xAD
+	    }
+
 	    int length = 0;
 	    switch (format) {
 		    
@@ -1698,15 +1721,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    case 0x03: // BCA (Burst Cutting Area) - DVD-specific
 		    case 0x04: // Manufacturing Information - DVD-specific
 		    {
-			    // These formats are DVD-only. Reject for CD media with "Incompatible Format"
-			    if (m_mediaType != MediaType::MEDIA_DVD) {
-				    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE format 0x%02x rejected - CD media, DVD format requested", format);
-				    setSenseData(0x05, 0x30, 0x02);  // ILLEGAL REQUEST - Incompatible Medium Installed
-				    sendCheckCondition();
-				    return; // CRITICAL: return here to avoid sending data after error
-			    }
-			    
-			    // For DVD media, return minimal structure
+			    // DVD media - return minimal structure
                     	TUSBCDReadDiscStructureHeader header;
                     	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
                     	header.dataLength = 2; // just the header
@@ -2749,8 +2764,8 @@ void CUSBCDGadget::Update() {
             int readCount = 0;
             if (m_CDReady) {
 
-                MLOGDEBUG("UpdateRead", "Seek to %lu", block_size * m_nblock_address);
-                offset = m_pDevice->Seek(block_size * m_nblock_address);
+                MLOGDEBUG("UpdateRead", "Seek to %llu", (u64)block_size * m_nblock_address);
+                offset = m_pDevice->Seek((u64)block_size * m_nblock_address);  // Cast to u64 to prevent overflow
                 if (offset != (u64)(-1)) {
                     // Cap at MAX_BLOCKS_READ blocks. This is what a READ CD request will
 		    // require any excess blocks will be read next time around this loop
@@ -2885,7 +2900,7 @@ void CUSBCDGadget::Update() {
                                     int writeCount=0;
                                     if(m_CDReady)
                                     {
-                                            offset=m_pDevice->Seek(BLOCK_SIZE*m_nblock_address);
+                                            offset=m_pDevice->Seek((u64)BLOCK_SIZE*m_nblock_address);  // Cast to u64 to prevent overflow
                                             if(offset!=(u64)(-1))
                                             {
                                                     writeCount=m_pDevice->Write(m_OutBuffer,BLOCK_SIZE);

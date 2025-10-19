@@ -183,7 +183,7 @@ struct ModePage0x0EData {
 #define SIZE_MODE_SENSE10_PAGE_0X0E 16
 
 // reply to SCSI Inquiry Command 0x12
-struct TUSBCDInquiryReply  // 36 bytes
+struct TUSBCDInquiryReply  // 96 bytes (expanded to match physical CD-ROM drives)
 {
     u8 bPeriphQualDevType;
     u8 bRMB;
@@ -196,8 +196,12 @@ struct TUSBCDInquiryReply  // 36 bytes
     u8 bVendorID[8];
     u8 bProdID[16];
     u8 bProdRev[4];
+    u8 bVendorSpecific[20];  // Bytes 36-55: Vendor specific
+    u8 bReserved[2];         // Bytes 56-57: Reserved
+    u8 bVersionDescriptors[16]; // Bytes 58-73: Version descriptors (8 x 2-byte values)
+    u8 bReserved2[22];       // Bytes 74-95: Reserved/padding
 } PACKED;
-#define SIZE_INQR 36
+#define SIZE_CDINQR 96  // CD-ROM INQUIRY size (larger than disk SIZE_INQR)
 
 struct TUSBUintSerialNumberPage {
     u8 PageCode;         // 0x80
@@ -632,15 +636,19 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     TUSBCDInquiryReply m_InqReply{
 	 0x05, // Peripheral type = CD/DVD
 	 0x80, // RMB set = removable media 
-	 0x05, // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
-	 0x02, // Response Data Format = This response is SPC3 format
-	 0x1F, // Additional Length
-	 0x00, // SCCS ACC TPGS 3PC Reserved PROTECT
-	 0x00, // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
-	 0x00, // Obsolete Obsolete WBUS16a SYNCa LINKED Obsolete CMDQUE VS
+	 0x05, // Version 0x05 = SPC-3 compliant
+	 0x32, // Response Data Format (bits 0-3=2 for SPC-3), HiSup (bit 4=1), NormACA (bit 5=1)
+	 0x5B, // Additional Length (91 bytes after this field = 95 total, matching physical drives)
+	 0x00, // SCCS ACC TPGS 3PC Reserved PROTECT (all disabled)
+	 0x00, // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16 (all disabled)
+	 0x00, // Obsolete Obsolete WBUS16 SYNC LINKED Obsolete CMDQUE VS (all disabled)
 	 {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, // Vendor Identification
 	 {'C', 'D', 'R', 'O', 'M', ' ', 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', ' ', ' '},
-	 {'0', '0', '0', '1'}
+	 {'0', '0', '0', '1'}, // Product Revision
+	 {0}, // Vendor specific (20 bytes, all zeros)
+	 {0}, // Reserved (2 bytes)
+	 {0}, // Version descriptors (16 bytes, all zeros for now)
+	 {0}  // Reserved/padding (22 bytes)
     };
     TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
 
