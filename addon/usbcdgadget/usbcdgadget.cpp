@@ -758,8 +758,38 @@ void CUSBCDGadget::OnActivate() {
 }
 
 void CUSBCDGadget::SendCSW() {
-    CDROM_DEBUG_LOG ("CUSBCDGadget::SendCSW", "entered");
-    memcpy(&m_InBuffer, &m_CSW, SIZE_CSW);
+    CDROM_DEBUG_LOG("CUSBCDGadget::SendCSW", "entered");
+    
+    // Debug: Check actual structure size (remove after verification)
+    // Note: If this doesn't match SIZE_CSW (13), there's a padding issue
+    CDROM_DEBUG_LOG("CUSBCDGadget::SendCSW", "sizeof(TUSBCDCSW)=%u, SIZE_CSW=%u", 
+                    sizeof(TUSBCDCSW), SIZE_CSW);
+    
+    // Ensure CSW signature is always set correctly
+    // Per USB Mass Storage Bulk-Only Transport spec section 6.3
+    m_CSW.dCSWSignature = CSW_SIG;
+    
+    // CRITICAL: Zero the buffer first to prevent data contamination from previous transfers
+    // Windows 98 SE and other legacy OSes are extremely sensitive to CSW corruption
+    // The USB Mass Storage Bulk-Only Transport spec requires exact 13-byte CSW packets
+    memset(m_InBuffer, 0, SIZE_CSW);
+    
+    // Copy CSW structure to clean buffer - use SIZE_CSW not sizeof() to avoid padding issues
+    memcpy(m_InBuffer, &m_CSW, SIZE_CSW);
+    
+    // Debug: Verify CSW signature is correct before sending
+    u32 signature = (m_InBuffer[0]) | (m_InBuffer[1] << 8) | (m_InBuffer[2] << 16) | (m_InBuffer[3] << 24);
+    if (signature != CSW_SIG) {
+        MLOGERR("CUSBCDGadget::SendCSW", "CORRUPTED CSW! Expected 0x53425355, got 0x%08x", signature);
+        MLOGERR("CUSBCDGadget::SendCSW", "Buffer: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                m_InBuffer[0], m_InBuffer[1], m_InBuffer[2], m_InBuffer[3], m_InBuffer[4], 
+                m_InBuffer[5], m_InBuffer[6], m_InBuffer[7], m_InBuffer[8], m_InBuffer[9],
+                m_InBuffer[10], m_InBuffer[11], m_InBuffer[12]);
+    } else {
+        CDROM_DEBUG_LOG("CUSBCDGadget::SendCSW", "CSW: sig=0x%08x tag=0x%08x residue=%u status=%d",
+                        signature, m_CSW.dCSWTag, m_CSW.dCSWDataResidue, m_CSW.bmCSWStatus);
+    }
+    
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn, m_InBuffer, SIZE_CSW);
     m_nState = TCDState::SentCSW;
 }
@@ -1145,23 +1175,24 @@ void CUSBCDGadget::HandleSCSICommand() {
             
             int mediumType = GetMediumType();
             u32 blockSize = 2048;  // Default for data CDs
-            
+            u32 lastLBA = GetLeadoutLBA() - 1;
+
             if (mediumType == 0x02) {  // Pure audio CD
                 blockSize = 2352;  // RAW audio sector size
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ CAPACITY for AUDIO CD - returning 2352 byte blocks");
             } else {
                 MLOGDEBUG("CUSBCDGadget::HandleSCSICommand", "READ CAPACITY for DATA CD - returning 2048 byte blocks");
             }
-            
-            m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);
-            m_ReadCapReply.nSectorSize = htonl(blockSize);  // Dynamic block size
-            
+
+            m_ReadCapReply.nLastBlockAddr = htonl(lastLBA);
+            m_ReadCapReply.nSectorSize = htonl(blockSize);  // Always 2048 per MMC-5
+    
             memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
             m_nnumber_blocks = 0;  // nothing more after this send
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                        m_InBuffer, SIZE_READCAPREP);
             m_nState = TCDState::DataIn;
-            m_CSW.bmCSWStatus = bmCSWStatus;
+            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
             break;
         }
 
@@ -1421,7 +1452,31 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    numtracks++;
 
 		    //} else if (format == 0x01) { // Read TOC Data Format (With Format Field = 01b)
-		    } else {
+		    } 
+            else if (format == 0x02) {  // Full TOC
+                // Full TOC includes more detailed track information
+                // Minimum implementation for compatibility
+                
+                m_TOCData.FirstTrack = 0x01;
+                m_TOCData.LastTrack = 0x01;  // First complete session
+                datalen = SIZE_TOC_DATA;
+                
+                tocEntries = new TUSBTOCEntry[1];
+                
+                // Point A0h - First track number in program area
+                tocEntries[0].ADR_Control = 0x14;
+                tocEntries[0].TrackNumber = 0xA0;  // Point A0
+                tocEntries[0].reserved = 0x00;
+                tocEntries[0].reserved2 = 0x01;  // First track number
+                tocEntries[0].address = 0x00;    // PMIN/PSEC/PFRAME set to zero
+                datalen += SIZE_TOC_ENTRY;
+                numtracks = 1;
+                
+                // More comprehensive Full TOC implementation would add:
+                // Point A1h (Last track), Point A2h (Lead-out start)
+            }            
+            
+            else {
 			    // Session info format or other formats
 			    CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
 
@@ -1837,6 +1892,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             m_DiscInfoReply.number_of_sessions = 0x01;  // Single session
             m_DiscInfoReply.first_track_last_session = 0x01;
             m_DiscInfoReply.last_track_last_session = GetLastTrackNumber();
+            
             
             // Set disc type based on track 1 mode (MacOS uses this)
             CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
@@ -2502,6 +2558,35 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    	break;
 			}
 
+                        // In case 0x5a, add new page:
+            case 0x0D: {  // CD Device Parameters
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+                                "MODE SENSE(10) Page 0x0D (CD Device Parameters)");
+                
+                struct CDDeviceParametersPage {
+                    u8 pageCode;        // 0x0D
+                    u8 pageLength;      // 0x06
+                    u8 reserved1;
+                    u8 inactivityTimer; // Minutes before standby
+                    u16 secondsPerMSF;  // S/MSF units per second
+                    u16 framesPerMSF;   // F/MSF units per second
+                } PACKED;
+                
+                CDDeviceParametersPage codePage = {0};
+                codePage.pageCode = 0x0D;
+                codePage.pageLength = 0x06;
+                codePage.inactivityTimer = 0x00;  // No auto-standby
+                codePage.secondsPerMSF = htons(60);   // 60 S units per second
+                codePage.framesPerMSF = htons(75);    // 75 F units per second
+                
+                //memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+
+                memcpy(m_InBuffer + length, &codePage, sizeof(codePage));
+                length += sizeof(codePage);
+                break;
+            }
+
+
 			case 0x1a: {
 			    // Mode Page 0x1A (Power Condition)
 			    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response");
@@ -2670,21 +2755,64 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 
         case 0xa4:  // Weird thing from Windows 2000
-	{
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "A4 from Win2k");
+        {
+        u8 keyFormat = m_CBW.CBWCB[10] & 0x3F;
+        u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+        
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "REPORT KEY format=0x%02x", keyFormat);
+        
+        switch(keyFormat) {
+            case 0x00:  // AGID (Authentication Grant ID)
+            {
+                // Return no CSS protection (non-encrypted disc)
+                u8 response[8] = {0};
+                response[0] = 0x00;  // Data length MSB
+                response[1] = 0x06;  // Data length LSB (6 bytes follow)
+                response[7] = 0x00;  // No valid AGID (bits 7-6 = 00b)
+                
+                int length = sizeof(response);
+                if (allocationLength < length) length = allocationLength;
+                
+                memcpy(m_InBuffer, response, length);
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, 
+                                        m_InBuffer, length);
+                m_nState = TCDState::DataIn;
+                m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+                break;
+            }
+            
+            case 0x08:  // Report Region Settings (RPC)
+            {
+                u8 response[8] = {0};
+                response[0] = 0x00;  // Data length MSB
+                response[1] = 0x06;  // Data length LSB
+                response[2] = 0x01;  // Type Code (RPC Phase II)
+                response[3] = 0x00;  // Region Mask = 0 (all regions)
+                response[4] = 0x00;  // RPC Scheme = 0 (no region control)
+                response[5] = 0x00;  // User changes remaining
+                response[6] = 0x00;  // Vendor resets remaining
+                response[7] = 0x00;  // Reserved
+                
+                int length = sizeof(response);
+                if (allocationLength < length) length = allocationLength;
+                
+                memcpy(m_InBuffer, response, length);
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                        m_InBuffer, length);
+                m_nState = TCDState::DataIn;
+                m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+                break;
+            }
+            
+            default:
+                // Unsupported key format
+                setSenseData(0x05, 0x24, 0x00);  // Illegal Request, Invalid Field in CDB
+                sendCheckCondition();
+                break;
+        }
+        break;
+    }
 
-	    // Response copied from an ASUS CDROM drive. It seems to know
-	    // what this is, so let's just copy it
-	    u8 response[] = {0x0, 0x6, 0x0, 0x0, 0x25, 0xff, 0x1, 0x0};
-
-            memcpy(m_InBuffer, response, sizeof(response));
-
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       m_InBuffer, sizeof(response));
-            m_nState = TCDState::DataIn;
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-	    break;
-	}
 
 	// SCSI TOOLBOX
         case 0xD9:  // LIST DEVICES
@@ -2956,6 +3084,42 @@ void CUSBCDGadget::Update() {
             }
             break;
         }
+
+        case 0xBD:  // MECHANISM STATUS
+        {
+            u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+            
+            struct MechanismStatus {
+                u8 fault : 1;           // bit 0
+                u8 changer_state : 2;   // bits 2-1
+                u8 current_slot : 5;    // bits 7-3
+                u8 mechanism_state : 5; // bits 4-0 of byte 1
+                u8 door_open : 1;       // bit 4 of byte 1
+                u8 reserved1 : 2;       // bits 7-6
+                u8 current_lba[3];      // bytes 2-4 (24-bit LBA)
+                u8 num_slots;           // byte 5
+                u16 slot_table_length;  // bytes 6-7
+            } PACKED;
+            
+            MechanismStatus status = {0};
+            status.fault = 0;
+            status.changer_state = 0;     // No changer
+            status.current_slot = 0;      // Slot 0
+            status.mechanism_state = 0x00; // Idle
+            status.door_open = 0;         // Door closed (tray loaded)
+            status.num_slots = 1;         // Single slot device
+            status.slot_table_length = 0; // No slot table
+            
+            int length = sizeof(MechanismStatus);
+            if (allocationLength < length) length = allocationLength;
+            
+            memcpy(m_InBuffer, &status, length);
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                    m_InBuffer, length);
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+            break;
+        }        
 
             /*
                     case TCDState::DataOutWrite:

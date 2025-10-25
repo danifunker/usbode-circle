@@ -164,14 +164,38 @@ TShutdownMode CKernel::Run(void) {
     // Use the existing ConfigService instance
     ConfigService* config = m_pConfigService;
     
-    LOGNOTE("Initialized SetupStatus"); 
+    // Give file logging a moment to fully initialize
+    CScheduler::Get()->MsSleep(200);
+    
+    // Very first log to see if Run() is even called
+    LOGERR("CKernel::Run() method entered - TESTING ERROR LEVEL");
+    LOGNOTE("CKernel::Run() method entered - TESTING NOTE LEVEL");
+    
     LOGNOTE("=====================================");
     LOGNOTE("Welcome to USBODE");
     LOGNOTE("Compile time: " __DATE__ " " __TIME__);
+    
+    // Test each log message individually to find which one fails
+    LOGNOTE("Step 1: Testing GIT_BRANCH and GIT_COMMIT");
     LOGNOTE("Git Info: %s @ %s", GIT_BRANCH, GIT_COMMIT);
-    LOGNOTE("Kernel Name: %s", CGitInfo::Get()->GetKernelName());
-    LOGNOTE("Architecture: %s", CGitInfo::Get()->GetArchBits());
-    LOGNOTE("Memory Size: %u", CMemorySystem::Get()->GetMemSize());
+    
+    LOGNOTE("Step 2: Testing CGitInfo singleton");
+    CGitInfo* gitInfo = CGitInfo::Get();
+    if (gitInfo != nullptr) {
+        LOGNOTE("Kernel Name: %s", gitInfo->GetKernelName());
+        LOGNOTE("Architecture: %s", gitInfo->GetArchBits());
+    } else {
+        LOGNOTE("CGitInfo::Get() returned nullptr");
+    }
+    
+    LOGNOTE("Step 3: Testing CMemorySystem");
+    CMemorySystem* memSys = CMemorySystem::Get();
+    if (memSys != nullptr) {
+        LOGNOTE("Memory Size: %u", memSys->GetMemSize());
+    } else {
+        LOGNOTE("CMemorySystem::Get() returned nullptr");
+    }
+    
     LOGNOTE("=====================================");
 
 

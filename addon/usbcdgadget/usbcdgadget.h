@@ -71,12 +71,12 @@ struct TUSBCDCBW  // 31 bytes
 #define VALID_CBW_SIG 0x43425355
 #define CSW_SIG 0x53425355
 
-struct TUSBCDCSW  // 13 bytes
+struct TUSBCDCSW  // Must be exactly 13 bytes per USB Mass Storage Bulk-Only Transport spec
 {
-    u32 dCSWSignature = CSW_SIG;
-    u32 dCSWTag;
-    u32 dCSWDataResidue = 0;
-    u8 bmCSWStatus = 0;  // 0=ok 1=command fail 2=phase error
+    u32 dCSWSignature;      // Must be 0x53425355 ("USBS" in little-endian)
+    u32 dCSWTag;            // Echo from CBW
+    u32 dCSWDataResidue;    // Difference between expected and actual data transfer
+    u8 bmCSWStatus;         // 0=ok, 1=command fail, 2=phase error
 } PACKED;
 
 #define SIZE_CSW 13
