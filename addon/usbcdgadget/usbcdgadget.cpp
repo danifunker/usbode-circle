@@ -872,6 +872,45 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
+        case 0xa8:  // Read (12) - similar to READ(10) but with 32-bit block count
+        {
+            if (m_CDReady) {
+                // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Read (12)");
+                // will be updated if read fails on any block
+                m_CSW.bmCSWStatus = bmCSWStatus;
+
+                // Where to start reading (LBA) - 4 bytes
+                m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | 
+                                   (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+                
+                // Number of blocks to read (LBA) - 4 bytes
+                m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) | 
+                                   (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+
+                // Transfer Block Size is the size of data to return to host
+                // Block Size and Skip Bytes is worked out from cue sheet
+                // For a CDROM, this is always 2048
+                transfer_block_size = 2048;
+                block_size = data_block_size;  // set at SetDevice
+                skip_bytes = data_skip_bytes;  // set at SetDevice;
+		        mcs = 0;
+
+                m_nbyteCount = m_CBW.dCBWDataTransferLength;
+
+                // What is this?
+                if (m_nnumber_blocks == 0) {
+                    m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
+                }
+                m_CSW.bmCSWStatus = bmCSWStatus;
+                m_nState = TCDState::DataInRead;  // see Update() function
+            } else {
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, %s", m_CDReady ? "ready" : "not ready");
+                setSenseData(0x02, 0x04, 0x00);  // Not Ready, Logical Unit Not Ready
+                sendCheckCondition();
+            }
+            break;
+        }        
+
         case 0x12:  // Inquiry
         {
             int allocationLength = (m_CBW.CBWCB[3] << 8) | m_CBW.CBWCB[4];
