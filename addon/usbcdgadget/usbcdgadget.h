@@ -366,6 +366,7 @@ struct TUSBCProfileDescriptorReply {
 #define SIZE_PROFILE_DESCRIPTOR_REPLY 4
 
 #define PROFILE_CDROM 0x0008
+// #define PROFILE_DVD_ROM 0x0010
 
 struct TUSBCDCoreFeatureReply {
     u16 featureCode;
@@ -806,6 +807,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     // Hardware serial number for USB device identification
     char m_HardwareSerialNumber[20];   // Format: "USBODE-XXXXXXXX"
+
+    // Debug flag to enable verbose CD-ROM logging
+    bool m_bDebugLogging;
+
 
 };
 
