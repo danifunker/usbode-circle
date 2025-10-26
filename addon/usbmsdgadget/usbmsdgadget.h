@@ -100,7 +100,7 @@ struct TUSBMMSDInquiryReply   //36 bytes
 	unsigned char bProdRev[4];
 }
 PACKED;
-#define SIZE_INQR 36
+#define SIZE_INQR 96
 
 //reply to SCSI Mode Sense(6) 0x1A
 struct TUSBMMSDModeSenseReply   //4 bytes
