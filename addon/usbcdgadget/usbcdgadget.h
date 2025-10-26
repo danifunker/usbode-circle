@@ -183,7 +183,7 @@ struct ModePage0x0EData {
 #define SIZE_MODE_SENSE10_PAGE_0X0E 16
 
 // reply to SCSI Inquiry Command 0x12
-struct TUSBCDInquiryReply  // 36 bytes
+struct TUSBCDInquiryReply  // 96 bytes
 {
     u8 bPeriphQualDevType;
     u8 bRMB;
@@ -373,7 +373,7 @@ struct TUSBCProfileDescriptorReply {
 #define SIZE_PROFILE_DESCRIPTOR_REPLY 4
 
 #define PROFILE_CDROM 0x0008
-// #define PROFILE_DVD_ROM 0x0010
+#define PROFILE_DVD_ROM 0x0010
 
 struct TUSBCDCoreFeatureReply {
     u16 featureCode;
@@ -725,6 +725,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         htons(PROFILE_CDROM),  // profileNumber
         0x01,                  // currentP
         0x00                   // reserved
+    };
+
+    // Profiles 0010h DVD-ROM
+    TUSBCProfileDescriptorReply dvd_profile = {
+        htons(PROFILE_DVD_ROM),  // profileNumber
+        0x01,                    // currentP
+        0x00                     // reserved
     };
 
     // Feature 0001h - Core
