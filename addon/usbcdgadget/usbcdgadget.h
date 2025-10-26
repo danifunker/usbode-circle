@@ -366,7 +366,7 @@ struct TUSBCProfileDescriptorReply {
 #define SIZE_PROFILE_DESCRIPTOR_REPLY 4
 
 #define PROFILE_CDROM 0x0008
-#define PROFILE_DVD_ROM 0x0010
+// #define PROFILE_DVD_ROM 0x0010
 
 struct TUSBCDCoreFeatureReply {
     u16 featureCode;
@@ -476,7 +476,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
     /// \note Call this, if pDevice has not been specified in the constructor.
-    void SetDevice(ICueDevice *pDevice, const char *imageName = nullptr);
+    void SetDevice(ICueDevice *pDevice);
 
     /// \brief Call this periodically from TASK_LEVEL to allow I/O operations!
     void Update(void);
@@ -804,9 +804,6 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     boolean m_IsFullSpeed = 0;
     boolean discChanged = false;
     uint8_t mcs = 0;
-
-    // Current image filename (for media type detection)
-    char m_currentImageName[256];
 
     // Hardware serial number for USB device identification
     char m_HardwareSerialNumber[20];   // Format: "USBODE-XXXXXXXX"
