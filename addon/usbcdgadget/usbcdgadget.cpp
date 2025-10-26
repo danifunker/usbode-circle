@@ -1552,7 +1552,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification");
 
-	    if (polled = 0) {
+	    if (polled == 0) {
 		// We don't support async mode
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification - we don't support async notifications");
 	        bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
