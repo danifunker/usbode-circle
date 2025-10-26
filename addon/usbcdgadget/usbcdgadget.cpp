@@ -1632,19 +1632,58 @@ void CUSBCDGadget::HandleSCSICommand() {
 	    // don't get a response. So, we're implementing bare minimum here to
 	    // keep them happy
 
-	    u8 mediaType = m_CBW.CBWCB[2] && 0x0f;
-            u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-	    u8 layer = m_CBW.CBWCB[6];
+	    //u8 mediaType = m_CBW.CBWCB[2] && 0x0f; // unused in this command
+	    // u8 mediaType = m_CBW.CBWCB[2] & 0x0f;  // unused (note: was buggy with && instead of &)
+            // u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];  // unused
+	    // u8 layer = m_CBW.CBWCB[6];  // unused
 	    u8 format = m_CBW.CBWCB[7];
-            u16 allocationLength = m_CBW.CBWCB[8] << 8 | (m_CBW.CBWCB[9]);
-	    u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;
-	    u8 control = m_CBW.CBWCB[12];
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, allocation length is %lu", allocationLength);
+        u16 allocationLength = m_CBW.CBWCB[8] << 8 | (m_CBW.CBWCB[9]);
+	    // u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;  // unused
+	    // u8 control = m_CBW.CBWCB[12];  // unused
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, format=0x%02x, allocation length is %lu, mediaType=%d", format, allocationLength, (int)m_mediaType);
 
-	    int length = 0;
+	    // For CD media and DVD-specific formats: return minimal empty response
+	    // MacOS doesn't handle CHECK CONDITION well for this command - causes USB reset
+	    // This is a workaround until we can properly implement stall-then-CSW sequence
+	    if (m_mediaType != MEDIA_TYPE::DVD && 
+	        (format == 0x00 || format == 0x02 || format == 0x03 || format == 0x04)) {
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE format 0x%02x for CD media - returning minimal response", format);
+		    // Return minimal header indicating no data available
+		    TUSBCDReadDiscStructureHeader header;
+		    memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
+		    header.dataLength = __builtin_bswap16(2);  // Just header, no payload (big-endian)
+		    
+		    int length = sizeof(TUSBCDReadDiscStructureHeader);
+		    if (allocationLength < length)
+			    length = allocationLength;
+		    
+		    memcpy(m_InBuffer, &header, length);
+		    m_nnumber_blocks = 0;
+		    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+		    m_nState = TCDState::DataIn;
+		    m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+		    break;  // Exit case 0xAD
+	    }
+
+
+        int length = 0;
 	    switch (format) {
 		    
-		    case 0x01: // Copyright Information
+		    case 0x00: // Physical Format Information - DVD-specific
+		    case 0x02: // Disc Key Structure - DVD-specific  
+		    case 0x03: // BCA (Burst Cutting Area) - DVD-specific
+		    case 0x04: // Manufacturing Information - DVD-specific
+		    {
+			    // DVD media - return minimal structure
+                    	TUSBCDReadDiscStructureHeader header;
+                    	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
+                    	header.dataLength = 2; // just the header
+			memcpy(m_InBuffer, &header, sizeof(TUSBCDReadDiscStructureHeader));
+			length += sizeof(TUSBCDReadDiscStructureHeader);
+			break;
+		    }
+		    
+		    case 0x01: // Copyright Information - valid for both CD and DVD
 		    {
                     	TUSBCDReadDiscStructureHeader header;
                     	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
