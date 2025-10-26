@@ -1487,11 +1487,11 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x52:  // READ TRACK INFORMATION
         {
 
-	    u8 open = (m_CBW.CBWCB[1] >> 2) & 0x01;
+	    //u8 open = (m_CBW.CBWCB[1] >> 2) & 0x01; unused in this command
 	    u8 addressType = m_CBW.CBWCB[1] & 0x03;
 	    u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
             u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-	    u8 control = m_CBW.CBWCB[9];
+	    //u8 control = m_CBW.CBWCB[9]; unused in this command
 
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Track Information");
 
@@ -1576,13 +1576,12 @@ void CUSBCDGadget::HandleSCSICommand() {
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification - media change event response");
 
 		// Update header
-	    	header.eventDataLength = htons(0x04); // Always 4 because only return 1 event
+	    header.eventDataLength = htons(0x04); // Always 4 because only return 1 event
+		header.notificationClass = 0x04; // 100b = media class
 
 		// Define the event
 		TUSBCDEventStatusReplyEvent event;
 		memset(&event, 0, sizeof(event));
-		header.notificationClass = 0x04; // 100b = media
-		event.data[0] = 0x02; // media present
 
 		if (discChanged) {
 		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification - sending NewMedia event");
