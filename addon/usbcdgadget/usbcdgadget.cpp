@@ -300,11 +300,13 @@ void CUSBCDGadget::SetDevice(ICueDevice* dev) {
         m_pDevice = nullptr;
 
         // Tell the host the disc has changed
-	// TODO: implement a state engine to manage this transition
-        bmCSWStatus = CD_CSW_STATUS_FAIL;
+	    // TODO: implement a state engine to manage this transition
+        m_CDReady = false;
+        m_mediaState = MediaState::NO_MEDIUM;
         m_SenseParams.bSenseKey = 0x02;           // Not Ready
         m_SenseParams.bAddlSenseCode = 0x3a;      // MEDIUM NOT PRESENT
         m_SenseParams.bAddlSenseCodeQual = 0x00;  
+        bmCSWStatus = CD_CSW_STATUS_FAIL;
 	discChanged = true;
     }
 
@@ -319,6 +321,12 @@ void CUSBCDGadget::SetDevice(ICueDevice* dev) {
     data_block_size = GetBlocksize();
 
     m_CDReady = true;
+    m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
+    m_SenseParams.bSenseKey = 0x06;
+    m_SenseParams.bAddlSenseCode = 0x28;      // MEDIUM MAY HAVE CHANGED
+    m_SenseParams.bAddlSenseCodeQual = 0x00;
+    bmCSWStatus = CD_CSW_STATUS_FAIL;
+    discChanged = true;    
     CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice", "Block size is %d, m_CDReady = %d", block_size, m_CDReady);
 
 }

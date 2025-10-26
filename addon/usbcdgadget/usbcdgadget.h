@@ -540,6 +540,15 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     MEDIA_TYPE m_mediaType = MEDIA_TYPE::CD;
 
+    // Media state for proper MacOS Unit Attention handling
+    enum class MediaState {
+        NO_MEDIUM,                      // No disc present
+        MEDIUM_PRESENT_UNIT_ATTENTION,  // Disc present but needs Unit Attention
+        MEDIUM_PRESENT_READY            // Disc present and ready
+    };
+
+    MediaState m_mediaState = MediaState::NO_MEDIUM;
+    
    private:
     void HandleSCSICommand();
 
@@ -605,15 +614,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     };
 
     TCDState m_nState = Init;
-    
+
     // Media state for proper MacOS Unit Attention handling
     enum class MediaState {
         NO_MEDIUM,                      // No disc present
         MEDIUM_PRESENT_UNIT_ATTENTION,  // Disc present but needs Unit Attention
         MEDIUM_PRESENT_READY            // Disc present and ready
     };
-
-    MediaState m_mediaState = MediaState::NO_MEDIUM;
 
     TUSBCDCBW m_CBW;
     TUSBCDCSW m_CSW;
