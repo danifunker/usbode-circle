@@ -1295,7 +1295,28 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    numtracks++;
 
 		    //} else if (format == 0x01) { // Read TOC Data Format (With Format Field = 01b)
-		    } else {
+		    }  else if (format == 0x02) {  // Full TOC
+                // Full TOC includes more detailed track information
+                // Minimum implementation for compatibility
+                
+                m_TOCData.FirstTrack = 0x01;
+                m_TOCData.LastTrack = 0x01;  // First complete session
+                datalen = SIZE_TOC_DATA;
+                
+                tocEntries = new TUSBTOCEntry[1];
+                
+                // Point A0h - First track number in program area
+                tocEntries[0].ADR_Control = 0x14;
+                tocEntries[0].TrackNumber = 0xA0;  // Point A0
+                tocEntries[0].reserved = 0x00;
+                tocEntries[0].reserved2 = 0x01;  // First track number
+                tocEntries[0].address = 0x00;    // PMIN/PSEC/PFRAME set to zero
+                datalen += SIZE_TOC_ENTRY;
+                numtracks = 1;
+                
+                // More comprehensive Full TOC implementation would add:
+                // Point A1h (Last track), Point A2h (Lead-out start)
+            }  else {
 						 
 			    CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
 
