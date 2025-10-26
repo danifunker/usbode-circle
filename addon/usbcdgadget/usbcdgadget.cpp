@@ -83,8 +83,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
             0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
             0                  // iInterface
         },
         {
@@ -122,8 +122,8 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0,                 // bInterfaceNumber
             0,                 // bAlternateSetting
             2,                 // bNumEndpoints
-            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
             0x08, 0x02, 0x50,  // bInterfaceClass, SubClass, Protocol (0x02 = SCSI transparent - for disks)
+            //0x08, 0x06, 0x50,  // bInterfaceClass, SubClass, Protocol (0x06 = SCSI MMC for CD-ROM)
             0                  // iInterface
         },
         {
@@ -760,8 +760,7 @@ void CUSBCDGadget::OnActivate() {
 void CUSBCDGadget::SendCSW() {
     CDROM_DEBUG_LOG("CUSBCDGadget::SendCSW", "entered");
     
-    // Debug: Check actual structure size (remove after verification)
-    // Note: If this doesn't match SIZE_CSW (13), there's a padding issue
+    // Debug: Check actual structure size
     CDROM_DEBUG_LOG("CUSBCDGadget::SendCSW", "sizeof(TUSBCDCSW)=%u, SIZE_CSW=%u", 
                     sizeof(TUSBCDCSW), SIZE_CSW);
     
@@ -769,22 +768,30 @@ void CUSBCDGadget::SendCSW() {
     // Per USB Mass Storage Bulk-Only Transport spec section 6.3
     m_CSW.dCSWSignature = CSW_SIG;
     
-    // CRITICAL: Zero the buffer first to prevent data contamination from previous transfers
-    // Windows 98 SE and other legacy OSes are extremely sensitive to CSW corruption
-    // The USB Mass Storage Bulk-Only Transport spec requires exact 13-byte CSW packets
-    memset(m_InBuffer, 0, SIZE_CSW);
+    // CRITICAL: Zero a larger buffer area to catch any stray bytes
+    // Windows 98 SE is extremely sensitive to CSW corruption
+    memset(m_InBuffer, 0, 32);  // Clear 32 bytes to be safe
+    
+    // Log CSW structure BEFORE memcpy to verify it's correct
+    u8* cswBytes = (u8*)&m_CSW;
+    CDROM_DEBUG_LOG("CUSBCDGadget::SendCSW", "CSW struct bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                    cswBytes[0], cswBytes[1], cswBytes[2], cswBytes[3], cswBytes[4],
+                    cswBytes[5], cswBytes[6], cswBytes[7], cswBytes[8], cswBytes[9],
+                    cswBytes[10], cswBytes[11], cswBytes[12]);
     
     // Copy CSW structure to clean buffer - use SIZE_CSW not sizeof() to avoid padding issues
     memcpy(m_InBuffer, &m_CSW, SIZE_CSW);
     
-    // Debug: Verify CSW signature is correct before sending
+    // Debug: Verify buffer content after memcpy
+    CDROM_DEBUG_LOG("CUSBCDGadget::SendCSW", "Buffer after copy: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                    m_InBuffer[0], m_InBuffer[1], m_InBuffer[2], m_InBuffer[3], m_InBuffer[4],
+                    m_InBuffer[5], m_InBuffer[6], m_InBuffer[7], m_InBuffer[8], m_InBuffer[9],
+                    m_InBuffer[10], m_InBuffer[11], m_InBuffer[12], m_InBuffer[13], m_InBuffer[14], m_InBuffer[15]);
+    
+    // Verify CSW signature is correct
     u32 signature = (m_InBuffer[0]) | (m_InBuffer[1] << 8) | (m_InBuffer[2] << 16) | (m_InBuffer[3] << 24);
     if (signature != CSW_SIG) {
         MLOGERR("CUSBCDGadget::SendCSW", "CORRUPTED CSW! Expected 0x53425355, got 0x%08x", signature);
-        MLOGERR("CUSBCDGadget::SendCSW", "Buffer: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                m_InBuffer[0], m_InBuffer[1], m_InBuffer[2], m_InBuffer[3], m_InBuffer[4], 
-                m_InBuffer[5], m_InBuffer[6], m_InBuffer[7], m_InBuffer[8], m_InBuffer[9],
-                m_InBuffer[10], m_InBuffer[11], m_InBuffer[12]);
     } else {
         CDROM_DEBUG_LOG("CUSBCDGadget::SendCSW", "CSW: sig=0x%08x tag=0x%08x residue=%u status=%d",
                         signature, m_CSW.dCSWTag, m_CSW.dCSWDataResidue, m_CSW.bmCSWStatus);
@@ -929,7 +936,8 @@ void CUSBCDGadget::HandleSCSICommand() {
     u8 cmd = m_CBW.CBWCB[0];
     if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION && 
         cmd != 0x03 &&  // REQUEST SENSE - must deliver Unit Attention
-        cmd != 0x12) {  // INQUIRY - allowed per SCSI-2 spec
+        cmd != 0x12 &&  // INQUIRY - allowed per SCSI-2 spec
+        cmd != 0x5a) {  // MODE SENSE(10) - Windows 98 SE sends this during init
         
         MLOGDEBUG("HandleSCSICommand", "Command 0x%02x blocked by Unit Attention", cmd);
         setSenseData(0x06, 0x28, 0x00);  // Unit Attention, Not Ready to Ready Transition (medium may have changed)
@@ -1199,62 +1207,73 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x28:  // Read (10)
         {
             if (m_CDReady) {
+                // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Read (10)");
+                // will be updated if read fails on any block
+                m_CSW.bmCSWStatus = bmCSWStatus;
+
                 // Where to start reading (LBA)
                 m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-                
+
                 // Number of blocks to read (LBA)
                 m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
-                
-                // Check track type to determine proper handling
-                CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-                if (trackInfo.track_mode == CUETrack_AUDIO) {
-                    // AUDIO TRACK: 
-                    // Note: Per MMC-4 spec section 6.1.5, READ(10) is technically not valid for CD-DA sectors
-                    // and hosts should use READ CD (0xBE) instead. However, Windows USB CD-ROM driver does
-                    // not support READ CD and will reset the device if READ(10) fails for audio.
-                    // 
-                    // Windows sends READ(10) with dCBWDataTransferLength=0 for audio tracks, which is wrong.
-                    // We must override this with the correct byte count to prevent m_nbyteCount underflow.
-                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(10) for audio track at LBA %lu - returning 2352-byte raw audio sectors", m_nblock_address);
-                    transfer_block_size = 2352;
-                    block_size = 2352;  // Audio CD raw sector size
-                    skip_bytes = 0;
-                } else {
-                    // DATA TRACK: Standard 2048-byte user data
-                    transfer_block_size = 2048;
-                    block_size = data_block_size;  // set at SetDevice
-                    skip_bytes = data_skip_bytes;  // set at SetDevice
-                }
-                
-                m_CSW.bmCSWStatus = bmCSWStatus;
+
+                // Transfer Block Size is the size of data to return to host
+                // Block Size and Skip Bytes is worked out from cue sheet
+                // For a CDROM, this is always 2048
+                transfer_block_size = 2048;
+                block_size = data_block_size;  // set at SetDevice
+                skip_bytes = data_skip_bytes;  // set at SetDevice;
 		mcs = 0;
 
                 m_nbyteCount = m_CBW.dCBWDataTransferLength;
 
-                // Windows Fix: Windows expects 2048-byte sectors for READ(10) even on audio tracks
-                // USB protocol requires we send exactly dCBWDataTransferLength bytes, not more
-                // If Windows requests 2048 bytes per block, we must truncate 2352-byte audio sectors
-                if (trackInfo.track_mode == CUETrack_AUDIO && m_nbyteCount < transfer_block_size * m_nnumber_blocks) {
-                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(10): Windows requested %lu bytes but audio needs %d bytes per block - will truncate audio data", 
-                             m_nbyteCount, transfer_block_size);
-                    // Keep m_nbyteCount as-is (Windows' request) but transfer_block_size determines copy size
-                    // We'll need to handle this truncation in UpdateRead
-                    transfer_block_size = m_nbyteCount / m_nnumber_blocks;  // Use Windows' requested size per block
-                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(10): Adjusted transfer_block_size to %d bytes to match Windows request", 
-                             transfer_block_size);
-                }
-
-                // Calculate number of blocks if not specified (rare case)
+                // What is this?
                 if (m_nnumber_blocks == 0) {
-                    // Use transfer_block_size for calculation (2352 for audio, 2048 for data)
-                    m_nnumber_blocks = (m_nbyteCount + transfer_block_size - 1) / transfer_block_size;
-                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(10): calculated m_nnumber_blocks=%lu from byteCount=%lu / transfer_block_size=%d", 
-                             m_nnumber_blocks, m_nbyteCount, transfer_block_size);
+                    m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
                 }
                 m_CSW.bmCSWStatus = bmCSWStatus;
                 m_nState = TCDState::DataInRead;  // see Update() function
             } else {
                 CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s", m_CDReady ? "ready" : "not ready");
+                setSenseData(0x02, 0x04, 0x00);  // Not Ready, Logical Unit Not Ready
+                sendCheckCondition();
+            }
+            break;
+        }
+
+        case 0xa8:  // Read (12) - similar to READ(10) but with 32-bit block count
+        {
+            if (m_CDReady) {
+                // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Read (12)");
+                // will be updated if read fails on any block
+                m_CSW.bmCSWStatus = bmCSWStatus;
+
+                // Where to start reading (LBA) - 4 bytes
+                m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | 
+                                   (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+                
+                // Number of blocks to read (LBA) - 4 bytes
+                m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) | 
+                                   (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+
+                // Transfer Block Size is the size of data to return to host
+                // Block Size and Skip Bytes is worked out from cue sheet
+                // For a CDROM, this is always 2048
+                transfer_block_size = 2048;
+                block_size = data_block_size;  // set at SetDevice
+                skip_bytes = data_skip_bytes;  // set at SetDevice;
+		mcs = 0;
+
+                m_nbyteCount = m_CBW.dCBWDataTransferLength;
+
+                // What is this?
+                if (m_nnumber_blocks == 0) {
+                    m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
+                }
+                m_CSW.bmCSWStatus = bmCSWStatus;
+                m_nState = TCDState::DataInRead;  // see Update() function
+            } else {
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, %s", m_CDReady ? "ready" : "not ready");
                 setSenseData(0x02, 0x04, 0x00);  // Not Ready, Logical Unit Not Ready
                 sendCheckCondition();
             }
@@ -2514,29 +2533,33 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x5a:  // Mode Sense (10)
         {
-            // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) - entry");
 
             int LLBAA = (m_CBW.CBWCB[1] >> 7) & 0x01; // We don't support this
             int DBD = (m_CBW.CBWCB[1] >> 6) & 0x01; // TODO: Implement this!
             int page = m_CBW.CBWCB[2] & 0x3F;
             int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
             u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = %02x, allocationLength = %lu", LLBAA, DBD, page, allocationLength);
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = 0x%02x, page_control = 0x%02x, allocationLength = %u", LLBAA, DBD, page, page_control, allocationLength);
 
             int length = 0;
 
-	    // We don't support saved values
-	    if (page_control == 0x03) {
-                        bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
-                        m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
-                        m_SenseParams.bAddlSenseCode = 0x39;      // Saving parameters not supported
-                        m_SenseParams.bAddlSenseCodeQual = 0x00;  
-	    } else {
-		    // Define our response
-		    ModeSense10Header reply_header;
-		    memset(&reply_header, 0, sizeof(reply_header));
-		    reply_header.mediumType = GetMediumType();
-		    length += sizeof(reply_header);
+            // We don't support saved values - Windows 98 needs immediate error return
+            if (page_control == 0x03) {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) page_control=0x03 (saved) not supported");
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "MODE SENSE(10): Data phase state before error: m_nState=%d", m_nState);
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "MODE SENSE(10): InBuffer contents before error: %02x %02x %02x %02x", 
+                m_InBuffer[0], m_InBuffer[1], m_InBuffer[2], m_InBuffer[3]);
+            setSenseData(0x05, 0x39, 0x00);  // Illegal Request, Saving parameters not supported
+            sendCheckCondition();
+            return;  // CRITICAL: Return immediately for Windows 98 SE compatibility
+	    }
+	    
+	    // Define our response
+	    ModeSense10Header reply_header;
+	    memset(&reply_header, 0, sizeof(reply_header));
+	    reply_header.mediumType = GetMediumType();
+	    length += sizeof(reply_header);
 
 		    switch (page) {
 			case 0x3f: // This required all mode pages
@@ -2628,7 +2651,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 			        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning CD-ROM capabilities (0x28 = CD-R + Method2)");
 			    }
 			    codepage.capabilityBits[1] = 0x00;  // Can't write
-			    codepage.capabilityBits[2] = 0x71;  // AudioPlay, multi-session, mode 2 form 2, mode 2 form 1
+			    codepage.capabilityBits[2] = 0x01;  // CD-DA supported (bit 0 only - v2.6.0 working config)
 			    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
 			    codepage.capabilityBits[4] = 0x29;  // Tray loading mechanism, eject supported, lock supported
 			    codepage.capabilityBits[5] = 0x00;
@@ -2695,28 +2718,30 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
 			    length += sizeof(codepage);
 
-			    break;
-			}
+		    break;
+		}
 
-			default: {
-			    // We don't support this code page
-			    bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
-			    m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
-			    m_SenseParams.bAddlSenseCode = 0x24;      // INVALID FIELD IN COMMAND PACKET
-			    m_SenseParams.bAddlSenseCodeQual = 0x00;
-			    break;
-			}
-		    }
-		    
-		    reply_header.modeDataLength = htons(length - 2);
-		    memcpy(m_InBuffer, &reply_header, sizeof(reply_header));
-		    
-		    // Debug: Log the actual Mode Sense (10) header bytes being sent
-		    u8 *headerBytes = (u8*)m_InBuffer;
-		    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) header bytes: %02x %02x %02x %02x %02x %02x %02x %02x (total length=%d)",
-		             headerBytes[0], headerBytes[1], headerBytes[2], headerBytes[3],
-		             headerBytes[4], headerBytes[5], headerBytes[6], headerBytes[7], length);
+		default: {
+		    // We don't support this code page
+		    // Windows 98 SE is very sensitive to error handling - must return immediately
+		    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) unsupported page 0x%02x", page);
+		    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "MODE SENSE(10): Data phase state before error: m_nState=%d", m_nState);
+		    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "MODE SENSE(10): InBuffer contents before error: %02x %02x %02x %02x", 
+			m_InBuffer[0], m_InBuffer[1], m_InBuffer[2], m_InBuffer[3]);
+		    setSenseData(0x05, 0x24, 0x00);  // Illegal Request, Invalid Field in CDB
+		    sendCheckCondition();
+		    return;  // CRITICAL: Return immediately, don't continue to data phase
+		}
 	    }
+	    
+	    reply_header.modeDataLength = htons(length - 2);
+	    memcpy(m_InBuffer, &reply_header, sizeof(reply_header));
+	    
+	    // Debug: Log the actual Mode Sense (10) header bytes being sent
+	    u8 *headerBytes = (u8*)m_InBuffer;
+	    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) header bytes: %02x %02x %02x %02x %02x %02x %02x %02x (total length=%d)",
+		     headerBytes[0], headerBytes[1], headerBytes[2], headerBytes[3],
+		     headerBytes[4], headerBytes[5], headerBytes[6], headerBytes[7], length);
 
             // Trim the reply length according to what the host requested
             if (allocationLength < length)

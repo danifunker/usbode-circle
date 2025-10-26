@@ -637,8 +637,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 	 0x05, // Peripheral type = CD/DVD
 	 0x80, // RMB set = removable media 
 	 0x05, // Version 0x05 = SPC-3 compliant
-	 0x32, // Response Data Format (bits 0-3=2 for SPC-3), HiSup (bit 4=1), NormACA (bit 5=1)
-	 0x5B, // Additional Length (91 bytes after this field = 95 total, matching physical drives)
+	 0x02, // Response Data Format = SPC-3 format (v2.6.0 value for Windows 98 compatibility)
+	 0x1F, // Additional Length = 31 bytes (v2.6.0 value, total 36 bytes for Windows 98)
 	 0x00, // SCCS ACC TPGS 3PC Reserved PROTECT (all disabled)
 	 0x00, // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16 (all disabled)
 	 0x00, // Obsolete Obsolete WBUS16 SYNC LINKED Obsolete CMDQUE VS (all disabled)
