@@ -1640,14 +1640,14 @@ void CUSBCDGadget::HandleSCSICommand() {
         u16 allocationLength = m_CBW.CBWCB[8] << 8 | (m_CBW.CBWCB[9]);
 	    // u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;  // unused
 	    // u8 control = m_CBW.CBWCB[12];  // unused
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, format=0x%02x, allocation length is %lu, mediaType=%d", format, allocationLength, (int)m_mediaType);
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, format=0x%02x, allocation length is %lu, mediaType=%d", format, allocationLength, (int)m_mediaType);
 
 	    // For CD media and DVD-specific formats: return minimal empty response
 	    // MacOS doesn't handle CHECK CONDITION well for this command - causes USB reset
 	    // This is a workaround until we can properly implement stall-then-CSW sequence
 	    if (m_mediaType != MEDIA_TYPE::DVD && 
 	        (format == 0x00 || format == 0x02 || format == 0x03 || format == 0x04)) {
-		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE format 0x%02x for CD media - returning minimal response", format);
+		    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE format 0x%02x for CD media - returning minimal response", format);
 		    // Return minimal header indicating no data available
 		    TUSBCDReadDiscStructureHeader header;
 		    memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
@@ -1727,9 +1727,24 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x51:  // READ DISC INFORMATION CMD
         {
-            // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read Disc Information");
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read Disc Information");
 
+            // Update disc information with current media state (MacOS-compatible)
+            m_DiscInfoReply.disc_status = 0x0E;  // Complete disc, finalized (bits 1-0=10b), last session complete (bit 3)
+            m_DiscInfoReply.first_track_number = 0x01;
+            m_DiscInfoReply.number_of_sessions = 0x01;  // Single session
+            m_DiscInfoReply.first_track_last_session = 0x01;
             m_DiscInfoReply.last_track_last_session = GetLastTrackNumber();
+            
+            
+            // Set disc type based on track 1 mode (MacOS uses this)
+            CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
+            if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO) {
+                m_DiscInfoReply.disc_type = 0x00;  // CD-DA (audio)
+            } else {
+                m_DiscInfoReply.disc_type = 0x10;  // CD-ROM (data)
+            }
+            
             u32 leadoutLBA = GetLeadoutLBA();
             m_DiscInfoReply.last_lead_in_start_time = htonl(leadoutLBA);
             m_DiscInfoReply.last_possible_lead_out = htonl(leadoutLBA);
