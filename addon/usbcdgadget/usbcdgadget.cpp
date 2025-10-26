@@ -1326,7 +1326,7 @@ void CUSBCDGadget::HandleSCSICommand() {
             int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
             int length = 0;
 
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d, msf = %u, subq = %u, parameter_list = 0x%02x, track_number = %u", allocationLength, msf, subq, parameter_list, track_number);
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d, msf = %u, parameter_list = 0x%02x", allocationLength, msf, parameter_list);
 
             CCDPlayer* cdplayer = static_cast<CCDPlayer*>(CScheduler::Get()->GetTask("cdplayer"));
 
