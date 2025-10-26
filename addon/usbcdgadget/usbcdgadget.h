@@ -538,6 +538,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     void ProcessOut(size_t nLength);
 
+    MEDIA_TYPE m_mediaType = MEDIA_TYPE::CD;
+
    private:
     void HandleSCSICommand();
 
@@ -603,16 +605,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     };
 
     TCDState m_nState = Init;
-
-    // Media type for dynamic capability reporting
-    enum class MediaType {
-        MEDIA_NONE,     // No media loaded
-        MEDIA_CDROM,    // CD-ROM disc (default)
-        MEDIA_DVD       // DVD-ROM disc (detected by .dvd.iso extension)
-    };
-
-    MediaType m_mediaType = MediaType::MEDIA_NONE;
-
+    
     // Media state for proper MacOS Unit Attention handling
     enum class MediaState {
         NO_MEDIUM,                      // No disc present

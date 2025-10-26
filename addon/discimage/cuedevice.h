@@ -7,6 +7,7 @@ class ICueDevice : public CDevice {
 public:
     ICueDevice() = default;
     virtual ~ICueDevice() = default;
+    virtual MEDIA_TYPE GetMediaType() const { return MEDIA_TYPE::CD; }
 
     /// \return Current offset in the device, (u64)-1 on error
     virtual u64 Tell() const = 0;

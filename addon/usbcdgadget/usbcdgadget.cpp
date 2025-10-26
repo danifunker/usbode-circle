@@ -309,7 +309,8 @@ void CUSBCDGadget::SetDevice(ICueDevice* dev) {
     }
 
     m_pDevice = dev;
-
+    m_mediaType = m_pDevice->GetMediaType();
+    MLOGNOTE("CUSBCDGadget::SetDevice", "Media type set to %d", m_mediaType);
     cueParser = CUEParser(m_pDevice->GetCueSheet());  // FIXME. Ensure cuesheet is not null or empty
 
     MLOGNOTE("CUSBCDGadget::SetDevice", "entered");
