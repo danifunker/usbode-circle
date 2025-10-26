@@ -471,15 +471,15 @@ u32 CUSBCDGadget::GetLeadoutLBA() {
         track_start = trackInfo->data_start; // I think this is right
     }
 
-    u32 deviceSize = (u32)m_pDevice->GetSize();
+    u64 deviceSize = m_pDevice->GetSize();  // Use u64 to support DVDs > 4GB
 
     // We know the start position of the last track, and we know its sector length
     // and we know the file size, so we can work out the LBA of the end of the last track
     // We can't just divide the file size by sector size because sectors lengths might
     // not be consistent (e.g. multi-mode cd where track 1 is 2048
-    u32 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
-    u32 ret = track_start + lastTrackBlocks;
-    //CDROM_DEBUG_LOG("CUSBCDGadget::GetLeadoutLBA", "device size is %lu, last track file offset is %lu, last track sector_length is %lu, last track track_start is %lu, lastTrackBlocks = %lu, returning = %lu", deviceSize, file_offset, sector_length, track_start, lastTrackBlocks, ret);
+    u64 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
+    u32 ret = track_start + (u32)lastTrackBlocks;  // Cast back to u32 for LBA (max ~2TB disc)
+    CDROM_DEBUG_LOG("CUSBCDGadget::GetLeadoutLBA", "device size is %llu, last track file offset is %lu, last track sector_length is %lu, last track track_start is %lu, lastTrackBlocks = %llu, returning = %lu", deviceSize, file_offset, sector_length, track_start, lastTrackBlocks, ret);
 
     // Some corrupted cd images might have a cue that references track that are
     // outside the bin.
