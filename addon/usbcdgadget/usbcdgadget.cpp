@@ -1271,8 +1271,9 @@ void CUSBCDGadget::HandleSCSICommand() {
 				    boolean relative = false;
 				    // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, track_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->track_start, GetAddress(trackInfo->track_start, msf));
 				    tocEntries[index].ADR_Control = 0x14;
-				    if (trackInfo->track_mode == CUETrack_AUDIO)
-					tocEntries[index].ADR_Control = 0x10;
+				    if (trackInfo->track_mode == CUETrack_AUDIO) {
+					    tocEntries[index].ADR_Control = 0x10;
+                    }
 				    tocEntries[index].reserved = 0x00;
 				    tocEntries[index].TrackNumber = trackInfo->track_number;
 				    tocEntries[index].reserved2 = 0x00;
