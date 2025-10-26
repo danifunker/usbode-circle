@@ -807,6 +807,10 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     // Hardware serial number for USB device identification
     char m_HardwareSerialNumber[20];   // Format: "USBODE-XXXXXXXX"
 
+    // Debug flag to enable verbose CD-ROM logging
+    bool m_bDebugLogging;
+
+
 };
 
 #endif
