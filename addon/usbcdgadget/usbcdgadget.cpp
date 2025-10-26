@@ -1490,10 +1490,10 @@ void CUSBCDGadget::HandleSCSICommand() {
 	    //u8 open = (m_CBW.CBWCB[1] >> 2) & 0x01; unused in this command
 	    u8 addressType = m_CBW.CBWCB[1] & 0x03;
 	    u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-            u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
+        u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
 	    //u8 control = m_CBW.CBWCB[9]; unused in this command
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Track Information");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Read Track Information");
 
 	    TUSBCDTrackInformationBlock response;
 	    memset(&response, 0, sizeof(TUSBCDTrackInformationBlock));
@@ -1586,14 +1586,29 @@ void CUSBCDGadget::HandleSCSICommand() {
 		if (discChanged) {
 		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification - sending NewMedia event");
 		    event.eventCode = 0x02; // NewMedia event
-
-		    // Only clear the disc changed event if we're
-		    // actually going to send it
-		    if (allocationLength > 4)
-			discChanged = false;
+		    event.data[0] = m_CDReady ? 0x02 : 0x00; // Media present : No media
+		    
+		    // Only clear the disc changed event if we're actually going to send the full response
+		    if (allocationLength >= (sizeof(TUSBCDEventStatusReplyHeader) + sizeof(TUSBCDEventStatusReplyEvent))) {
+			    discChanged = false;
+		    }
+		} else if (m_CDReady) {
+		    event.eventCode = 0x00; // No Change
+		    event.data[0] = 0x02; // Media present
+		} else {
+		    event.eventCode = 0x03; // Media Removal
+		    event.data[0] = 0x00; // No media
 		}
+		
+		event.data[1] = 0x00; // Reserved
+		event.data[2] = 0x00; // Reserved
 		memcpy(m_InBuffer + sizeof(TUSBCDEventStatusReplyHeader), &event, sizeof(TUSBCDEventStatusReplyEvent));
                	length += sizeof(TUSBCDEventStatusReplyEvent);
+	    } else {
+		    // No supported event class requested
+		    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification - no supported class requested");
+		    header.notificationClass = 0x00;
+		    header.eventDataLength = htons(0x00);
 	    }
 
 	    memcpy(m_InBuffer, &header, sizeof(TUSBCDEventStatusReplyHeader));
