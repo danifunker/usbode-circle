@@ -1779,12 +1779,42 @@ void CUSBCDGadget::HandleSCSICommand() {
                     // offset to make space for the header
                     dataLength += sizeof(header);
 
-                    // Copy all features
-                    memcpy(m_InBuffer + dataLength, &profile_list, sizeof(profile_list));
-                    dataLength += sizeof(profile_list);
-
-                    memcpy(m_InBuffer + dataLength, &cdrom_profile, sizeof(cdrom_profile));
-                    dataLength += sizeof(cdrom_profile);
+                    // Dynamic profile list based on media type
+                    // CD-only media: advertise ONLY CD-ROM profile (pure CD drive)
+                    // DVD media: advertise both DVD and CD profiles (combo drive)
+                    TUSBCDProfileListFeatureReply dynProfileList = profile_list;
+                    
+                    if (m_mediaType == MEDIA_TYPE::DVD) {
+                        // Combo drive: advertise both profiles (8 bytes)
+                        dynProfileList.AdditionalLength = 0x08;
+                        memcpy(m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
+                        dataLength += sizeof(dynProfileList);
+                        
+                        // MMC spec: descending order (DVD 0x0010 before CD 0x0008)
+                        TUSBCProfileDescriptorReply activeDVD = dvd_profile;
+                        activeDVD.currentP = 0x01;  // DVD IS current
+                        memcpy(m_InBuffer + dataLength, &activeDVD, sizeof(activeDVD));
+                        dataLength += sizeof(activeDVD);
+                        
+                        TUSBCProfileDescriptorReply activeCD = cdrom_profile;
+                        activeCD.currentP = 0x00;  // CD not current
+                        memcpy(m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
+                        dataLength += sizeof(activeCD);
+                        
+                        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION: DVD/CD combo drive, DVD current");
+                    } else {
+                        // CD-only drive: advertise only CD-ROM profile (4 bytes)
+                        dynProfileList.AdditionalLength = 0x04;
+                        memcpy(m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
+                        dataLength += sizeof(dynProfileList);
+                        
+                        TUSBCProfileDescriptorReply activeCD = cdrom_profile;
+                        activeCD.currentP = 0x01;  // CD IS current
+                        memcpy(m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
+                        dataLength += sizeof(activeCD);
+                        
+                        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION: CD-ROM only drive");
+                    }
 
                     memcpy(m_InBuffer + dataLength, &core, sizeof(core));
                     dataLength += sizeof(core);
@@ -1798,8 +1828,16 @@ void CUSBCDGadget::HandleSCSICommand() {
                     memcpy(m_InBuffer + dataLength, &multiread, sizeof(multiread));
                     dataLength += sizeof(multiread);
 
-                    memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
-                    dataLength += sizeof(cdread);
+                    // For DVD media, add DVD Read feature instead of/in addition to CD Read
+                    if (m_mediaType == MEDIA_TYPE::DVD) {
+                        memcpy(m_InBuffer + dataLength, &dvdread, sizeof(dvdread));
+                        dataLength += sizeof(dvdread);
+                        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x%02x): Sending DVD-Read feature (0x001f)", rt);
+                    } else {
+                        memcpy(m_InBuffer + dataLength, &cdread, sizeof(cdread));
+                        dataLength += sizeof(cdread);
+                        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x%02x): Sending CD-Read feature (0x001e), mediaType=%d", rt, (int)m_mediaType);
+                    }
 
                     memcpy(m_InBuffer + dataLength, &powermanagement, sizeof(powermanagement));
                     dataLength += sizeof(powermanagement);
@@ -1807,9 +1845,17 @@ void CUSBCDGadget::HandleSCSICommand() {
                     memcpy(m_InBuffer + dataLength, &audioplay, sizeof(audioplay));
                     dataLength += sizeof(audioplay);
 
-                    // Finally copy the header
-                    header.dataLength = htonl(dataLength - 4);
-                    memcpy(m_InBuffer, &header, sizeof(header));
+                    // Set header profile and copy to buffer
+                    TUSBCDFeatureHeaderReply dynHeader = header;
+                    if (m_mediaType == MEDIA_TYPE::DVD) {
+                        dynHeader.currentProfile = htons(PROFILE_DVD_ROM);
+                        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x%02x): Returning PROFILE_DVD_ROM (0x0010)", rt);
+                    } else {
+                        dynHeader.currentProfile = htons(PROFILE_CDROM);
+                        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "GET CONFIGURATION (rt 0x%02x): Returning PROFILE_CDROM (0x0008)", rt);
+                    }
+                    dynHeader.dataLength = htonl(dataLength - 4);
+                    memcpy(m_InBuffer, &dynHeader, sizeof(dynHeader));
 
                     break;
                 }
