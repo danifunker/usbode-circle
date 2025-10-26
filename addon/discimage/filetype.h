@@ -7,8 +7,8 @@ enum class FileType {
 };
 
 enum class MEDIA_TYPE {
+    NONE,
     CD,
-    DVD,
-    NONE
+    DVD
 };
 #endif
