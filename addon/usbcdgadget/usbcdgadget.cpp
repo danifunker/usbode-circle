@@ -810,7 +810,26 @@ int CUSBCDGadget::GetSkipBytesFromMCS(uint8_t mainChannelSelection) {
 //  https://chatgpt.com/share/683ecad4-e250-8012-b9aa-22c76de6e871
 //
 void CUSBCDGadget::HandleSCSICommand() {
-    //CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    
+    // MacOS compatibility: Check for Unit Attention state before processing commands
+    // Per SCSI spec, when Unit Attention is pending, most commands must return CHECK CONDITION
+    // Exceptions: REQUEST SENSE (must deliver the attention) and INQUIRY (allowed by SCSI-2)
+    // This is critical for MacOS to properly detect media changes and mount filesystems
+    u8 cmd = m_CBW.CBWCB[0];
+    if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION && 
+        cmd != 0x03 &&  // REQUEST SENSE - must deliver Unit Attention
+        cmd != 0x12 &&  // INQUIRY - allowed per SCSI-2 spec
+        cmd != 0x5a) {  // MODE SENSE(10) - Windows 98 SE sends this during init
+        
+        MLOGDEBUG("HandleSCSICommand", "Command 0x%02x blocked by Unit Attention", cmd);
+        m_SenseParams.bSenseKey = 0x06;           // Not Ready
+        m_SenseParams.bAddlSenseCode = 0x28;      // NOT READY TO READY CHANGE
+        m_SenseParams.bAddlSenseCodeQual = 0x00;  
+        bmCSWStatus = CD_CSW_STATUS_FAIL;
+        return;
+    }
+    
     switch (m_CBW.CBWCB[0]) {
         case 0x00:  // Test unit ready
         {
@@ -821,6 +840,14 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
                 m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
             }
+
+            if (m_mediaState == MediaState::NO_MEDIUM) {
+                m_SenseParams.bSenseKey = 0x02; 
+                m_SenseParams.bAddlSenseCode = 0x3A; 
+                m_SenseParams.bAddlSenseCodeQual = 0x00;
+                bmCSWStatus = CD_CSW_STATUS_FAIL;
+                break;
+            }            
 	    
             //CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
             m_CSW.bmCSWStatus = bmCSWStatus;
