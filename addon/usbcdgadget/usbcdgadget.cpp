@@ -905,8 +905,10 @@ void CUSBCDGadget::HandleSCSICommand() {
                 m_nState = TCDState::DataInRead;  // see Update() function
             } else {
                 CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, %s", m_CDReady ? "ready" : "not ready");
-                setSenseData(0x02, 0x04, 0x00);  // Not Ready, Logical Unit Not Ready
-                sendCheckCondition();
+                m_SenseParams.bSenseKey = 0x02;          // Not Ready
+        	    m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
+        	    m_SenseParams.bAddlSenseCodeQual = 0x00;  // MEDIUM MAY HAVE CHANGED
+                m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
             }
             break;
         }        
