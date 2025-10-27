@@ -84,6 +84,22 @@ void change_extension_to_cue(char* fullPath) {
     }
 }
 
+bool hasDvdHint(const char* imageName) {
+    const char* p = imageName;
+    while (*p) {
+        // Look for a dot followed by 'd', 'v', 'd', dot (case-insensitive)
+        if (tolower(p[0]) == '.' &&
+            tolower(p[1]) == 'd' &&
+            tolower(p[2]) == 'v' &&
+            tolower(p[3]) == 'd' &&
+            tolower(p[4]) == '.') {
+            return true;
+        }
+        ++p;
+    }
+    return false;
+}
+
 bool ReadFileToString(const char* fullPath, char** out_str) {
     if (!out_str) return false;  // safeguard
 
@@ -119,6 +135,7 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
 }
 
 ICueDevice* loadCueBinFileDevice(const char* imageName) {
+    MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
     // Construct full path
     char fullPath[255];  // FIXME limits
     snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
@@ -157,7 +174,7 @@ ICueDevice* loadCueBinFileDevice(const char* imageName) {
     LOGNOTE("Opened image file %s", fullPath);
 
     // Create our device
-    ICueDevice* ccueBinFileDevice = new CCueBinFileDevice(imageFile, cue_str);
+    ICueDevice* ccueBinFileDevice = new CCueBinFileDevice(imageFile, cue_str, mediaType);
 
     // Cleanup
     if (cue_str != nullptr)

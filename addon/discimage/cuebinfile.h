@@ -18,7 +18,7 @@
 
 class CCueBinFileDevice : public ICueDevice {
    public:
-    CCueBinFileDevice(FIL* pFile, char* cue_str = nullptr);
+    CCueBinFileDevice(FIL* pFile, char* cue_str = nullptr, MEDIA_TYPE mediaType = MEDIA_TYPE::CD);
     ~CCueBinFileDevice(void);
 
     int Read(void* pBuffer, size_t nCount);
@@ -27,11 +27,13 @@ class CCueBinFileDevice : public ICueDevice {
     u64 GetSize(void) const;
     u64 Tell() const;
     const char* GetCueSheet() const;
+    MEDIA_TYPE GetMediaType() const override { return m_mediaType; }
 
    private:
     FIL* m_pFile;
     FileType m_FileType = FileType::ISO;
     char* m_cue_str = nullptr;
+    MEDIA_TYPE m_mediaType;
     static constexpr const char* default_cue_sheet =
         "FILE \"image.iso\" BINARY\n"
         "  TRACK 01 MODE1/2048\n"

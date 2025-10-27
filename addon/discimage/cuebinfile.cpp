@@ -26,7 +26,7 @@
 
 LOGMODULE("CCueBinFileDevice");
 
-CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str) {
+CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE mediaType) : m_mediaType(mediaType) {
     m_pFile = pFile;
     if (cue_str != nullptr) {
         // If we were given a cue sheet

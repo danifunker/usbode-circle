@@ -122,7 +122,8 @@ struct ModeSense10Header {
     u16 modeDataLength;
     u8 mediumType;
     u8 deviceSpecificParameter;
-    u32 blockDescriptorLength;
+    u16 reserved;                  // Reserved (was incorrectly u32 blockDescriptorLength)
+    u16 blockDescriptorLength;
 } PACKED;
 #define SIZE_MODE_SENSE10_HEADER 8
 
@@ -159,6 +160,8 @@ struct ModePage0x2AData {
     u16 bufferSize;
     u16 currentSpeed;
     u8 reserved1[4];
+    u16 maxReadSpeed;
+    u8 reserved2[2];
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X2A 20
 
@@ -180,7 +183,7 @@ struct ModePage0x0EData {
 #define SIZE_MODE_SENSE10_PAGE_0X0E 16
 
 // reply to SCSI Inquiry Command 0x12
-struct TUSBCDInquiryReply  // 36 bytes
+struct TUSBCDInquiryReply  // 96 bytes
 {
     u8 bPeriphQualDevType;
     u8 bRMB;
@@ -193,8 +196,12 @@ struct TUSBCDInquiryReply  // 36 bytes
     u8 bVendorID[8];
     u8 bProdID[16];
     u8 bProdRev[4];
+    u8 bVendorSpecific[20];  // Bytes 36-55: Vendor specific
+    u8 bReserved[2];         // Bytes 56-57: Reserved
+    u8 bVersionDescriptors[16]; // Bytes 58-73: Version descriptors (8 x 2-byte values)
+    u8 bReserved2[22];       // Bytes 74-95: Reserved/padding
 } PACKED;
-#define SIZE_INQR 36
+#define SIZE_INQR 96
 
 struct TUSBUintSerialNumberPage {
     u8 PageCode;         // 0x80
@@ -366,7 +373,7 @@ struct TUSBCProfileDescriptorReply {
 #define SIZE_PROFILE_DESCRIPTOR_REPLY 4
 
 #define PROFILE_CDROM 0x0008
-// #define PROFILE_DVD_ROM 0x0010
+#define PROFILE_DVD_ROM 0x0010
 
 struct TUSBCDCoreFeatureReply {
     u16 featureCode;
@@ -436,6 +443,17 @@ struct TUSBCDCDReadFeatureReply {
     u8 reserved3;
 } PACKED;
 #define SIZE_CD_READ_HEADER_REPLY 4
+
+struct TUSBCDDVDReadFeatureReply {
+    u16 featureCode;
+    u8 VersionPersistentCurrent;
+    u8 AdditionalLength;
+    u8 MultiUnitsDUALLayerBuff;
+    u8 reserved1;
+    u8 reserved2;
+    u8 reserved3;
+} PACKED;
+#define SIZE_DVD_READ_HEADER_REPLY 8
 
 struct TUSBCDSubChannelHeaderReply {
     u8 reserved;
@@ -520,6 +538,17 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     void ProcessOut(size_t nLength);
 
+    MEDIA_TYPE m_mediaType = MEDIA_TYPE::CD;
+
+    // Media state for proper MacOS Unit Attention handling
+    enum class MediaState {
+        NO_MEDIUM,                      // No disc present
+        MEDIUM_PRESENT_UNIT_ATTENTION,  // Disc present but needs Unit Attention
+        MEDIUM_PRESENT_READY            // Disc present and ready
+    };
+
+    MediaState m_mediaState = MediaState::NO_MEDIUM;
+    
    private:
     void HandleSCSICommand();
 
@@ -600,7 +629,11 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 	 0x00, // Obsolete Obsolete WBUS16a SYNCa LINKED Obsolete CMDQUE VS
 	 {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, // Vendor Identification
 	 {'C', 'D', 'R', 'O', 'M', ' ', 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', ' ', ' '},
-	 {'0', '0', '0', '1'}
+	 {'0', '0', '0', '1'}, // Product Revision
+	 {0}, // Vendor specific (20 bytes, all zeros)
+	 {0}, // Reserved (2 bytes)
+	 {0}, // Version descriptors (16 bytes, all zeros for now)
+	 {0}  // Reserved/padding (22 bytes)
     };
     TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
 
@@ -687,6 +720,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         0x00                   // reserved
     };
 
+    // Profiles 0010h DVD-ROM
+    TUSBCProfileDescriptorReply dvd_profile = {
+        htons(PROFILE_DVD_ROM),  // profileNumber
+        0x01,                    // currentP
+        0x00                     // reserved
+    };
+
     // Feature 0001h - Core
     TUSBCDCoreFeatureReply core = {
         htons(0x0001),  // featureCode
@@ -751,6 +791,17 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         0x0b,           // VersionPersistentCurrent
         0x04,           // AdditionalLength
         0x00,           // DAPC2FlagsCDText
+        0x00,           // reserved
+        0x00,           // reserved
+        0x00            // reserved
+    };
+
+    // Feature 001fh - DVD Read - The ability to read DVD specific structures
+    TUSBCDDVDReadFeatureReply dvdread = {
+        htons(0x001f),  // featureCode
+        0x0b,           // VersionPersistentCurrent
+        0x04,           // AdditionalLength
+        0x01,           // MultiUnitsDUALLayerBuff (MULTI110=0, DUAL_L=0, BUFF=1)
         0x00,           // reserved
         0x00,           // reserved
         0x00            // reserved
