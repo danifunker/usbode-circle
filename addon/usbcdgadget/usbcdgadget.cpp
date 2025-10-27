@@ -2839,6 +2839,42 @@ void CUSBCDGadget::Update() {
             break;
         }
 
+        case 0xBD:  // MECHANISM STATUS
+        {
+            u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+            
+            struct MechanismStatus {
+                u8 fault : 1;           // bit 0
+                u8 changer_state : 2;   // bits 2-1
+                u8 current_slot : 5;    // bits 7-3
+                u8 mechanism_state : 5; // bits 4-0 of byte 1
+                u8 door_open : 1;       // bit 4 of byte 1
+                u8 reserved1 : 2;       // bits 7-6
+                u8 current_lba[3];      // bytes 2-4 (24-bit LBA)
+                u8 num_slots;           // byte 5
+                u16 slot_table_length;  // bytes 6-7
+            } PACKED;
+            
+            MechanismStatus status = {0};
+            status.fault = 0;
+            status.changer_state = 0;     // No changer
+            status.current_slot = 0;      // Slot 0
+            status.mechanism_state = 0x00; // Idle
+            status.door_open = 0;         // Door closed (tray loaded)
+            status.num_slots = 1;         // Single slot device
+            status.slot_table_length = 0; // No slot table
+            
+            int length = sizeof(MechanismStatus);
+            if (allocationLength < length) length = allocationLength;
+            
+            memcpy(m_InBuffer, &status, length);
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                    m_InBuffer, length);
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+            break;
+        }        
+
             /*
                     case TCDState::DataOutWrite:
                             {
