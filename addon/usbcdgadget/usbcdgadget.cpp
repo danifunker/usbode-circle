@@ -2353,7 +2353,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
         case 0x5a:  // Mode Sense (10)
         {
-            // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
 
             int LLBAA = (m_CBW.CBWCB[1] >> 7) & 0x01; // We don't support this
             int DBD = (m_CBW.CBWCB[1] >> 6) & 0x01; // TODO: Implement this!
@@ -2453,17 +2453,35 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    ModePage0x2AData codepage;
 			    memset(&codepage, 0, sizeof(codepage));
 			    codepage.pageCodeAndPS = 0x2a;
-			    codepage.pageLength = 18;
-			    codepage.capabilityBits[0] = 0x01;  // Can read CD-R
+			    codepage.pageLength = 22;  // Fixed: should be 22 bytes (includes maxReadSpeed)
+			    
+			    // Capability bits - dynamic based on media type
+			    // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
+			    if (m_mediaType == MEDIA_TYPE::DVD) {
+                     // DVD-ROM read capability (bit 0)
+                     // CD-R read capability (bit 3)
+                     // CD-RW read capability (bit 4)
+                     // Method 2 support (bit 5) for proper DVD reading
+                     // CRITICAL: Must advertise DVD read capability or macOS will reject the disc!
+			        codepage.capabilityBits[0] = 0x39;  // 0011 1001 = DVD-ROM + CD-R + CD-RW + Method 2
+			        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning DVD capabilities (0x39)");
+			    } else {
+			        // CD-ROM read capability (bit 3 = CD-R read, which implies CD-ROM read)
+			        // Method 2 support (bit 5) for proper CD reading
+			        // CRITICAL: Must advertise read capability or macOS will reject the disc!
+			        codepage.capabilityBits[0] = 0x28;  // 0010 1000 = CD-R Read + Method 2
+			        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A: Returning CD-ROM capabilities (0x28 = CD-R + Method2)");
+			    }
 			    codepage.capabilityBits[1] = 0x00;  // Can't write
-			    codepage.capabilityBits[2] = 0x01;  // AudioPlay
+			    codepage.capabilityBits[2] = 0x01;  // CD-DA supported (bit 0 only - v2.6.0 working config)
 			    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
-			    codepage.capabilityBits[4] = 0x28;  // tray loading mechanism, with eject
+			    codepage.capabilityBits[4] = 0x29;  // Tray loading mechanism, eject supported, lock supported
 			    codepage.capabilityBits[5] = 0x00;
 			    codepage.maxSpeed = htons(706);  // 4x
 			    codepage.numVolumeLevels = htons(0x00ff);
 			    codepage.bufferSize = htons(0);
 			    codepage.currentSpeed = htons(1412);
+				codepage.maxReadSpeed = htons(706);  // 4x max read speed
 
 			    // Copy the header & Code Page
 			    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
@@ -2518,7 +2536,7 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 			default: {
 			    // We don't support this code page
-			    // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) unsupported page 0x%02x", page);
+			    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) unsupported page 0x%02x", page);
 			    bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
 			    m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
 			    m_SenseParams.bAddlSenseCode = 0x24;      // INVALID FIELD IN COMMAND PACKET
@@ -2568,21 +2586,66 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 
         case 0xa4:  // Weird thing from Windows 2000
-	{
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "A4 from Win2k");
+        {
+        u8 keyFormat = m_CBW.CBWCB[10] & 0x3F;
+        u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+        
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "REPORT KEY format=0x%02x", keyFormat);
+        
+        switch(keyFormat) {
+            case 0x00:  // AGID (Authentication Grant ID)
+            {
+                // Return no CSS protection (non-encrypted disc)
+                u8 response[8] = {0};
+                response[0] = 0x00;  // Data length MSB
+                response[1] = 0x06;  // Data length LSB (6 bytes follow)
+                response[7] = 0x00;  // No valid AGID (bits 7-6 = 00b)
+                
+                int length = sizeof(response);
+                if (allocationLength < length) length = allocationLength;
+                
+                memcpy(m_InBuffer, response, length);
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, 
+                                        m_InBuffer, length);
+                m_nState = TCDState::DataIn;
+                m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+                break;
+            }
+            
+            case 0x08:  // Report Region Settings (RPC)
+            {
+                u8 response[8] = {0};
+                response[0] = 0x00;  // Data length MSB
+                response[1] = 0x06;  // Data length LSB
+                response[2] = 0x01;  // Type Code (RPC Phase II)
+                response[3] = 0x00;  // Region Mask = 0 (all regions)
+                response[4] = 0x00;  // RPC Scheme = 0 (no region control)
+                response[5] = 0x00;  // User changes remaining
+                response[6] = 0x00;  // Vendor resets remaining
+                response[7] = 0x00;  // Reserved
+                
+                int length = sizeof(response);
+                if (allocationLength < length) length = allocationLength;
+                
+                memcpy(m_InBuffer, response, length);
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                        m_InBuffer, length);
+                m_nState = TCDState::DataIn;
+                m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+                break;
+            }
+            
+            default:
+                // Unsupported key format
+                m_SenseParams.bSenseKey = 0x05;		  // Illegal Request
+                m_SenseParams.bAddlSenseCode = 0x24;     // INVALID FIELD IN COMMAND PACKET
+                m_SenseParams.bAddlSenseCodeQual = 0x00;                  
+                bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
+                break;
+        }
+        break;
+    }
 
-	    // Response copied from an ASUS CDROM drive. It seems to know
-	    // what this is, so let's just copy it
-	    u8 response[] = {0x0, 0x6, 0x0, 0x0, 0x25, 0xff, 0x1, 0x0};
-
-            memcpy(m_InBuffer, response, sizeof(response));
-
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       m_InBuffer, sizeof(response));
-            m_nState = TCDState::DataIn;
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-	    break;
-	}
 
 	// SCSI TOOLBOX
         case 0xD9:  // LIST DEVICES
@@ -2717,8 +2780,11 @@ void CUSBCDGadget::Update() {
             int readCount = 0;
             if (m_CDReady) {
 
-                CDROM_DEBUG_LOG("UpdateRead", "Seek to %lu", block_size * m_nblock_address);
-                offset = m_pDevice->Seek(block_size * m_nblock_address);
+                CDROM_DEBUG_LOG("UpdateRead", "Starting read: m_nblock_address=%lu, m_nnumber_blocks=%lu, block_size=%d, transfer_block_size=%d", 
+                         m_nblock_address, m_nnumber_blocks, block_size, transfer_block_size);
+                CDROM_DEBUG_LOG("UpdateRead", "Seek to %llu", (u64)block_size * m_nblock_address);
+                offset = m_pDevice->Seek((u64)block_size * m_nblock_address);  // Cast to u64 to prevent overflow
+				CDROM_DEBUG_LOG("UpdateRead", "Seek returned offset=%llu", offset);
                 if (offset != (u64)(-1)) {
                     // Cap at MAX_BLOCKS_READ blocks. This is what a READ CD request will
 		    // require any excess blocks will be read next time around this loop
@@ -2750,8 +2816,8 @@ void CUSBCDGadget::Update() {
                         return;  // Exit if read failed
                     }
 
-                    u8* dest_ptr = m_InBuffer;  // Pointer to current write position in m_InBuffer
                     u32 total_copied = 0;
+                    u8* dest_ptr = m_InBuffer;  // Pointer to current write position in m_InBuffer
 
                     // Iterate through the *read data* in memory
 		    // TODO Optimization, if transfer_block_size and block_size are the same, and 
@@ -2838,6 +2904,42 @@ void CUSBCDGadget::Update() {
             }
             break;
         }
+
+        case 0xBD:  // MECHANISM STATUS
+        {
+            u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+            
+            struct MechanismStatus {
+                u8 fault : 1;           // bit 0
+                u8 changer_state : 2;   // bits 2-1
+                u8 current_slot : 5;    // bits 7-3
+                u8 mechanism_state : 5; // bits 4-0 of byte 1
+                u8 door_open : 1;       // bit 4 of byte 1
+                u8 reserved1 : 2;       // bits 7-6
+                u8 current_lba[3];      // bytes 2-4 (24-bit LBA)
+                u8 num_slots;           // byte 5
+                u16 slot_table_length;  // bytes 6-7
+            } PACKED;
+            
+            MechanismStatus status = {0};
+            status.fault = 0;
+            status.changer_state = 0;     // No changer
+            status.current_slot = 0;      // Slot 0
+            status.mechanism_state = 0x00; // Idle
+            status.door_open = 0;         // Door closed (tray loaded)
+            status.num_slots = 1;         // Single slot device
+            status.slot_table_length = 0; // No slot table
+            
+            int length = sizeof(MechanismStatus);
+            if (allocationLength < length) length = allocationLength;
+            
+            memcpy(m_InBuffer, &status, length);
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                    m_InBuffer, length);
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+            break;
+        }        
 
             /*
                     case TCDState::DataOutWrite:
