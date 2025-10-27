@@ -2398,6 +2398,35 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    	break;
 			}
 
+                        // In case 0x5a, add new page:
+            case 0x0D: {  // CD Device Parameters
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+                                "MODE SENSE(10) Page 0x0D (CD Device Parameters)");
+                
+                struct CDDeviceParametersPage {
+                    u8 pageCode;        // 0x0D
+                    u8 pageLength;      // 0x06
+                    u8 reserved1;
+                    u8 inactivityTimer; // Minutes before standby
+                    u16 secondsPerMSF;  // S/MSF units per second
+                    u16 framesPerMSF;   // F/MSF units per second
+                } PACKED;
+                
+                CDDeviceParametersPage codePage = {0};
+                codePage.pageCode = 0x0D;
+                codePage.pageLength = 0x06;
+                codePage.inactivityTimer = 0x00;  // No auto-standby
+                codePage.secondsPerMSF = htons(60);   // 60 S units per second
+                codePage.framesPerMSF = htons(75);    // 75 F units per second
+                
+                //memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+
+                memcpy(m_InBuffer + length, &codePage, sizeof(codePage));
+                length += sizeof(codePage);
+                break;
+            }
+
+
 			case 0x1a: {
 			    // Mode Page 0x1A (Power Condition)
 			    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response");
