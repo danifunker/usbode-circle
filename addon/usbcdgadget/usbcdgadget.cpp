@@ -1090,58 +1090,65 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
-        case 0x25:  // Read Capacity (10))
+        case 0x25:  // Read Capacity (10)
         {
-            m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);  // this value is the Start address of last recorded lead-out minus 1
-            memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
-            m_nnumber_blocks = 0;  // nothing more after this send
+            // Write directly to buffer with proper alignment
+            uint32_t lastBlock = htonl(GetLeadoutLBA() - 1);
+            uint32_t sectorSize = htonl(2048);
+            
+            // Ensure proper alignment by writing to buffer directly
+            memcpy(&m_InBuffer[0], &lastBlock, 4);
+            memcpy(&m_InBuffer[4], &sectorSize, 4);
+            
+            m_nnumber_blocks = 0;
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       m_InBuffer, SIZE_READCAPREP);
+                                        m_InBuffer, SIZE_READCAPREP);
             m_nState = TCDState::DataIn;
             m_CSW.bmCSWStatus = bmCSWStatus;
             break;
         }
-
-        case 0x28:  // Read (10)
+        case 0x28:  // Read(10)
         {
             if (m_CDReady) {
-                // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Read (10)");
-                // will be updated if read fails on any block
                 m_CSW.bmCSWStatus = bmCSWStatus;
-
-                // Where to start reading (LBA)
-                m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
-                // Number of blocks to read (LBA)
-                m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
-
-                // Transfer Block Size is the size of data to return to host
-                // Block Size and Skip Bytes is worked out from cue sheet
-                // For a CDROM, this is always 2048
+                
+                // Build LBA from byte array (already safe)
+                m_nblock_address = ((uint32_t)m_CBW.CBWCB[2] << 24) | 
+                                ((uint32_t)m_CBW.CBWCB[3] << 16) | 
+                                ((uint32_t)m_CBW.CBWCB[4] << 8) | 
+                                (uint32_t)m_CBW.CBWCB[5];
+                
+                m_nnumber_blocks = ((uint32_t)m_CBW.CBWCB[7] << 8) | 
+                                (uint32_t)m_CBW.CBWCB[8];
+                
                 transfer_block_size = 2048;
-                block_size = data_block_size;  // set at SetDevice
-                skip_bytes = data_skip_bytes;  // set at SetDevice;
-		mcs = 0;
-
-                m_nbyteCount = m_CBW.dCBWDataTransferLength;
-
-                // What is this?
+                block_size = data_block_size;
+                skip_bytes = data_skip_bytes;
+                mcs = 0;
+                
+                // Use memcpy to safely access potentially misaligned 32-bit field
+                // This is the critical fix for the alignment error
+                uint32_t transferLength;
+                memcpy(&transferLength, &m_CBW.dCBWDataTransferLength, sizeof(uint32_t));
+                m_nbyteCount = transferLength;
+                
                 if (m_nnumber_blocks == 0) {
                     m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
                 }
+                
                 m_CSW.bmCSWStatus = bmCSWStatus;
-                m_nState = TCDState::DataInRead;  // see Update() function
+                m_nState = TCDState::DataInRead;
             } else {
-                CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s", m_CDReady ? "ready" : "not ready");
+                CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s", 
+                            m_CDReady ? "ready" : "not ready");
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                 m_SenseParams.bSenseKey = 0x02;
-                m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
-                m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+                m_SenseParams.bAddlSenseCode = 0x04;
+                m_SenseParams.bAddlSenseCodeQual = 0x00;
                 SendCSW();
             }
             break;
         }
-
         case 0xBE:  // READ CD
         {
             if (m_CDReady) {
