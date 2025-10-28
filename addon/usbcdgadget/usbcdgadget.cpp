@@ -148,7 +148,7 @@ const char* const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "\x04\x03\x09\x04",  // Language ID
         "USBODE",
         "USB Optical Disk Emulator",  // Product (index 2)
-        "USBODE00001"         // Template Serial Number (index 3) - will be replaced with hardware serial
+        "USBODE00001"         // Template Serial Number (index 3) - will be replaced with hardware serial 
     };
 
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpeed, ICueDevice* pDevice)
@@ -165,16 +165,23 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem* pInterruptSystem, boolean isFullSpe
     TPropertyTagSerial Serial;
     if (Tags.GetTag(PROPTAG_GET_BOARD_SERIAL, &Serial, sizeof(Serial)))
     {
-        // Format hardware serial number as "USBODE-XXXXXXXX" using the lower 32 bits
         snprintf(m_HardwareSerialNumber, sizeof(m_HardwareSerialNumber), "USBODE-%08X", Serial.Serial[0]);
-        MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "Using hardware serial: %s (from %08X%08X)", 
-                 m_HardwareSerialNumber, Serial.Serial[1], Serial.Serial[0]);
     }
     else
     {
-        // Fallback to default serial number if hardware fetch fails
-        strcpy(m_HardwareSerialNumber, "USBODE-00000001");
-        MLOGERR("CUSBCDGadget::CUSBCDGadget", "Failed to get hardware serial, using fallback: %s", m_HardwareSerialNumber);
+        snprintf(m_HardwareSerialNumber, sizeof(m_HardwareSerialNumber), "USBODE-00000000");
+    }
+
+    // populate Unit Serial Number VPD (page 0x80) from hardware serial
+    {
+        size_t maxlen = sizeof(m_InqSerialReply.SerialNumber);
+        size_t slen = 0;
+        while (slen < maxlen && m_HardwareSerialNumber[slen] != '\0')
+            ++slen;
+        m_InqSerialReply.PageLength = (u8)slen;
+        memset(m_InqSerialReply.SerialNumber, 0, maxlen);
+        if (slen)
+            memcpy(m_InqSerialReply.SerialNumber, m_HardwareSerialNumber, slen);
     }
     
     // Initialize string descriptors with hardware serial number
@@ -385,19 +392,38 @@ int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo) {
 
 // Make an assumption about media type based on track 1 mode
 int CUSBCDGadget::GetMediumType() {
+    // Check media type first - DVD vs CD
+    if (m_mediaType == MEDIA_TYPE::DVD) {
+        MLOGNOTE("CUSBCDGadget::GetMediumType", "Detected DVD media");
+        return 0x70;  // DVD-ROM
+    }
+    
+    // For CD media, determine the specific type
+    bool hasAudio = false;
+    bool hasData = false;
+    
     cueParser.restart();
     const CUETrackInfo* trackInfo = nullptr;
-    cueParser.restart();
+    
     while ((trackInfo = cueParser.next_track()) != nullptr) {
-        if (trackInfo->track_number == 1 && trackInfo->track_mode == CUETrack_AUDIO)
-            // Audio CD
-            return 0x02;
-        else if (trackInfo->track_number > 1)
-            // Mixed mode
-            return 0x03;
+        if (trackInfo->track_mode == CUETrack_AUDIO) {
+            hasAudio = true;
+        } else {
+            hasData = true;
+        }
     }
-    // Must be a data cd
-    return 0x01;
+    
+    // Determine CD type based on track content
+    if (hasAudio && hasData) {
+        MLOGNOTE("CUSBCDGadget::GetMediumType", "Detected mixed mode CD");
+        return 0x03;  // CD-ROM data and audio combined (mixed mode)
+    } else if (hasAudio) {
+        MLOGNOTE("CUSBCDGadget::GetMediumType", "Detected audio ONLY CD");
+        return 0x02;  // CD-ROM audio only (CD-DA)
+    } else {
+        MLOGNOTE("CUSBCDGadget::GetMediumType", "Detected data ONLY CD");
+        return 0x01;  // CD-ROM data only
+    }
 }
 
 CUETrackInfo CUSBCDGadget::GetTrackInfoForTrack(int track) {
@@ -462,30 +488,43 @@ u32 CUSBCDGadget::GetLeadoutLBA() {
     u32 file_offset = 0;
     u32 sector_length = 0;
     u32 track_start = 0;
-
+    
     // Find the last track
     cueParser.restart();
     while ((trackInfo = cueParser.next_track()) != nullptr) {
         file_offset = trackInfo->file_offset;
         sector_length = trackInfo->sector_length;
-        track_start = trackInfo->data_start; // I think this is right
+        track_start = trackInfo->track_start;  // FIX: Use track_start, not data_start!
     }
-
-    u64 deviceSize = m_pDevice->GetSize();  // Use u64 to support DVDs > 4GB
-
-    // We know the start position of the last track, and we know its sector length
-    // and we know the file size, so we can work out the LBA of the end of the last track
-    // We can't just divide the file size by sector size because sectors lengths might
-    // not be consistent (e.g. multi-mode cd where track 1 is 2048
-    u64 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
-    u32 ret = track_start + (u32)lastTrackBlocks;  // Cast back to u32 for LBA (max ~2TB disc)
-    CDROM_DEBUG_LOG("CUSBCDGadget::GetLeadoutLBA", "device size is %llu, last track file offset is %lu, last track sector_length is %lu, last track track_start is %lu, lastTrackBlocks = %llu, returning = %lu", deviceSize, file_offset, sector_length, track_start, lastTrackBlocks, ret);
-
-    // Some corrupted cd images might have a cue that references track that are
+    
+    u64 deviceSize = m_pDevice->GetSize();
+    
+    // Some corrupted cd images might have a cue that references tracks that are
     // outside the bin.
-    if (deviceSize < file_offset)
+    if (deviceSize < file_offset) {
+        MLOGNOTE("GetLeadoutLBA", "ERROR: file_offset (%u) > deviceSize (%llu), returning track_start=%u", 
+            file_offset, deviceSize, track_start);
         return track_start;
-
+    }
+    
+    // Calculate blocks in last track
+    u64 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
+    
+    // Calculate final LBA with overflow protection
+    u64 ret64 = track_start + lastTrackBlocks;
+    
+    if (ret64 > 0xFFFFFFFF) {
+        MLOGNOTE("GetLeadoutLBA", "WARNING: LBA overflow (%llu), clamping to max u32", ret64);
+        return 0xFFFFFFFF;
+    }
+    
+    u32 ret = (u32)ret64;
+    
+    CDROM_DEBUG_LOG("CUSBCDGadget::GetLeadoutLBA", 
+        "device size is %llu, last track file offset is %u, last track sector_length is %u, "
+        "last track track_start is %u, lastTrackBlocks = %llu, returning = %u", 
+        deviceSize, file_offset, sector_length, track_start, lastTrackBlocks, ret);
+    
     return ret;
 }
 
@@ -778,8 +817,8 @@ void FillModePage2A(ModePage0x2AData& codepage) {
 
     // Capability bits (6 bytes) - dynamic based on media type
     // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
-    codepage.capabilityBits[0] = 0x01;  // Support all media types for DVD, else CD only
-    codepage.capabilityBits[1] = 0x00;  // All writable types
+    codepage.capabilityBits[0] = 0x19;  // Support all media types for DVD, else CD only
+    codepage.capabilityBits[1] = 0x03;  // All writable types
     codepage.capabilityBits[2] = 0x01;  // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
     codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
     codepage.capabilityBits[4] = 0x28;  // Tray loading mechanism, eject supported, lock supported  
@@ -788,7 +827,7 @@ void FillModePage2A(ModePage0x2AData& codepage) {
     // Speed and buffer info
     codepage.maxSpeed = htons(1412);  // 8x
     codepage.numVolumeLevels = htons(0x00ff);  // 256 volume levels
-    codepage.bufferSize = htons(0);  // Set to 0
+    codepage.bufferSize = htons(2048);  // Set to 0
     codepage.currentSpeed = htons(1412);  // Current speed
     codepage.maxReadSpeed = htons(1412);  // Some hosts check this field
 }
@@ -833,7 +872,7 @@ void FillModePage2A(ModePage0x2AData& codepage) {
 //  https://chatgpt.com/share/683ecad4-e250-8012-b9aa-22c76de6e871
 //
 void CUSBCDGadget::HandleSCSICommand() {
-    //CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
     switch (m_CBW.CBWCB[0]) {
         case 0x00:  // Test unit ready
         {
@@ -1318,27 +1357,40 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    numtracks++;
 
 		    //} else if (format == 0x01) { // Read TOC Data Format (With Format Field = 01b)
-		    }  else if (format == 0x02) {  // Full TOC
-                // Full TOC includes more detailed track information
-                // Minimum implementation for compatibility
-                
+            } else if (format == 0x02) {  // Full TOC
                 m_TOCData.FirstTrack = 0x01;
-                m_TOCData.LastTrack = 0x01;  // First complete session
+                m_TOCData.LastTrack = 0x01;  // Session number
                 datalen = SIZE_TOC_DATA;
                 
-                tocEntries = new TUSBTOCEntry[1];
+                tocEntries = new TUSBTOCEntry[3];  // A0, A1, A2
                 
-                // Point A0h - First track number in program area
+                int lastTrackNumber = GetLastTrackNumber();
+                u32 leadOutLBA = GetLeadoutLBA();
+                CUETrackInfo firstTrack = GetTrackInfoForTrack(1);
+                
+                // Point A0h - First track number
                 tocEntries[0].ADR_Control = 0x14;
-                tocEntries[0].TrackNumber = 0xA0;  // Point A0
+                tocEntries[0].TrackNumber = 0xA0;
                 tocEntries[0].reserved = 0x00;
                 tocEntries[0].reserved2 = 0x01;  // First track number
-                tocEntries[0].address = 0x00;    // PMIN/PSEC/PFRAME set to zero
-                datalen += SIZE_TOC_ENTRY;
-                numtracks = 1;
+                tocEntries[0].address = 0x00;
                 
-                // More comprehensive Full TOC implementation would add:
-                // Point A1h (Last track), Point A2h (Lead-out start)
+                // Point A1h - Last track number
+                tocEntries[1].ADR_Control = 0x14;
+                tocEntries[1].TrackNumber = 0xA1;
+                tocEntries[1].reserved = 0x00;
+                tocEntries[1].reserved2 = lastTrackNumber;  // Last track number
+                tocEntries[1].address = 0x00;
+                
+                // Point A2h - Lead-out start address
+                tocEntries[2].ADR_Control = 0x14;
+                tocEntries[2].TrackNumber = 0xA2;
+                tocEntries[2].reserved = 0x00;
+                tocEntries[2].reserved2 = 0x00;
+                tocEntries[2].address = GetAddress(leadOutLBA, msf);
+                
+                datalen += SIZE_TOC_ENTRY * 3;
+                numtracks = 3;
             }  else {
 						 
 			    CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
@@ -1647,110 +1699,102 @@ void CUSBCDGadget::HandleSCSICommand() {
             break;
         }
 
-        case 0xAD:  // READ DISC STRUCTURE aka "The Command I Was Avoiding"
+        case 0xAD:  // READ DISC STRUCTURE
         {
+            u8 format = m_CBW.CBWCB[7];
+            u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+            
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+                "Read Disc Structure, format=0x%02x, allocation=%u, mediaType=%d", 
+                format, allocationLength, (int)m_mediaType);
 
-	    // We don't advertise any "features" which should require this command
-	    // but certain versions of Windows e.g. Win2k sulk for a while if they
-	    // don't get a response. So, we're implementing bare minimum here to
-	    // keep them happy
+            int length = 0;
+            TUSBCDReadDiscStructureHeader header;
+            memset(&header, 0, sizeof(header));
 
-	    //u8 mediaType = m_CBW.CBWCB[2] && 0x0f; // unused in this command
-	    // u8 mediaType = m_CBW.CBWCB[2] & 0x0f;  // unused (note: was buggy with && instead of &)
-            // u32 address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];  // unused
-	    // u8 layer = m_CBW.CBWCB[6];  // unused
-	    u8 format = m_CBW.CBWCB[7];
-        u16 allocationLength = m_CBW.CBWCB[8] << 8 | (m_CBW.CBWCB[9]);
-	    // u8 agid = (m_CBW.CBWCB[10] >> 6) & 0x03;  // unused
-	    // u8 control = m_CBW.CBWCB[12];  // unused
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read Disc Structure, format=0x%02x, allocation length is %lu, mediaType=%d", format, allocationLength, (int)m_mediaType);
+            switch (format) {
+                case 0x00: // Physical Format Information - DVD-specific
+                case 0x02: // Disc Key Structure - DVD-specific  
+                case 0x03: // BCA (Burst Cutting Area) - DVD-specific
+                case 0x04: // Manufacturing Information - DVD-specific
+                {
+                    if (m_mediaType != MEDIA_TYPE::DVD) {
+                        // CD media requesting DVD-specific format - return minimal response
+                        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+                            "READ DISC STRUCTURE format 0x%02x requested for CD media - returning minimal response", format);
+                        header.dataLength = htons(2);  // Just header, no payload
+                    } else {
+                        // DVD media - return minimal structure
+                        header.dataLength = htons(2);  // Just header, no payload
+                    }
+                    
+                    memcpy(m_InBuffer, &header, sizeof(header));
+                    length = sizeof(header);
+                    break;
+                }
+                
+                case 0x01: // Copyright Information - valid for both CD and DVD
+                {
+                    header.dataLength = htons(6);  // Header (2) + payload (4) = 6 total bytes
+                    memcpy(m_InBuffer, &header, sizeof(header));
+                    length = sizeof(header);
 
-	    // For CD media and DVD-specific formats: return minimal empty response
-	    // MacOS doesn't handle CHECK CONDITION well for this command - causes USB reset
-	    // This is a workaround until we can properly implement stall-then-CSW sequence
-	    if (m_mediaType != MEDIA_TYPE::DVD && 
-	        (format == 0x00 || format == 0x02 || format == 0x03 || format == 0x04)) {
-		    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE format 0x%02x for CD media - returning minimal response", format);
-		    // Return minimal header indicating no data available
-		    TUSBCDReadDiscStructureHeader header;
-		    memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
-		    header.dataLength = __builtin_bswap16(2);  // Just header, no payload (big-endian)
-		    
-		    int length = sizeof(TUSBCDReadDiscStructureHeader);
-		    if (allocationLength < length)
-			    length = allocationLength;
-		    
-		    memcpy(m_InBuffer, &header, length);
-		    m_nnumber_blocks = 0;
-		    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
-		    m_nState = TCDState::DataIn;
-		    m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-		    break;  // Exit case 0xAD
-	    }
+                    u8 payload[] = {
+                        0x00, // Copyright system type = none
+                        0x00, // Region flags: 0x00 = region free
+                        0x00, // reserved
+                        0x00  // reserved
+                    };
+                    memcpy(m_InBuffer + length, payload, sizeof(payload));
+                    length += sizeof(payload);
+                    break;
+                }
 
+                default: // Unsupported format
+                {
+                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+                        "READ DISC STRUCTURE unsupported format 0x%02x", format);
+                    header.dataLength = htons(2);  // Just header
+                    memcpy(m_InBuffer, &header, sizeof(header));
+                    length = sizeof(header);
+                    break;
+                }
+            }
 
-        int length = 0;
-	    switch (format) {
-		    
-		    case 0x00: // Physical Format Information - DVD-specific
-		    case 0x02: // Disc Key Structure - DVD-specific  
-		    case 0x03: // BCA (Burst Cutting Area) - DVD-specific
-		    case 0x04: // Manufacturing Information - DVD-specific
-		    {
-			    // DVD media - return minimal structure
-                    	TUSBCDReadDiscStructureHeader header;
-                    	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
-                    	header.dataLength = 2; // just the header
-			memcpy(m_InBuffer, &header, sizeof(TUSBCDReadDiscStructureHeader));
-			length += sizeof(TUSBCDReadDiscStructureHeader);
-			break;
-		    }
-		    
-		    case 0x01: // Copyright Information - valid for both CD and DVD
-		    {
-                    	TUSBCDReadDiscStructureHeader header;
-                    	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
-                    	header.dataLength = 6;
-			memcpy(m_InBuffer, &header, sizeof(TUSBCDReadDiscStructureHeader));
-			length += sizeof(TUSBCDReadDiscStructureHeader);
-
-			u8 payload[] = {
-				0x00, // Copyright system type = none
-				0x00, // 1 bit per region. 0x00 is region free
-				0x00, // reserved
-				0x00  // reserved
-			};
-			memcpy(m_InBuffer + sizeof(TUSBCDReadDiscStructureHeader), &payload, sizeof(payload));
-			length += sizeof(payload);
-			break;
-		    }
-
-		    default: // Empty payload
-		    {
-		    	// MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "READ DISC STRUCTURE unsupported format 0x%02x", format);
-                    	TUSBCDReadDiscStructureHeader header;
-                    	memset(&header, 0, sizeof(TUSBCDReadDiscStructureHeader));
-                    	header.dataLength = 2; // just the header
-			memcpy(m_InBuffer, &header, sizeof(TUSBCDReadDiscStructureHeader));
-			length += sizeof(TUSBCDReadDiscStructureHeader);
-			break;
-		    }
-	    }
-
-            // Set response length
+            // Send the response
             if (allocationLength < length)
                 length = allocationLength;
-
-            m_nnumber_blocks = 0;  // nothing more after this send
+            
+            m_nnumber_blocks = 0;
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
             m_nState = TCDState::DataIn;
-            m_CSW.bmCSWStatus = bmCSWStatus;
+            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
             break;
         }
 
         case 0x51:  // READ DISC INFORMATION CMD
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read Disc Information");
+
+            if (m_mediaType == MEDIA_TYPE::DVD) {
+                m_DiscInfoReply.disc_type = 0xFF;
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+                    "READ DISC INFORMATION: Returning disc_type=0xFF (DVD-ROM), m_mediaType=%d", 
+                    (int)m_mediaType);
+            } else {
+                CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
+                if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO) {
+                    m_DiscInfoReply.disc_type = 0x00;
+                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+                        "READ DISC INFORMATION: Returning disc_type=0x00 (CD-DA), m_mediaType=%d", 
+                        (int)m_mediaType);
+                } else {
+                    m_DiscInfoReply.disc_type = 0x10;
+                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+                        "READ DISC INFORMATION: Returning disc_type=0x10 (CD-ROM data), m_mediaType=%d", 
+                        (int)m_mediaType);
+                }
+            }
 
             // Update disc information with current media state (MacOS-compatible)
             m_DiscInfoReply.disc_status = 0x0E;  // Complete disc, finalized (bits 1-0=10b), last session complete (bit 3)
@@ -2370,6 +2414,10 @@ void CUSBCDGadget::HandleSCSICommand() {
 		    ModeSense10Header reply_header;
 		    memset(&reply_header, 0, sizeof(reply_header));
 		    reply_header.mediumType = GetMediumType();
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", 
+            "Mode Sense (10): mediumType=0x%02x, m_mediaType=%d", 
+            reply_header.mediumType, (int)m_mediaType);
+
 		    length += sizeof(reply_header);
 
 		    switch (page) {

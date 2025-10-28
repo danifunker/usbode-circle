@@ -208,9 +208,9 @@ struct TUSBUintSerialNumberPage {
     u8 Reserved;         // Reserved
     u16 Reserved2;       // Reserved
     u8 PageLength;       // Length of the Serial Number string
-    u8 SerialNumber[4];  // Device Serial Number (ASCII)
+    u8 SerialNumber[20];  // Device Serial Number (ASCII)
 } PACKED;
-#define SIZE_INQSN 9
+#define SIZE_INQSN 25
 
 struct TUSBSupportedVPDPage {
     u8 PageCode;    // 0x00 for Supported VPD Pages
@@ -621,7 +621,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     TUSBCDInquiryReply m_InqReply{
 	 0x05, // Peripheral type = CD/DVD
 	 0x80, // RMB set = removable media 
-	 0x05, // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
+	 0x00, // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
 	 0x02, // Response Data Format = This response is SPC3 format
 	 0x1F, // Additional Length
 	 0x00, // SCCS ACC TPGS 3PC Reserved PROTECT
@@ -790,7 +790,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
         htons(0x001e),  // featureCode
         0x0b,           // VersionPersistentCurrent
         0x04,           // AdditionalLength
-        0x00,           // DAPC2FlagsCDText
+        0x01,           // DAPC2FlagsCDText
         0x00,           // reserved
         0x00,           // reserved
         0x00            // reserved
