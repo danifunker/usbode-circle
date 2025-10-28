@@ -771,6 +771,29 @@ int CUSBCDGadget::GetSkipBytesFromMCS(uint8_t mainChannelSelection) {
     return offset;
 }
 
+void FillModePage2A(ModePage0x2AData& codepage) {
+    memset(&codepage, 0, sizeof(codepage));
+    codepage.pageCodeAndPS = 0x2a;
+    codepage.pageLength = 22;  // Should be 22 bytes for full MMC-5 compliance
+
+    // Capability bits (6 bytes) - dynamic based on media type
+    // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
+    codepage.capabilityBits[0] = 0x01;  // Support all media types for DVD, else CD only
+    codepage.capabilityBits[1] = 0x00;  // All writable types
+    codepage.capabilityBits[2] = 0x01;  // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
+    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
+    codepage.capabilityBits[4] = 0x28;  // Tray loading mechanism, eject supported, lock supported  
+    codepage.capabilityBits[5] = 0x00;  // No separate channel volume, no separate channel mute
+
+    // Speed and buffer info
+    codepage.maxSpeed = htons(1412);  // 8x
+    codepage.numVolumeLevels = htons(0x00ff);  // 256 volume levels
+    codepage.bufferSize = htons(0);  // Set to 0
+    codepage.currentSpeed = htons(1412);  // Current speed
+    codepage.maxReadSpeed = htons(1412);  // Some hosts check this field
+}
+
+
 // TODO: This entire method is a monster. Break up into a Function table of static methods
 //
 //  Each command lives in its own .cpp file with a class that has a static Handle() function.
@@ -2247,41 +2270,12 @@ void CUSBCDGadget::HandleSCSICommand() {
 
 			case 0x2a: {
 			    // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
-			    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2a response");
+                ModePage0x2AData codepage;
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2a response");
+                FillModePage2A(codepage);
+                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                length += sizeof(codepage);
 
-			    // Define our Code Page
-			    ModePage0x2AData codepage;
-			    memset(&codepage, 0, sizeof(codepage));
-			    codepage.pageCodeAndPS = 0x2a;
-			    codepage.pageLength = 22;  // Fixed: should be 22 bytes (was 18, missing maxReadSpeed fields)
-			    
-			    // Capability bits (6 bytes) - dynamic based on media type
-			    // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
-			    if (m_mediaType == MEDIA_TYPE::DVD) {
-			        codepage.capabilityBits[0] = 0x39;  // 0011 1001 = DVD-ROM + CD-R + CD-RW + Method 2
-			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2A: Returning DVD capabilities (0x39)");
-			    } else if (m_mediaType == MEDIA_TYPE::CD) {
-			        codepage.capabilityBits[0] = 0x38;  // 0011 1000 = CD-R + CD-RW + Method 2 (NO DVD)
-			        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2A: Returning CD-ROM capabilities (0x38)");
-			    }
-			    codepage.capabilityBits[1] = 0x00;  // Can't write (CD-R/RW write bits off)
-			    codepage.capabilityBits[2] = 0x71;  // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
-			    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
-			    codepage.capabilityBits[4] = 0x29;  // Tray loading mechanism (bits 7-5 = 001), eject supported, lock supported  
-			    codepage.capabilityBits[5] = 0x00;  // No separate channel volume, no separate channel mute
-			    
-			    // Speed and buffer info
-			    codepage.maxSpeed = htons(706);  // 4x (obsolete but some hosts check)
-			    codepage.numVolumeLevels = htons(0x00ff);  // 256 volume levels
-			    codepage.bufferSize = htons(0);  // No buffer
-			    codepage.currentSpeed = htons(1412);  // Current speed (obsolete)
-			    // reserved1[4] is already zeroed by memset
-			    codepage.maxReadSpeed = htons(0);  // **CRITICAL**: Was missing! MacOS checks this field
-			    // reserved2[2] is already zeroed by memset
-
-			    // Copy the header & Code Page
-			    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-			    length += sizeof(codepage);
 
 			    if (page != 0x3f)
 			        break;
@@ -2449,32 +2443,11 @@ void CUSBCDGadget::HandleSCSICommand() {
 			    // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
 			    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response");
 
-			    // Define our Code Page
-			    ModePage0x2AData codepage;
-			    memset(&codepage, 0, sizeof(codepage));
-			    codepage.pageCodeAndPS = 0x2a;
-			    codepage.pageLength = 18;
-			    codepage.capabilityBits[0] = 0x01;  // Can read CD-R
-			    codepage.capabilityBits[1] = 0x00;  // Can't write
-			    codepage.capabilityBits[2] = 0x01;  // AudioPlay
-			    codepage.capabilityBits[3] = 0x03;  // CD-DA Commands Supported, CD-DA Stream is accurate
-			    codepage.capabilityBits[4] = 0x28;  // tray loading mechanism, with eject
-			    codepage.capabilityBits[5] = 0x00;
-			    codepage.maxSpeed = htons(706);  // 4x
-			    codepage.numVolumeLevels = htons(0x00ff);
-			    codepage.bufferSize = htons(0);
-			    codepage.currentSpeed = htons(1412);
-
-			    // Copy the header & Code Page
-			    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-			    
-			    // Dump the actual bytes being sent (first 12 bytes of Mode Page 0x2A)
-			    // u8 *pageBytes = (u8*)(m_InBuffer + length);
-			    // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2A raw bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-			    //          pageBytes[0], pageBytes[1], pageBytes[2], pageBytes[3], pageBytes[4], pageBytes[5],
-			    //          pageBytes[6], pageBytes[7], pageBytes[8], pageBytes[9], pageBytes[10], pageBytes[11]);
-			    
-			    length += sizeof(codepage);
+			    // Use shared code 0x2A filling function
+                ModePage0x2AData codepage;
+                FillModePage2A(codepage);
+                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                length += sizeof(codepage);
 
 			    if (page != 0x3f)
 			        break;
