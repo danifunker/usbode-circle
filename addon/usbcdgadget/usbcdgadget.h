@@ -302,10 +302,10 @@ struct TUSBCDReadTOCReply  // 12 bytes
 #define SIZE_TOC_REPLY 12
 
 struct TUSBTOCEntry {
-    u8 reserved = 0x00;
+    u8 reserved;
     u8 ADR_Control;
     u8 TrackNumber;
-    u8 reserved2 = 0x00;
+    u8 reserved2;
     u32 address;
 } PACKED;
 #define SIZE_TOC_ENTRY 8
