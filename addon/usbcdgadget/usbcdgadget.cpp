@@ -1212,9 +1212,7 @@ void CUSBCDGadget::HandleSCSICommand()
         // 1    1     Load the disc - perhaps we need to throw a check condition?
 
         CDROM_DEBUG_LOG("HandleSCSI", "start/stop, start = %d, loej = %d", start, loej);
-        // m_CSW.bmCSWStatus = bmCSWStatus;
-        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-        SendCSW();
+        sendGoodStatus();
         break;
     }
 
@@ -1222,8 +1220,7 @@ void CUSBCDGadget::HandleSCSICommand()
     {
         // Lie to the host
         // m_CSW.bmCSWStatus = bmCSWStatus;
-        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-        SendCSW();
+        sendGoodStatus();
         break;
     }
 
@@ -1274,11 +1271,8 @@ void CUSBCDGadget::HandleSCSICommand()
         else
         {
             CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s", m_CDReady ? "ready" : "not ready");
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-            m_SenseParams.bSenseKey = 0x02;
-            m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
-            SendCSW();
+            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY 
+            sendCheckCondition();
         }
         break;
     }
