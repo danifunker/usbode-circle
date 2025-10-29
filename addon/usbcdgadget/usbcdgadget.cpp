@@ -1387,11 +1387,8 @@ void CUSBCDGadget::HandleSCSICommand()
         else
         {
             MLOGNOTE("handleSCSI READ CD", "failed, %s", m_CDReady ? "ready" : "not ready");
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-            m_SenseParams.bSenseKey = 0x02;
-            m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
-            SendCSW();
+            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+            sendCheckCondition();
         }
         break;
     }
