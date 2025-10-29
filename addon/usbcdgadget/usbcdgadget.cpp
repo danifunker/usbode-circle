@@ -528,19 +528,28 @@ u32 CUSBCDGadget::GetLeadoutLBA()
 
     u64 deviceSize = m_pDevice->GetSize(); // Use u64 to support DVDs > 4GB
 
+    if (sector_length == 0 || deviceSize <= file_offset)
+    {
+        // Defensive: avoid divide-by-zero or invalid image
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetLeadoutLBA",
+                        "Invalid sector_length=%u or deviceSize=%llu <= file_offset=%u, returning track_start=%u",
+                        sector_length, (unsigned long long)deviceSize, file_offset, track_start);
+        return track_start;
+    }
+
     // We know the start position of the last track, and we know its sector length
     // and we know the file size, so we can work out the LBA of the end of the last track
     // We can't just divide the file size by sector size because sectors lengths might
     // not be consistent (e.g. multi-mode cd where track 1 is 2048
     u64 lastTrackBlocks = (deviceSize - file_offset) / sector_length;
-    u32 ret = track_start + static_cast<u32>(lastTrackBlocks);
-    CDROM_DEBUG_LOG("CUSBCDGadget::GetLeadoutLBA", "device size is %llu, last track file offset is %lu, last track sector_length is %lu, last track track_start is %lu, lastTrackBlocks = %llu, returning = %lu", deviceSize, file_offset, sector_length, track_start, lastTrackBlocks, ret);
+    u32 ret = track_start + (u32)lastTrackBlocks;  // Cast back to u32 for LBA (max ~2TB disc)
+    //MLOGNOTE("CUSBCDGadget::GetLeadoutLBA", "device size is %llu, last track file offset is %lu, last track sector_length is %lu, last track track_start is %lu, lastTrackBlocks = %llu, returning = %lu", deviceSize, file_offset, sector_length, track_start, lastTrackBlocks, ret);
 
-    // Some corrupted cd images might have a cue that references track that are
-    // outside the bin.
-    if (deviceSize < file_offset)
+    CDROM_DEBUG_LOG("CUSBCDGadget::GetLeadoutLBA",
+                    "device size=%llu, last track file_offset=%u, last track sector_length=%u, last track track_start=%u, lastTrackBlocks=%llu, returning=%u",
+                    (unsigned long long)deviceSize, file_offset, sector_length, track_start, (unsigned long long)lastTrackBlocks, ret);
+	if (deviceSize < file_offset)
         return track_start;
-
     return ret;
 }
 
@@ -643,21 +652,20 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 {
                     MLOGERR("onXferCmplt DataIn", "failed, %s",
                             m_CDReady ? "ready" : "not ready");
-                    m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-                    m_SenseParams.bSenseKey = 0x02;
-                    m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-                    m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
-                    SendCSW();
+                    setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+                    sendCheckCondition();
                 }
             }
             else // done sending data to host
             {
+				m_CSW.dCSWDataResidue = 0;
                 SendCSW();
             }
             break;
         }
         case TCDState::SendReqSenseReply:
         {
+			m_CSW.dCSWDataResidue = 0;
             SendCSW();
             break;
         }
@@ -690,6 +698,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 break;
             }
             m_CSW.dCSWTag = m_CBW.dCBWTag;
+			m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength;
             if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0) // meaningful CBW
             {
                 HandleSCSICommand(); // will update m_nstate
@@ -880,6 +889,36 @@ int CUSBCDGadget::GetSkipBytesFromMCS(uint8_t mainChannelSelection)
     return offset;
 }
 
+// Sense data management helpers for MacOS compatibility
+// Based on BlueSCSI patterns but adapted for USBODE architecture
+void CUSBCDGadget::setSenseData(u8 senseKey, u8 asc, u8 ascq) {
+    m_SenseParams.bSenseKey = senseKey;
+    m_SenseParams.bAddlSenseCode = asc;
+    m_SenseParams.bAddlSenseCodeQual = ascq;
+    
+    MLOGDEBUG("setSenseData", "Sense: %02x/%02x/%02x", senseKey, asc, ascq);
+}
+
+void CUSBCDGadget::clearSenseData() {
+    m_SenseParams.bSenseKey = 0x00;
+    m_SenseParams.bAddlSenseCode = 0x00;
+    m_SenseParams.bAddlSenseCodeQual = 0x00;
+}
+
+void CUSBCDGadget::sendCheckCondition() {
+    m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+    // USB Mass Storage spec: data residue = amount of expected data not transferred
+    // For CHECK CONDITION with no data phase, residue = full requested length
+    m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength;
+    SendCSW();
+}
+
+void CUSBCDGadget::sendGoodStatus() {
+    m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+    m_CSW.dCSWDataResidue = 0;  // Command succeeded, all data (if any) transferred
+    SendCSW();
+}
+
 void FillModePage2A(ModePage0x2AData &codepage)
 {
     memset(&codepage, 0, sizeof(codepage));
@@ -944,23 +983,34 @@ void FillModePage2A(ModePage0x2AData &codepage)
 void CUSBCDGadget::HandleSCSICommand()
 {
     // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    u8 cmd = m_CBW.CBWCB[0];
+    if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION && 
+        cmd != 0x03 &&  // REQUEST SENSE - must deliver Unit Attention
+        cmd != 0x12) {  // INQUIRY - allowed per SCSI-2 spec
+        
+        MLOGDEBUG("HandleSCSICommand", "Command 0x%02x blocked by Unit Attention", cmd);
+        setSenseData(0x06, 0x28, 0x00);  // Unit Attention, Not Ready to Ready Transition (medium may have changed)
+        sendCheckCondition();
+        return;
+    }
+
     switch (m_CBW.CBWCB[0])
     {
     case 0x00: // Test unit ready
     {
-        if (!m_CDReady)
+        if (!m_CDReady || m_mediaState == MediaState::NO_MEDIUM)
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
-            bmCSWStatus = CD_CSW_STATUS_FAIL;
-            m_SenseParams.bSenseKey = 2;
-            m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
+            setSenseData(0x02, 0x04, 0x00);  // Not Ready, Logical Unit Not Ready
+            sendCheckCondition();
+            break;
         }
-
-        // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
-        m_CSW.bmCSWStatus = bmCSWStatus;
-        SendCSW();
-        break;
+        else
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_OK)");
+            sendGoodStatus();
+            break;
+        }
     }
 
     case 0x03: // Request sense CMD
@@ -989,6 +1039,21 @@ void CUSBCDGadget::HandleSCSICommand()
         m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
         m_nState = TCDState::SendReqSenseReply;
 
+	    if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION) {         
+	            m_mediaState = MediaState::MEDIUM_PRESENT_READY;
+                clearSenseData();  // Clear for subsequent commands
+        	    bmCSWStatus = CD_CSW_STATUS_OK;
+	        } else if (m_SenseParams.bSenseKey == 0x02 && m_SenseParams.bAddlSenseCode == 0x3A) {
+                // Not Ready (Medium Not Present) - keep the same state
+                MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Medium not present - maintaining Not Ready state");
+	            bmCSWStatus = CD_CSW_STATUS_FAIL;
+            } else {
+                // Clear sense data after reporting
+                clearSenseData();
+                bmCSWStatus = CD_CSW_STATUS_OK;
+            }
+
+
         // If we were "Not Ready", switch to Unit Attention
         if (m_SenseParams.bSenseKey == 0x02)
         {
@@ -1003,9 +1068,7 @@ void CUSBCDGadget::HandleSCSICommand()
             // Reset response params after send
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Moving sense state to OK");
             bmCSWStatus = CD_CSW_STATUS_OK;
-            m_SenseParams.bSenseKey = 0;          // NO SENSE
-            m_SenseParams.bAddlSenseCode = 0;     // NO ADDITIONAL SENSE INFORMATION
-            m_SenseParams.bAddlSenseCodeQual = 0; // NO ADDITIONAL SENSE INFORMATION
+            clearSenseData();
         }
         break;
     }
@@ -1047,10 +1110,8 @@ void CUSBCDGadget::HandleSCSICommand()
         else
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, %s", m_CDReady ? "ready" : "not ready");
-            m_SenseParams.bSenseKey = 0x02;          // Not Ready
-            m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // MEDIUM MAY HAVE CHANGED
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+            setSenseData(0x02, 0x04, 0x00);  // Not Ready, Logical Unit Not Ready
+            sendCheckCondition();
         }
         break;
     }
@@ -1175,12 +1236,8 @@ void CUSBCDGadget::HandleSCSICommand()
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unsupported Page)");
                 //  m_nState = TCDState::DataIn;
                 m_nnumber_blocks = 0; // nothing more after this send
-
-                m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
-                m_SenseParams.bSenseKey = 0x05;
-                m_SenseParams.bAddlSenseCode = 0x24;     // Invalid Field
-                m_SenseParams.bAddlSenseCodeQual = 0x00; // In CDB
-                SendCSW();
+                setSenseData(0x05, 0x24, 0x00);  // Invalid Field in CDB
+                sendCheckCondition();                
                 break;
             }
         }
@@ -1199,9 +1256,7 @@ void CUSBCDGadget::HandleSCSICommand()
         // 1    1     Load the disc - perhaps we need to throw a check condition?
 
         CDROM_DEBUG_LOG("HandleSCSI", "start/stop, start = %d, loej = %d", start, loej);
-        // m_CSW.bmCSWStatus = bmCSWStatus;
-        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-        SendCSW();
+        sendGoodStatus();
         break;
     }
 
@@ -1209,8 +1264,7 @@ void CUSBCDGadget::HandleSCSICommand()
     {
         // Lie to the host
         // m_CSW.bmCSWStatus = bmCSWStatus;
-        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-        SendCSW();
+        sendGoodStatus();
         break;
     }
 
@@ -1284,11 +1338,7 @@ void CUSBCDGadget::HandleSCSICommand()
         {
             CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s",
                             m_CDReady ? "ready" : "not ready");
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-            m_SenseParams.bSenseKey = 0x02;
-            m_SenseParams.bAddlSenseCode = 0x04;
-            m_SenseParams.bAddlSenseCodeQual = 0x00;
-            SendCSW();
+            sendCheckCondition();
         }
         break;
     }
@@ -1452,11 +1502,8 @@ case 0x23:  // READ FORMAT CAPACITIES
         else
         {
             MLOGNOTE("handleSCSI READ CD", "failed, %s", m_CDReady ? "ready" : "not ready");
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-            m_SenseParams.bSenseKey = 0x02;
-            m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
-            SendCSW();
+            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+            sendCheckCondition();
         }
         break;
     }
@@ -1465,8 +1512,7 @@ case 0x23:  // READ FORMAT CAPACITIES
     case 0xBB: // Set CDROM Speed
     case 0x2F: // Verify
     {
-        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-        SendCSW();
+        sendGoodStatus();
         break;
     }
 
@@ -1628,11 +1674,8 @@ case 0x23:  // READ FORMAT CAPACITIES
         else
         {
             MLOGNOTE("handleSCSI READ TOC", "failed, %s", m_CDReady ? "ready" : "not ready");
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-            m_SenseParams.bSenseKey = 0x02;
-            m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
-            SendCSW();
+            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+            sendCheckCondition();
         }
         break;
     }
@@ -1823,12 +1866,8 @@ case 0x23:  // READ FORMAT CAPACITIES
         {
             // We don't support async mode
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification - we don't support async notifications");
-            bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
-            m_SenseParams.bSenseKey = 0x05;      // ILLEGAL REQUEST
-            m_SenseParams.bAddlSenseCode = 0x24; // INVALID FIELD IN CDB
-            m_SenseParams.bAddlSenseCodeQual = 0x00;
-            m_CSW.bmCSWStatus = bmCSWStatus;
-            SendCSW();
+            setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+            sendCheckCondition();
             break;
         }
 
@@ -2997,11 +3036,8 @@ case 0x23:  // READ FORMAT CAPACITIES
     default:
     {
         MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Unknown SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
-        m_SenseParams.bSenseKey = 0x5;       // Illegal/not supported
-        m_SenseParams.bAddlSenseCode = 0x20; // INVALID COMMAND OPERATION CODE
-        m_SenseParams.bAddlSenseCodeQual = 0x00;
-        m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-        SendCSW();
+        setSenseData(0x05, 0x20, 0x00); // INVALID COMMAND OPERATION CODE
+        sendCheckCondition();
         break;
     }
     }
@@ -3055,10 +3091,8 @@ void CUSBCDGadget::Update()
                 {
                     // Handle error: partial read
                     m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-                    m_SenseParams.bSenseKey = 0x04;      // hardware error
-                    m_SenseParams.bAddlSenseCode = 0x11; // UNRECOVERED READ ERROR
-                    m_SenseParams.bAddlSenseCodeQual = 0x00;
-                    SendCSW();
+                    setSenseData(0x04, 0x11, 0x00); // UNRECOVERED READ ERROR
+                    sendCheckCondition();
                     return; // Exit if read failed
                 }
 

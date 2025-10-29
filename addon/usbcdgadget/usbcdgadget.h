@@ -553,6 +553,13 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     void HandleSCSICommand();
 
     void SendCSW();
+    
+    // Sense data management helpers for MacOS compatibility
+    void setSenseData(u8 senseKey, u8 asc = 0, u8 ascq = 0);
+    void clearSenseData();
+    void sendCheckCondition();
+    void sendGoodStatus();
+    
     CUETrackInfo GetTrackInfoForLBA(u32 lba);
     CUETrackInfo GetTrackInfoForTrack(int track);
     int GetSkipbytesForTrack(CUETrackInfo trackInfo);
