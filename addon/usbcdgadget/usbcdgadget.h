@@ -615,8 +615,8 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
 
     TCDState m_nState = Init;
 
-    TUSBCDCBW m_CBW;
-    TUSBCDCSW m_CSW;
+    alignas(4) TUSBCDCBW m_CBW;
+    alignas(4) TUSBCDCSW m_CSW;
 
     TUSBCDInquiryReply m_InqReply{
 	 0x05, // Peripheral type = CD/DVD
