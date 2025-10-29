@@ -1013,12 +1013,10 @@ void CUSBCDGadget::HandleSCSICommand()
         }
         else
         {
-            // Reset response params after send
+            // Reset response params after send -- this portion of the code doesn't work for with the shared refactored methods
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Moving sense state to OK");
             bmCSWStatus = CD_CSW_STATUS_OK;
-            m_SenseParams.bSenseKey = 0;          // NO SENSE
-            m_SenseParams.bAddlSenseCode = 0;     // NO ADDITIONAL SENSE INFORMATION
-            m_SenseParams.bAddlSenseCodeQual = 0; // NO ADDITIONAL SENSE INFORMATION
+			
         }
         break;
     }
