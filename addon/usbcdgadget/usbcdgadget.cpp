@@ -1551,11 +1551,8 @@ void CUSBCDGadget::HandleSCSICommand()
         else
         {
             MLOGNOTE("handleSCSI READ TOC", "failed, %s", m_CDReady ? "ready" : "not ready");
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-            m_SenseParams.bSenseKey = 0x02;
-            m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
-            SendCSW();
+            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+            sendCheckCondition();
         }
         break;
     }
@@ -1746,12 +1743,8 @@ void CUSBCDGadget::HandleSCSICommand()
         {
             // We don't support async mode
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Get Event Status Notification - we don't support async notifications");
-            bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
-            m_SenseParams.bSenseKey = 0x05;      // ILLEGAL REQUEST
-            m_SenseParams.bAddlSenseCode = 0x24; // INVALID FIELD IN CDB
-            m_SenseParams.bAddlSenseCodeQual = 0x00;
-            m_CSW.bmCSWStatus = bmCSWStatus;
-            SendCSW();
+            setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+            sendCheckCondition();
             break;
         }
 
@@ -2667,7 +2660,7 @@ void CUSBCDGadget::HandleSCSICommand()
             case 0x1a:
             {
                 // Mode Page 0x1A (Power Condition)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response");
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x1a response");
 
                 // Define our Code Page
                 ModePage0x1AData codepage;
@@ -2916,11 +2909,8 @@ void CUSBCDGadget::HandleSCSICommand()
     default:
     {
         MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Unknown SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
-        m_SenseParams.bSenseKey = 0x5;       // Illegal/not supported
-        m_SenseParams.bAddlSenseCode = 0x20; // INVALID COMMAND OPERATION CODE
-        m_SenseParams.bAddlSenseCodeQual = 0x00;
-        m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-        SendCSW();
+        setSenseData(0x05, 0x20, 0x00); // INVALID COMMAND OPERATION CODE
+        sendCheckCondition();
         break;
     }
     }
