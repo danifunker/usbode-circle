@@ -1186,12 +1186,8 @@ void CUSBCDGadget::HandleSCSICommand()
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unsupported Page)");
                 //  m_nState = TCDState::DataIn;
                 m_nnumber_blocks = 0; // nothing more after this send
-
-                m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
-                m_SenseParams.bSenseKey = 0x05;
-                m_SenseParams.bAddlSenseCode = 0x24;     // Invalid Field
-                m_SenseParams.bAddlSenseCodeQual = 0x00; // In CDB
-                SendCSW();
+                setSenseData(0x05, 0x24, 0x00);  // Invalid Field in CDB
+                sendCheckCondition();                
                 break;
             }
         }
