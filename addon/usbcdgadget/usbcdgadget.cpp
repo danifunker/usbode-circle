@@ -421,7 +421,6 @@ int CUSBCDGadget::GetMediumType()
 {
     cueParser.restart();
     const CUETrackInfo *trackInfo = nullptr;
-    cueParser.restart();
     while ((trackInfo = cueParser.next_track()) != nullptr)
     {
         if (trackInfo->track_number == 1 && trackInfo->track_mode == CUETrack_AUDIO)
@@ -647,6 +646,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         }
         case TCDState::SendReqSenseReply:
         {
+            m_CSW.dCSWDataResidue = 0; // Sense data was transferred
             SendCSW();
             break;
         }
@@ -679,6 +679,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 break;
             }
             m_CSW.dCSWTag = m_CBW.dCBWTag;
+            m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength;
             if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0) // meaningful CBW
             {
                 HandleSCSICommand(); // will update m_nstate
@@ -870,21 +871,24 @@ int CUSBCDGadget::GetSkipBytesFromMCS(uint8_t mainChannelSelection)
 
 // Sense data management helpers for MacOS compatibility
 // Based on BlueSCSI patterns but adapted for USBODE architecture
-void CUSBCDGadget::setSenseData(u8 senseKey, u8 asc, u8 ascq) {
+void CUSBCDGadget::setSenseData(u8 senseKey, u8 asc, u8 ascq)
+{
     m_SenseParams.bSenseKey = senseKey;
     m_SenseParams.bAddlSenseCode = asc;
     m_SenseParams.bAddlSenseCodeQual = ascq;
-    
+
     MLOGDEBUG("setSenseData", "Sense: %02x/%02x/%02x", senseKey, asc, ascq);
 }
 
-void CUSBCDGadget::clearSenseData() {
+void CUSBCDGadget::clearSenseData()
+{
     m_SenseParams.bSenseKey = 0x00;
     m_SenseParams.bAddlSenseCode = 0x00;
     m_SenseParams.bAddlSenseCodeQual = 0x00;
 }
 
-void CUSBCDGadget::sendCheckCondition() {
+void CUSBCDGadget::sendCheckCondition()
+{
     m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
     // USB Mass Storage spec: data residue = amount of expected data not transferred
     // For CHECK CONDITION with no data phase, residue = full requested length
@@ -892,9 +896,10 @@ void CUSBCDGadget::sendCheckCondition() {
     SendCSW();
 }
 
-void CUSBCDGadget::sendGoodStatus() {
+void CUSBCDGadget::sendGoodStatus()
+{
     m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-    m_CSW.dCSWDataResidue = 0;  // Command succeeded, all data (if any) transferred
+    m_CSW.dCSWDataResidue = 0; // Command succeeded, all data (if any) transferred
     SendCSW();
 }
 
@@ -1021,63 +1026,62 @@ void CUSBCDGadget::HandleSCSICommand()
             // Reset response params after send -- this portion of the code doesn't work for with the shared refactored methods
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Moving sense state to OK");
             bmCSWStatus = CD_CSW_STATUS_OK;
-			
         }
         break;
     }
 
-case 0xa8: // Read (12)
-{
-    if (m_CDReady)
+    case 0xa8: // Read (12)
     {
-        m_CSW.bmCSWStatus = bmCSWStatus;
-
-        // Where to start reading (LBA) - 4 bytes
-        m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
-                           (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
-        // Number of blocks to read (LBA) - 4 bytes
-        m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) |
-                           (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
-
-        // NEW: Determine format based on the LBA being accessed
-        CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-        
-        // For READ(12), we're always reading data sectors (2048 bytes to host)
-        transfer_block_size = 2048;
-        
-        // But the underlying file format depends on the track
-        if (trackInfo.track_number != -1)
+        if (m_CDReady)
         {
-            block_size = GetBlocksizeForTrack(trackInfo);
-            skip_bytes = GetSkipbytesForTrack(trackInfo);
+            m_CSW.bmCSWStatus = bmCSWStatus;
+
+            // Where to start reading (LBA) - 4 bytes
+            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
+                               (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+
+            // Number of blocks to read (LBA) - 4 bytes
+            m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) |
+                               (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+
+            // NEW: Determine format based on the LBA being accessed
+            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+
+            // For READ(12), we're always reading data sectors (2048 bytes to host)
+            transfer_block_size = 2048;
+
+            // But the underlying file format depends on the track
+            if (trackInfo.track_number != -1)
+            {
+                block_size = GetBlocksizeForTrack(trackInfo);
+                skip_bytes = GetSkipbytesForTrack(trackInfo);
+            }
+            else
+            {
+                // Fallback to defaults if track info not found
+                block_size = data_block_size;
+                skip_bytes = data_skip_bytes;
+            }
+
+            mcs = 0;
+            m_nbyteCount = m_CBW.dCBWDataTransferLength;
+
+            if (m_nnumber_blocks == 0)
+            {
+                m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
+            }
+
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            m_nState = TCDState::DataInRead;
         }
         else
         {
-            // Fallback to defaults if track info not found
-            block_size = data_block_size;
-            skip_bytes = data_skip_bytes;
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, not ready");
+            setSenseData(0x02, 0x04, 0x00);
+            sendCheckCondition();
         }
-        
-        mcs = 0;
-        m_nbyteCount = m_CBW.dCBWDataTransferLength;
-
-        if (m_nnumber_blocks == 0)
-        {
-            m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
-        }
-        
-        m_CSW.bmCSWStatus = bmCSWStatus;
-        m_nState = TCDState::DataInRead;
+        break;
     }
-    else
-    {
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, not ready");
-        setSenseData(0x02, 0x04, 0x00);
-        sendCheckCondition();
-    }
-    break;
-}
     case 0x12: // Inquiry
     {
         int allocationLength = (m_CBW.CBWCB[3] << 8) | m_CBW.CBWCB[4];
@@ -1197,9 +1201,9 @@ case 0xa8: // Read (12)
             default: // Unsupported VPD Page
                 MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Inquiry (Unsupported Page)");
                 //  m_nState = TCDState::DataIn;
-                m_nnumber_blocks = 0; // nothing more after this send
-                setSenseData(0x05, 0x24, 0x00);  // Invalid Field in CDB
-                sendCheckCondition();                
+                m_nnumber_blocks = 0;           // nothing more after this send
+                setSenseData(0x05, 0x24, 0x00); // Invalid Field in CDB
+                sendCheckCondition();
                 break;
             }
         }
@@ -1242,57 +1246,57 @@ case 0xa8: // Read (12)
         break;
     }
 
-case 0x28: // Read (10)
-{
-    if (m_CDReady)
+    case 0x28: // Read (10)
     {
-        m_CSW.bmCSWStatus = bmCSWStatus;
-
-        // Where to start reading (LBA)
-        m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | 
-                           (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
-        // Number of blocks to read (LBA)
-        m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
-
-        // NEW: Determine format based on the LBA being accessed
-        CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-        
-        // For READ(10), we're always reading data sectors (2048 bytes to host)
-        transfer_block_size = 2048;
-        
-        // But the underlying file format depends on the track
-        if (trackInfo.track_number != -1)
+        if (m_CDReady)
         {
-            block_size = GetBlocksizeForTrack(trackInfo);
-            skip_bytes = GetSkipbytesForTrack(trackInfo);
+            m_CSW.bmCSWStatus = bmCSWStatus;
+
+            // Where to start reading (LBA)
+            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
+                               (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+
+            // Number of blocks to read (LBA)
+            m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+
+            // NEW: Determine format based on the LBA being accessed
+            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+
+            // For READ(10), we're always reading data sectors (2048 bytes to host)
+            transfer_block_size = 2048;
+
+            // But the underlying file format depends on the track
+            if (trackInfo.track_number != -1)
+            {
+                block_size = GetBlocksizeForTrack(trackInfo);
+                skip_bytes = GetSkipbytesForTrack(trackInfo);
+            }
+            else
+            {
+                // Fallback to defaults if track info not found
+                block_size = data_block_size;
+                skip_bytes = data_skip_bytes;
+            }
+
+            mcs = 0;
+            m_nbyteCount = m_CBW.dCBWDataTransferLength;
+
+            if (m_nnumber_blocks == 0)
+            {
+                m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
+            }
+
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            m_nState = TCDState::DataInRead;
         }
         else
         {
-            // Fallback to defaults if track info not found
-            block_size = data_block_size;
-            skip_bytes = data_skip_bytes;
+            CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, not ready");
+            setSenseData(0x02, 0x04, 0x00);
+            sendCheckCondition();
         }
-        
-        mcs = 0;
-        m_nbyteCount = m_CBW.dCBWDataTransferLength;
-
-        if (m_nnumber_blocks == 0)
-        {
-            m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
-        }
-        
-        m_CSW.bmCSWStatus = bmCSWStatus;
-        m_nState = TCDState::DataInRead;
+        break;
     }
-    else
-    {
-        CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, not ready");
-        setSenseData(0x02, 0x04, 0x00);
-        sendCheckCondition();
-    }
-    break;
-}
     case 0xBE: // READ CD
     {
         if (m_CDReady)
@@ -1412,152 +1416,152 @@ case 0x28: // Read (10)
         break;
     }
 
-case 0x43: // READ TOC/PMA/ATIP
-{
-    if (m_CDReady)
+    case 0x43: // READ TOC/PMA/ATIP
     {
-        int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
-        int format = m_CBW.CBWCB[2] & 0x07;
-        int startingTrack = m_CBW.CBWCB[6];
-        int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
-
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
-            "Read TOC with format = %d, msf = %02x, starting track = %d, allocation length = %d", 
-            format, msf, startingTrack, allocationLength);
-
-        TUSBTOCData m_TOCData;
-        TUSBTOCEntry *tocEntries;
-
-        int numtracks = 0;
-        int datalen = 0;
-
-        if (format == 0x00)
+        if (m_CDReady)
         {
-            const CUETrackInfo *trackInfo = nullptr;
-            const CUETrackInfo *lastTrackInfo = nullptr;  // NEW: Track last track
-            int lastTrackNumber = GetLastTrackNumber();
+            int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
+            int format = m_CBW.CBWCB[2] & 0x07;
+            int startingTrack = m_CBW.CBWCB[6];
+            int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
 
-            m_TOCData.FirstTrack = 0x01;
-            m_TOCData.LastTrack = lastTrackNumber;
-            datalen = SIZE_TOC_DATA;
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "Read TOC with format = %d, msf = %02x, starting track = %d, allocation length = %d",
+                            format, msf, startingTrack, allocationLength);
 
-            tocEntries = new TUSBTOCEntry[lastTrackNumber + 1];
+            TUSBTOCData m_TOCData;
+            TUSBTOCEntry *tocEntries;
 
-            int index = 0;
-            if (startingTrack != 0xAA)
+            int numtracks = 0;
+            int datalen = 0;
+
+            if (format == 0x00)
             {
-                cueParser.restart();
-                while ((trackInfo = cueParser.next_track()) != nullptr)
+                const CUETrackInfo *trackInfo = nullptr;
+                const CUETrackInfo *lastTrackInfo = nullptr; // NEW: Track last track
+                int lastTrackNumber = GetLastTrackNumber();
+
+                m_TOCData.FirstTrack = 0x01;
+                m_TOCData.LastTrack = lastTrackNumber;
+                datalen = SIZE_TOC_DATA;
+
+                tocEntries = new TUSBTOCEntry[lastTrackNumber + 1];
+
+                int index = 0;
+                if (startingTrack != 0xAA)
                 {
-                    if (trackInfo->track_number < startingTrack)
-                        continue;
-                    
-                    // Set control bits based on track type
-                    if (trackInfo->track_mode == CUETrack_AUDIO)
+                    cueParser.restart();
+                    while ((trackInfo = cueParser.next_track()) != nullptr)
                     {
-                        tocEntries[index].ADR_Control = 0x10;  // Audio: ADR=1, Control=0
-                    }
-                    else
-                    {
-                        tocEntries[index].ADR_Control = 0x14;  // Data: ADR=1, Control=4
-                    }
-                    
-                    tocEntries[index].reserved = 0x00;
-                    tocEntries[index].TrackNumber = trackInfo->track_number;
-                    tocEntries[index].reserved2 = 0x00;
-                    tocEntries[index].address = GetAddress(trackInfo->track_start, msf);
-                    
-                    datalen += SIZE_TOC_ENTRY;
-                    numtracks++;
-                    index++;
-                    
-                    lastTrackInfo = trackInfo;  // NEW: Remember last track
-                }
-            }
+                        if (trackInfo->track_number < startingTrack)
+                            continue;
 
-            // Lead-Out: Control bits should match the LAST track
-            u32 leadOutLBA = GetLeadoutLBA();
-            
-            // NEW: Set lead-out control based on last track type
-            if (lastTrackInfo != nullptr && lastTrackInfo->track_mode == CUETrack_AUDIO)
+                        // Set control bits based on track type
+                        if (trackInfo->track_mode == CUETrack_AUDIO)
+                        {
+                            tocEntries[index].ADR_Control = 0x10; // Audio: ADR=1, Control=0
+                        }
+                        else
+                        {
+                            tocEntries[index].ADR_Control = 0x14; // Data: ADR=1, Control=4
+                        }
+
+                        tocEntries[index].reserved = 0x00;
+                        tocEntries[index].TrackNumber = trackInfo->track_number;
+                        tocEntries[index].reserved2 = 0x00;
+                        tocEntries[index].address = GetAddress(trackInfo->track_start, msf);
+
+                        datalen += SIZE_TOC_ENTRY;
+                        numtracks++;
+                        index++;
+
+                        lastTrackInfo = trackInfo; // NEW: Remember last track
+                    }
+                }
+
+                // Lead-Out: Control bits should match the LAST track
+                u32 leadOutLBA = GetLeadoutLBA();
+
+                // NEW: Set lead-out control based on last track type
+                if (lastTrackInfo != nullptr && lastTrackInfo->track_mode == CUETrack_AUDIO)
+                {
+                    tocEntries[index].ADR_Control = 0x10; // Audio lead-out
+                }
+                else
+                {
+                    tocEntries[index].ADR_Control = 0x14; // Data lead-out
+                }
+
+                tocEntries[index].reserved = 0x00;
+                tocEntries[index].TrackNumber = 0xAA;
+                tocEntries[index].reserved2 = 0x00;
+                tocEntries[index].address = GetAddress(leadOutLBA, msf);
+                datalen += SIZE_TOC_ENTRY;
+                numtracks++;
+
+                // Log the TOC for debugging
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                                "TOC: %d tracks, first=%d, last=%d, leadout_control=0x%02x",
+                                numtracks, m_TOCData.FirstTrack, m_TOCData.LastTrack,
+                                tocEntries[index].ADR_Control);
+            }
+            else if (format == 0x02)
             {
-                tocEntries[index].ADR_Control = 0x10;  // Audio lead-out
+                // Full TOC format - keep your existing code
+                m_TOCData.FirstTrack = 0x01;
+                m_TOCData.LastTrack = 0x01;
+                datalen = SIZE_TOC_DATA;
+
+                tocEntries = new TUSBTOCEntry[1];
+                tocEntries[0].ADR_Control = 0x14; // Point A0 is typically data
+                tocEntries[0].TrackNumber = 0xA0;
+                tocEntries[0].reserved = 0x00;
+                tocEntries[0].reserved2 = 0x01;
+                tocEntries[0].address = 0x00;
+                datalen += SIZE_TOC_ENTRY;
+                numtracks = 1;
             }
             else
             {
-                tocEntries[index].ADR_Control = 0x14;  // Data lead-out
+                // Fallback format - keep your existing code
+                CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
+                m_TOCData.FirstTrack = 0x01;
+                m_TOCData.LastTrack = 0x01;
+                datalen = SIZE_TOC_DATA;
+
+                tocEntries = new TUSBTOCEntry[2];
+                tocEntries[0].ADR_Control = (trackInfo.track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+                tocEntries[0].reserved = 0x00;
+                tocEntries[0].TrackNumber = 1;
+                tocEntries[0].reserved2 = 0x00;
+                tocEntries[0].address = GetAddress(trackInfo.track_start, msf);
+                datalen += SIZE_TOC_ENTRY;
+                numtracks = 1;
             }
-            
-            tocEntries[index].reserved = 0x00;
-            tocEntries[index].TrackNumber = 0xAA;
-            tocEntries[index].reserved2 = 0x00;
-            tocEntries[index].address = GetAddress(leadOutLBA, msf);
-            datalen += SIZE_TOC_ENTRY;
-            numtracks++;
 
-            // Log the TOC for debugging
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                "TOC: %d tracks, first=%d, last=%d, leadout_control=0x%02x",
-                numtracks, m_TOCData.FirstTrack, m_TOCData.LastTrack,
-                tocEntries[index].ADR_Control);
-        }
-        else if (format == 0x02)
-        {
-            // Full TOC format - keep your existing code
-            m_TOCData.FirstTrack = 0x01;
-            m_TOCData.LastTrack = 0x01;
-            datalen = SIZE_TOC_DATA;
+            // Copy TOC data
+            m_TOCData.DataLength = htons(datalen - 2);
+            memcpy(m_InBuffer, &m_TOCData, SIZE_TOC_DATA);
+            memcpy(m_InBuffer + SIZE_TOC_DATA, tocEntries, numtracks * SIZE_TOC_ENTRY);
 
-            tocEntries = new TUSBTOCEntry[1];
-            tocEntries[0].ADR_Control = 0x14;  // Point A0 is typically data
-            tocEntries[0].TrackNumber = 0xA0;
-            tocEntries[0].reserved = 0x00;
-            tocEntries[0].reserved2 = 0x01;
-            tocEntries[0].address = 0x00;
-            datalen += SIZE_TOC_ENTRY;
-            numtracks = 1;
+            delete[] tocEntries;
+
+            if (allocationLength < datalen)
+                datalen = allocationLength;
+
+            m_nnumber_blocks = 0;
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = bmCSWStatus;
         }
         else
         {
-            // Fallback format - keep your existing code
-            CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
-            m_TOCData.FirstTrack = 0x01;
-            m_TOCData.LastTrack = 0x01;
-            datalen = SIZE_TOC_DATA;
-
-            tocEntries = new TUSBTOCEntry[2];
-            tocEntries[0].ADR_Control = (trackInfo.track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
-            tocEntries[0].reserved = 0x00;
-            tocEntries[0].TrackNumber = 1;
-            tocEntries[0].reserved2 = 0x00;
-            tocEntries[0].address = GetAddress(trackInfo.track_start, msf);
-            datalen += SIZE_TOC_ENTRY;
-            numtracks = 1;
+            MLOGNOTE("handleSCSI READ TOC", "failed, not ready");
+            setSenseData(0x02, 0x04, 0x00);
+            sendCheckCondition();
         }
-
-        // Copy TOC data
-        m_TOCData.DataLength = htons(datalen - 2);
-        memcpy(m_InBuffer, &m_TOCData, SIZE_TOC_DATA);
-        memcpy(m_InBuffer + SIZE_TOC_DATA, tocEntries, numtracks * SIZE_TOC_ENTRY);
-
-        delete[] tocEntries;
-
-        if (allocationLength < datalen)
-            datalen = allocationLength;
-
-        m_nnumber_blocks = 0;
-        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
-        m_nState = TCDState::DataIn;
-        m_CSW.bmCSWStatus = bmCSWStatus;
+        break;
     }
-    else
-    {
-        MLOGNOTE("handleSCSI READ TOC", "failed, not ready");
-        setSenseData(0x02, 0x04, 0x00);
-        sendCheckCondition();
-    }
-    break;
-}
     case 0x42: // READ SUB-CHANNEL CMD
     {
         unsigned int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;

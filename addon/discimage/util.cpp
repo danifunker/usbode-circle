@@ -136,21 +136,28 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
 
 ICueDevice* loadCueBinFileDevice(const char* imageName) {
     MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+    
     // Construct full path
-    char fullPath[255];  // FIXME limits
+    char fullPath[255];
     snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
 
     FIL* imageFile = new FIL();
     char* cue_str = nullptr;
+    bool isIsoFile = false;
 
     // Is this a bin?
     if (hasBinExtension(fullPath)) {
         //LOGNOTE("This is a bin file, changing to cue");
         change_extension_to_cue(fullPath);
     }
-
+    // Is this an ISO?
+    else if (hasIsoExtension(fullPath)) {
+        LOGNOTE("This is an ISO file, will generate default CUE sheet");
+        isIsoFile = true;
+        // Keep the .iso extension for opening the file
+    }
     // Is this a cue?
-    if (hasCueExtension(fullPath)) {
+    else if (hasCueExtension(fullPath)) {
         // Load the cue
         //LOGNOTE("This is a cue file, loading cue");
         if (!ReadFileToString(fullPath, &cue_str)) {
@@ -173,6 +180,22 @@ ICueDevice* loadCueBinFileDevice(const char* imageName) {
     }
     LOGNOTE("Opened image file %s", fullPath);
 
+    // NEW: Generate default CUE sheet for ISO files
+    if (isIsoFile && cue_str == nullptr) {
+        // Use imageName directly (it's just the filename, no path)
+        // Allocate buffer for CUE sheet
+        cue_str = new char[512];
+        
+        // Generate minimal CUE sheet for MODE1/2048 (standard ISO format)
+        snprintf(cue_str, 512,
+            "FILE \"%s\" BINARY\n"
+            "  TRACK 01 MODE1/2048\n"
+            "    INDEX 01 00:00:00\n",
+            imageName);
+        
+        LOGNOTE("Generated default CUE sheet for ISO:\n%s", cue_str);
+    }
+
     // Create our device
     ICueDevice* ccueBinFileDevice = new CCueBinFileDevice(imageFile, cue_str, mediaType);
 
@@ -182,4 +205,3 @@ ICueDevice* loadCueBinFileDevice(const char* imageName) {
 
     return ccueBinFileDevice;
 }
-
