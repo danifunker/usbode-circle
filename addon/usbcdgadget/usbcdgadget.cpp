@@ -782,6 +782,11 @@ void CUSBCDGadget::OnActivate()
 {
     MLOGNOTE("CD OnActivate", "state = %i", m_nState);
     m_CDReady = true;
+
+    // Give USB hardware endpoints time to fully initialize after reset
+    // Without this delay, BeginTransfer calls succeed but data doesn't actually send
+    CTimer::Get()->MsDelay(10);
+
     m_nState = TCDState::ReceiveCBW;
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
 }
@@ -1388,158 +1393,152 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-    case 0x43: // READ TOC/PMA/ATIP
+case 0x43: // READ TOC/PMA/ATIP
+{
+    if (m_CDReady)
     {
-        if (m_CDReady)
+        int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
+        int format = m_CBW.CBWCB[2] & 0x07;
+        int startingTrack = m_CBW.CBWCB[6];
+        int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
+
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+            "Read TOC with format = %d, msf = %02x, starting track = %d, allocation length = %d", 
+            format, msf, startingTrack, allocationLength);
+
+        TUSBTOCData m_TOCData;
+        TUSBTOCEntry *tocEntries;
+
+        int numtracks = 0;
+        int datalen = 0;
+
+        if (format == 0x00)
         {
-            int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
-            int format = m_CBW.CBWCB[2] & 0x07; // TODO implement formats. Currently we assume it's always 0x00
-            int startingTrack = m_CBW.CBWCB[6];
-            int allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
+            const CUETrackInfo *trackInfo = nullptr;
+            const CUETrackInfo *lastTrackInfo = nullptr;  // NEW: Track last track
+            int lastTrackNumber = GetLastTrackNumber();
 
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read TOC with format = %d, msf = %02x, starting track = %d, allocation length = %d, m_CDReady = %d", format, msf, startingTrack, allocationLength, m_CDReady);
+            m_TOCData.FirstTrack = 0x01;
+            m_TOCData.LastTrack = lastTrackNumber;
+            datalen = SIZE_TOC_DATA;
 
-            TUSBTOCData m_TOCData;
-            TUSBTOCEntry *tocEntries;
+            tocEntries = new TUSBTOCEntry[lastTrackNumber + 1];
 
-            int numtracks = 0;
-            int datalen = 0;
-
-            if (format == 0x00)
-            { // Read TOC Data Format (With Format Field = 00b)
-
-                const CUETrackInfo *trackInfo = nullptr;
-                int lastTrackNumber = GetLastTrackNumber();
-
-                // Header
-                m_TOCData.FirstTrack = 0x01;
-                m_TOCData.LastTrack = lastTrackNumber;
-                datalen = SIZE_TOC_DATA;
-
-                // Populate the track entries
-                tocEntries = new TUSBTOCEntry[lastTrackNumber + 1];
-
-                int index = 0;
-                if (startingTrack != 0xAA)
-                { // Do we only want the leadout?
-                    cueParser.restart();
-                    while ((trackInfo = cueParser.next_track()) != nullptr)
+            int index = 0;
+            if (startingTrack != 0xAA)
+            {
+                cueParser.restart();
+                while ((trackInfo = cueParser.next_track()) != nullptr)
+                {
+                    if (trackInfo->track_number < startingTrack)
+                        continue;
+                    
+                    // Set control bits based on track type
+                    if (trackInfo->track_mode == CUETrack_AUDIO)
                     {
-                        if (trackInfo->track_number < startingTrack)
-                            continue;
-                        boolean relative = false;
-                        // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Adding at index %d: track number = %d, track_start = %d, start lba or msf %d", index, trackInfo->track_number, trackInfo->track_start, GetAddress(trackInfo->track_start, msf));
-                        tocEntries[index].ADR_Control = 0x14;
-                        if (trackInfo->track_mode == CUETrack_AUDIO)
-                        {
-                            tocEntries[index].ADR_Control = 0x10;
-                        }
-                        tocEntries[index].reserved = 0x00;
-                        tocEntries[index].TrackNumber = trackInfo->track_number;
-                        tocEntries[index].reserved2 = 0x00;
-                        tocEntries[index].address = GetAddress(trackInfo->track_start, msf);
-                        datalen += SIZE_TOC_ENTRY;
-                        numtracks++;
-                        index++;
+                        tocEntries[index].ADR_Control = 0x10;  // Audio: ADR=1, Control=0
                     }
+                    else
+                    {
+                        tocEntries[index].ADR_Control = 0x14;  // Data: ADR=1, Control=4
+                    }
+                    
+                    tocEntries[index].reserved = 0x00;
+                    tocEntries[index].TrackNumber = trackInfo->track_number;
+                    tocEntries[index].reserved2 = 0x00;
+                    tocEntries[index].address = GetAddress(trackInfo->track_start, msf);
+                    
+                    datalen += SIZE_TOC_ENTRY;
+                    numtracks++;
+                    index++;
+                    
+                    lastTrackInfo = trackInfo;  // NEW: Remember last track
                 }
-
-                // Lead-Out LBA
-                u32 leadOutLBA = GetLeadoutLBA();
-                tocEntries[index].ADR_Control = 0x10;
-                tocEntries[index].reserved = 0x00;
-                tocEntries[index].TrackNumber = 0xAA;
-                tocEntries[index].reserved2 = 0x00;
-                tocEntries[index].address = GetAddress(leadOutLBA, msf);
-                datalen += SIZE_TOC_ENTRY;
-                numtracks++;
-
-                //} else if (format == 0x01) { // Read TOC Data Format (With Format Field = 01b)
             }
-            else if (format == 0x02)
-            { // Full TOC
-                // Full TOC includes more detailed track information
-                // Minimum implementation for compatibility
 
-                m_TOCData.FirstTrack = 0x01;
-                m_TOCData.LastTrack = 0x01; // First complete session
-                datalen = SIZE_TOC_DATA;
-
-                tocEntries = new TUSBTOCEntry[1];
-
-                // Point A0h - First track number in program area
-                tocEntries[0].ADR_Control = 0x14;
-                tocEntries[0].TrackNumber = 0xA0; // Point A0
-                tocEntries[0].reserved = 0x00;
-                tocEntries[0].reserved2 = 0x01; // First track number
-                tocEntries[0].address = 0x00;   // PMIN/PSEC/PFRAME set to zero
-                datalen += SIZE_TOC_ENTRY;
-                numtracks = 1;
-
-                // More comprehensive Full TOC implementation would add:
-                // Point A1h (Last track), Point A2h (Lead-out start)
+            // Lead-Out: Control bits should match the LAST track
+            u32 leadOutLBA = GetLeadoutLBA();
+            
+            // NEW: Set lead-out control based on last track type
+            if (lastTrackInfo != nullptr && lastTrackInfo->track_mode == CUETrack_AUDIO)
+            {
+                tocEntries[index].ADR_Control = 0x10;  // Audio lead-out
             }
             else
             {
-
-                CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
-
-                // Header
-                m_TOCData.FirstTrack = 0x01;
-                m_TOCData.LastTrack = 0x01; // In this format, this is the last session number
-                datalen = SIZE_TOC_DATA;
-
-                // Populate the track entries
-                tocEntries = new TUSBTOCEntry[2];
-
-                tocEntries[0].ADR_Control = 0x00;
-                tocEntries[0].reserved = 0x00;
-                tocEntries[0].TrackNumber = 1;
-                tocEntries[0].reserved2 = 0x00;
-                tocEntries[0].address = GetAddress(trackInfo.track_start, msf);
-                datalen += SIZE_TOC_ENTRY;
-                numtracks = 1;
-                /*
-                } else {
-                            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read TOC unsupported format %d", format);
-                            m_nnumber_blocks = 0;  // nothing more after this send
-                            m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;  // CD_CSW_STATUS_FAIL
-                            m_SenseParams.bSenseKey = 0x05;
-                            m_SenseParams.bAddlSenseCode = 0x24;      // Invalid Field
-                            m_SenseParams.bAddlSenseCodeQual = 0x00;  // In CDB
-                            SendCSW();
-                    delete[] tocEntries;
-                            break;
-                */
+                tocEntries[index].ADR_Control = 0x14;  // Data lead-out
             }
+            
+            tocEntries[index].reserved = 0x00;
+            tocEntries[index].TrackNumber = 0xAA;
+            tocEntries[index].reserved2 = 0x00;
+            tocEntries[index].address = GetAddress(leadOutLBA, msf);
+            datalen += SIZE_TOC_ENTRY;
+            numtracks++;
 
-            // Copy the TOC header
-            m_TOCData.DataLength = htons(datalen - 2);
-            memcpy(m_InBuffer, &m_TOCData, SIZE_TOC_DATA);
+            // Log the TOC for debugging
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                "TOC: %d tracks, first=%d, last=%d, leadout_control=0x%02x",
+                numtracks, m_TOCData.FirstTrack, m_TOCData.LastTrack,
+                tocEntries[index].ADR_Control);
+        }
+        else if (format == 0x02)
+        {
+            // Full TOC format - keep your existing code
+            m_TOCData.FirstTrack = 0x01;
+            m_TOCData.LastTrack = 0x01;
+            datalen = SIZE_TOC_DATA;
 
-            // Copy the TOC entries immediately after the header
-            memcpy(m_InBuffer + SIZE_TOC_DATA, tocEntries, numtracks * SIZE_TOC_ENTRY);
-
-            delete[] tocEntries;
-
-            // Set response length
-            if (allocationLength < datalen)
-                datalen = allocationLength;
-
-            m_nnumber_blocks = 0; // nothing more after this send
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
-            m_nState = TCDState::DataIn;
-            m_CSW.bmCSWStatus = bmCSWStatus;
+            tocEntries = new TUSBTOCEntry[1];
+            tocEntries[0].ADR_Control = 0x14;  // Point A0 is typically data
+            tocEntries[0].TrackNumber = 0xA0;
+            tocEntries[0].reserved = 0x00;
+            tocEntries[0].reserved2 = 0x01;
+            tocEntries[0].address = 0x00;
+            datalen += SIZE_TOC_ENTRY;
+            numtracks = 1;
         }
         else
         {
-            MLOGNOTE("handleSCSI READ TOC", "failed, %s", m_CDReady ? "ready" : "not ready");
-            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
-            sendCheckCondition();
-        }
-        break;
-    }
+            // Fallback format - keep your existing code
+            CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
+            m_TOCData.FirstTrack = 0x01;
+            m_TOCData.LastTrack = 0x01;
+            datalen = SIZE_TOC_DATA;
 
+            tocEntries = new TUSBTOCEntry[2];
+            tocEntries[0].ADR_Control = (trackInfo.track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+            tocEntries[0].reserved = 0x00;
+            tocEntries[0].TrackNumber = 1;
+            tocEntries[0].reserved2 = 0x00;
+            tocEntries[0].address = GetAddress(trackInfo.track_start, msf);
+            datalen += SIZE_TOC_ENTRY;
+            numtracks = 1;
+        }
+
+        // Copy TOC data
+        m_TOCData.DataLength = htons(datalen - 2);
+        memcpy(m_InBuffer, &m_TOCData, SIZE_TOC_DATA);
+        memcpy(m_InBuffer + SIZE_TOC_DATA, tocEntries, numtracks * SIZE_TOC_ENTRY);
+
+        delete[] tocEntries;
+
+        if (allocationLength < datalen)
+            datalen = allocationLength;
+
+        m_nnumber_blocks = 0;
+        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, datalen);
+        m_nState = TCDState::DataIn;
+        m_CSW.bmCSWStatus = bmCSWStatus;
+    }
+    else
+    {
+        MLOGNOTE("handleSCSI READ TOC", "failed, not ready");
+        setSenseData(0x02, 0x04, 0x00);
+        sendCheckCondition();
+    }
+    break;
+}
     case 0x42: // READ SUB-CHANNEL CMD
     {
         unsigned int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
