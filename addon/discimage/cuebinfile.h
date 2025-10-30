@@ -28,12 +28,16 @@ class CCueBinFileDevice : public ICueDevice {
     u64 Tell() const;
     const char* GetCueSheet() const;
     MEDIA_TYPE GetMediaType() const override { return m_mediaType; }
+    unsigned int GetBlockSize(void) const { return m_BlockSize; }
 
    private:
+    void ParseCue(void);
+
     FIL* m_pFile;
     FileType m_FileType = FileType::ISO;
     char* m_cue_str = nullptr;
     MEDIA_TYPE m_mediaType;
+    unsigned int m_BlockSize = 2048;
     static constexpr const char* default_cue_sheet =
         "FILE \"image.iso\" BINARY\n"
         "  TRACK 01 MODE1/2048\n"

@@ -14,5 +14,8 @@ public:
 
     /// \return Cue sheet string, or nullptr if not available
     virtual const char* GetCueSheet() const = 0;
+
+    /// \return Block size of the device, or 0 on error
+    virtual unsigned int GetBlockSize(void) const = 0;
 };
 #endif

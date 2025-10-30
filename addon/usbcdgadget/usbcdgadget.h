@@ -504,6 +504,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     // void SetDeviceBlocks(u64 nBlocks);
     /// \return Capacity of the block device in number of blocks (a 512 bytes)
     // u64 GetBlocks (void) const;
+    unsigned int GetBlockSize(void) const { return m_nBlockSize; }
 
    protected:
     /// \brief Get device-specific descriptor
@@ -855,6 +856,7 @@ class CUSBCDGadget : public CDWUSBGadget  /// USB mass storage device gadget
     boolean m_IsFullSpeed = 0;
     boolean discChanged = false;
     uint8_t mcs = 0;
+    unsigned int m_nBlockSize = 2048;
 
     // Hardware serial number for USB device identification
     char m_HardwareSerialNumber[20];   // Format: "USBODE-XXXXXXXX"

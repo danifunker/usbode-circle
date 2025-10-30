@@ -319,6 +319,7 @@ void CUSBCDGadget::SetDevice(ICueDevice* dev) {
 
     data_skip_bytes = GetSkipbytes();
     data_block_size = GetBlocksize();
+    m_nBlockSize = dev->GetBlockSize();
 
     m_CDReady = true;
     m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
@@ -1056,6 +1057,7 @@ void CUSBCDGadget::HandleSCSICommand() {
         case 0x25:  // Read Capacity (10))
         {
             m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);  // this value is the Start address of last recorded lead-out minus 1
+            m_ReadCapReply.nSectorSize = htonl(m_nBlockSize);
             memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
             m_nnumber_blocks = 0;  // nothing more after this send
             m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,

@@ -43,6 +43,19 @@ CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE media
         strcpy(m_cue_str, default_cue_sheet);
         m_FileType = FileType::ISO;
     }
+    ParseCue();
+}
+
+void CCueBinFileDevice::ParseCue(void) {
+    if (m_cue_str == nullptr) {
+        return;
+    }
+    if (strstr(m_cue_str, "MODE1/2352") != nullptr) {
+        m_BlockSize = 2352;
+    } else if (strstr(m_cue_str, "MODE1/2048") != nullptr) {
+        m_BlockSize = 2048;
+    }
+    LOGNOTE("Cue file parsed, block size is %d", m_BlockSize);
 }
 
 CCueBinFileDevice::~CCueBinFileDevice(void) {
