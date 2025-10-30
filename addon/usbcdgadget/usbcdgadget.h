@@ -677,9 +677,7 @@ private:
     TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};
 
     TUSBCDModeSenseReply m_ModeSenseReply{3, 0, 0, 0};
-    TUSBCDReadCapacityReply m_ReadCapReply{
-        htonl(0x00), // get's overridden in CUSBCDGadget::InitDeviceSize
-        htonl(2048)};
+    alignas(4) TUSBCDReadCapacityReply m_ReadCapReply{0, 0x00000800};  // 0x00000800 = 2048 in big-endian
 
     TUSBCDRequestSenseReply m_ReqSenseReply = {
         0x70, // current error
@@ -892,7 +890,9 @@ private:
     boolean m_IsFullSpeed = 0;
     boolean discChanged = false;
     uint8_t mcs = 0;
-
+    int GetLogicalBlocksize();  // Returns block size to report to host (always 2048 for data tracks)
+    int GetLogicalBlocksizeForTrack(CUETrackInfo trackInfo);  // Helper function 
+    int logical_block_size;  // Logical block size to report to host (always 2048 for data)   
     // Hardware serial number for USB device identification
     char m_HardwareSerialNumber[20]; // Format: "USBODE-XXXXXXXX"
 
