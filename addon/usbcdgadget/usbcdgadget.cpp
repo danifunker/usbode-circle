@@ -861,7 +861,7 @@ void CUSBCDGadget::OnActivate()
 
     // Give USB hardware endpoints time to fully initialize after reset
     // Without this delay, BeginTransfer calls succeed but data doesn't actually send
-    CTimer::Get()->MsDelay(10);
+    //CTimer::Get()->MsDelay(10);
 
     m_nState = TCDState::ReceiveCBW;
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
@@ -1112,16 +1112,16 @@ case 0xa8: // Read (12) - similar to READ(10) but with 32-bit block count
 
         // Where to start reading (LBA) - 4 bytes
         m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
-                           (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+                          (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 
         // Number of blocks to read (LBA) - 4 bytes
         m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) |
-                           (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+                          (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
 
         // CRITICAL FIX: Use logical block size for transfer to host
-        transfer_block_size = GetLogicalBlocksize();  // Always 2048 for data
-        block_size = GetBlocksize();                   // Physical size in BIN (2048 or 2352)
-        skip_bytes = GetSkipbytes();                   // Bytes to skip (0 or 16)
+        transfer_block_size = 2048;        // Always 2048 for data
+        block_size = data_block_size;      // Physical size from SetDevice (2048 or 2352)
+        skip_bytes = data_skip_bytes;      // Bytes to skip from SetDevice (0 or 16)
         mcs = 0;
 
         // Use memcpy to safely access potentially misaligned field
@@ -1144,9 +1144,13 @@ case 0xa8: // Read (12) - similar to READ(10) but with 32-bit block count
     }
     else
     {
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, %s", m_CDReady ? "ready" : "not ready");
-        setSenseData(0x02, 0x04, 0x00);  // Not Ready, Logical Unit Not Ready
-        sendCheckCondition();
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, %s", 
+                        m_CDReady ? "ready" : "not ready");
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+        m_SenseParams.bSenseKey = 0x02;
+        m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
+        m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+        SendCSW();
     }
     break;
 }
@@ -1305,24 +1309,14 @@ case 0xa8: // Read (12) - similar to READ(10) but with 32-bit block count
 
 case 0x25: // Read Capacity (10)
 {
-    u32 lastBlock = GetLeadoutLBA() - 1;
-    u32 blockSize = GetLogicalBlocksize();
-    
-    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", 
-             "READ CAPACITY (10): GetLogicalBlocksize() returned %u (0x%08x)", 
-             blockSize, blockSize);
+    m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1);
+    m_ReadCapReply.nSectorSize = htonl(2048);  // ALWAYS 2048 for CD-ROM data!
+
     
     // CRITICAL: Verify we're not using stale m_ReadCapReply
     MLOGNOTE("CUSBCDGadget::HandleSCSICommand",
              "m_ReadCapReply.nSectorSize BEFORE update: 0x%08x",
              m_ReadCapReply.nSectorSize);
-    
-    m_ReadCapReply.nLastBlockAddr = htonl(lastBlock);
-    m_ReadCapReply.nSectorSize = htonl(blockSize);
-    
-    MLOGNOTE("CUSBCDGadget::HandleSCSICommand",
-             "m_ReadCapReply.nSectorSize AFTER htonl(%u): 0x%08x",
-             blockSize, m_ReadCapReply.nSectorSize);
         
     memcpy(m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
     
@@ -1390,24 +1384,25 @@ case 0x28: // Read (10)
         // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Read (10)");
         // will be updated if read fails on any block
         m_CSW.bmCSWStatus = bmCSWStatus;
-
+        
         // Where to start reading (LBA)
-        m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
+        m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | 
+                          (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+        
         // Number of blocks to read (LBA)
         m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
-
+        
         // CRITICAL FIX: Use logical block size for transfer to host
-        transfer_block_size = GetLogicalBlocksize();  // Always 2048 for data
-        block_size = GetBlocksize();                   // Physical size in BIN (2048 or 2352)
-        skip_bytes = GetSkipbytes();                   // Bytes to skip (0 or 16)
+        transfer_block_size = 2048;        // Always 2048 for data
+        block_size = data_block_size;      // Physical size from SetDevice (2048 or 2352)
+        skip_bytes = data_skip_bytes;      // Bytes to skip from SetDevice (0 or 16)
         mcs = 0;
-
+        
         // Use memcpy to safely access potentially misaligned field
         uint32_t transferLength;
         memcpy(&transferLength, &m_CBW.dCBWDataTransferLength, sizeof(uint32_t));
         m_nbyteCount = transferLength;
-
+        
         // What is this?
         if (m_nnumber_blocks == 0)
         {
@@ -1424,8 +1419,11 @@ case 0x28: // Read (10)
     else
     {
         CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s", m_CDReady ? "ready" : "not ready");
-        setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY 
-        sendCheckCondition();
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+        m_SenseParams.bSenseKey = 0x02;
+        m_SenseParams.bAddlSenseCode = 0x04;      // LOGICAL UNIT NOT READY
+        m_SenseParams.bAddlSenseCodeQual = 0x00;  // CAUSE NOT REPORTABLE
+        SendCSW();
     }
     break;
 }
