@@ -1278,14 +1278,6 @@ u32 CUSBCDGadget::lba_to_msf(u32 lba, boolean relative)
     return (frames << 24) | (seconds << 16) | (minutes << 8) | reserved;
 }
 
-u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative)
-{
-    u32 address = lba;
-    if (msf)
-        return lba_to_msf(lba, relative);
-    return htonl(address);
-}
-
 int CUSBCDGadget::GetSectorLengthFromMCS(uint8_t mainChannelSelection)
 {
     int total = 0;
@@ -1974,7 +1966,7 @@ case 0x43: // READ TOC/PMA/ATIP -- bluescsi inspired
             if (cdplayer)
             {
                 address = cdplayer->GetCurrentAddress();
-                data.absoluteAddress = GetAddress(address, msf);
+                data.absoluteAddress = GetAddress(address, msf, false);
                 CUETrackInfo trackInfo = GetTrackInfoForLBA(address);
                 if (trackInfo.track_number != -1)
                 {

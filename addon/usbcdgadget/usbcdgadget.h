@@ -602,7 +602,6 @@ private:
     void InitDeviceSize(u64 blocks);
     u32 GetLeadoutLBA();
     int GetLastTrackNumber();
-    u32 GetAddress(u32 lba, int msf, boolean relative = false);
     u32 lba_to_msf(u32 lba, boolean relative = false);
     int GetSectorLengthFromMCS(uint8_t mainChannelSelection);
     int GetSkipBytesFromMCS(uint8_t mainChannelSelection);
@@ -643,8 +642,8 @@ private:
     void LBA2MSFBCD(int32_t LBA, uint8_t* MSF, bool relative);
     int32_t MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative);
     u32 GetAddress(u32 lba, int msf, boolean relative); 
-    void CUSBCDGadget::DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength);
-     void CUSBCDGadget::DoReadTrackInformation(u8 addressType, u32 address, u16 allocationLength);
+    void DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength);
+    void DoReadTrackInformation(u8 addressType, u32 address, u16 allocationLength);
  
 
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
