@@ -632,6 +632,21 @@ private:
         TUSBEndpointDescriptor EndpointOut;
     } PACKED;
 
+    // Bluescsi inspired TOC and session info helper methods
+    void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
+    void DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocationLength);
+    void DoReadSessionInfo(bool msf, uint16_t allocationLength);
+    void DoReadFullTOC(uint8_t session, uint16_t allocationLength, bool useBCD);
+    void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD); 
+    // Bluescsi Address conversion helpers
+    void LBA2MSF(int32_t LBA, uint8_t* MSF, bool relative);
+    void LBA2MSFBCD(int32_t LBA, uint8_t* MSF, bool relative);
+    int32_t MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative);
+    u32 GetAddress(u32 lba, int msf, boolean relative); 
+    void CUSBCDGadget::DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength);
+     void CUSBCDGadget::DoReadTrackInformation(u8 addressType, u32 address, u16 allocationLength);
+ 
+
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
 
@@ -659,7 +674,7 @@ private:
         0x05,                                     // Peripheral type = CD/DVD
         0x80,                                     // RMB set = removable media
         0x00,                                     // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
-        0x02,                                     // Response Data Format = This response is SPC3 format
+        0x32,                                     // Response Data Format = This response is SPC3 format
         0x1F,                                     // Additional Length
         0x50,                                     // SCCS ACC TPGS 3PC Reserved PROTECT
         0x00,                                     // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
