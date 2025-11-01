@@ -158,20 +158,27 @@ struct ModePage0x1AData
 #define SIZE_MODE_SENSE10_PAGE_0X1A 12
 
 // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
-struct ModePage0x2AData
-{
-    u8 pageCodeAndPS;
-    u8 pageLength;
-    u8 capabilityBits[6];
-    u16 maxSpeed;
-    u16 numVolumeLevels;
-    u16 bufferSize;
-    u16 currentSpeed;
-    u8 reserved1[4];
-    u16 maxReadSpeed;
-    u8 reserved2[2];
-} PACKED;
-#define SIZE_MODE_SENSE10_PAGE_0X2A 20
+        struct ModePage0x2AData
+        {
+            uint8_t pageCodeAndPS;      // 0x2A
+            uint8_t pageLength;          // 0x18 (24 bytes)
+            uint8_t reserved1[2];
+            uint8_t capabilityBits[4];   // CRITICAL: Audio capability flags
+            uint8_t mechanismBits[2];
+            uint8_t volumeBits[2];
+            uint16_t maxSpeed;           // Max read speed (Kbps)
+            uint16_t numVolumeLevels;    // Number of volume levels
+            uint16_t bufferSize;         // Buffer size (KB)
+            uint16_t currentSpeed;       // Current read speed (Kbps)
+            uint8_t reserved2[2];
+            uint8_t copyMgmt;
+            uint8_t reserved3;
+            uint16_t maxReadSpeed;
+            uint16_t reserved4;
+            uint16_t maxWriteSpeed;
+            uint16_t currentWriteSpeed;
+        } PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X2A 0x18
 
 // Mode Page 0x0E (CD Audio Control Page)
 struct ModePage0x0EData
@@ -556,7 +563,18 @@ private:
 
     int OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData) override;
 
+    u32 m_nLastReadEndLBA;
 private:
+
+    // Audio playback status codes (MMC-3 standard)
+    enum AudioStatus {
+        AUDIO_STATUS_NOT_SUPPORTED = 0x00,
+        AUDIO_STATUS_IN_PROGRESS = 0x11,
+        AUDIO_STATUS_PAUSED = 0x12,
+        AUDIO_STATUS_COMPLETED = 0x13,
+        AUDIO_STATUS_ERROR = 0x14,
+        AUDIO_STATUS_NO_STATUS = 0x15
+    };
     friend class CUSBCDGadgetEndpoint;
 
     void OnTransferComplete(boolean bIn, size_t nLength);
@@ -674,7 +692,7 @@ private:
         0x80,                                     // RMB set = removable media
         0x00,                                     // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
         0x32,                                     // Response Data Format = This response is SPC3 format
-        0x1F,                                     // Additional Length
+        sizeof(TUSBCDInquiryReply) - 5,           // Additional Length
         0x50,                                     // SCCS ACC TPGS 3PC Reserved PROTECT
         0x00,                                     // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
         0x00,                                     // Obsolete Obsolete WBUS16a SYNCa LINKED Obsolete CMDQUE VS
