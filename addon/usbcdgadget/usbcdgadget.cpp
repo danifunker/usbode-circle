@@ -163,6 +163,8 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget", "entered %d", isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
+    m_ReadCapReply.nLastBlockAddr = 0;  // Will be set by InitDeviceSize
+    m_ReadCapReply.nSectorSize = htonl(2048);
 
     // Fetch hardware serial number for unique USB device identification
     CBcmPropertyTags Tags;

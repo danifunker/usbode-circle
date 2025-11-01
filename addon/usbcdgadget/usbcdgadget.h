@@ -355,22 +355,6 @@ struct TUSBDiscInfoReply
 } PACKED;
 #define SIZE_DISC_INFO_REPLY 34
 
-/*
-struct TUSBCDGetConfigurationReply {
-    u32 dataLength;  // Number of bytes following this field
-    u16 reserved;
-    u16 currentProfile;  // e.g., 0x0008 for CD-ROM
-    u16 profilelist;
-    u8 version;
-    u8 additionalLength;
-    u16 profile;
-    u8 current;
-    u8 terminator;
-} PACKED;
-// #define SIZE_GET_CONFIGURATION_REPLY 18
-#define SIZE_GET_CONFIGURATION_REPLY 4
-*/
-
 struct TUSBCDFeatureHeaderReply
 {
     u32 dataLength; // Number of bytes following this field
@@ -709,9 +693,7 @@ private:
     TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};
 
     TUSBCDModeSenseReply m_ModeSenseReply{3, 0, 0, 0};
-    TUSBCDReadCapacityReply m_ReadCapReply{
-        htonl(0x00), // get's overridden in CUSBCDGadget::InitDeviceSize
-        htonl(2048)};
+    TUSBCDReadCapacityReply m_ReadCapReply;
 
     TUSBCDRequestSenseReply m_ReqSenseReply = {
         0x70, // current error
@@ -744,30 +726,7 @@ private:
     };
 
     // static for now
-    TUSBCDReadTOCReply m_TOCReply = {
-        htons(0x000A), // TOC data length (10 bytes follow)
-        0x01,          // First track number
-        0x01,          // Last track number
-        0x00,          // Reserved
-        0x14,          // ADR = 1 (LBA), Control = 4 (Data track)
-        0x01,          // Track number
-        0x00,          // Reserved
-        htonl(0x00)    // Track start LBA (big-endian 0)
-    };
-
-    /*
-    TUSBCDGetConfigurationReply m_GetConfigurationReply{
-        htonl(0x0C),  // Number of bytes following this field
-        htons(0x00),  // Reserved
-        htons(0x08),  // Current Profile 0x08 = CDROM
-        0x0000,       // Feature: Profile List
-        0x03,         // Version: persistent & current
-        0x04,         // Additional Length
-        htons(0x08),  // Profile 0x08 = CDROM
-        0x01,         // Current = true
-        0x00          // Reserved
-    };
-    */
+    TUSBCDReadTOCReply m_TOCReply;
 
     TUSBCDFeatureHeaderReply header = {
         htons(0x0000),       // datalength
