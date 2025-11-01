@@ -158,26 +158,26 @@ struct ModePage0x1AData
 #define SIZE_MODE_SENSE10_PAGE_0X1A 12
 
 // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
-        struct ModePage0x2AData
-        {
-            uint8_t pageCodeAndPS;      // 0x2A
-            uint8_t pageLength;          // 0x18 (24 bytes)
-            uint8_t reserved1[2];
-            uint8_t capabilityBits[4];   // CRITICAL: Audio capability flags
-            uint8_t mechanismBits[2];
-            uint8_t volumeBits[2];
-            uint16_t maxSpeed;           // Max read speed (Kbps)
-            uint16_t numVolumeLevels;    // Number of volume levels
-            uint16_t bufferSize;         // Buffer size (KB)
-            uint16_t currentSpeed;       // Current read speed (Kbps)
-            uint8_t reserved2[2];
-            uint8_t copyMgmt;
-            uint8_t reserved3;
-            uint16_t maxReadSpeed;
-            uint16_t reserved4;
-            uint16_t maxWriteSpeed;
-            uint16_t currentWriteSpeed;
-        } PACKED;
+struct ModePage0x2AData
+{
+    uint8_t pageCodeAndPS; // 0x2A
+    uint8_t pageLength;    // 0x18 (24 bytes)
+    uint8_t reserved1[2];
+    uint8_t capabilityBits[4]; // CRITICAL: Audio capability flags
+    uint8_t mechanismBits[2];
+    uint8_t volumeBits[2];
+    uint16_t maxSpeed;        // Max read speed (Kbps)
+    uint16_t numVolumeLevels; // Number of volume levels
+    uint16_t bufferSize;      // Buffer size (KB)
+    uint16_t currentSpeed;    // Current read speed (Kbps)
+    uint8_t reserved2[2];
+    uint8_t copyMgmt;
+    uint8_t reserved3;
+    uint16_t maxReadSpeed;
+    uint16_t reserved4;
+    uint16_t maxWriteSpeed;
+    uint16_t currentWriteSpeed;
+} PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X2A 0x18
 
 // Mode Page 0x0E (CD Audio Control Page)
@@ -564,10 +564,11 @@ private:
     int OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData) override;
 
     u32 m_nLastReadEndLBA;
-private:
 
+private:
     // Audio playback status codes (MMC-3 standard)
-    enum AudioStatus {
+    enum AudioStatus
+    {
         AUDIO_STATUS_NOT_SUPPORTED = 0x00,
         AUDIO_STATUS_IN_PROGRESS = 0x11,
         AUDIO_STATUS_PAUSED = 0x12,
@@ -654,15 +655,14 @@ private:
     void DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocationLength);
     void DoReadSessionInfo(bool msf, uint16_t allocationLength);
     void DoReadFullTOC(uint8_t session, uint16_t allocationLength, bool useBCD);
-    void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD); 
+    void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
     // Bluescsi Address conversion helpers
-    void LBA2MSF(int32_t LBA, uint8_t* MSF, bool relative);
-    void LBA2MSFBCD(int32_t LBA, uint8_t* MSF, bool relative);
+    void LBA2MSF(int32_t LBA, uint8_t *MSF, bool relative);
+    void LBA2MSFBCD(int32_t LBA, uint8_t *MSF, bool relative);
     int32_t MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative);
-    u32 GetAddress(u32 lba, int msf, boolean relative); 
+    u32 GetAddress(u32 lba, int msf, boolean relative);
     void DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength);
     void DoReadTrackInformation(u8 addressType, u32 address, u16 allocationLength);
- 
 
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
