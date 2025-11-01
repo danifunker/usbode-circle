@@ -1,9 +1,9 @@
 //
 // usbcdgadget.h
 //
-// CDROM Gadget by Ian Cass, heavily based on
-// USB Mass Storage Gadget by Mike Messinides
-//
+// CDROM Gadget by Ian Cass, and Dani Sarfati heavily based on
+// USB Mass Storage Gadget by Mike Messinides and BlueSCSI v2
+// https://github.com/BlueSCSI/BlueSCSI-v2
 // Circle - A C++ bare metal environment for Raspberry Pi
 // Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
 //
@@ -38,7 +38,10 @@
 #define USB_GADGET_DEVICE_ID_CD 0x1d6b
 #endif
 
-// If system htonl is not available, define our own
+// ============================================================================
+// Network Byte Order Helpers
+// ============================================================================
+
 #ifndef HAVE_ARPA_INET_H
 static inline u32 htonl(u32 x)
 {
@@ -55,37 +58,50 @@ static inline u16 htons(u16 x)
 }
 #endif
 
+// ============================================================================
+// CD-ROM Constants
+// ============================================================================
+
 #define LEADOUT_OFFSET 150
 
-struct TUSBCDCBW // 31 bytes
+// Profile codes (MMC-3)
+#define PROFILE_CDROM 0x0008
+#define PROFILE_DVD_ROM 0x0010
+
+// ============================================================================
+// USB Bulk-Only Transport (BOT) Structures
+// ============================================================================
+
+struct TUSBCDCBW // Command Block Wrapper - 31 bytes
 {
-    u32 dCBWSignature;
-    u32 dCBWTag;
-    u32 dCBWDataTransferLength;
-    u8 bmCBWFlags;
-    u8 bCBWLUN;
-    u8 bCBWCBLength;
-    u8 CBWCB[16];
+    u32 dCBWSignature;          // 'USBC' = 0x43425355
+    u32 dCBWTag;                // Command tag
+    u32 dCBWDataTransferLength; // Transfer length
+    u8 bmCBWFlags;              // Direction flags
+    u8 bCBWLUN;                 // Logical unit number
+    u8 bCBWCBLength;            // Command block length
+    u8 CBWCB[16];               // Command block
 } PACKED;
 
 #define SIZE_CBW 31
-
 #define VALID_CBW_SIG 0x43425355
 #define CSW_SIG 0x53425355
-
-struct TUSBCDCSW // 13 bytes
+struct TUSBCDCSW // Command Status Wrapper - 13 bytes
 {
-    u32 dCSWSignature = CSW_SIG;
-    u32 dCSWTag;
-    u32 dCSWDataResidue = 0;
-    u8 bmCSWStatus = 0; // 0=ok 1=command fail 2=phase error
+    u32 dCSWSignature = CSW_SIG; // 'USBS' = 0x53425355
+    u32 dCSWTag;                 // Command tag (matches CBW)
+    u32 dCSWDataResidue = 0;     // Residue count
+    u8 bmCSWStatus = 0;          // Status: 0=OK, 1=Fail, 2=Phase Error
 } PACKED;
 
 #define SIZE_CSW 13
-
 #define CD_CSW_STATUS_OK 0
 #define CD_CSW_STATUS_FAIL 1
 #define CD_CSW_STATUS_PHASE_ERR 2
+
+// ============================================================================
+// SCSI Sense Data
+// ============================================================================
 
 struct SenseParameters
 {
@@ -94,24 +110,71 @@ struct SenseParameters
     u8 bAddlSenseCodeQual = 0;
 };
 
-// reply to SCSI Request Sense Command 0x3
-struct TUSBCDRequestSenseReply // 14 bytes
+// ============================================================================
+// SCSI Command Reply Structures
+// ============================================================================
+
+// REQUEST SENSE (0x03) - 14 bytes
+struct TUSBCDRequestSenseReply
 {
-    u8 bErrCode;
-    u8 bSegNum;
-    u8 bSenseKey; //=5 command not supported
-    u8 bInformation[4];
-    u8 bAddlSenseLen;
-    u8 bCmdSpecificInfo[4];
-    u8 bAddlSenseCode;
-    u8 bAddlSenseCodeQual;
+    u8 bErrCode;            // Error code (0x70 = current, 0x71 = deferred)
+    u8 bSegNum;             // Segment number
+    u8 bSenseKey;           // Sense key (see MMC-3 spec)
+    u8 bInformation[4];     // Information bytes
+    u8 bAddlSenseLen;       // Additional sense length (0x0A for fixed format)
+    u8 bCmdSpecificInfo[4]; // Command-specific info
+    u8 bAddlSenseCode;      // ASC - Additional Sense Code
+    u8 bAddlSenseCodeQual;  // ASCQ - Additional Sense Code Qualifier
     u8 bFieldReplaceUnitCode;
     u8 bSKSVetc;
     u8 sKeySpecific[3];
 } PACKED;
 #define SIZE_RSR 14
 
-// SCSI Mode Sense(6) Response Structure
+// INQUIRY (0x12) - 96 bytes
+struct TUSBCDInquiryReply
+{
+    u8 bPeriphQualDevType;      // Byte 0: Peripheral qualifier + device type
+    u8 bRMB;                    // Byte 1: Removable media bit
+    u8 bVersion;                // Byte 2: SCSI version
+    u8 bRespDataFormatEtc;      // Byte 3: Response data format
+    u8 bAddlLength;             // Byte 4: Additional length
+    u8 bSCCS;                   // Byte 5: SCCS bits
+    u8 bBQUEetc;                // Byte 6: BQUE, ENCSERV, etc.
+    u8 bRELADRetc;              // Byte 7: RELADR, etc.
+    u8 bVendorID[8];            // Bytes 8-15: Vendor ID
+    u8 bProdID[16];             // Bytes 16-31: Product ID
+    u8 bProdRev[4];             // Bytes 32-35: Product revision
+    u8 bVendorSpecific[20];     // Bytes 36-55: Vendor specific
+    u8 bReserved[2];            // Bytes 56-57: Reserved
+    u8 bVersionDescriptors[16]; // Bytes 58-73: Version descriptors
+    u8 bReserved2[22];          // Bytes 74-95: Reserved/padding
+} PACKED;
+#define SIZE_INQR 96
+
+// INQUIRY VPD Page 0x80 - Unit Serial Number
+struct TUSBUintSerialNumberPage
+{
+    u8 PageCode; // 0x80
+    u8 Reserved;
+    u16 Reserved2;
+    u8 PageLength;      // Length of serial number
+    u8 SerialNumber[4]; // Device serial number (ASCII)
+} PACKED;
+#define SIZE_INQSN 9
+
+// INQUIRY VPD Page 0x00 - Supported VPD Pages
+struct TUSBSupportedVPDPage
+{
+    u8 PageCode; // 0x00
+    u8 Reserved;
+    u16 Reserved2;
+    u8 PageLength;
+    u8 SupportedPageList[1];
+} PACKED;
+#define SIZE_VPDPAGE 6
+
+// MODE SENSE(6) (0x1A) - Header
 struct ModeSense6Header
 {
     u8 modeDataLength;
@@ -121,18 +184,27 @@ struct ModeSense6Header
 } PACKED;
 #define SIZE_MODE_SENSE6_HEADER 4
 
-// SCSI Mode Sense(10) Response Structures
+struct TUSBCDModeSenseReply // Simplified header
+{
+    u8 bModeDataLen;
+    u8 bMedType;
+    u8 bDevParam;
+    u8 bBlockDecrLen;
+} PACKED;
+#define SIZE_MODEREP 4
+
+// MODE SENSE(10) (0x5A) - Header
 struct ModeSense10Header
 {
     u16 modeDataLength;
     u8 mediumType;
     u8 deviceSpecificParameter;
-    u16 reserved; // Reserved (was incorrectly u32 blockDescriptorLength)
+    u16 reserved;
     u16 blockDescriptorLength;
 } PACKED;
 #define SIZE_MODE_SENSE10_HEADER 8
 
-// Mode Page 0x01 (Read/Write Error Recovery Parameters Mode Page)
+// Mode Page 0x01 - Read/Write Error Recovery
 struct ModePage0x01Data
 {
     u8 pageCodeAndPS;
@@ -145,35 +217,7 @@ struct ModePage0x01Data
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X01 12
 
-// Mode Page 0x1A (Power Condition)
-struct ModePage0x1AData
-{
-    u8 pageCodeAndPS;
-    u8 pageLength;
-    u8 reserved1;
-    u8 idleStandby;
-    u32 idleConditionTimer;
-    u32 standbyConditionTimer;
-} PACKED;
-#define SIZE_MODE_SENSE10_PAGE_0X1A 12
-
-// Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
-struct ModePage0x2AData
-{
-    u8 pageCodeAndPS;
-    u8 pageLength;
-    u8 capabilityBits[6];
-    u16 maxSpeed;
-    u16 numVolumeLevels;
-    u16 bufferSize;
-    u16 currentSpeed;
-    u8 reserved1[4];
-    u16 maxReadSpeed;
-    u8 reserved2[2];
-} PACKED;
-#define SIZE_MODE_SENSE10_PAGE_0X2A 20
-
-// Mode Page 0x0E (CD Audio Control Page)
+// Mode Page 0x0E - CD Audio Control
 struct ModePage0x0EData
 {
     u8 pageCodeAndPS;
@@ -191,87 +235,105 @@ struct ModePage0x0EData
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X0E 16
 
-// reply to SCSI Inquiry Command 0x12
-struct TUSBCDInquiryReply // 96 bytes
+// Mode Page 0x1A - Power Condition
+struct ModePage0x1AData
 {
-    u8 bPeriphQualDevType;
-    u8 bRMB;
-    u8 bVersion;
-    u8 bRespDataFormatEtc;
-    u8 bAddlLength;
-    u8 bSCCS;
-    u8 bBQUEetc;
-    u8 bRELADRetc;
-    u8 bVendorID[8];
-    u8 bProdID[16];
-    u8 bProdRev[4];
-    u8 bVendorSpecific[20];     // Bytes 36-55: Vendor specific
-    u8 bReserved[2];            // Bytes 56-57: Reserved
-    u8 bVersionDescriptors[16]; // Bytes 58-73: Version descriptors (8 x 2-byte values)
-    u8 bReserved2[22];          // Bytes 74-95: Reserved/padding
+    u8 pageCodeAndPS;
+    u8 pageLength;
+    u8 reserved1;
+    u8 idleStandby;
+    u32 idleConditionTimer;
+    u32 standbyConditionTimer;
 } PACKED;
-#define SIZE_INQR 96
+#define SIZE_MODE_SENSE10_PAGE_0X1A 12
 
-struct TUSBUintSerialNumberPage
+// Mode Page 0x2A - MM Capabilities and Mechanical Status
+struct ModePage0x2AData
 {
-    u8 PageCode;        // 0x80
-    u8 Reserved;        // Reserved
-    u16 Reserved2;      // Reserved
-    u8 PageLength;      // Length of the Serial Number string
-    u8 SerialNumber[4]; // Device Serial Number (ASCII)
+    u8 pageCodeAndPS;
+    u8 pageLength;
+    u8 capabilityBits[6];
+    u16 maxSpeed;
+    u16 numVolumeLevels;
+    u16 bufferSize;
+    u16 currentSpeed;
+    u8 reserved1[4];
+    u16 maxReadSpeed;
+    u8 reserved2[2];
 } PACKED;
-#define SIZE_INQSN 9
+#define SIZE_MODE_SENSE10_PAGE_0X2A 20
 
-struct TUSBSupportedVPDPage
+// READ CAPACITY (0x25) - 8 bytes
+struct TUSBCDReadCapacityReply
 {
-    u8 PageCode;   // 0x00 for Supported VPD Pages
-    u8 Reserved;   // Reserved
-    u16 Reserved2; // Reserved
-    u8 PageLength; // Length of the Supported Page List
-    u8 SupportedPageList[1];
+    u32 nLastBlockAddr; // Last logical block address
+    u32 nSectorSize;    // Block size in bytes
 } PACKED;
-#define SIZE_VPDPAGE 6
+#define SIZE_READCAPREP 8
 
-// reply to SCSI Mode Sense(6) 0x1A
-struct TUSBCDModeSenseReply // 4 bytes
+// READ TOC (0x43) - Format 0 response
+struct TUSBCDReadTOCReply
 {
-    u8 bModeDataLen;
-    u8 bMedType;
-    u8 bDevParam;
-    u8 bBlockDecrLen;
+    u16 length;    // TOC data length (excluding this field)
+    u8 firstTrack; // First track number
+    u8 lastTrack;  // Last track number
+    u8 reserved;
+    u8 adr_ctrl;    // ADR/Control byte
+    u8 trackNumber; // Track number
+    u8 reserved2;
+    u32 trackStartLBA; // Track start address
 } PACKED;
-#define SIZE_MODEREP 4
+#define SIZE_TOC_REPLY 12
 
-// Read Disc Structure header
+// READ TOC - Track descriptor entry
+struct TUSBTOCEntry
+{
+    u8 reserved;
+    u8 ADR_Control;
+    u8 TrackNumber;
+    u8 reserved2;
+    u32 address;
+} PACKED;
+#define SIZE_TOC_ENTRY 8
+
+// READ TOC - TOC header
+struct TUSBTOCData
+{
+    u16 DataLength; // Length of remaining data
+    u8 FirstTrack;
+    u8 LastTrack;
+} PACKED;
+#define SIZE_TOC_DATA 4
+
+// READ SUB-CHANNEL (0x42) - Header
+struct TUSBCDSubChannelHeaderReply
+{
+    u8 reserved;
+    u8 audioStatus; // Audio playback status
+    u16 dataLength; // Remaining data length
+} PACKED;
+#define SIZE_SUBCHANNEL_HEADER_REPLY 4
+
+// READ SUB-CHANNEL - Format 0x01 (Current Position)
+struct TUSBCDSubChannel01CurrentPositionReply
+{
+    u8 dataFormatCode;   // 0x01
+    u8 adrControl;       // ADR/Control
+    u8 trackNumber;      // Current track
+    u8 indexNumber;      // Current index
+    u32 absoluteAddress; // Absolute CD address
+    u32 relativeAddress; // Track-relative address
+} PACKED;
+#define SIZE_SUBCHANNEL_01_DATA_REPLY 12
+
+// READ HEADER (0x44)
 struct TUSBCDReadDiscStructureHeader
 {
     u16 dataLength;
     u8 reserved[2];
 } PACKED;
 
-// reply to SCSI Read Capacity 0x25
-struct TUSBCDReadCapacityReply // 8 bytes
-{
-    u32 nLastBlockAddr;
-    u32 nSectorSize;
-} PACKED;
-#define SIZE_READCAPREP 8
-
-struct TUSBCDEventStatusReplyHeader
-{
-    u16 eventDataLength;    // 2 bytes: length of remaining data
-    u8 notificationClass;   // Media class
-    u8 supportedEventClass; // No events supported
-} PACKED;
-#define SIZE_EVENT_STATUS_REPLY_HEADER 4
-
-struct TUSBCDEventStatusReplyEvent
-{
-    u8 eventCode;
-    u8 data[3];
-} PACKED;
-#define SIZE_EVENT_STATUS_REPLY_EVENT 4
-
+// READ TRACK INFORMATION (0x52)
 struct TUSBCDTrackInformationBlock
 {
     u16 dataLength;
@@ -296,79 +358,49 @@ struct TUSBCDTrackInformationBlock
     u32 lastLayerJumpAddress;
 } PACKED;
 
-struct TUSBCDReadTOCReply // 12 bytes
-{
-    u16 length; // TOC data length (excluding this field)
-    u8 firstTrack;
-    u8 lastTrack;
-
-    // Track Descriptor
-    u8 reserved;
-    u8 adr_ctrl;    // 0x14 = ADR=1 (LBA), Control=4 (Data track)
-    u8 trackNumber; // 1 = Track 1
-    u8 reserved2;
-    u32 trackStartLBA; // LBA start of track (e.g. 0)
-} PACKED;
-#define SIZE_TOC_REPLY 12
-
-struct TUSBTOCEntry
-{
-    u8 reserved;
-    u8 ADR_Control;
-    u8 TrackNumber;
-    u8 reserved2;
-    u32 address;
-} PACKED;
-#define SIZE_TOC_ENTRY 8
-
-struct TUSBTOCData
-{
-    u16 DataLength; // Total length of the TOC data (excluding the length itself)
-    u8 FirstTrack;
-    u8 LastTrack;
-} PACKED;
-#define SIZE_TOC_DATA 4
-
+// READ DISC INFORMATION (0x51)
 struct TUSBDiscInfoReply
 {
-    u16 data_length;             // Bytes 0–1: Length of remaining data (not including this field), e.g. 0x0020
-    u8 disc_status;              // Byte 2: Disc status & erasable flags
-    u8 first_track_number;       // Byte 3: First Track Number
-    u8 number_of_sessions;       // Byte 4: Number of Sessions
-    u8 first_track_last_session; // Byte 5: First Track Number in Last Session
-    u8 last_track_last_session;  // Byte 6: Last Track Number in Last Session
-    u8 reserved1;                // Byte 7: Reserved
-    u8 disc_type;                // Byte 8: Disc Type (e.g. 0 = CD-ROM)
-    u8 reserved2;                // Byte 9: Reserved
-    u32 disc_id;                 // Bytes 10–13: Disc Identification (optional, usually zero)
-    u32 last_lead_in_start_time; // Bytes 14–17: Start time of last session's lead-in (optional)
-    u32 last_possible_lead_out;  // Bytes 18–21: Last possible lead-out start time
-    u8 disc_bar_code[8];         // Bytes 22–29: Disc Bar Code (optional)
-    u32 reserved3;               // Bytes 30–33: Reserved / padding
+    u16 data_length; // Length of remaining data
+    u8 disc_status;  // Disc status
+    u8 first_track_number;
+    u8 number_of_sessions;
+    u8 first_track_last_session;
+    u8 last_track_last_session;
+    u8 reserved1;
+    u8 disc_type; // Disc type
+    u8 reserved2;
+    u32 disc_id;
+    u32 last_lead_in_start_time;
+    u32 last_possible_lead_out;
+    u8 disc_bar_code[8];
+    u32 reserved3;
 } PACKED;
 #define SIZE_DISC_INFO_REPLY 34
 
-/*
-struct TUSBCDGetConfigurationReply {
-    u32 dataLength;  // Number of bytes following this field
-    u16 reserved;
-    u16 currentProfile;  // e.g., 0x0008 for CD-ROM
-    u16 profilelist;
-    u8 version;
-    u8 additionalLength;
-    u16 profile;
-    u8 current;
-    u8 terminator;
+// GET EVENT STATUS NOTIFICATION (0x4A)
+struct TUSBCDEventStatusReplyHeader
+{
+    u16 eventDataLength;
+    u8 notificationClass;
+    u8 supportedEventClass;
 } PACKED;
-// #define SIZE_GET_CONFIGURATION_REPLY 18
-#define SIZE_GET_CONFIGURATION_REPLY 4
-*/
+#define SIZE_EVENT_STATUS_REPLY_HEADER 4
+
+struct TUSBCDEventStatusReplyEvent
+{
+    u8 eventCode;
+    u8 data[3];
+} PACKED;
+#define SIZE_EVENT_STATUS_REPLY_EVENT 4
+
+// GET CONFIGURATION (0x46) - Feature descriptors
 
 struct TUSBCDFeatureHeaderReply
 {
-    u32 dataLength; // Number of bytes following this field
+    u32 dataLength; // Length of remaining data
     u16 reserved;
-    u16 currentProfile; // e.g., 0x0008 for CD-ROM
+    u16 currentProfile; // Current profile (e.g., 0x0008 for CD-ROM)
 } PACKED;
 #define SIZE_FEATURE_HEADER_REPLY 8
 
@@ -383,13 +415,10 @@ struct TUSBCDProfileListFeatureReply
 struct TUSBCProfileDescriptorReply
 {
     u16 profileNumber;
-    u8 currentP;
+    u8 currentP; // Current profile flag
     u8 reserved;
 } PACKED;
 #define SIZE_PROFILE_DESCRIPTOR_REPLY 4
-
-#define PROFILE_CDROM 0x0008
-#define PROFILE_DVD_ROM 0x0010
 
 struct TUSBCDCoreFeatureReply
 {
@@ -453,7 +482,6 @@ struct TUSBCDPowerManagementFeatureReply
     u8 VersionPersistentCurrent;
     u8 AdditionalLength;
 } PACKED;
-#define SIZE_MULTI_READ_HEADER_REPLY 4
 
 struct TUSBCDCDReadFeatureReply
 {
@@ -479,95 +507,194 @@ struct TUSBCDDVDReadFeatureReply
 } PACKED;
 #define SIZE_DVD_READ_HEADER_REPLY 8
 
-struct TUSBCDSubChannelHeaderReply
-{
-    u8 reserved;
-    u8 audioStatus;
-    u16 dataLength;
-    // u8 dataLength1;
-    // u8 dataLength2;
-} PACKED;
-#define SIZE_SUBCHANNEL_HEADER_REPLY 4
-
-struct TUSBCDSubChannel01CurrentPositionReply
-{
-    u8 dataFormatCode; // this should be 0x01
-    u8 adrControl;     // 0x00 = Q Sub-channel mode information not supplied / 2 audio channels without pre-emphasis
-    u8 trackNumber;
-    u8 indexNumber;
-    u32 absoluteAddress;
-    u32 relativeAddress;
-} PACKED;
-#define SIZE_SUBCHANNEL_01_DATA_REPLY 12
+// ============================================================================
+// Vendor-Specific Toolbox Commands
+// ============================================================================
 
 struct TUSBCDToolboxFileEntry
 {
-    u8 index;    /* byte 00: file index in directory */
-    u8 type;     /* byte 01: type 0 = file, 1 = directory */
-    u8 name[33]; /* byte 02-34: filename (32 byte max) + space for NUL terminator */
-    u8 size[5];  /* byte 35-39: file size (40 bit big endian unsigned) */
+    u8 index;    // File index in directory
+    u8 type;     // 0 = file, 1 = directory
+    u8 name[33]; // Filename (32 bytes + NUL terminator)
+    u8 size[5];  // File size (40-bit big-endian)
 } PACKED;
 
-class CUSBCDGadget : public CDWUSBGadget /// USB mass storage device gadget
+// ============================================================================
+// Main USB CD-ROM Gadget Class
+// ============================================================================
+
+class CUSBCDGadget : public CDWUSBGadget
 {
 public:
-    /// \param pInterruptSystem Pointer to the interrupt system object
-    /// \param pDevice Pointer to the block device, to be controlled by this gadget
-    /// \note pDevice must be initialized yet, when it is specified here.
-    /// \note SetDevice() has to be called later, when pDevice is not specified here.
+    /// \brief Constructor
+    /// \param pInterruptSystem Pointer to interrupt system
+    /// \param isFullSpeed True for USB 1.1 full-speed (12 Mbps), false for USB 2.0 high-speed (480 Mbps)
+    /// \param pDevice Optional CUE-aware device pointer (can be set later via SetDevice)
     CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, ICueDevice *pDevice = nullptr);
 
     ~CUSBCDGadget(void);
 
-    /// \param pDevice Pointer to the block device, to be controlled by this gadget
-    /// \note Call this, if pDevice has not been specified in the constructor.
+    /// \brief Set the CUE-aware block device to be exposed via USB
+    /// \param pDevice Pointer to device implementing ICueDevice interface
+    /// \note Call this if device wasn't provided in constructor
     void SetDevice(ICueDevice *pDevice);
 
-    /// \brief Call this periodically from TASK_LEVEL to allow I/O operations!
+    /// \brief Process USB transfers - must be called periodically from TASK_LEVEL
+    /// \note This processes the SCSI command state machine and data transfers
     void Update(void);
 
-    /// \param nBlocks Capacity of the block device in number of blocks (a 512 bytes)
-    /// \note Used when the block device does not report its size.
-    // void SetDeviceBlocks(u64 nBlocks);
-    /// \return Capacity of the block device in number of blocks (a 512 bytes)
-    // u64 GetBlocks (void) const;
-
 protected:
-    /// \brief Get device-specific descriptor
-    /// \param wValue Parameter from setup packet (descriptor type (MSB) and index (LSB))
-    /// \param wIndex Parameter from setup packet (e.g. language ID for string descriptors)
-    /// \param pLength Pointer to variable, which receives the descriptor size
-    /// \return Pointer to descriptor or nullptr, if not available
-    /// \note May override this to personalize device.
+    // ========================================================================
+    // CDWUSBGadget Overrides
+    // ========================================================================
+
+    /// \brief Get device-specific USB descriptor
+    /// \param wValue Descriptor type (MSB) and index (LSB) from setup packet
+    /// \param wIndex Language ID or other index from setup packet
+    /// \param pLength Receives the descriptor size
+    /// \return Pointer to descriptor or nullptr if not available
     const void *GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength) override;
 
-    /// \brief Convert string to UTF-16 string descriptor
-    /// \param pString Pointer to ASCII C-string
-    /// \param pLength Pointer to variable, which receives the descriptor size
-    /// \return Pointer to string descriptor in class-internal buffer
-    const void *ToStringDescriptor(const char *pString, size_t *pLength);
-
-private:
+    /// \brief Add bulk endpoints for data transfer
     void AddEndpoints(void) override;
 
+    /// \brief Create and configure USB device
     void CreateDevice(void) override;
 
+    /// \brief Handle USB bus suspend event
     void OnSuspend(void) override;
 
+    /// \brief Handle class or vendor-specific control requests
+    /// \param pSetupData Setup packet data
+    /// \param pData Data buffer for request
+    /// \return Number of bytes for data phase, 0 for no data, -1 for STALL
     int OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData) override;
 
 private:
+    // ========================================================================
+    // USB Transfer Callbacks (called from IRQ level via CUSBCDGadgetEndpoint)
+    // ========================================================================
     friend class CUSBCDGadgetEndpoint;
 
+    /// \brief Handle transfer completion
+    /// \param bIn True for IN transfer, false for OUT transfer
+    /// \param nLength Number of bytes transferred
     void OnTransferComplete(boolean bIn, size_t nLength);
 
-    void OnActivate(); // called from OUT ep
+    /// \brief Handle USB activation event
+    void OnActivate();
 
+    /// \brief Process received OUT data
+    /// \param nLength Number of bytes received
     void ProcessOut(size_t nLength);
 
-    MEDIA_TYPE m_mediaType = MEDIA_TYPE::CD;
+    // ========================================================================
+    // SCSI Command Processing
+    // ========================================================================
 
-    // Media state for proper MacOS Unit Attention handling
+    /// \brief Main SCSI command handler - dispatches to specific command handlers
+    void HandleSCSICommand();
+
+    /// \brief Send Command Status Wrapper (CSW) to complete command
+    void SendCSW();
+
+    // Sense data management for SCSI error reporting
+    void setSenseData(u8 senseKey, u8 asc = 0, u8 ascq = 0);
+    void clearSenseData();
+    void sendCheckCondition();
+    void sendGoodStatus();
+
+    // ========================================================================
+    // CD-ROM Specific Command Handlers (BlueSCSI-inspired)
+    // ========================================================================
+
+    // TOC and session management
+    void DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocationLength);
+    void DoReadSessionInfo(bool msf, uint16_t allocationLength);
+    void DoReadFullTOC(uint8_t session, uint16_t allocationLength, bool useBCD);
+    void DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength);
+    void DoReadTrackInformation(u8 addressType, u32 address, u16 allocationLength);
+
+    // TOC formatting helpers
+    void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
+    void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
+
+    // ========================================================================
+    // CUE Sheet and Track Management
+    // ========================================================================
+
+    /// \brief Get track information for a specific LBA
+    CUETrackInfo GetTrackInfoForLBA(u32 lba);
+
+    /// \brief Get track information by track number
+    CUETrackInfo GetTrackInfoForTrack(int track);
+
+    /// \brief Get last track number on disc
+    int GetLastTrackNumber();
+
+    /// \brief Calculate lead-out LBA (end of disc)
+    u32 GetLeadoutLBA();
+
+    // Track format helpers
+    int GetBlocksize();
+    int GetBlocksizeForTrack(CUETrackInfo trackInfo);
+    int GetSkipbytes();
+    int GetSkipbytesForTrack(CUETrackInfo trackInfo);
+    int GetMediumType();
+    int GetSectorLengthFromMCS(uint8_t mainChannelSelection);
+    int GetSkipBytesFromMCS(uint8_t mainChannelSelection);
+
+    // ========================================================================
+    // Address Conversion Utilities (BlueSCSI-inspired)
+    // ========================================================================
+
+    /// \brief Convert LBA to MSF format (binary)
+    void LBA2MSF(int32_t LBA, uint8_t *MSF, bool relative);
+
+    /// \brief Convert LBA to MSF format (BCD)
+    void LBA2MSFBCD(int32_t LBA, uint8_t *MSF, bool relative);
+
+    /// \brief Convert MSF to LBA
+    int32_t MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative);
+
+    /// \brief Get address in requested format (LBA or MSF)
+    u32 GetAddress(u32 lba, int msf, boolean relative);
+
+    /// \brief Convert LBA to packed MSF value
+    u32 lba_to_msf(u32 lba, boolean relative = false);
+
+    /// \brief Convert MSF to LBA
+    u32 msf_to_lba(u8 minutes, u8 seconds, u8 frames);
+
+    // ========================================================================
+    // Device Initialization
+    // ========================================================================
+
+    /// \brief Initialize device size and capacity
+    void InitDeviceSize(u64 blocks);
+
+    /// \brief Convert ASCII string to UTF-16 USB string descriptor
+    const void *ToStringDescriptor(const char *pString, size_t *pLength);
+
+    // ========================================================================
+    // State Machine
+    // ========================================================================
+
+    /// \brief SCSI command processing states
+    enum TCDState
+    {
+        Init,              // Initial state
+        ReceiveCBW,        // Waiting for Command Block Wrapper
+        InvalidCBW,        // Invalid CBW received
+        DataIn,            // Sending data to host
+        DataOut,           // Receiving data from host
+        SentCSW,           // CSW sent, waiting for confirmation
+        SendReqSenseReply, // Sending Request Sense reply
+        DataInRead,        // Reading data from device for transfer
+        DataOutWrite       // Writing received data to device
+    };
+
+    /// \brief Media state for proper macOS Unit Attention handling
     enum class MediaState
     {
         NO_MEDIUM,                     // No disc present
@@ -575,54 +702,23 @@ private:
         MEDIUM_PRESENT_READY           // Disc present and ready
     };
 
-    MediaState m_mediaState = MediaState::NO_MEDIUM;
-
-private:
-    void HandleSCSICommand();
-
-    void SendCSW();
-    // Sense data management helpers for MacOS compatibility
-    void setSenseData(u8 senseKey, u8 asc = 0, u8 ascq = 0);
-    void clearSenseData();
-    void sendCheckCondition();
-    void sendGoodStatus();
-
-    CUETrackInfo GetTrackInfoForLBA(u32 lba);
-    CUETrackInfo GetTrackInfoForTrack(int track);
-    int GetSkipbytesForTrack(CUETrackInfo trackInfo);
-    int GetSkipbytes();
-    int GetMediumType();
-    u32 msf_to_lba(u8 minutes, u8 seconds, u8 frames);
-    static const char *const s_StringDescriptorTemplate[];
-    const char *m_StringDescriptor[4];
-
-    int GetBlocksize();
-    int GetBlocksizeForTrack(CUETrackInfo trackInfo);
-
-    void InitDeviceSize(u64 blocks);
-    u32 GetLeadoutLBA();
-    int GetLastTrackNumber();
-    u32 lba_to_msf(u32 lba, boolean relative = false);
-    int GetSectorLengthFromMCS(uint8_t mainChannelSelection);
-    int GetSkipBytesFromMCS(uint8_t mainChannelSelection);
-
-private:
-    ICueDevice *m_pDevice;
-
+    /// \brief USB endpoint numbers
     enum TEPNumber
     {
-        EPIn = 1,
-        EPOut = 2,
-        NumEPs
+        EPIn = 1,  // Bulk IN endpoint
+        EPOut = 2, // Bulk OUT endpoint
+        NumEPs     // Total number of endpoints
     };
 
-    CUSBCDGadgetEndpoint *m_pEP[NumEPs];
+    // ========================================================================
+    // Static Configuration Data
+    // ========================================================================
 
-    u8 m_StringDescriptorBuffer[80];
-
-private:
     static const TUSBDeviceDescriptor s_DeviceDescriptor;
+    static const char *const s_StringDescriptorTemplate[];
+    static const char *const s_StringDescriptor[];
 
+    /// \brief USB configuration descriptor with interface and endpoints
     struct TUSBMSTGadgetConfigurationDescriptor
     {
         TUSBConfigurationDescriptor Configuration;
@@ -631,43 +727,45 @@ private:
         TUSBEndpointDescriptor EndpointOut;
     } PACKED;
 
-    // Bluescsi inspired TOC and session info helper methods
-    void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
-    void DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocationLength);
-    void DoReadSessionInfo(bool msf, uint16_t allocationLength);
-    void DoReadFullTOC(uint8_t session, uint16_t allocationLength, bool useBCD);
-    void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD); 
-    // Bluescsi Address conversion helpers
-    void LBA2MSF(int32_t LBA, uint8_t* MSF, bool relative);
-    void LBA2MSFBCD(int32_t LBA, uint8_t* MSF, bool relative);
-    int32_t MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative);
-    u32 GetAddress(u32 lba, int msf, boolean relative); 
-    void DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength);
-    void DoReadTrackInformation(u8 addressType, u32 address, u16 allocationLength);
- 
-
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
 
-    static const char *const s_StringDescriptor[];
+    // ========================================================================
+    // Instance Variables - Device and USB State
+    // ========================================================================
 
-    enum TCDState
-    {
-        Init,
-        ReceiveCBW,
-        InvalidCBW,
-        DataIn,
-        DataOut,
-        SentCSW,
-        SendReqSenseReply,
-        DataInRead,
-        DataOutWrite
-    };
+    ICueDevice *m_pDevice;               // CUE-aware block device
+    CUSBCDGadgetEndpoint *m_pEP[NumEPs]; // Endpoint objects
 
-    TCDState m_nState = Init;
+    TCDState m_nState;       // SCSI command state machine
+    MediaState m_mediaState; // Media presence state
+    MEDIA_TYPE m_mediaType;  // CD or DVD
 
-    alignas(4) TUSBCDCBW m_CBW;
-    alignas(4) TUSBCDCSW m_CSW;
+    boolean m_CDReady;     // Device ready flag
+    boolean m_IsFullSpeed; // USB 1.1 full-speed vs USB 2.0 high-speed
+    boolean discChanged;   // Media change flag
+    bool m_bDebugLogging;  // Enable verbose logging
+
+    // ========================================================================
+    // Instance Variables - USB Protocol Buffers
+    // ========================================================================
+
+    alignas(4) TUSBCDCBW m_CBW; // Command Block Wrapper
+    alignas(4) TUSBCDCSW m_CSW; // Command Status Wrapper
+
+    // Buffer size constants
+    static const size_t MaxOutMessageSize = 2048;
+    static const size_t MaxBlocksToRead = 16;
+    static const size_t MaxSectorSize = 2352;
+    static const size_t MaxInMessageSize = MaxBlocksToRead * MaxSectorSize;
+
+    DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // DMA buffer for IN transfers
+    DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // DMA buffer for OUT transfers
+    u8 *m_FileChunk;                                // Temporary buffer for file reads
+
+    // ========================================================================
+    // Instance Variables - SCSI Reply Structures
+    // ========================================================================
 
     TUSBCDInquiryReply m_InqReply{
         0x05,                                     // Peripheral type = CD/DVD
@@ -685,17 +783,14 @@ private:
         {0},                  // Reserved (2 bytes)
         {0},                  // Version descriptors (16 bytes, all zeros for now)
         {0}                   // Reserved/padding (22 bytes)
-    };
-    TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
-
-    TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};
-
-    TUSBCDModeSenseReply m_ModeSenseReply{3, 0, 0, 0};
+    }; // INQUIRY response
+    TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}}; // Unit serial number VPD page
+    TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};                        // Supported VPD pages
+    TUSBCDModeSenseReply m_ModeSenseReply{3, 0, 0, 0};                                         // MODE SENSE response
     TUSBCDReadCapacityReply m_ReadCapReply{
-        htonl(0x00), // get's overridden in CUSBCDGadget::InitDeviceSize
-        htonl(2048)};
-
-    TUSBCDRequestSenseReply m_ReqSenseReply = {
+        htonl(0x00),  // get's overridden in CUSBCDGadget::InitDeviceSize
+        htonl(2048)}; // READ CAPACITY response
+    TUSBCDRequestSenseReply m_ReqSenseReply{
         0x70, // current error
         0x00, // reserved
         0x00, // Sense Key
@@ -723,10 +818,8 @@ private:
         0x00,           // field replacement unit code
         0x00,           // sksv
         {0x0, 0x0, 0x0} // sense key specific
-    };
-
-    // static for now
-    TUSBCDReadTOCReply m_TOCReply = {
+    }; // REQUEST SENSE response
+    TUSBCDReadTOCReply m_TOCReply{
         htons(0x000A), // TOC data length (10 bytes follow)
         0x01,          // First track number
         0x01,          // Last track number
@@ -735,129 +828,7 @@ private:
         0x01,          // Track number
         0x00,          // Reserved
         htonl(0x00)    // Track start LBA (big-endian 0)
-    };
-
-    /*
-    TUSBCDGetConfigurationReply m_GetConfigurationReply{
-        htonl(0x0C),  // Number of bytes following this field
-        htons(0x00),  // Reserved
-        htons(0x08),  // Current Profile 0x08 = CDROM
-        0x0000,       // Feature: Profile List
-        0x03,         // Version: persistent & current
-        0x04,         // Additional Length
-        htons(0x08),  // Profile 0x08 = CDROM
-        0x01,         // Current = true
-        0x00          // Reserved
-    };
-    */
-
-    TUSBCDFeatureHeaderReply header = {
-        htons(0x0000),       // datalength
-        0x00,                // reserved;
-        htons(PROFILE_CDROM) // currentProfile;
-    };
-
-    // Feature 0000h - Profile List - A list of all profile supported by the drive
-    TUSBCDProfileListFeatureReply profile_list = {
-        htons(0x0000), // featureCode
-        0x03,          // VersionPersistentCurrent
-        0x04           // AdditionalLength
-    };
-
-    // Profiles 0008h CD-ROM
-    TUSBCProfileDescriptorReply cdrom_profile = {
-        htons(PROFILE_CDROM), // profileNumber
-        0x01,                 // currentP
-        0x00                  // reserved
-    };
-
-    // Profiles 0010h DVD-ROM
-    TUSBCProfileDescriptorReply dvd_profile = {
-        htons(PROFILE_DVD_ROM), // profileNumber
-        0x01,                   // currentP
-        0x00                    // reserved
-    };
-
-    // Feature 0001h - Core
-    TUSBCDCoreFeatureReply core = {
-        htons(0x0001), // featureCode
-        0x0b,          // VersionPersistentCurrent
-        0x08,          // AdditionalLength
-        0x08,          // physicalInterfaceStandard
-        0x03,          // INQ2DBE
-        0x00,          // reserved
-        0x00,          // reserved
-        0x00           // reserved
-    };
-
-    // Feature 0002h - Morphing Feature. The Drive is able to report operational changes
-    TUSBCDMorphingFeatureReply morphing = {
-        htons(0x0002), // featureCode
-        0x0b,          // VersionPersistentCurrent
-        0x04,          // AdditionalLength
-        0x02,          // OCEventASYNC
-        0x00,          // reserved
-        0x00,          // reserved
-        0x00           // reserved
-    };
-
-    // Feature 0003h - Removable Medium. The medium may be removed from the device
-    TUSBCDRemovableMediumFeatureReply mechanism = {
-        htons(0x0003), // featureCode
-        0x0b,          // VersionPersistentCurrent
-        0x04,          // AdditionalLength
-        0x15,          // Mechanism
-        0x00,          // reserved
-        0x00,          // reserved
-        0x00           // reserved
-    };
-
-    // Feture 0103h - CD Audio External Play Feature
-    TUSBCDAnalogueAudioPlayFeatureReply audioplay = {
-        htons(0x0103), // featureCode;
-        0x0b,          // VersionPersistentCurrent;
-        0x04,          // AdditionalLength;
-        0x00,          // ScanSCMSV;
-        0x00,          // reserved1;
-        0xff           // NumVolumeLevels;
-    };
-
-    // Feature 001dh - Multi-Read - The ability to read all CD media types
-    TUSBCDMultiReadFeatureReply multiread = {
-        htons(0x001d), // featureCode
-        0x0b,          // VersionPersistentCurrent
-        0x00,          // AdditionalLength
-    };
-
-    // Feature 0100h - Power Management Feature
-    TUSBCDPowerManagementFeatureReply powermanagement = {
-        htons(0x0100), // featureCode
-        0x0b,          // VersionPersistentCurrent
-        0x00,          // AdditionalLength
-    };
-
-    // Feature 001eh - CD Read - The ability to read CD specific structures
-    TUSBCDCDReadFeatureReply cdread = {
-        htons(0x001e), // featureCode
-        0x0b,          // VersionPersistentCurrent
-        0x04,          // AdditionalLength
-        0x00,          // DAPC2FlagsCDText
-        0x00,          // reserved
-        0x00,          // reserved
-        0x00           // reserved
-    };
-
-    // Feature 001fh - DVD Read - The ability to read DVD specific structures
-    TUSBCDDVDReadFeatureReply dvdread = {
-        htons(0x001f), // featureCode
-        0x0b,          // VersionPersistentCurrent
-        0x04,          // AdditionalLength
-        0x01,          // MultiUnitsDUALLayerBuff (MULTI110=0, DUAL_L=0, BUFF=1)
-        0x00,          // reserved
-        0x00,          // reserved
-        0x00           // reserved
-    };
-
+    }; // READ TOC response (basic format)
     TUSBDiscInfoReply m_DiscInfoReply{
         htons(0x0020),
         0x01,
@@ -872,46 +843,125 @@ private:
         {0x00},
         {0x00},
         {0x00},
-        {0x00}};
+        {0x00}}; // READ DISC INFORMATION response
 
-    // Must Initialize
-    int numTracks = 0;
-    // TUSBTOCData m_TOCData;
+    // GET CONFIGURATION feature descriptors
+    TUSBCDFeatureHeaderReply header{
+        htons(0x0000),       // datalength
+        0x00,                // reserved;
+        htons(PROFILE_CDROM) // currentProfile;
+    };
+    TUSBCDProfileListFeatureReply profile_list{
+        htons(0x0000), // featureCode
+        0x03,          // VersionPersistentCurrent
+        0x04           // AdditionalLength
+    };
+    TUSBCProfileDescriptorReply cdrom_profile{
+        htons(PROFILE_CDROM), // profileNumber
+        0x01,                 // currentP
+        0x00                  // reserved
+    };
+    TUSBCProfileDescriptorReply dvd_profile{
+        htons(PROFILE_DVD_ROM), // profileNumber
+        0x01,                   // currentP
+        0x00                    // reserved
+    };
+    TUSBCDCoreFeatureReply core{
+        htons(0x0001), // featureCode
+        0x0b,          // VersionPersistentCurrent
+        0x08,          // AdditionalLength
+        0x08,          // physicalInterfaceStandard
+        0x03,          // INQ2DBE
+        0x00,          // reserved
+        0x00,          // reserved
+        0x00           // reserved
+    };
+    TUSBCDMorphingFeatureReply morphing{
+        htons(0x0002), // featureCode
+        0x0b,          // VersionPersistentCurrent
+        0x04,          // AdditionalLength
+        0x02,          // OCEventASYNC
+        0x00,          // reserved
+        0x00,          // reserved
+        0x00           // reserved
+    };
+    TUSBCDRemovableMediumFeatureReply mechanism{
+        htons(0x0003), // featureCode
+        0x0b,          // VersionPersistentCurrent
+        0x04,          // AdditionalLength
+        0x15,          // Mechanism
+        0x00,          // reserved
+        0x00,          // reserved
+        0x00           // reserved
+    };
+    TUSBCDAnalogueAudioPlayFeatureReply audioplay{
+        htons(0x0103), // featureCode;
+        0x0b,          // VersionPersistentCurrent;
+        0x04,          // AdditionalLength;
+        0x00,          // ScanSCMSV;
+        0x00,          // reserved1;
+        0xff           // NumVolumeLevels;
+    };
+    TUSBCDMultiReadFeatureReply multiread{
+        htons(0x001d), // featureCode
+        0x0b,          // VersionPersistentCurrent
+        0x00,          // AdditionalLength
+    };
+    TUSBCDPowerManagementFeatureReply powermanagement{
+        htons(0x0100), // featureCode
+        0x0b,          // VersionPersistentCurrent
+        0x00,          // AdditionalLength
+    };
+    TUSBCDCDReadFeatureReply cdread{
+        htons(0x001e), // featureCode
+        0x0b,          // VersionPersistentCurrent
+        0x04,          // AdditionalLength
+        0x00,          // DAPC2FlagsCDText
+        0x00,          // reserved
+        0x00,          // reserved
+        0x00           // reserved
+    };
+    TUSBCDDVDReadFeatureReply dvdread{
+        htons(0x001f), // featureCode
+        0x0b,          // VersionPersistentCurrent
+        0x04,          // AdditionalLength
+        0x01,          // MultiUnitsDUALLayerBuff (MULTI110=0, DUAL_L=0, BUFF=1)
+        0x00,          // reserved
+        0x00,          // reserved
+        0x00           // reserved
+    };
 
-    static const size_t MaxOutMessageSize = 2048;
-    static const size_t MaxBlocksToRead = 16; // WARNING increasing this overflow some buffer. Not sure why because we size the buffer correctly
-    static const size_t MaxSectorSize = 2352;
-    static const size_t MaxInMessageSize = MaxBlocksToRead * MaxSectorSize;
-    u8 *m_FileChunk = new u8[MaxInMessageSize];
+    // ========================================================================
+    // Instance Variables - Transfer State
+    // ========================================================================
 
-    DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);
-    DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize);
+    u32 m_nblock_address;  // Current LBA for transfer
+    u32 m_nnumber_blocks;  // Remaining blocks to transfer
+    u32 m_nbyteCount;      // Remaining bytes to transfer
+    u32 m_nLastReadEndLBA; // Last read position (for consecutive read optimization)
 
-    u32 m_nblock_address;
-    u32 m_nnumber_blocks;
-    // u64 m_nDeviceBlocks=0;
-    u32 m_nbyteCount;
-    boolean m_CDReady = false;
+    u8 bmCSWStatus;                // CSW status code
+    SenseParameters m_SenseParams; // Current sense data
 
-    CUEParser cueParser;
+    // Sector format parameters
+    int data_skip_bytes;     // Skip bytes for data track reads
+    int data_block_size;     // Data block size
+    int skip_bytes;          // Skip bytes for current operation
+    int block_size;          // Physical block size on disc
+    int transfer_block_size; // Block size for USB transfer
+    int file_mode;           // File/track mode
+    int numTracks;           // Number of tracks on disc
+    uint8_t mcs;             // Main channel selection bits
 
-    u8 bmCSWStatus = 0;
-    SenseParameters m_SenseParams;
-    int data_skip_bytes = 0;
-    int data_block_size = 2048;
-    int skip_bytes = 0;
-    int block_size = 2048;
-    int transfer_block_size = 2048;
-    int file_mode = 1;
-    boolean m_IsFullSpeed = 0;
-    boolean discChanged = false;
-    uint8_t mcs = 0;
+    // ========================================================================
+    // Instance Variables - CUE Parsing and Device Identification
+    // ========================================================================
 
-    // Hardware serial number for USB device identification
-    char m_HardwareSerialNumber[20]; // Format: "USBODE-XXXXXXXX"
+    CUEParser cueParser; // CUE sheet parser
 
-    // Debug flag to enable verbose CD-ROM logging
-    bool m_bDebugLogging;
+    char m_HardwareSerialNumber[20];   // Hardware serial number (e.g., "USBODE-XXXXXXXX")
+    const char *m_StringDescriptor[4]; // USB string descriptors
+    u8 m_StringDescriptorBuffer[80];   // Buffer for string descriptor conversion
 };
 
 #endif
