@@ -3380,6 +3380,22 @@ void CUSBCDGadget::Update()
                         total_copied += 2048;
                     }
                 }
+            // Handle MODE2/2352 with standard READ(10) - extract user data
+            else if (trackInfo.track_mode == CUETrack_MODE2_2352 && 
+                     transfer_block_size == 2048 && mcs == 0)
+            {
+                CDROM_DEBUG_LOG("UpdateRead", "MODE2/2352: Extracting user data");
+                for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
+                {
+                    u8 *current_block_start = m_FileChunk + (i * 2352);
+                    // MODE2 Form 1: Skip 16-byte header + 8-byte subheader = 24 bytes
+                    // Then read 2048 bytes user data
+                    memcpy(dest_ptr, current_block_start + 24, 2048);
+                    dest_ptr += 2048;
+                    total_copied += 2048;
+                }
+            }
+
                 else if (transfer_block_size > block_size)
                 {
                     // READ CD command requesting synthetic sectors
