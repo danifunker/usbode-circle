@@ -525,7 +525,7 @@ void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocatio
 {
     // Detect multi-session structure
     int sessionCount = DetectSessionCount();
-    
+
     if (startingTrack == 0xAA)
     {
         // Only leadout requested - use session 1 leadout for single session,
@@ -630,42 +630,126 @@ void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocatio
 }
 void CUSBCDGadget::DoReadSessionInfo(bool msf, uint16_t allocationLength)
 {
-    uint8_t sessionTOC[12] = {
-        0x00, 0x0A,             // TOC length
-        0x01, 0x01,             // First/Last session
-        0x00, 0x14, 0x01, 0x00, // First track descriptor - control should match track 1 type
+    int sessionCount = DetectSessionCount();
+
+    // For single session, return first track info
+    if (sessionCount == 1)
+    {
+        uint8_t sessionTOC[12] = {
+            0x00, 0x0A,             // TOC length
+            0x01, 0x01,             // First/Last session (both 1)
+            0x00, 0x14, 0x01, 0x00, // First track descriptor
+            0x00, 0x00, 0x00, 0x00  // Address
+        };
+
+        cueParser.restart();
+        const CUETrackInfo *trackinfo = cueParser.next_track();
+        if (trackinfo)
+        {
+            // Set control byte based on track type
+            sessionTOC[5] = (trackinfo->track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+
+            if (msf)
+            {
+                sessionTOC[8] = 0;
+                LBA2MSF(trackinfo->track_start, &sessionTOC[9], false);
+            }
+            else
+            {
+                sessionTOC[8] = (trackinfo->track_start >> 24) & 0xFF;
+                sessionTOC[9] = (trackinfo->track_start >> 16) & 0xFF;
+                sessionTOC[10] = (trackinfo->track_start >> 8) & 0xFF;
+                sessionTOC[11] = (trackinfo->track_start >> 0) & 0xFF;
+            }
+
+            CDROM_DEBUG_LOG("CUSBCDGadget::DoReadSessionInfo",
+                            "Single session: control=0x%02x, track_start=%u",
+                            sessionTOC[5], trackinfo->track_start);
+        }
+
+        int len = sizeof(sessionTOC);
+        if (len > allocationLength)
+            len = allocationLength;
+
+        memcpy(m_InBuffer, sessionTOC, len);
+        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, len);
+        m_nState = TCDState::DataIn;
+        m_nnumber_blocks = 0;
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+        return;
+    }
+
+    // Multi-session: Return both session 1 and session 2 info
+    uint8_t multiSessionTOC[20] = {
+        0x00, 0x12, // TOC length (18 bytes of data)
+        0x01, 0x02, // First session = 1, Last session = 2
+        // Session 1 descriptor
+        0x00, 0x14, 0x01, 0x00, // Control/ADR, Track 1
+        0x00, 0x00, 0x00, 0x00, // Address (filled below)
+        // Session 2 descriptor
+        0x00, 0x14, 0x01, 0x00, // Control/ADR, First track of session 2
         0x00, 0x00, 0x00, 0x00  // Address (filled below)
     };
 
+    // Get session 1 first track
     cueParser.restart();
-    const CUETrackInfo *trackinfo = cueParser.next_track();
-    if (trackinfo)
+    const CUETrackInfo *session1Track = cueParser.next_track();
+    if (session1Track)
     {
-        // FIX: Set control byte based on track type
-        sessionTOC[5] = (trackinfo->track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+        multiSessionTOC[5] = (session1Track->track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
 
         if (msf)
         {
-            sessionTOC[8] = 0;
-            LBA2MSF(trackinfo->track_start, &sessionTOC[9], false); // FIX: Use track_start for session info
+            multiSessionTOC[8] = 0;
+            LBA2MSF(session1Track->track_start, &multiSessionTOC[9], false);
         }
         else
         {
-            sessionTOC[8] = (trackinfo->track_start >> 24) & 0xFF;
-            sessionTOC[9] = (trackinfo->track_start >> 16) & 0xFF;
-            sessionTOC[10] = (trackinfo->track_start >> 8) & 0xFF;
-            sessionTOC[11] = (trackinfo->track_start >> 0) & 0xFF;
+            multiSessionTOC[8] = (session1Track->track_start >> 24) & 0xFF;
+            multiSessionTOC[9] = (session1Track->track_start >> 16) & 0xFF;
+            multiSessionTOC[10] = (session1Track->track_start >> 8) & 0xFF;
+            multiSessionTOC[11] = (session1Track->track_start >> 0) & 0xFF;
         }
-        CDROM_DEBUG_LOG("CUSBCDGadget::DoReadSessionInfo",
-                        "Session info: control=0x%02x, track_start=%u, msf=%d",
-                        sessionTOC[5], trackinfo->track_start, msf);
     }
 
-    int len = sizeof(sessionTOC);
+    // Get session 2 first track
+    int session2FirstTrack = GetSessionFirstTrack(2);
+    if (session2FirstTrack > 0)
+    {
+        CUETrackInfo session2Track = GetTrackInfoForTrack(session2FirstTrack);
+        if (session2Track.track_number != -1)
+        {
+            multiSessionTOC[13] = (session2Track.track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+            multiSessionTOC[14] = session2Track.track_number;
+
+            if (msf)
+            {
+                multiSessionTOC[16] = 0;
+                LBA2MSF(session2Track.track_start, &multiSessionTOC[17], false);
+            }
+            else
+            {
+                multiSessionTOC[16] = (session2Track.track_start >> 24) & 0xFF;
+                multiSessionTOC[17] = (session2Track.track_start >> 16) & 0xFF;
+                multiSessionTOC[18] = (session2Track.track_start >> 8) & 0xFF;
+                multiSessionTOC[19] = (session2Track.track_start >> 0) & 0xFF;
+            }
+
+            CDROM_DEBUG_LOG("CUSBCDGadget::DoReadSessionInfo",
+                            "Multi-session: session2 track=%d, control=0x%02x, start=%u",
+                            session2Track.track_number, multiSessionTOC[13],
+                            session2Track.track_start);
+        }
+    }
+
+    int len = sizeof(multiSessionTOC);
     if (len > allocationLength)
         len = allocationLength;
 
-    memcpy(m_InBuffer, sessionTOC, len);
+    CDROM_DEBUG_LOG("CUSBCDGadget::DoReadSessionInfo",
+                    "Returning %d sessions", sessionCount);
+
+    memcpy(m_InBuffer, multiSessionTOC, len);
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, len);
     m_nState = TCDState::DataIn;
     m_nnumber_blocks = 0;
@@ -674,78 +758,154 @@ void CUSBCDGadget::DoReadSessionInfo(bool msf, uint16_t allocationLength)
 
 void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, bool useBCD)
 {
-    if (session > 1)
+    int sessionCount = DetectSessionCount();
+
+    if (session > sessionCount)
     {
         setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
         sendCheckCondition();
         return;
     }
 
-    // Base full TOC structure
-    uint8_t fullTOCBase[37] = {
-        0x00, 0x2E, // TOC length (will be updated)
-        0x01, 0x01, // First/Last session
-        // A0 descriptor
-        0x01, 0x14, 0x00, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-        // A1 descriptor
-        0x01, 0x14, 0x00, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-        // A2 descriptor
-        0x01, 0x14, 0x00, 0xA2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    // Start with base full TOC structure
+    int bufferOffset = 0;
 
-    uint32_t len = sizeof(fullTOCBase);
-    memcpy(m_InBuffer, fullTOCBase, len);
+    // Reserve space for header
+    bufferOffset += 4;
 
-    // Find first and last tracks
-    int firsttrack = -1;
-    CUETrackInfo lasttrack = {0};
-    const CUETrackInfo *trackinfo;
-
-    cueParser.restart();
-    while ((trackinfo = cueParser.next_track()) != nullptr)
+    // For each session, add A0, A1, A2 descriptors plus track descriptors
+    for (int s = 1; s <= sessionCount; s++)
     {
-        if (firsttrack < 0)
+        // Skip sessions not requested (if specific session requested)
+        if (session != 0 && session != s)
+            continue;
+
+        int sessionFirstTrack = GetSessionFirstTrack(s);
+        int sessionLastTrack = -1;
+
+        // Find last track in this session
+        cueParser.restart();
+        const CUETrackInfo *trackinfo;
+        const CUETrackInfo *prevTrack = nullptr;
+
+        while ((trackinfo = cueParser.next_track()) != nullptr)
         {
-            firsttrack = trackinfo->track_number;
-            if (trackinfo->track_mode == CUETrack_AUDIO)
+            if (trackinfo->track_number >= sessionFirstTrack)
             {
-                m_InBuffer[5] = 0x10; // A0 control for audio
+                // Check if this is still in current session
+                if (prevTrack && s < sessionCount)
+                {
+                    u32 gap = trackinfo->data_start - prevTrack->data_start;
+                    bool modeChange = (prevTrack->track_mode == CUETrack_AUDIO &&
+                                       trackinfo->track_mode != CUETrack_AUDIO) ||
+                                      (prevTrack->track_mode != CUETrack_AUDIO &&
+                                       trackinfo->track_mode == CUETrack_AUDIO);
+
+                    if (gap >= 11400 || modeChange)
+                    {
+                        // Next session starts here
+                        break;
+                    }
+                }
+                sessionLastTrack = trackinfo->track_number;
+            }
+            prevTrack = trackinfo;
+        }
+
+        CUETrackInfo firstTrack = GetTrackInfoForTrack(sessionFirstTrack);
+        CUETrackInfo lastTrack = GetTrackInfoForTrack(sessionLastTrack);
+
+        // A0 descriptor - First track number
+        m_InBuffer[bufferOffset++] = s; // Session
+        m_InBuffer[bufferOffset++] = (firstTrack.track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+        m_InBuffer[bufferOffset++] = 0x00;                    // TNO
+        m_InBuffer[bufferOffset++] = 0xA0;                    // POINT
+        m_InBuffer[bufferOffset++] = 0x00;                    // Min
+        m_InBuffer[bufferOffset++] = 0x00;                    // Sec
+        m_InBuffer[bufferOffset++] = 0x00;                    // Frame
+        m_InBuffer[bufferOffset++] = 0x00;                    // Zero/HOUR
+        m_InBuffer[bufferOffset++] = firstTrack.track_number; // PMIN (first track)
+        m_InBuffer[bufferOffset++] = 0x00;                    // PSEC (disc type)
+        m_InBuffer[bufferOffset++] = 0x00;                    // PFRAME
+
+        // A1 descriptor - Last track number
+        m_InBuffer[bufferOffset++] = s;
+        m_InBuffer[bufferOffset++] = (lastTrack.track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = 0xA1;
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = lastTrack.track_number; // PMIN (last track)
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = 0x00;
+
+        // A2 descriptor - Lead-out start
+        u32 leadoutLBA = (s == sessionCount) ? GetLeadoutLBA() : GetTrackInfoForTrack(GetSessionFirstTrack(s + 1)).track_start;
+
+        m_InBuffer[bufferOffset++] = s;
+        m_InBuffer[bufferOffset++] = (lastTrack.track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = 0xA2;
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = 0x00;
+        m_InBuffer[bufferOffset++] = 0x00;
+
+        if (useBCD)
+        {
+            LBA2MSFBCD(leadoutLBA, &m_InBuffer[bufferOffset], false);
+        }
+        else
+        {
+            LBA2MSF(leadoutLBA, &m_InBuffer[bufferOffset], false);
+        }
+        bufferOffset += 3;
+
+        // Add track descriptors for this session
+        cueParser.restart();
+        while ((trackinfo = cueParser.next_track()) != nullptr)
+        {
+            if (trackinfo->track_number >= sessionFirstTrack &&
+                trackinfo->track_number <= sessionLastTrack)
+            {
+                m_InBuffer[bufferOffset++] = s;
+                m_InBuffer[bufferOffset++] = (trackinfo->track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+                m_InBuffer[bufferOffset++] = 0x00;
+                m_InBuffer[bufferOffset++] = trackinfo->track_number;
+                m_InBuffer[bufferOffset++] = 0x00;
+                m_InBuffer[bufferOffset++] = 0x00;
+                m_InBuffer[bufferOffset++] = 0x00;
+                m_InBuffer[bufferOffset++] = 0x00;
+
+                if (useBCD)
+                {
+                    LBA2MSFBCD(trackinfo->data_start, &m_InBuffer[bufferOffset], false);
+                }
+                else
+                {
+                    LBA2MSF(trackinfo->data_start, &m_InBuffer[bufferOffset], false);
+                }
+                bufferOffset += 3;
             }
         }
-        lasttrack = *trackinfo;
-
-        // Add track descriptor
-        FormatRawTOCEntry(trackinfo, &m_InBuffer[len], useBCD);
-        len += 11;
     }
 
-    // Update A0, A1, A2 descriptors
-    m_InBuffer[12] = firsttrack;             // A0: First track number
-    m_InBuffer[23] = lasttrack.track_number; // A1: Last track number
-
-    if (lasttrack.track_mode == CUETrack_AUDIO)
-    {
-        m_InBuffer[16] = 0x10; // A1 control
-        m_InBuffer[27] = 0x10; // A2 control
-    }
-
-    // A2: Leadout position
-    u32 leadoutLBA = GetLeadoutLBA();
-    if (useBCD)
-    {
-        LBA2MSFBCD(leadoutLBA, &m_InBuffer[34], false);
-    }
-    else
-    {
-        LBA2MSF(leadoutLBA, &m_InBuffer[34], false);
-    }
-
-    // Update TOC length
-    uint16_t toclen = len - 2;
+    // Update header with total length
+    uint16_t toclen = bufferOffset - 2;
     m_InBuffer[0] = (toclen >> 8) & 0xFF;
     m_InBuffer[1] = toclen & 0xFF;
+    m_InBuffer[2] = 0x01;         // First session
+    m_InBuffer[3] = sessionCount; // Last session
 
+    int len = bufferOffset;
     if (len > allocationLength)
         len = allocationLength;
+
+    CDROM_DEBUG_LOG("CUSBCDGadget::DoReadFullTOC",
+                    "Returning full TOC: sessions=%d, length=%d",
+                    sessionCount, len);
 
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, len);
     m_nState = TCDState::DataIn;
@@ -759,15 +919,15 @@ int CUSBCDGadget::DetectSessionCount()
     // Common patterns:
     // - Session 1: Audio tracks (1-N)
     // - Session 2: Data track (N+1) with large gap before it
-    
+
     const u32 MIN_SESSION_GAP = 11400; // 152 seconds in frames (standard multi-session gap)
-    
+
     int sessionCount = 1;
     const CUETrackInfo *prevTrack = nullptr;
     const CUETrackInfo *currentTrack = nullptr;
-    
+
     cueParser.restart();
-    
+
     while ((currentTrack = cueParser.next_track()) != nullptr)
     {
         if (prevTrack != nullptr)
@@ -775,33 +935,33 @@ int CUSBCDGadget::DetectSessionCount()
             // Calculate gap between end of previous track and start of current track
             // We use data_start positions to measure the actual gap
             u32 gap = 0;
-            
+
             if (currentTrack->data_start > prevTrack->data_start)
             {
                 gap = currentTrack->data_start - prevTrack->data_start;
             }
-            
+
             // Detect session boundary if:
             // 1. Large gap between tracks (>= 11400 frames)
             // 2. Track mode changes from AUDIO to DATA or vice versa
             bool largeGap = (gap >= MIN_SESSION_GAP);
-            bool modeChange = (prevTrack->track_mode == CUETrack_AUDIO && 
-                             currentTrack->track_mode != CUETrack_AUDIO) ||
-                            (prevTrack->track_mode != CUETrack_AUDIO && 
-                             currentTrack->track_mode == CUETrack_AUDIO);
-            
+            bool modeChange = (prevTrack->track_mode == CUETrack_AUDIO &&
+                               currentTrack->track_mode != CUETrack_AUDIO) ||
+                              (prevTrack->track_mode != CUETrack_AUDIO &&
+                               currentTrack->track_mode == CUETrack_AUDIO);
+
             if (largeGap || modeChange)
             {
                 sessionCount++;
-                CDROM_DEBUG_LOG("DetectSessionCount", 
-                               "Session boundary detected: track %d -> %d, gap=%u frames, mode change=%d",
-                               prevTrack->track_number, currentTrack->track_number, gap, modeChange);
+                CDROM_DEBUG_LOG("DetectSessionCount",
+                                "Session boundary detected: track %d -> %d, gap=%u frames, mode change=%d",
+                                prevTrack->track_number, currentTrack->track_number, gap, modeChange);
             }
         }
-        
+
         prevTrack = currentTrack;
     }
-    
+
     CDROM_DEBUG_LOG("DetectSessionCount", "Detected %d session(s)", sessionCount);
     return sessionCount;
 }
@@ -809,17 +969,18 @@ int CUSBCDGadget::DetectSessionCount()
 // Helper: Get first track number of a session
 int CUSBCDGadget::GetSessionFirstTrack(int sessionNumber)
 {
-    if (sessionNumber < 1) return 1;
-    
+    if (sessionNumber < 1)
+        return 1;
+
     int currentSession = 1;
     int firstTrackInSession = 1;
     const u32 MIN_SESSION_GAP = 11400;
-    
+
     const CUETrackInfo *prevTrack = nullptr;
     const CUETrackInfo *currentTrack = nullptr;
-    
+
     cueParser.restart();
-    
+
     while ((currentTrack = cueParser.next_track()) != nullptr)
     {
         if (prevTrack != nullptr)
@@ -829,27 +990,27 @@ int CUSBCDGadget::GetSessionFirstTrack(int sessionNumber)
             {
                 gap = currentTrack->data_start - prevTrack->data_start;
             }
-            
-            bool modeChange = (prevTrack->track_mode == CUETrack_AUDIO && 
-                             currentTrack->track_mode != CUETrack_AUDIO) ||
-                            (prevTrack->track_mode != CUETrack_AUDIO && 
-                             currentTrack->track_mode == CUETrack_AUDIO);
-            
+
+            bool modeChange = (prevTrack->track_mode == CUETrack_AUDIO &&
+                               currentTrack->track_mode != CUETrack_AUDIO) ||
+                              (prevTrack->track_mode != CUETrack_AUDIO &&
+                               currentTrack->track_mode == CUETrack_AUDIO);
+
             if (gap >= MIN_SESSION_GAP || modeChange)
             {
                 currentSession++;
                 firstTrackInSession = currentTrack->track_number;
-                
+
                 if (currentSession == sessionNumber)
                 {
                     return firstTrackInSession;
                 }
             }
         }
-        
+
         prevTrack = currentTrack;
     }
-    
+
     return (sessionNumber == 1) ? 1 : -1; // Invalid session
 }
 
