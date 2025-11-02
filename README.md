@@ -24,6 +24,19 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
     - Zero 2 W (or WH for factory installed Headers to connect a HAT)
     - 3A+ (requires a less-common USB-A to USB-A cable)
     - 4B+ (requires a USB-C to USB-A cable)
+    | Model                          | Support status | Notes |
+    |--------------------------------|----------------|-------|
+    | Raspberry Pi A/A+ (2014)       | Unsupported    | Needs Wifi to operate |
+    | Raspberry Pi 2 B (2015)        | Unsupported    | Requires USB Host mode to operate |
+    | Raspberry Pi Zero (2015)       | Unsupported    | Network Stack fails to load |
+    | Raspberry Pi Zero W (2017)     | Supported      | If purchasing a new Pi, try to get WH model (this has headers) |
+    | Raspberry Pi Zero 2 W / WH (2021)| Supported      | If purchasing a new Pi, try to get WH model (this has headers). Has multi-processor support, which may be used in the future by USBODE |
+    | Raspberry Pi 3 Model A+        | Supported      | Requires USB-A-to-USB-A cable. |
+    | Raspberry Pi 3 Model B / B+    | Unsupported   | No USB host mode on this model |
+    | Raspberry Pi 4 Model B / 4B+   | Supported    | Use USB-C power port for gadget mode. All RAM configurations supported |
+    | Raspberry Pi 400               | Unknown Support     | I'm unsure if this model works |
+    | Raspberry Pi 5                 | Unsupported    | USB host-mode stack not supported by current dependencies. |
+
 2.  A target computer (i.e. the computer you want to emulate optical drives on) that supports USB.
 3.  A computer to perform the initial setup on. Needs to be running any modern OS and have a MicroSD card reader/adapter.
 4.  A 2.4 GHz Wi-Fi network. The Pi will connect to this network and will then be controllable through a web browser. Any device that is connected to that same network can then be used to control the USBODE. This includes mobile devices and even retro computers running IE 6 or above.
