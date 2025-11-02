@@ -108,6 +108,7 @@ private:
 	boolean CheckPartitionExists(int partition);
 
 	ConfigService* m_pConfigService;
+	boolean m_bNetworkAvailable;
 };
 
 #endif
