@@ -598,6 +598,8 @@ private:
     // TOC formatting helpers
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
+    int DetectSessionCount();
+    int GetSessionFirstTrack(int sessionNumber);
 
     // ========================================================================
     // CUE Sheet and Track Management

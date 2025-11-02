@@ -523,13 +523,17 @@ void CUSBCDGadget::FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, b
 // Complete READ TOC handler
 void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocationLength)
 {
+    // Detect multi-session structure
+    int sessionCount = DetectSessionCount();
+    
     if (startingTrack == 0xAA)
     {
-        // Only leadout requested
+        // Only leadout requested - use session 1 leadout for single session,
+        // or last session leadout for multi-session
         uint8_t leadoutTOC[12] = {
             0x00, 0x0A,             // TOC length
-            0x01, 0x01,             // First/Last track
-            0x00, 0x14, 0xAA, 0x00, // Leadout descriptor (0x14 for data leadout)
+            0x01, 0x01,             // First/Last track (will be updated)
+            0x00, 0x14, 0xAA, 0x00, // Leadout descriptor
             0x00, 0x00, 0x00, 0x00  // Address (filled below)
         };
 
@@ -574,11 +578,10 @@ void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocatio
             firsttrack = trackinfo->track_number;
         lasttrack = *trackinfo;
 
-        // BUG FIX: Include ALL tracks when startingTrack is 0, or tracks >= startingTrack
+        // Include ALL tracks when startingTrack is 0, or tracks >= startingTrack
         if (startingTrack == 0 || trackinfo->track_number >= startingTrack)
         {
             FormatTOCEntry(trackinfo, &trackdata[8 * trackcount], msf);
-            // DEBUG: Log track details for Windows 98 debugging
             CDROM_DEBUG_LOG("CUSBCDGadget::DoReadTOC",
                             "Track %d: mode=%d, control=0x%02x, data_start=%u",
                             trackinfo->track_number,
@@ -589,7 +592,7 @@ void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocatio
         }
     }
 
-    // Add leadout - BUG FIX: Control byte must match last track type
+    // Add leadout - Control byte must match last track type
     CUETrackInfo leadout = {};
     leadout.track_number = 0xAA;
     leadout.track_mode = (lasttrack.track_number != 0) ? lasttrack.track_mode : CUETrack_MODE1_2048;
@@ -604,7 +607,7 @@ void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocatio
     m_InBuffer[2] = firsttrack;
     m_InBuffer[3] = lasttrack.track_number;
 
-    // BUG FIX: Validation - don't fail if we have valid data
+    // Validation
     if (startingTrack > lasttrack.track_number && startingTrack != 0xAA)
     {
         setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
@@ -617,15 +620,14 @@ void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocatio
         len = allocationLength;
 
     CDROM_DEBUG_LOG("CUSBCDGadget::DoReadTOC",
-                    "Sending TOC: first=%d, last=%d, tracks=%d, len=%d, startingTrack=%d",
-                    firsttrack, lasttrack.track_number, trackcount, len, startingTrack);
+                    "Sending TOC: first=%d, last=%d, tracks=%d, len=%d, sessions=%d",
+                    firsttrack, lasttrack.track_number, trackcount, len, sessionCount);
 
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, len);
     m_nState = TCDState::DataIn;
     m_nnumber_blocks = 0;
     m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
-
 void CUSBCDGadget::DoReadSessionInfo(bool msf, uint16_t allocationLength)
 {
     uint8_t sessionTOC[12] = {
@@ -749,6 +751,106 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
     m_nState = TCDState::DataIn;
     m_nnumber_blocks = 0;
     m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+}
+
+int CUSBCDGadget::DetectSessionCount()
+{
+    // Heuristic: Detect session boundary by track mode changes and gaps
+    // Common patterns:
+    // - Session 1: Audio tracks (1-N)
+    // - Session 2: Data track (N+1) with large gap before it
+    
+    const u32 MIN_SESSION_GAP = 11400; // 152 seconds in frames (standard multi-session gap)
+    
+    int sessionCount = 1;
+    const CUETrackInfo *prevTrack = nullptr;
+    const CUETrackInfo *currentTrack = nullptr;
+    
+    cueParser.restart();
+    
+    while ((currentTrack = cueParser.next_track()) != nullptr)
+    {
+        if (prevTrack != nullptr)
+        {
+            // Calculate gap between end of previous track and start of current track
+            // We use data_start positions to measure the actual gap
+            u32 gap = 0;
+            
+            if (currentTrack->data_start > prevTrack->data_start)
+            {
+                gap = currentTrack->data_start - prevTrack->data_start;
+            }
+            
+            // Detect session boundary if:
+            // 1. Large gap between tracks (>= 11400 frames)
+            // 2. Track mode changes from AUDIO to DATA or vice versa
+            bool largeGap = (gap >= MIN_SESSION_GAP);
+            bool modeChange = (prevTrack->track_mode == CUETrack_AUDIO && 
+                             currentTrack->track_mode != CUETrack_AUDIO) ||
+                            (prevTrack->track_mode != CUETrack_AUDIO && 
+                             currentTrack->track_mode == CUETrack_AUDIO);
+            
+            if (largeGap || modeChange)
+            {
+                sessionCount++;
+                CDROM_DEBUG_LOG("DetectSessionCount", 
+                               "Session boundary detected: track %d -> %d, gap=%u frames, mode change=%d",
+                               prevTrack->track_number, currentTrack->track_number, gap, modeChange);
+            }
+        }
+        
+        prevTrack = currentTrack;
+    }
+    
+    CDROM_DEBUG_LOG("DetectSessionCount", "Detected %d session(s)", sessionCount);
+    return sessionCount;
+}
+
+// Helper: Get first track number of a session
+int CUSBCDGadget::GetSessionFirstTrack(int sessionNumber)
+{
+    if (sessionNumber < 1) return 1;
+    
+    int currentSession = 1;
+    int firstTrackInSession = 1;
+    const u32 MIN_SESSION_GAP = 11400;
+    
+    const CUETrackInfo *prevTrack = nullptr;
+    const CUETrackInfo *currentTrack = nullptr;
+    
+    cueParser.restart();
+    
+    while ((currentTrack = cueParser.next_track()) != nullptr)
+    {
+        if (prevTrack != nullptr)
+        {
+            u32 gap = 0;
+            if (currentTrack->data_start > prevTrack->data_start)
+            {
+                gap = currentTrack->data_start - prevTrack->data_start;
+            }
+            
+            bool modeChange = (prevTrack->track_mode == CUETrack_AUDIO && 
+                             currentTrack->track_mode != CUETrack_AUDIO) ||
+                            (prevTrack->track_mode != CUETrack_AUDIO && 
+                             currentTrack->track_mode == CUETrack_AUDIO);
+            
+            if (gap >= MIN_SESSION_GAP || modeChange)
+            {
+                currentSession++;
+                firstTrackInSession = currentTrack->track_number;
+                
+                if (currentSession == sessionNumber)
+                {
+                    return firstTrackInSession;
+                }
+            }
+        }
+        
+        prevTrack = currentTrack;
+    }
+    
+    return (sessionNumber == 1) ? 1 : -1; // Invalid session
 }
 
 // Add these helper functions to your class
@@ -3380,21 +3482,21 @@ void CUSBCDGadget::Update()
                         total_copied += 2048;
                     }
                 }
-            // Handle MODE2/2352 with standard READ(10) - extract user data
-            else if (trackInfo.track_mode == CUETrack_MODE2_2352 && 
-                     transfer_block_size == 2048 && mcs == 0)
-            {
-                CDROM_DEBUG_LOG("UpdateRead", "MODE2/2352: Extracting user data");
-                for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
+                // Handle MODE2/2352 with standard READ(10) - extract user data
+                else if (trackInfo.track_mode == CUETrack_MODE2_2352 &&
+                         transfer_block_size == 2048 && mcs == 0)
                 {
-                    u8 *current_block_start = m_FileChunk + (i * 2352);
-                    // MODE2 Form 1: Skip 16-byte header + 8-byte subheader = 24 bytes
-                    // Then read 2048 bytes user data
-                    memcpy(dest_ptr, current_block_start + 24, 2048);
-                    dest_ptr += 2048;
-                    total_copied += 2048;
+                    CDROM_DEBUG_LOG("UpdateRead", "MODE2/2352: Extracting user data");
+                    for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
+                    {
+                        u8 *current_block_start = m_FileChunk + (i * 2352);
+                        // MODE2 Form 1: Skip 16-byte header + 8-byte subheader = 24 bytes
+                        // Then read 2048 bytes user data
+                        memcpy(dest_ptr, current_block_start + 24, 2048);
+                        dest_ptr += 2048;
+                        total_copied += 2048;
+                    }
                 }
-            }
 
                 else if (transfer_block_size > block_size)
                 {
