@@ -20,10 +20,6 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 ## Requirements:
 
 1.  One of the following Raspberry Pi SBCs:
-    - Zero W (or WH for factory installed Headers to connect a HAT)
-    - Zero 2 W (or WH for factory installed Headers to connect a HAT)
-    - 3A+ (requires a less-common USB-A to USB-A cable)
-    - 4B+ (requires a USB-C to USB-A cable)
     
     | Model                          | Support status | Notes |
     |--------------------------------|----------------|-------|
