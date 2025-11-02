@@ -71,8 +71,8 @@ Setup is now complete. See the instructions below to learn how to use the USBODE
 ## Using USBODE
 
 1.  Connect the Pi to the target computer.
-	-   Zero W/Zero 2W: Connect the MicroUSB end to the Pi's "USB" port, not the “PWR” or “PWR IN” port. Connect the USB-A end into your target computer.
-	-   3a +: Connect one of the USB-A ends into the Pi's USB-A port and the other into your target computer.
+	-   Zero W/Zero 2W: Connect the MicroUSB end to the Pi's "USB" port, not the “PWR” or “PWR IN” port. Connect the USB-A end into your target computer. Do not connect any other power to the Raspberry Pi 3A+ as it can cause a power loop.
+	-   3a +: Connect one of the USB-A ends into the Pi's USB-A port and the other into your target computer. Do not connect any other power to the Raspberry Pi 3A+ as it can cause a power loop.
 	-   4b +: Connect the USB-C end to the "Power In" port, and the USB-A end into your target computer.
 2.  The Pi should immediately turn on. It will then boot into the Circle environment, which takes about 7 seconds on a Pi Zero W 2 and an A1-class card. If the target computer is set up to use USB devices, it should quickly see the Pi as an optical drive.
     - Drivers may need to be installed under Windows 98, such as [nUSB](https://www.philscomputerlab.com/windows-98-usb-storage-driver.html). For DOS, we recommend the [USBASPI community driver](https://web.archive.org/web/20170907161705/https://www.mdgx.com/files/USBASPI.EXE).
