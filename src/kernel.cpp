@@ -139,18 +139,31 @@ boolean CKernel::Initialize(void) {
     }
 
     if (bOK) {
-        bOK = m_WLAN.Initialize();
-        LOGNOTE("Initialized WLAN");
+        if (!m_WLAN.Initialize()) {
+            LOGWARN("WLAN not available - continuing without network");
+            m_bNetworkAvailable = FALSE;
+        } else {
+            LOGNOTE("Initialized WLAN");
+            m_bNetworkAvailable = TRUE;
+        }
     }
 
-    if (bOK) {
-        bOK = m_Net.Initialize(FALSE);
-        LOGNOTE("Initialized network");
+    if (bOK && m_bNetworkAvailable) {
+        if (!m_Net.Initialize(FALSE)) {
+            LOGWARN("Network initialization failed - continuing without network");
+            m_bNetworkAvailable = FALSE;
+        } else {
+            LOGNOTE("Initialized network");
+        }
     }
 
-    if (bOK) {
-        bOK = m_WPASupplicant.Initialize();
-        LOGNOTE("Initialized WPA supplicant");
+    if (bOK && m_bNetworkAvailable) {
+        if (!m_WPASupplicant.Initialize()) {
+            LOGWARN("WPA supplicant initialization failed - continuing without network");
+            m_bNetworkAvailable = FALSE;
+        } else {
+            LOGNOTE("Initialized WPA supplicant");
+        }
     }
 
     return bOK;
