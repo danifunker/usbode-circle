@@ -19,7 +19,7 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 
 ## Requirements:
 
-1.  One of the following Raspberry Pi SBCs:
+1.  A supported Raspberry Pi SBC, please review the following table for details:
     
     | Model                          | Support status | Notes |
     |--------------------------------|----------------|-------|
@@ -110,6 +110,9 @@ On the USBODE homepage, click *Shutdown USBODE*. The LED indicator on the Pi wil
 
 USBODE stores images on the MicroSD partition labeled IMGSTORE. You'll need to put .ISO and .BIN/.CUE files directly onto this volume. This can be done by connecting the SD card to the setup computer and copying files, or by connecting to the Pi via FTP (see [Using FTP](#Using-FTP)). Mounting the card to the setup computer is the fastest method by a significant margin.
 
+If adding DVD images, (and the system needs to read the disc as "DVD"), add `.dvd` to the filename, so a file named MyMovie.iso would be named `MyMovie.dvd.iso`
+
+**DVD Support is still a work in progress**
 
 ## Using USBODE with a HAT
 
@@ -120,7 +123,7 @@ USBODE stores images on the MicroSD partition labeled IMGSTORE. You'll need to p
 
 ### BIN/CUE Limitations
 
-BIN/CUE images with multiple .BIN files do not yet work correctly. There is a workaround, however: [CDFix](https://web.archive.org/web/20240112090553/https://krikzz.com/pub/support/mega-everdrive/pro-series/cdfix/) will merge all of the .BIN files into one. Remember to make a backup of the image files before running this utility.
+BIN/CUE images with multiple .BIN files do not yet work correctly. There is a workaround, however: [CDFix](https://web.archive.org/web/20240112090553/https://krikzz.com/pub/support/mega-everdrive/pro-series/cdfix/) will merge all of the .BIN files into one. Remember to make a backup of the image files before running this utility. We are aware of issues regarding the CDFix program which may cut off 2 second track delimiters, and are currently investigating the issue.
 
 ### Using FTP:
 
@@ -145,7 +148,7 @@ The developer believes other sound outputs would work fine, however the above co
 ## Notes about versions
 
 - The Stable version of this project is available under the [Main branch](https://github.com/danifunker/usbode-circle/tree/main). This project also has a [pipeline](https://github.com/danifunker/usbode-circle/actions) set up to facilitate rapid deployment of new features. The pipeline builds are cutting edge and are not guaranteed to be stable.
-- If you’re using USB-ODE 1.99 or before, you’ll also need the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) application. That project and its instructions are located [here](https://github.com/danifunker/usbode/releases).
+- If you’re using USBODE 1.99 or before, you need to re-image your SDcard with the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) application. That project and its instructions are located [here](https://github.com/danifunker/usbode/releases). Be aware USBODE 1.99 currently supports booting better than this project.
 
 ## Other Limitations / Known Bugs
 - ITX-Llama is not able to boot from USBODE-circle at this time, it is currently being investigated but no ETA for resolution
@@ -175,6 +178,9 @@ It's also possible to use dupont headers to chain these audio cables together, w
 - Do not delete “image.iso” on the IMGSTORE partition. It is required as a fallback.
 - The image "usb-audio-sampler" can be used to test your Line-In settings and USBODE's audio settings. It can be safely deleted if space is at a premium. To test, use Windows 98 CD Player and play track 2. Be aware this audio test has a section near the begining of the track where only audio should come from "L", and when audio should only come from "R". This is to help troubleshoot stereo related issues with custom built cables. The track starts in stereo until around 11 seconds, then goes to "L" only from 11-18.5 seconds, then goes to "R" only from 19 seconds until about 25 seconds, at which point the track stays at stereo for the rest of the time. 
 
+## CD-ROM / DVD-ROM Command Debugging
+To enable verbose CD-ROM/DVD-ROM command debugging, in the `config.txt` under the `[usbode]` section add a new line containing `debug_cdrom=1`. Setting this to 0 or removing the line will disable the feature. Only enable debugging if required, since it does impact performance.
+
 ## Discord Server
 
 For updates on this project please visit the discord server here: [https://discord.gg/8qfuuUPBts](https://discord.gg/8qfuuUPBts)
@@ -186,4 +192,4 @@ Feel free to contribute to the project.
 Support me on ko-fi!  
 (https://ko-fi.com/danifunker)
 
-Readme updated by [Zarf](https://github.com/Zarf-42) and wayneknight_rider.
+Readme updated by danifunker, [Zarf](https://github.com/Zarf-42) and wayneknight_rider.
