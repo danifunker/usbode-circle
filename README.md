@@ -28,11 +28,11 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
     | Raspberry Pi Zero (2015)       | Unsupported    | Network Stack fails to load |
     | Raspberry Pi Zero W (2017)     | Supported      | If purchasing a new Pi, try to get WH model (this has headers) |
     | Raspberry Pi Zero 2 W / WH (2021)| Supported      | If purchasing a new Pi, try to get WH model (this has headers). Has multi-processor support, which may be used in the future by USBODE |
-    | Raspberry Pi 3 Model A+        | Supported      | Requires USB-A-to-USB-A cable. |
-    | Raspberry Pi 3 Model B / B+    | Unsupported   | No USB host mode on this model |
-    | Raspberry Pi 4 Model B / 4B+   | Supported    | Use USB-C power port for gadget mode. All RAM configurations supported |
+    | Raspberry Pi 3 Model A+ (2018)       | Supported      | Requires USB-A-to-USB-A cable. |
+    | Raspberry Pi 3 Model B (2016) / B+    | Unsupported   | No USB host mode on this model (2018) |
+    | Raspberry Pi 4 (2019)/4B (2019)   | Supported    | Use USB-C power port for gadget mode. All RAM configurations supported |
     | Raspberry Pi 400               | Unknown Support     | I'm unsure if this model works |
-    | Raspberry Pi 5                 | Unsupported    | USB host-mode stack not supported by current dependencies. |
+    | Raspberry Pi 5 (2023)                | Unsupported    | USB host-mode stack not supported by current dependencies. |
 
 2.  A target computer (i.e. the computer you want to emulate optical drives on) that supports USB.
 3.  A computer to perform the initial setup on. Needs to be running any modern OS and have a MicroSD card reader/adapter.
