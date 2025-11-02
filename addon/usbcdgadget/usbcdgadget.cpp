@@ -3324,83 +3324,91 @@ void CUSBCDGadget::Update()
         int readCount = 0;
         if (m_CDReady)
         {
-
             CDROM_DEBUG_LOG("UpdateRead", "Seek to %lu", block_size * m_nblock_address);
             offset = m_pDevice->Seek(block_size * m_nblock_address);
             if (offset != (u64)(-1))
             {
-                // Cap at MAX_BLOCKS_READ blocks. This is what a READ CD request will
-                // require any excess blocks will be read next time around this loop
+                // Cap at MAX_BLOCKS_READ blocks
                 u32 blocks_to_read_in_batch = m_nnumber_blocks;
                 if (blocks_to_read_in_batch > MaxBlocksToRead)
                 {
                     blocks_to_read_in_batch = MaxBlocksToRead;
-                    m_nnumber_blocks -= MaxBlocksToRead; // Update remaining for subsequent reads if needed
-                    MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is %lu", blocks_to_read_in_batch, m_nnumber_blocks);
+                    m_nnumber_blocks -= MaxBlocksToRead;
                 }
                 else
                 {
-                    MLOGDEBUG("UpdateRead", "Blocks is now %lu, remaining blocks is now zero", blocks_to_read_in_batch);
                     m_nnumber_blocks = 0;
                 }
 
                 // Calculate total size of the batch read
                 u32 total_batch_size = blocks_to_read_in_batch * block_size;
 
-                CDROM_DEBUG_LOG("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes)", blocks_to_read_in_batch, total_batch_size);
+                CDROM_DEBUG_LOG("UpdateRead", "Starting batch read for %lu blocks (total %lu bytes)",
+                                blocks_to_read_in_batch, total_batch_size);
+
                 // Perform the single large read
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
                 CDROM_DEBUG_LOG("UpdateRead", "Read %d bytes in batch", readCount);
 
                 if (readCount < static_cast<int>(total_batch_size))
                 {
-                    // Handle error: partial read
                     setSenseData(0x04, 0x11, 0x00); // UNRECOVERED READ ERROR
                     sendCheckCondition();
-                    return; // Exit if read failed
+                    return;
                 }
 
-                u8 *dest_ptr = m_InBuffer; // Pointer to current write position in m_InBuffer
+                u8 *dest_ptr = m_InBuffer;
                 u32 total_copied = 0;
 
-                // Iterate through the *read data* in memory
-                // TODO Optimization, if transfer_block_size and block_size are the same, and
-                // skip_bytes is zero, we can just copy without looping
-                for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
+                // Get current track info to determine sector structure
+                CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+                int track_block_size = GetBlocksizeForTrack(trackInfo);
+                int track_skip_bytes = GetSkipbytesForTrack(trackInfo);
+
+                // FIX: For MODE1/2352 with standard READ(10), extract user data
+                if (track_block_size == 2352 && transfer_block_size == 2048 &&
+                    track_skip_bytes == 16 && mcs == 0)
                 {
-                    if (transfer_block_size > block_size)
+                    // MODE1/2352: Extract 2048 bytes from each 2352-byte sector
+                    CDROM_DEBUG_LOG("UpdateRead", "MODE1/2352: Extracting user data");
+                    for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
                     {
-                        // We've been asked to return more bytes than we've read from
-                        // the underlying image. We have to generate some bytes
-                        //
-                        // This is all a bit shonky for now :O
-
+                        u8 *current_block_start = m_FileChunk + (i * 2352);
+                        // Skip 16-byte header, copy 2048 bytes of user data
+                        memcpy(dest_ptr, current_block_start + 16, 2048);
+                        dest_ptr += 2048;
+                        total_copied += 2048;
+                    }
+                }
+                else if (transfer_block_size > block_size)
+                {
+                    // READ CD command requesting synthetic sectors
+                    for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
+                    {
                         u8 sector2352[2352] = {0};
-
                         int offset = 0;
 
                         // SYNC (12 bytes)
                         if (mcs & 0x10)
                         {
-                            memset(sector2352 + offset, 0x00, 1);      // 0x00
-                            memset(sector2352 + offset + 1, 0xFF, 10); // 0xFF * 10
-                            sector2352[offset + 11] = 0x00;            // 0x00
+                            memset(sector2352 + offset, 0x00, 1);
+                            memset(sector2352 + offset + 1, 0xFF, 10);
+                            sector2352[offset + 11] = 0x00;
                             offset += 12;
                         }
 
                         // HEADER (4 bytes)
                         if (mcs & 0x08)
                         {
-                            u32 lba = m_nblock_address + i;
-                            lba += 150; // the 2 sec nonesense
+                            u32 lba = m_nblock_address + i + 150;
                             u8 minutes = lba / (75 * 60);
                             u8 seconds = (lba / 75) % 60;
                             u8 frames = lba % 75;
 
-                            sector2352[offset + 0] = minutes; // MSF Minute
-                            sector2352[offset + 1] = seconds; // MSF Second
-                            sector2352[offset + 2] = frames;  // MSF Frame
-                            sector2352[offset + 3] = 0x01;    // Mode 1
+                            sector2352[offset + 0] = minutes;
+                            sector2352[offset + 1] = seconds;
+                            sector2352[offset + 2] = frames;
+                            sector2352[offset + 3] = 0x01; // Mode 1
                             offset += 4;
                         }
 
@@ -3408,41 +3416,40 @@ void CUSBCDGadget::Update()
                         if (mcs & 0x04)
                         {
                             u8 *current_block_start = m_FileChunk + (i * block_size);
-                            memcpy(sector2352 + offset, current_block_start, 2048);
+                            memcpy(sector2352 + offset, current_block_start + skip_bytes, 2048);
                             offset += 2048;
                         }
 
-                        // EDC/ECC (remaining bytes)
+                        // EDC/ECC (288 bytes)
                         if (mcs & 0x02)
                         {
-                            // Mode 1 has 288 ECC bytes at end. For now
-                            // we'll send zeros and hope the host ignores it
                             memset(sector2352 + offset, 0x00, 288);
                             offset += 288;
                         }
 
-                        memcpy(dest_ptr, sector2352 + skip_bytes, transfer_block_size);
+                        memcpy(dest_ptr, sector2352, transfer_block_size);
+                        dest_ptr += transfer_block_size;
+                        total_copied += transfer_block_size;
                     }
-                    else
-                    {
-                        // Calculate the starting point for the current block within the m_FileChunk
-                        u8 *current_block_start = m_FileChunk + (i * block_size);
-
-                        // Copy only the portion after skip_bytes into the destination buffer
-                        memcpy(dest_ptr, current_block_start + skip_bytes, transfer_block_size);
-                    }
-                    dest_ptr += transfer_block_size;
-                    total_copied += transfer_block_size;
                 }
-                // Update m_nblock_address after the batch read
-                m_nblock_address += blocks_to_read_in_batch;
+                else
+                {
+                    // Simple case: block_size == transfer_block_size or smaller transfer
+                    for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
+                    {
+                        u8 *current_block_start = m_FileChunk + (i * block_size);
+                        memcpy(dest_ptr, current_block_start + skip_bytes, transfer_block_size);
+                        dest_ptr += transfer_block_size;
+                        total_copied += transfer_block_size;
+                    }
+                }
 
-                // Adjust m_nbyteCount based on how many bytes were copied
+                m_nblock_address += blocks_to_read_in_batch;
                 m_nbyteCount -= total_copied;
                 m_nState = TCDState::DataIn;
 
-                // Begin USB transfer of the in-buffer (only valid data)
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, total_copied);
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                           m_InBuffer, total_copied);
             }
         }
         if (!m_CDReady || offset == (u64)(-1))
@@ -3450,14 +3457,11 @@ void CUSBCDGadget::Update()
             MLOGERR("UpdateRead", "failed, %s, offset=%llu",
                     m_CDReady ? "ready" : "not ready", offset);
             m_CSW.bmCSWStatus = CD_CSW_STATUS_PHASE_ERR;
-            m_SenseParams.bSenseKey = 0x02;          // Not Ready
-            m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
+            setSenseData(0x02, 0x04, 0x00);
             SendCSW();
         }
         break;
     }
-
     case 0xBD: // MECHANISM STATUS
     {
         u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
