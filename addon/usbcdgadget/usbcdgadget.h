@@ -184,7 +184,6 @@ struct ModeSense6Header
 } PACKED;
 #define SIZE_MODE_SENSE6_HEADER 4
 
-
 struct TUSBCDModeSenseReply // 4 bytes
 {
     u8 bModeDataLen;
@@ -596,9 +595,9 @@ private:
     void DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength);
     void DoReadTrackInformation(u8 addressType, u32 address, u16 allocationLength);
 
-	// TOC formatting helpers
+    // TOC formatting helpers
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
-    void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD); 
+    void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
 
     // ========================================================================
     // CUE Sheet and Track Management
@@ -621,8 +620,7 @@ private:
 
     int GetSkipbytes();
 
-
-	int GetSkipbytesForTrack(CUETrackInfo trackInfo);
+    int GetSkipbytesForTrack(CUETrackInfo trackInfo);
     int GetMediumType();
     int GetSectorLengthFromMCS(uint8_t mainChannelSelection);
     int GetSkipBytesFromMCS(uint8_t mainChannelSelection);
@@ -632,17 +630,17 @@ private:
     // ========================================================================
 
     /// \brief Convert LBA to MSF format (binary)
-    void LBA2MSF(int32_t LBA, uint8_t* MSF, bool relative);
+    void LBA2MSF(int32_t LBA, uint8_t *MSF, bool relative);
 
     /// \brief Convert LBA to MSF format (BCD)
-    void LBA2MSFBCD(int32_t LBA, uint8_t* MSF, bool relative);
+    void LBA2MSFBCD(int32_t LBA, uint8_t *MSF, bool relative);
 
     /// \brief Convert MSF to LBA
     int32_t MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative);
 
     /// \brief Get address in requested format (LBA or MSF)
-    u32 GetAddress(u32 lba, int msf, boolean relative); 
- 
+    u32 GetAddress(u32 lba, int msf, boolean relative);
+
     /// \brief Convert LBA to packed MSF value
     u32 lba_to_msf(u32 lba, boolean relative = false);
 
@@ -719,14 +717,14 @@ private:
     ICueDevice *m_pDevice;               // CUE-aware block device
     CUSBCDGadgetEndpoint *m_pEP[NumEPs]; // Endpoint objects
 
-    TCDState m_nState = Init;       // SCSI command state machine
+    TCDState m_nState = Init; // SCSI command state machine
     MediaState m_mediaState = MediaState::NO_MEDIUM;
     MEDIA_TYPE m_mediaType = MEDIA_TYPE::CD;
 
-    boolean m_CDReady = false;     // Device ready flag
-    boolean m_IsFullSpeed = 0; // USB 1.1 full-speed vs USB 2.0 high-speed
-    boolean discChanged = false;   // Media change flag
-    bool m_bDebugLogging;  // Debug flag to enable verbose CD-ROM logging
+    boolean m_CDReady = false;   // Device ready flag
+    boolean m_IsFullSpeed = 0;   // USB 1.1 full-speed vs USB 2.0 high-speed
+    boolean discChanged = false; // Media change flag
+    bool m_bDebugLogging;        // Debug flag to enable verbose CD-ROM logging
 
     // ========================================================================
     // Instance Variables - USB Protocol Buffers
@@ -743,7 +741,7 @@ private:
 
     DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // DMA buffer for IN transfers
     DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // DMA buffer for OUT transfers
-    u8 *m_FileChunk = new u8[MaxInMessageSize];                                // Temporary buffer for file reads
+    u8 *m_FileChunk = new u8[MaxInMessageSize];     // Temporary buffer for file reads
 
     // ========================================================================
     // Instance Variables - SCSI Reply Structures
@@ -938,19 +936,17 @@ private:
     u32 m_nnumber_blocks;
     u32 m_nbyteCount;
 
-
-
     u8 bmCSWStatus = 0;
     SenseParameters m_SenseParams; // Current sense data
 
     // Sector format parameters
-    int data_skip_bytes = 0;     // Skip bytes for data track reads
+    int data_skip_bytes = 0;        // Skip bytes for data track reads
     int data_block_size = 2048;     // Data block size
-    int skip_bytes = 0;          // Skip bytes for current operation
+    int skip_bytes = 0;             // Skip bytes for current operation
     int block_size = 2048;          // Physical block size on disc
     int transfer_block_size = 2048; // Block size for USB transfer
-    int file_mode = 1;           // File/track mode
-	int numTracks = 0;           // Number of tracks on disc
+    int file_mode = 1;              // File/track mode
+    int numTracks = 0;              // Number of tracks on disc
     uint8_t mcs = 0;
 
     // ========================================================================
@@ -959,9 +955,9 @@ private:
 
     CUEParser cueParser;
 
-    char m_HardwareSerialNumber[20];   // Hardware serial number (e.g., "USBODE-XXXXXXXX")
-    static const char *const s_StringDescriptor[];  // USB string descriptors
-    u8 m_StringDescriptorBuffer[80];   // Buffer for string descriptor conversion
+    char m_HardwareSerialNumber[20];               // Hardware serial number (e.g., "USBODE-XXXXXXXX")
+    static const char *const s_StringDescriptor[]; // USB string descriptors
+    u8 m_StringDescriptorBuffer[80];               // Buffer for string descriptor conversion
 };
 
 #endif
