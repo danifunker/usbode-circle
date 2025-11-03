@@ -23,9 +23,9 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
     
     | Model                          | Support status | Notes |
     |--------------------------------|----------------|-------|
-    | Raspberry Pi A/A+ (2014)       | Unsupported    | Needs Wifi to operate |
+    | Raspberry Pi A/A+ (2014)       | Unsupported    | Requires USB Host mode to operate |
     | Raspberry Pi 2 B (2015)        | Unsupported    | Requires USB Host mode to operate |
-    | Raspberry Pi Zero (2015)       | Unsupported    | Network Stack fails to load |
+    | Raspberry Pi Zero (2015)       | Supported      | As of 2.9.2 now supported |
     | Raspberry Pi Zero W (2017)     | Supported      | If purchasing a new Pi, try to get WH model (this has headers) |
     | Raspberry Pi Zero 2 W / WH (2021)| Supported      | If purchasing a new Pi, try to get WH model (this has headers). Has multi-processor support, which may be used in the future by USBODE |
     | Raspberry Pi 3 Model A+ (2018)       | Supported      | Requires USB-A-to-USB-A cable. |
@@ -36,8 +36,8 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 
 2.  A target computer (i.e. the computer you want to emulate optical drives on) that supports USB.
 3.  A computer to perform the initial setup on. Needs to be running any modern OS and have a MicroSD card reader/adapter.
-4.  A 2.4 GHz Wi-Fi network. The Pi will connect to this network and will then be controllable through a web browser. Any device that is connected to that same network can then be used to control the USBODE. This includes mobile devices and even retro computers running IE 6 or above.
-5.  A MicroSD card up to 256 GB (see [Card Size Limitations](#Card-Size-Limitations) for workarounds). Cards marked A1 or A2 will perform better.
+4.  (Optional) A 2.4 GHz Wi-Fi network. The Pi will connect to this network and will then be controllable through a web browser. Any device that is connected to that same network can then be used to control the USBODE. This includes mobile devices and even retro computers running IE 6 or above.
+5.  A MicroSD card. Previous limitations of 256 GB have been resolved and has been tested with SDCards up to 1TB. Cards marked A1 or A2 will perform better.
 6.  A [Micro USB](https://en.wikipedia.org/wiki/USB_hardware#/media/File:MicroB_USB_Plug.jpg) cable (not [Mini USB](https://en.wikipedia.org/wiki/USB_hardware#/media/File:Cable_Mini_USB.jpg)) that can transfer data along with power.
 7.  The latest [USBODE Circle Release](https://github.com/danifunker/usbode-circle/releases).
 
@@ -78,7 +78,7 @@ Setup is now complete. See the instructions below to learn how to use the USBODE
     - Drivers may need to be installed under Windows 98, such as [nUSB](https://www.philscomputerlab.com/windows-98-usb-storage-driver.html). For DOS, we recommend the [USBASPI community driver](https://web.archive.org/web/20170907161705/https://www.mdgx.com/files/USBASPI.EXE).
 3.  If the “wpa_supplicant.conf” file is configured correctly, it should automatically connect to your wifi network within 10 to 15 seconds of startup.
 
-If you have any difficulties, help is available on [Discord](https://discord.gg/8qfuuUPBts).
+If you have any difficulties, help is available on [Discord](https://discord.gg/na2qNrvdFY).
 
 ### Configuring USBODE for DOS / Windows 3.X
 1. Update `config.sys` file to use one of the USBASPI drivers, the one the developers recommend is the one like the one referred to in the previous section.
