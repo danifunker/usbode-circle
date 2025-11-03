@@ -835,7 +835,27 @@ u32 CUSBCDGadget::GetLeadoutLBA()
         track_start = trackInfo->data_start; // I think this is right
     }
 
+    if (!m_pDevice)
+    {
+        MLOGERR("CUSBCDGadget::GetLeadoutLBA", "No device; returning track_start=%lu", track_start);
+        return track_start;
+    }    
+
     u64 deviceSize = m_pDevice->GetSize(); // Use u64 to support DVDs > 4GB
+
+    // Defensive checks to avoid division by zero and impossible results
+    if (sector_length == 0)
+    {
+        MLOGERR("CUSBCDGadget::GetLeadoutLBA", "sector_length == 0, returning track_start=%lu", track_start);
+        return track_start;
+    }
+
+    if (deviceSize <= file_offset)
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetLeadoutLBA", "deviceSize (%llu) <= file_offset (%u), returning track_start=%lu", deviceSize, file_offset, track_start);
+        return track_start;
+    }
+
 
     // We know the start position of the last track, and we know its sector length
     // and we know the file size, so we can work out the LBA of the end of the last track
@@ -911,14 +931,41 @@ const void *CUSBCDGadget::ToStringDescriptor(const char *pString, size_t *pLengt
 
 int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData)
 {
-    CDROM_DEBUG_LOG("CUSBCDGadget::OnClassOrVendorRequest", "entered");
-    if (pSetupData->bmRequestType == 0xA1 && pSetupData->bRequest == 0xfe) // get max LUN
+    CDROM_DEBUG_LOG("CUSBCDGadget::OnClassOrVendorRequest", 
+                    "bmRequestType=0x%02X, bRequest=0x%02X, wValue=0x%04X, wIndex=0x%04X, wLength=%u",
+                    pSetupData->bmRequestType, pSetupData->bRequest, pSetupData->wValue, 
+                    pSetupData->wIndex, pSetupData->wLength);
+
+    // Handle Apple-specific vendor command 0xFF (macOS feature detection)
+    // bmRequestType 0x21 = REQUEST_OUT | REQUEST_TO_INTERFACE | REQUEST_VENDOR
+    if ((pSetupData->bmRequestType == 0x21) && (pSetupData->bRequest == 0xFF))
     {
-        MLOGDEBUG("OnClassOrVendorRequest", "state = %i", m_nState);
-        pData[0] = 0;
-        return 1;
+        CDROM_DEBUG_LOG("CUSBCDGadget::OnClassOrVendorRequest", 
+                        "Apple vendor command 0xFF - acknowledging with ZLP");
+        return 0; // Return 0 bytes = ZLP (Zero-Length Packet) to acknowledge
     }
-    return -1;
+
+    // Handle Bulk-Only Mass Storage Reset (0xFF)
+    // bmRequestType 0x21 = REQUEST_OUT | REQUEST_TO_INTERFACE | REQUEST_CLASS
+    if ((pSetupData->bmRequestType == 0x21) && (pSetupData->bRequest == 0xFF))
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::OnClassOrVendorRequest", "Bulk-Only Mass Storage Reset");
+        m_nState = TCDState::ReceiveCBW;
+        m_nnumber_blocks = 0;
+        bmCSWStatus = CD_CSW_STATUS_OK;
+        return 0; // No data phase for reset command
+    }
+
+    // Handle Get Max LUN (0xFE)
+    // bmRequestType 0xA1 = REQUEST_IN | REQUEST_TO_INTERFACE | REQUEST_CLASS
+    if ((pSetupData->bmRequestType == 0xA1) && (pSetupData->bRequest == 0xFE))
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::OnClassOrVendorRequest", "Get Max LUN - returning 0");
+        pData[0] = 0; // CD-ROM is single-LUN device (LUN 0 only)
+        return 1;     // Return 1 byte
+    }
+
+    return -1; // Unknown request - STALL
 }
 
 void CUSBCDGadget::DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength)
