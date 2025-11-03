@@ -874,14 +874,21 @@ void CUSBCDGadget::CreateDevice(void)
 
 void CUSBCDGadget::OnSuspend(void)
 {
-    CDROM_DEBUG_LOG("CUSBCDGadget::OnSuspend", "entered");
-    delete m_pEP[EPOut];
-    m_pEP[EPOut] = nullptr;
-
-    delete m_pEP[EPIn];
-    m_pEP[EPIn] = nullptr;
-
-    m_nState = TCDState::Init;
+    MLOGNOTE("OnSuspend", "USB suspend/reset - clearing stalls and resetting state");
+    
+    // Clear stalls on both endpoints
+    if (m_pEP[EPIn])
+    {
+        m_pEP[EPIn]->StallRequest(FALSE);  // Clear IN stall
+    }
+    if (m_pEP[EPOut])
+    {
+        m_pEP[EPOut]->StallRequest(FALSE); // Clear OUT stall
+    }
+    
+    // Reset to initial state
+    m_nState = TCDState::ReceiveCBW;
+    m_CDReady = 0;
 }
 
 const void *CUSBCDGadget::ToStringDescriptor(const char *pString, size_t *pLength)
@@ -1127,6 +1134,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
             {
                 MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
                 m_pEP[EPIn]->StallRequest(true);
+                m_pEP[EPOut]->StallRequest(false); // Stall OUT endpoint
                 break;
             }
             memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
@@ -1135,14 +1143,22 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x",
                         m_CBW.dCBWSignature);
                 m_pEP[EPIn]->StallRequest(true);
+                m_pEP[EPOut]->StallRequest(false); // Stall OUT endpoint
+                m_nState = TCDState::ReceiveCBW;
                 break;
             }
             m_CSW.dCSWTag = m_CBW.dCBWTag;
             if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0) // meaningful CBW
             {
                 HandleSCSICommand(); // will update m_nstate
-                break;
             } // TODO: response for not meaningful CBW
+            else
+            {
+                MLOGERR("ReceiveCBW", "Invalid CBW length = %i or LUN = %i",
+                        m_CBW.bCBWCBLength, m_CBW.bCBWLUN);
+                m_pEP[EPIn]->StallRequest(true);
+                m_pEP[EPOut]->StallRequest(false); // Stall OUT endpoint
+            }
             break;
         }
 
