@@ -1094,28 +1094,43 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                                         m_OutBuffer, SIZE_CBW);
             break;
         }
-        case TCDState::DataIn:
+        // In the !bIn (OUT transfer complete) section, case TCDState::ReceiveCBW
+        case TCDState::ReceiveCBW:
         {
-            if (m_nnumber_blocks > 0)
+            if (nLength != SIZE_CBW)
             {
-                if (m_CDReady)
-                {
-                    m_nState = TCDState::DataInRead; // see Update function
-                }
-                else
-                {
-                    MLOGERR("onXferCmplt DataIn", "failed, %s",
-                            m_CDReady ? "ready" : "not ready");
-                    m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
-                    m_SenseParams.bSenseKey = 0x02;
-                    m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-                    m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
-                    SendCSW();
-                }
+                MLOGERR("ReceiveCBW", "Invalid CBW len = %i, ignoring and waiting for next CBW", nLength);
+
+                // MacOS 9.2 workaround: Just ignore invalid packets and keep listening
+                // Don't change state, don't send anything, just start listening again
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, SIZE_CBW);
+                return;
             }
-            else // done sending data to host
+
+            memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
+            if (m_CBW.dCBWSignature != VALID_CBW_SIG)
             {
-                SendCSW();
+                MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x, ignoring", m_CBW.dCBWSignature);
+
+                // Same approach - just keep listening
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, SIZE_CBW);
+                return;
+            }
+
+            m_CSW.dCSWTag = m_CBW.dCBWTag;
+            if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0)
+            {
+                HandleSCSICommand();
+            }
+            else
+            {
+                MLOGERR("ReceiveCBW", "Invalid CBW length = %i or LUN = %i, ignoring",
+                        m_CBW.bCBWCBLength, m_CBW.bCBWLUN);
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, SIZE_CBW);
+                return;
             }
             break;
         }
