@@ -124,7 +124,35 @@ void DisplayService::CreateDisplay(const char* displayType) {
     // Generic SH1106 screen depends on how you wired it up. The default values
     // (mostly) mirror the wiring of the Pirate Audio screen
     // https://pinout.xyz/pinout/pirate_audio_line_out
-    } else if (strcmp(displayType, "sh1106") == 0) {
+    } 
+    else if (strcmp(displayType, "st7789-waveshare") == 0) {
+	const char* section = "st7789";
+
+	DisplayConfig display_config = {
+            .dc_pin = config->GetProperty("dc_pin", 25, section),
+            .reset_pin = config->GetProperty("reset_pin", 27, section),
+            .backlight_pin = config->GetProperty("backlight_pin", 24, section),
+            .spi_cpol = config->GetProperty("spi_cpol", 1, section),
+            .spi_cpha = config->GetProperty("spi_chpa", 1, section),
+            .spi_clock_speed = config->GetProperty("spi_clock_speed", 80000000, section),
+            .spi_chip_select = config->GetProperty("spi_chip_select", 0u, section)
+	};
+
+	ButtonConfig buttons = {
+		.Up = config->GetProperty("button_up", ST7789_BUTTONUP, section),
+		.Down = config->GetProperty("button_down", ST7789_BUTTONDOWN, section),
+		.Ok = config->GetProperty("button_ok", ST7789_BUTTONOK, section),
+		.Cancel = config->GetProperty("button_cancel", ST7789_BUTTONCANCEL, section)
+	};
+
+        m_IDisplay = new ST7789Display(&display_config, &buttons);
+
+    // Generic SH1106 screen depends on how you wired it up. The default values
+    // (mostly) mirror the wiring of the Pirate Audio screen
+    // https://pinout.xyz/pinout/pirate_audio_line_out
+    }    
+    
+    else if (strcmp(displayType, "sh1106") == 0) {
 	const char* section = "sh1106";
 
 	DisplayConfig display_config = {
