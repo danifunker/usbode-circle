@@ -598,7 +598,7 @@ private:
     // TOC formatting helpers
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
-
+    void HandlePlayAudio(u32 startLBA, u32 numBlocks);
     // ========================================================================
     // CUE Sheet and Track Management
     // ========================================================================
