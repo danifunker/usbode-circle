@@ -1081,8 +1081,8 @@ void CUSBCDGadget::DoReadTrackInformation(u8 addressType, u32 address, u16 alloc
 
 void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 {
-    // CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
     assert(m_nState != TCDState::Init);
+
     if (bIn) // packet to host has been transferred
     {
         switch (m_nState)
@@ -1094,51 +1094,13 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                                         m_OutBuffer, SIZE_CBW);
             break;
         }
-        // In the !bIn (OUT transfer complete) section, case TCDState::ReceiveCBW
-        case TCDState::ReceiveCBW:
-        {
-            if (nLength != SIZE_CBW)
-            {
-                MLOGERR("ReceiveCBW", "Invalid CBW len = %i, ignoring and waiting for next CBW", nLength);
 
-                // MacOS 9.2 workaround: Just ignore invalid packets and keep listening
-                // Don't change state, don't send anything, just start listening again
-                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                            m_OutBuffer, SIZE_CBW);
-                return;
-            }
-
-            memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
-            if (m_CBW.dCBWSignature != VALID_CBW_SIG)
-            {
-                MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x, ignoring", m_CBW.dCBWSignature);
-
-                // Same approach - just keep listening
-                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                            m_OutBuffer, SIZE_CBW);
-                return;
-            }
-
-            m_CSW.dCSWTag = m_CBW.dCBWTag;
-            if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0)
-            {
-                HandleSCSICommand();
-            }
-            else
-            {
-                MLOGERR("ReceiveCBW", "Invalid CBW length = %i or LUN = %i, ignoring",
-                        m_CBW.bCBWCBLength, m_CBW.bCBWLUN);
-                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                            m_OutBuffer, SIZE_CBW);
-                return;
-            }
-            break;
-        }
         case TCDState::SendReqSenseReply:
         {
             SendCSW();
             break;
         }
+
         default:
         {
             MLOGERR("onXferCmplt", "dir=in, unhandled state = %i", m_nState);
@@ -1153,59 +1115,45 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         {
         case TCDState::ReceiveCBW:
         {
+            // MacOS 9.2 compatibility: Silently ignore invalid CBWs during enumeration
+            // Modern OSes send valid 31-byte CBWs, but MacOS 9.2 sends probe packets
             if (nLength != SIZE_CBW)
             {
-                MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
+                MLOGERR("ReceiveCBW", "Invalid CBW len = %i, ignoring and re-arming endpoint", nLength);
 
-                // MacOS 9.2 workaround: Send CSW with phase error instead of stalling
-                // This violates strict USB BOT but works better with legacy Mac OS
-                m_CSW.dCSWTag = 0; // Unknown tag since we didn't get valid CBW
-                m_CSW.dCSWDataResidue = 0;
-                m_CSW.bmCSWStatus = CD_CSW_STATUS_PHASE_ERR;
-
-                // Send the CSW immediately - host should reset after phase error
-                memcpy(m_InBuffer, &m_CSW, SIZE_CSW);
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn,
-                                           m_InBuffer, SIZE_CSW);
-                m_nState = TCDState::SentCSW;
+                // Don't change state, don't send CSW - just keep listening
+                // This mimics commercial CD-ROM drive behavior with legacy hosts
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, SIZE_CBW);
                 return;
             }
 
             memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
+
             if (m_CBW.dCBWSignature != VALID_CBW_SIG)
             {
-                MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x", m_CBW.dCBWSignature);
+                MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x, ignoring", m_CBW.dCBWSignature);
 
-                // Same workaround for bad signature
-                m_CSW.dCSWTag = m_CBW.dCBWTag; // Use whatever tag we got
-                m_CSW.dCSWDataResidue = 0;
-                m_CSW.bmCSWStatus = CD_CSW_STATUS_PHASE_ERR;
-
-                memcpy(m_InBuffer, &m_CSW, SIZE_CSW);
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn,
-                                           m_InBuffer, SIZE_CSW);
-                m_nState = TCDState::SentCSW;
+                // Same recovery - keep endpoint active without protocol error
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, SIZE_CBW);
                 return;
             }
 
             m_CSW.dCSWTag = m_CBW.dCBWTag;
+
             if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0)
             {
                 HandleSCSICommand();
             }
             else
             {
-                MLOGERR("ReceiveCBW", "Invalid CBW length = %i or LUN = %i",
+                MLOGERR("ReceiveCBW", "Invalid CBW length = %i or LUN = %i, ignoring",
                         m_CBW.bCBWCBLength, m_CBW.bCBWLUN);
 
-                // Phase error for invalid CBW parameters too
-                m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength;
-                m_CSW.bmCSWStatus = CD_CSW_STATUS_PHASE_ERR;
-
-                memcpy(m_InBuffer, &m_CSW, SIZE_CSW);
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn,
-                                           m_InBuffer, SIZE_CSW);
-                m_nState = TCDState::SentCSW;
+                // Keep endpoint listening - host will retry
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, SIZE_CBW);
                 return;
             }
             break;
@@ -1213,27 +1161,10 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 
         case TCDState::DataOut:
         {
-            CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ", m_nState, bIn ? "IN" : "OUT", nLength);
-            // process block from host
-            // assert(m_nnumber_blocks>0);
+            CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ",
+                            m_nState, bIn ? "IN" : "OUT", nLength);
 
             ProcessOut(nLength);
-
-            /*
-            if(m_CDReady)
-            {
-                    m_nState=TCDState::DataOutWrite; //see Update function
-            }
-            else
-            {
-                    MLOGERR("onXferCmplt DataOut","failed, %s",
-                            m_CDReady?"ready":"not ready");
-                    m_CSW.bmCSWStatus=CD_CSW_STATUS_FAIL;
-                    m_ReqSenseReply.bSenseKey = 2;
-                    m_ReqSenseReply.bAddlSenseCode = 1;
-                    SendCSW();
-            }
-            */
             SendCSW();
             break;
         }
@@ -1247,7 +1178,6 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         }
     }
 }
-
 void CUSBCDGadget::ProcessOut(size_t nLength)
 {
     // This code is assuming that the payload is a Mode Select payload.
