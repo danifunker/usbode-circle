@@ -565,6 +565,7 @@ private:
     void AddEndpoints(void) override;
     void CreateDevice(void) override;
     void OnSuspend(void) override;
+    DISC_TYPE DetermineDiscType();
     int OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData) override;
     // ========================================================================
     // USB Transfer Callbacks (called from IRQ level via CUSBCDGadgetEndpoint)
@@ -598,7 +599,7 @@ private:
     // TOC formatting helpers
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
-
+    
     // ========================================================================
     // CUE Sheet and Track Management
     // ========================================================================
@@ -720,7 +721,7 @@ private:
     TCDState m_nState = Init; // SCSI command state machine
     MediaState m_mediaState = MediaState::NO_MEDIUM;
     MEDIA_TYPE m_mediaType = MEDIA_TYPE::CD;
-
+    DISC_TYPE m_discType = DISC_TYPE::UNKNOWN;
     boolean m_CDReady = false;   // Device ready flag
     boolean m_IsFullSpeed = 0;   // USB 1.1 full-speed vs USB 2.0 high-speed
     boolean discChanged = false; // Media change flag
@@ -837,7 +838,7 @@ private:
         0x00,                // reserved;
         htons(PROFILE_CDROM) // currentProfile;
     };
-    
+
     // Feature 0000h - Profile List - A list of all profile supported by the drive
     TUSBCDProfileListFeatureReply profile_list = {
         htons(0x0000), // featureCode

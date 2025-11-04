@@ -326,6 +326,11 @@ void CUSBCDGadget::SetDevice(ICueDevice *dev)
     MLOGNOTE("CUSBCDGadget::SetDevice", "Media type set to %d", m_mediaType);
     cueParser = CUEParser(m_pDevice->GetCueSheet()); // FIXME. Ensure cuesheet is not null or empty
 
+    m_discType = DetermineDiscType();
+    MLOGNOTE("CUSBCDGadget::SetDevice", 
+             "Media type set to %d, disc type is %d", 
+             m_mediaType, (int)m_discType);
+
     MLOGNOTE("CUSBCDGadget::SetDevice", "entered");
 
     data_skip_bytes = GetSkipbytes();
@@ -399,23 +404,21 @@ int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
     }
 }
 
-// Make an assumption about media type based on track 1 mode
 int CUSBCDGadget::GetMediumType()
 {
-    cueParser.restart();
-    const CUETrackInfo *trackInfo = nullptr;
-    cueParser.restart();
-    while ((trackInfo = cueParser.next_track()) != nullptr)
+    switch (m_discType)
     {
-        if (trackInfo->track_number == 1 && trackInfo->track_mode == CUETrack_AUDIO)
-            // Audio CD
-            return 0x02;
-        else if (trackInfo->track_number > 1)
-            // Mixed mode
-            return 0x03;
+        case DISC_TYPE::CDDA:
+            return 0x00;  // CD-DA (Audio CD)
+        case DISC_TYPE::CDROM:
+            return 0x01;  // CD-ROM (Data)
+        case DISC_TYPE::MIXED_MODE:
+            return 0x03;  // Mixed mode
+        case DISC_TYPE::DVDDISC:
+            return 0x00;  // DVD (MMC spec uses 0x00 for optical media)
+        default:
+            return 0x00;  // Default to audio
     }
-    // Must be a data cd
-    return 0x01;
 }
 
 CUETrackInfo CUSBCDGadget::GetTrackInfoForTrack(int track)
@@ -886,6 +889,47 @@ int CUSBCDGadget::GetLastTrackNumber()
             lastTrack = trackInfo->track_number;
     }
     return lastTrack;
+}
+
+DISC_TYPE CUSBCDGadget::DetermineDiscType()
+{
+    // Check if this is a DVD first (based on media type)
+    if (m_mediaType == MEDIA_TYPE::DVD)
+    {
+        return DISC_TYPE::DVDDISC;
+    }
+    
+    // For CDs, analyze the tracks
+    bool hasAudio = false;
+    bool hasData = false;
+    
+    const CUETrackInfo *track;
+    cueParser.restart();
+    
+    while ((track = cueParser.next_track()) != nullptr)
+    {
+        if (track->track_mode == CUETrack_AUDIO)
+        {
+            hasAudio = true;
+        }
+        else
+        {
+            hasData = true;
+        }
+        
+        // Early exit if we know it's mixed
+        if (hasAudio && hasData)
+        {
+            return DISC_TYPE::MIXED_MODE;
+        }
+    }
+    
+    if (hasAudio && !hasData)
+        return DISC_TYPE::CDDA;
+    else if (hasData && !hasAudio)
+        return DISC_TYPE::CDROM;
+    
+    return DISC_TYPE::UNKNOWN;
 }
 
 void CUSBCDGadget::CreateDevice(void)

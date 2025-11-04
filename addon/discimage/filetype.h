@@ -11,4 +11,14 @@ enum class MEDIA_TYPE {
     CD,
     DVD
 };
+
+enum class DISC_TYPE
+{
+    UNKNOWN,
+    CDDA,      // Pure audio CD
+    CDROM,     // Pure data CD
+    MIXED_MODE, // Mixed audio/data
+    DVDDISC
+};
+
 #endif
