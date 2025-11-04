@@ -837,6 +837,7 @@ private:
         0x00,                // reserved;
         htons(PROFILE_CDROM) // currentProfile;
     };
+    
     // Feature 0000h - Profile List - A list of all profile supported by the drive
     TUSBCDProfileListFeatureReply profile_list = {
         htons(0x0000), // featureCode
