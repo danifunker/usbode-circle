@@ -1415,10 +1415,17 @@ void CUSBCDGadget::HandleSCSICommand()
         if (!m_CDReady)
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
-            bmCSWStatus = CD_CSW_STATUS_FAIL;
-            m_SenseParams.bSenseKey = 2;
-            m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // CAUSE NOT REPORTABLE
+            setSenseData(0x02, 0x3A, 0x00); // NOT READY, MEDIUM NOT PRESENT
+            m_mediaState = MediaState::NO_MEDIUM;
+            sendCheckCondition();
+            break;
+        }
+
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            break;
         }
 
         // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
@@ -1427,50 +1434,46 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-    case 0x03: // Request sense CMD
+ case 0x03: // Request sense CMD
+{
+    u8 blocks = (u8)(m_CBW.CBWCB[4]);
+    
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+        "Request Sense CMD: bSenseKey 0x%02x, bAddlSenseCode 0x%02x, bAddlSenseCodeQual 0x%02x", 
+        m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+    
+    u8 length = sizeof(TUSBCDRequestSenseReply);
+    if (blocks < length)
+        length = blocks;
+    
+    // Populate sense reply with CURRENT sense data
+    m_ReqSenseReply.bSenseKey = m_SenseParams.bSenseKey;
+    m_ReqSenseReply.bAddlSenseCode = m_SenseParams.bAddlSenseCode;
+    m_ReqSenseReply.bAddlSenseCodeQual = m_SenseParams.bAddlSenseCodeQual;
+    
+    memcpy(&m_InBuffer, &m_ReqSenseReply, length);
+    
+    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                               m_InBuffer, length);
+    
+    m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;  // Request Sense always succeeds
+    m_nState = TCDState::SendReqSenseReply;
+    
+    // CRITICAL FIX: Clear sense data AFTER reporting it (SCSI autoclearing behavior)
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Clearing sense data after reporting");
+    clearSenseData();
+    
+    // Update media state machine: transition from UNIT_ATTENTION to READY
+    if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
     {
-        // This command is the host asking why the last command generated a check condition
-        // We'll clear the reason after we've communicated it. If it's still an issue, we'll
-        // throw another Check Condition afterwards
-        // bool desc = m_CBW.CBWCB[1] & 0x01;
-        u8 blocks = (u8)(m_CBW.CBWCB[4]);
-
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Request Sense CMD: bSenseKey 0x%02x, bAddlSenseCode 0x%02x, bAddlSenseCodeQual 0x%02x ", m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
-
-        u8 length = sizeof(TUSBCDRequestSenseReply);
-        if (blocks < length)
-            length = blocks;
-
-        m_ReqSenseReply.bSenseKey = m_SenseParams.bSenseKey;
-        m_ReqSenseReply.bAddlSenseCode = m_SenseParams.bAddlSenseCode;
-        m_ReqSenseReply.bAddlSenseCodeQual = m_SenseParams.bAddlSenseCodeQual;
-
-        memcpy(&m_InBuffer, &m_ReqSenseReply, length);
-
-        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                   m_InBuffer, length);
-
-        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-        m_nState = TCDState::SendReqSenseReply;
-
-        // If we were "Not Ready", switch to Unit Attention
-        if (m_SenseParams.bSenseKey == 0x02)
-        {
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Moving sense state to Unit Attention, Medium have have changed");
-            bmCSWStatus = CD_CSW_STATUS_FAIL;
-            m_SenseParams.bSenseKey = 0x06;          // Unit Attention
-            m_SenseParams.bAddlSenseCode = 0x28;     // NOT READY TO READY CHANGE
-            m_SenseParams.bAddlSenseCodeQual = 0x00; // MEDIUM MAY HAVE CHANGED
-        }
-        else
-        {
-            // Reset response params after send -- this portion of the code doesn't work for with the shared refactored methods
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Moving sense state to OK");
-            bmCSWStatus = CD_CSW_STATUS_OK;
-			
-        }
-        break;
+        m_mediaState = MediaState::MEDIUM_PRESENT_READY;
+        bmCSWStatus = CD_CSW_STATUS_OK;  // Clear global CHECK CONDITION flag
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+            "Media state transition: UNIT_ATTENTION -> READY");
     }
+    
+    break;
+}
 
     case 0xa8: // Read (12) - similar to READ(10) but with 32-bit block count
     {
