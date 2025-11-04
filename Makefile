@@ -131,9 +131,9 @@ configure: check-vars check-config
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
 	if [ "$(RASPPI)" = "4" ]; then \
-		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" -o USB_GADGET_DEBUG -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS ; \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS ; \
 	else \
-		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" -o USB_GADGET_DEBUG -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS ; \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS ; \
 	fi
 
 # Build Circle stdlib
