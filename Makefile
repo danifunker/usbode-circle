@@ -4,7 +4,6 @@ USBODEHOME = .
 STDLIBHOME = $(USBODEHOME)/circle-stdlib
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 DEBUG_FLAGS ?=
-DEBUG_CONFIGURE_FLAGS = $(if $(DEBUG_FLAGS),$(addprefix -d ,$(DEBUG_FLAGS)))
 DIST_DIR = dist
 BASE_VERSION = $(shell cat version.txt | head -n 1 | tr -d '\n\r')
 BUILD_NUMBER ?= 
@@ -132,9 +131,9 @@ configure: check-vars check-config
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
 	if [ "$(RASPPI)" = "4" ]; then \
-		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS ; \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" -o USB_GADGET_DEBUG -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS ; \
 	else \
-		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(DEBUG_CONFIGURE_FLAGS) -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS ; \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" -o USB_GADGET_DEBUG -o KERNEL_MAX_SIZE=0x400000 -o SCREEN_HEADLESS ; \
 	fi
 
 # Build Circle stdlib

@@ -1,0 +1,18 @@
+diff --git a/lib/usb/gadget/dwusbgadgetendpoint.cpp b/lib/usb/gadget/dwusbgadgetendpoint.cpp
+index d71abd08..76cf0ed2 100644
+--- a/lib/usb/gadget/dwusbgadgetendpoint.cpp
++++ b/lib/usb/gadget/dwusbgadgetendpoint.cpp
+@@ -275,7 +275,12 @@ size_t CDWUSBGadgetEndpoint::FinishTransfer (void)
+ 
+ 	if (nXferSize)
+ 	{
+-		debug_hexdump (m_pTransferBuffer, nXferSize, From);
++		size_t nDumpSize = nXferSize > 16 ? 16 : nXferSize;  // Max 16 bytes
++		debug_hexdump (m_pTransferBuffer, nDumpSize, From);
++		if (nXferSize > 16)
++		{
++			LOGDBG ("... (%u more bytes not shown)", nXferSize - 16);
++		}
+ 	}
+ #endif
+ 
