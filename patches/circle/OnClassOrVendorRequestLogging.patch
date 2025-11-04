@@ -1,0 +1,16 @@
+--- a/lib/usb/gadget/dwusbgadget.cpp
++++ b/lib/usb/gadget/dwusbgadget.cpp
+@@ -550,6 +550,13 @@ void CDWUSBGadget::InterruptHandler (void)
+                 }
+                 else  // Class or vendor specific request
+                 {
++					// Debug logging for troubleshooting MacOS 9.2 enumeration
++					NOTICE("Class/Vendor request: Type=0x%02x Req=0x%02x Val=0x%04x Idx=0x%04x Len=%d",
++					       m_SetupData.bmRequestType,
++					       m_SetupData.bRequest,
++					       m_SetupData.wValue,
++					       m_SetupData.wIndex,
++					       m_SetupData.wLength);
++					
+                     int nResult = OnClassOrVendorRequest (&m_SetupData,
+                                           m_ControlBuffer);

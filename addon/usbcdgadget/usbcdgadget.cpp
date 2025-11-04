@@ -879,21 +879,26 @@ void CUSBCDGadget::CreateDevice(void)
 
 void CUSBCDGadget::OnSuspend(void)
 {
-    MLOGNOTE("OnSuspend", "USB suspend/reset - clearing stalls and resetting state");
+    MLOGNOTE("OnSuspend", "USB reset/suspend - clearing stalls and resetting protocol state");
 
-    // Clear stalls on both endpoints
+    // Clear stalls on both bulk endpoints (USB BOT reset recovery)
     if (m_pEP[EPIn])
     {
-        m_pEP[EPIn]->StallRequest(FALSE); // Clear IN stall
+        m_pEP[EPIn]->StallRequest(FALSE); // Clear IN endpoint stall
     }
     if (m_pEP[EPOut])
     {
-        m_pEP[EPOut]->StallRequest(FALSE); // Clear OUT stall
+        m_pEP[EPOut]->StallRequest(FALSE); // Clear OUT endpoint stall
     }
 
-    // Reset to initial state
+    // Reset protocol state machine to initial state
     m_nState = TCDState::ReceiveCBW;
-    m_CDReady = 0;
+
+    // Re-arm OUT endpoint to receive next CBW
+    m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                m_OutBuffer, SIZE_CBW);
+
+    MLOGNOTE("OnSuspend", "Reset recovery complete - ready for CBW");
 }
 
 const void *CUSBCDGadget::ToStringDescriptor(const char *pString, size_t *pLength)
@@ -923,13 +928,47 @@ const void *CUSBCDGadget::ToStringDescriptor(const char *pString, size_t *pLengt
 
 int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData)
 {
-    CDROM_DEBUG_LOG("CUSBCDGadget::OnClassOrVendorRequest", "entered");
-    if (pSetupData->bmRequestType == 0xA1 && pSetupData->bRequest == 0xfe) // get max LUN
+    
+    CDROM_DEBUG_LOG("OnClassOrVendorRequest", "bmRequestType=0x%02x, bRequest=0x%02x, wValue=0x%04x, wIndex=0x%04x, wLength=%d",
+             pSetupData->bmRequestType, pSetupData->bRequest, 
+             pSetupData->wValue, pSetupData->wIndex, pSetupData->wLength);
+    
+    // GET MAX LUN request (standard USB Mass Storage)
+    if (pSetupData->bmRequestType == 0xA1 && pSetupData->bRequest == 0xFE)
     {
-        MLOGDEBUG("OnClassOrVendorRequest", "state = %i", m_nState);
-        pData[0] = 0;
+        CDROM_DEBUG_LOG("OnClassOrVendorRequest", "GET MAX LUN - returning 0");
+        pData[0] = 0;  // Single LUN (LUN 0)
         return 1;
     }
+    
+    // BULK-ONLY MASS STORAGE RESET (0xFF)
+    // MacOS 9.2 may send this after seeing zero-length CBW
+    if (pSetupData->bmRequestType == 0x21 && pSetupData->bRequest == 0xFF)
+    {
+        CDROM_DEBUG_LOG("OnClassOrVendorRequest", "BULK-ONLY MASS STORAGE RESET - resetting protocol state");
+        
+        // Clear stalls on both endpoints
+        if (m_pEP[EPIn])
+        {
+            m_pEP[EPIn]->StallRequest(FALSE);
+        }
+        if (m_pEP[EPOut])
+        {
+            m_pEP[EPOut]->StallRequest(FALSE);
+        }
+        
+        // Reset protocol state
+        m_nState = TCDState::ReceiveCBW;
+        
+        // Re-arm OUT endpoint to receive CBW
+        m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                    m_OutBuffer, SIZE_CBW);
+        CDROM_DEBUG_LOG("OnClassOrVendorRequest", "Protocol state reset complete");
+        return 0;  // No data phase for reset command
+    }
+    
+    // Log unhandled requests for debugging
+    CDROM_DEBUG_LOG("OnClassOrVendorRequest", "Unhandled request - returning -1 (not supported)");
     return -1;
 }
 
@@ -1082,8 +1121,16 @@ void CUSBCDGadget::DoReadTrackInformation(u8 addressType, u32 address, u16 alloc
 void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 {
     assert(m_nState != TCDState::Init);
+    
+    // Debug logging for OUT transfers (bare-metal USB troubleshooting)
+    if (!bIn && m_bDebugLogging)
+    {
+        MLOGNOTE("OnTransferComplete", "OUT: state=%d, len=%d, first bytes: %02x %02x %02x %02x",
+                 m_nState, nLength,
+                 m_OutBuffer[0], m_OutBuffer[1], m_OutBuffer[2], m_OutBuffer[3]);
+    }
 
-    if (bIn) // packet to host has been transferred
+    if (bIn) // IN transfer complete (device->host)
     {
         switch (m_nState)
         {
@@ -1094,66 +1141,85 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                                         m_OutBuffer, SIZE_CBW);
             break;
         }
-
+        
         case TCDState::SendReqSenseReply:
         {
             SendCSW();
             break;
         }
-
+        
         default:
         {
-            MLOGERR("onXferCmplt", "dir=in, unhandled state = %i", m_nState);
+            MLOGERR("OnTransferComplete", "IN: unhandled state=%i", m_nState);
             assert(0);
             break;
         }
         }
     }
-    else // packet from host is available in m_OutBuffer
+    else // OUT transfer complete (host->device)
     {
         switch (m_nState)
         {
         case TCDState::ReceiveCBW:
         {
-            // MacOS 9.2 compatibility: Silently ignore invalid CBWs during enumeration
-            // Modern OSes send valid 31-byte CBWs, but MacOS 9.2 sends probe packets
+            // MacOS 9.2 USB 1.1 compatibility: Handle zero-length probe packets
+            // Legacy Mac OS sends these during enumeration to test endpoint health
+            // This is a bare-metal USB hardware quirk - DWC2 reports nLength=0
+            // but buffer may contain stale data from previous transfers
+            if (nLength == 0)
+            {
+                CDROM_DEBUG_LOG("ReceiveCBW", "Zero-length probe packet (MacOS 9.2 USB 1.1) - ignoring");
+                
+                // Clear buffer to prevent stale data confusion in future transfers
+                memset(m_OutBuffer, 0, SIZE_CBW);
+                
+                // Re-arm endpoint without changing state - keep listening for valid CBW
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, SIZE_CBW);
+                return;
+            }
+            
+            // USB Mass Storage BOT spec: CBW must be exactly 31 bytes
             if (nLength != SIZE_CBW)
             {
-                MLOGERR("ReceiveCBW", "Invalid CBW len = %i, ignoring and re-arming endpoint", nLength);
-
-                // Don't change state, don't send CSW - just keep listening
-                // This mimics commercial CD-ROM drive behavior with legacy hosts
-                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                            m_OutBuffer, SIZE_CBW);
+                MLOGERR("ReceiveCBW", "Invalid CBW length=%d (expected %d) - stalling endpoints",
+                        nLength, SIZE_CBW);
+                
+                // USB BOT spec 6.6.1: Stall both bulk endpoints on invalid CBW
+                m_pEP[EPIn]->StallRequest(TRUE);   // Stall IN endpoint
+                m_pEP[EPOut]->StallRequest(FALSE); // Stall OUT endpoint
+                
+                // Remain in ReceiveCBW - OnSuspend() handles reset recovery
                 return;
             }
 
+            // Valid length - verify CBW signature
             memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
-
+            
             if (m_CBW.dCBWSignature != VALID_CBW_SIG)
             {
-                MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x, ignoring", m_CBW.dCBWSignature);
-
-                // Same recovery - keep endpoint active without protocol error
-                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                            m_OutBuffer, SIZE_CBW);
+                MLOGERR("ReceiveCBW", "Invalid CBW signature=0x%08x (expected 0x%08x)",
+                        m_CBW.dCBWSignature, VALID_CBW_SIG);
+                
+                m_pEP[EPIn]->StallRequest(TRUE);
+                m_pEP[EPOut]->StallRequest(FALSE);
                 return;
             }
 
+            // Valid CBW - process SCSI command
             m_CSW.dCSWTag = m_CBW.dCBWTag;
-
+            
             if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0)
             {
                 HandleSCSICommand();
             }
             else
             {
-                MLOGERR("ReceiveCBW", "Invalid CBW length = %i or LUN = %i, ignoring",
+                MLOGERR("ReceiveCBW", "Invalid CBW params: CDBlen=%d, LUN=%d",
                         m_CBW.bCBWCBLength, m_CBW.bCBWLUN);
-
-                // Keep endpoint listening - host will retry
-                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                            m_OutBuffer, SIZE_CBW);
+                
+                m_pEP[EPIn]->StallRequest(TRUE);
+                m_pEP[EPOut]->StallRequest(FALSE);
                 return;
             }
             break;
@@ -1161,9 +1227,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 
         case TCDState::DataOut:
         {
-            CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ",
-                            m_nState, bIn ? "IN" : "OUT", nLength);
-
+            CDROM_DEBUG_LOG("OnTransferComplete", "DataOut: len=%d", nLength);
             ProcessOut(nLength);
             SendCSW();
             break;
@@ -1171,7 +1235,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 
         default:
         {
-            MLOGERR("onXferCmplt", "dir=out, unhandled state = %i", m_nState);
+            MLOGERR("OnTransferComplete", "OUT: unhandled state=%i", m_nState);
             assert(0);
             break;
         }
@@ -1234,10 +1298,29 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate()
 {
-    MLOGNOTE("CD OnActivate", "state = %i", m_nState);
+    MLOGNOTE("OnActivate", "USB device activated - state=%i, m_CDReady=%d", m_nState, m_CDReady);
+    
+    // CRITICAL: Set media state for MacOS 9.2 compatibility
+    // Legacy Mac OS requires Unit Attention on first access
+    if (m_mediaState == MediaState::NO_MEDIUM && m_CDReady)
+    {
+        m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
+        MLOGNOTE("OnActivate", "Media state set to UNIT_ATTENTION for legacy Mac OS");
+    }
+    
     m_CDReady = true;
     m_nState = TCDState::ReceiveCBW;
-    m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
+    
+    // CRITICAL: Ensure OUT endpoint is listening immediately after activation
+    // MacOS 9.2 may send CBW immediately after string descriptors
+    MLOGNOTE("OnActivate", "Starting CBW receive on EP%d", 
+             m_pEP[EPOut] ? m_pEP[EPOut]->GetEPNumber(): -1);
+    
+    // Clear any stale buffer data before receiving
+    memset(m_OutBuffer, 0, SIZE_CBW);
+    
+    m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, 
+                                m_OutBuffer, SIZE_CBW);
 }
 
 void CUSBCDGadget::SendCSW()
