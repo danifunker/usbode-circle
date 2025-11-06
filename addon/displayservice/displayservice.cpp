@@ -126,23 +126,22 @@ void DisplayService::CreateDisplay(const char* displayType) {
     // https://pinout.xyz/pinout/pirate_audio_line_out
     } 
     else if (strcmp(displayType, "st7789-waveshare") == 0) {
-	const char* section = "st7789";
 
 	DisplayConfig display_config = {
-            .dc_pin = config->GetProperty("dc_pin", 25, section),
-            .reset_pin = config->GetProperty("reset_pin", 27, section),
-            .backlight_pin = config->GetProperty("backlight_pin", 24, section),
-            .spi_cpol = config->GetProperty("spi_cpol", 1, section),
-            .spi_cpha = config->GetProperty("spi_chpa", 1, section),
-            .spi_clock_speed = config->GetProperty("spi_clock_speed", 80000000, section),
-            .spi_chip_select = config->GetProperty("spi_chip_select", 0u, section)
+            .dc_pin = 25,
+            .reset_pin = 27,
+            .backlight_pin = 24,
+            .spi_cpol = 0,
+            .spi_cpha = 0,
+            .spi_clock_speed = 40000000,
+            .spi_chip_select = 0
 	};
 
 	ButtonConfig buttons = {
-		.Up = config->GetProperty("button_up", ST7789_BUTTONUP, section),
-		.Down = config->GetProperty("button_down", ST7789_BUTTONDOWN, section),
-		.Ok = config->GetProperty("button_ok", ST7789_BUTTONOK, section),
-		.Cancel = config->GetProperty("button_cancel", ST7789_BUTTONCANCEL, section)
+		.Up = SH1106_BUTTONUP,
+		.Down = SH1106_BUTTONDOWN,
+		.Ok = SH1106_BUTTONOK,
+		.Cancel = SH1106_BUTTONCANCEL
 	};
 
         m_IDisplay = new ST7789Display(&display_config, &buttons);

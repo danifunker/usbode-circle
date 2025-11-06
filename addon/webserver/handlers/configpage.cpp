@@ -199,6 +199,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["displayhat_none"] = (current_displayhat == "none");
     context["displayhat_pirateaudio"] = (current_displayhat == "pirateaudiolineout");
     context["displayhat_pirateaudio_matte"] = (current_displayhat == "pirateaudiolineout-matte");
+    context["displayhat_st7789_waveshare"] = (current_displayhat == "st7789-waveshare");
     context["displayhat_waveshare"] = (current_displayhat == "waveshare");
     context["displayhat_st7789"] = (current_displayhat == "st7789");
     context["displayhat_sh1106"] = (current_displayhat == "sh1106");
