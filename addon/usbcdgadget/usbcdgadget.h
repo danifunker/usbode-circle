@@ -773,10 +773,16 @@ private:
     static const size_t MaxBlocksToReadHighSpeed = 32;  // USB 2.0: 32 blocks = 75,264 bytes max
     static const size_t MaxSectorSize = 2352;
     static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize; // 75,264 bytes
+    static const size_t MaxInMessageSizeFullSpeed = MaxBlocksToReadFullSpeed * MaxSectorSize; // 37,632 bytes
 
     DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // DMA buffer for IN transfers
     DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // DMA buffer for OUT transfers
     u8 *m_FileChunk = new u8[MaxInMessageSize];     // Temporary buffer for file reads
+
+    inline size_t GetMaxBufferSize() const
+    {
+        return m_IsFullSpeed ? MaxInMessageSizeFullSpeed : MaxInMessageSize;
+    }
 
     inline size_t GetMaxBlocksToRead() const
     {

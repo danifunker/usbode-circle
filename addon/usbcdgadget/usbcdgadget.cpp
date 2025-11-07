@@ -106,8 +106,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             2,    // bmAttributes (Bulk)
             64,   // wMaxPacketSize
             0     // bInterval
-        }
-    };
+        }};
 
 const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorHighSpeed =
     {
@@ -161,11 +160,11 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
       m_pDevice(pDevice),
       m_pEP{nullptr, nullptr, nullptr}
 {
-    MLOGNOTE("CUSBCDGadget::CUSBCDGadget", 
-            "Initializing: USB %s, MaxBlocks=%u, BufferSize=%u bytes",
-            isFullSpeed ? "Full-Speed (1.1)" : "High-Speed (2.0)",
-            isFullSpeed ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed,
-            (u32)MaxInMessageSize);
+    MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
+             "Initializing: USB %s, MaxBlocks=%u, BufferSize=%u bytes",
+             isFullSpeed ? "Full-Speed (1.1)" : "High-Speed (2.0)",
+             isFullSpeed ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed,
+             (u32)MaxInMessageSize);
     m_IsFullSpeed = isFullSpeed;
 
     // Fetch hardware serial number for unique USB device identification
@@ -1817,9 +1816,9 @@ void CUSBCDGadget::HandleSCSICommand()
                 m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
             }
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                        "READ(10): USB=%s, LBA=%u, blocks=%u",
-                        m_IsFullSpeed ? "FS" : "HS",
-                        m_nblock_address, m_nnumber_blocks);
+                            "READ(10): USB=%s, LBA=%u, blocks=%u",
+                            m_IsFullSpeed ? "FS" : "HS",
+                            m_nblock_address, m_nnumber_blocks);
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             m_nState = TCDState::DataInRead; // see Update() function
@@ -1833,142 +1832,142 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-case 0xBE: // READ CD -- bluescsi inspired
-{
-    if (!m_CDReady)
+    case 0xBE: // READ CD -- bluescsi inspired
     {
-        setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
-        sendCheckCondition();
-        break;
-    }
-
-    int expectedSectorType = (m_CBW.CBWCB[1] >> 2) & 0x07;
-    m_nblock_address = (m_CBW.CBWCB[2] << 24) | (m_CBW.CBWCB[3] << 16) |
-                       (m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-    m_nnumber_blocks = (m_CBW.CBWCB[6] << 16) | (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
-    mcs = (m_CBW.CBWCB[9] >> 3) & 0x1F;
-
-    // Get track info for validation
-    CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-
-    // Verify sector type if specified
-    if (expectedSectorType != 0)
-    {
-        bool sector_type_ok = false;
-
-        if (expectedSectorType == 1 && trackInfo.track_mode == CUETrack_AUDIO)
+        if (!m_CDReady)
         {
-            sector_type_ok = true; // CD-DA
-        }
-        else if (expectedSectorType == 2 &&
-                 (trackInfo.track_mode == CUETrack_MODE1_2048 ||
-                  trackInfo.track_mode == CUETrack_MODE1_2352))
-        {
-            sector_type_ok = true; // Mode 1
-        }
-        else if (expectedSectorType == 3 && trackInfo.track_mode == CUETrack_MODE2_2352)
-        {
-            sector_type_ok = true; // Mode 2 formless
-        }
-        else if (expectedSectorType == 4 && trackInfo.track_mode == CUETrack_MODE2_2352)
-        {
-            sector_type_ok = true; // Mode 2 form 1
-        }
-        else if (expectedSectorType == 5 && trackInfo.track_mode == CUETrack_MODE2_2352)
-        {
-            sector_type_ok = true; // Mode 2 form 2
-        }
-
-        if (!sector_type_ok)
-        {
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                            "READ CD: Sector type mismatch. Expected=%d, Track mode=%d",
-                            expectedSectorType, trackInfo.track_mode);
-            setSenseData(0x05, 0x64, 0x00); // ILLEGAL MODE FOR THIS TRACK
+            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
             sendCheckCondition();
             break;
         }
-    }
 
-    // Ensure read doesn't exceed image size
-    u64 readEnd = (u64)m_nblock_address * trackInfo.sector_length +
-                  (u64)m_nnumber_blocks * trackInfo.sector_length;
-    if (readEnd > m_pDevice->GetSize())
-    {
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand",
-                 "READ CD: Read exceeds image size");
-        setSenseData(0x05, 0x21, 0x00); // LOGICAL BLOCK ADDRESS OUT OF RANGE
-        sendCheckCondition();
-        break;
-    }
+        int expectedSectorType = (m_CBW.CBWCB[1] >> 2) & 0x07;
+        m_nblock_address = (m_CBW.CBWCB[2] << 24) | (m_CBW.CBWCB[3] << 16) |
+                           (m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+        m_nnumber_blocks = (m_CBW.CBWCB[6] << 16) | (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
+        mcs = (m_CBW.CBWCB[9] >> 3) & 0x1F;
 
-    // Determine sector parameters based on expected type or track mode
-    switch (expectedSectorType)
-    {
-    case 0x01: // CD-DA
-        block_size = 2352;
-        transfer_block_size = 2352;
-        skip_bytes = 0;
-        break;
+        // Get track info for validation
+        CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
 
-    case 0x02: // Mode 1
-        skip_bytes = GetSkipbytesForTrack(trackInfo);
-        block_size = GetBlocksizeForTrack(trackInfo);
-        transfer_block_size = 2048;
-        break;
-
-    case 0x03: // Mode 2 formless
-        skip_bytes = 16;
-        block_size = 2352;
-        transfer_block_size = 2336;
-        break;
-
-    case 0x04: // Mode 2 form 1
-        skip_bytes = GetSkipbytesForTrack(trackInfo);
-        block_size = GetBlocksizeForTrack(trackInfo);
-        transfer_block_size = 2048;
-        break;
-
-    case 0x05: // Mode 2 form 2
-        block_size = 2352;
-        skip_bytes = 24;
-        transfer_block_size = 2328;
-        break;
-
-    case 0x00: // Type not specified - derive from MCS and track mode
-    default:
-        if (trackInfo.track_mode == CUETrack_AUDIO)
+        // Verify sector type if specified
+        if (expectedSectorType != 0)
         {
+            bool sector_type_ok = false;
+
+            if (expectedSectorType == 1 && trackInfo.track_mode == CUETrack_AUDIO)
+            {
+                sector_type_ok = true; // CD-DA
+            }
+            else if (expectedSectorType == 2 &&
+                     (trackInfo.track_mode == CUETrack_MODE1_2048 ||
+                      trackInfo.track_mode == CUETrack_MODE1_2352))
+            {
+                sector_type_ok = true; // Mode 1
+            }
+            else if (expectedSectorType == 3 && trackInfo.track_mode == CUETrack_MODE2_2352)
+            {
+                sector_type_ok = true; // Mode 2 formless
+            }
+            else if (expectedSectorType == 4 && trackInfo.track_mode == CUETrack_MODE2_2352)
+            {
+                sector_type_ok = true; // Mode 2 form 1
+            }
+            else if (expectedSectorType == 5 && trackInfo.track_mode == CUETrack_MODE2_2352)
+            {
+                sector_type_ok = true; // Mode 2 form 2
+            }
+
+            if (!sector_type_ok)
+            {
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                                "READ CD: Sector type mismatch. Expected=%d, Track mode=%d",
+                                expectedSectorType, trackInfo.track_mode);
+                setSenseData(0x05, 0x64, 0x00); // ILLEGAL MODE FOR THIS TRACK
+                sendCheckCondition();
+                break;
+            }
+        }
+
+        // Ensure read doesn't exceed image size
+        u64 readEnd = (u64)m_nblock_address * trackInfo.sector_length +
+                      (u64)m_nnumber_blocks * trackInfo.sector_length;
+        if (readEnd > m_pDevice->GetSize())
+        {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand",
+                     "READ CD: Read exceeds image size");
+            setSenseData(0x05, 0x21, 0x00); // LOGICAL BLOCK ADDRESS OUT OF RANGE
+            sendCheckCondition();
+            break;
+        }
+
+        // Determine sector parameters based on expected type or track mode
+        switch (expectedSectorType)
+        {
+        case 0x01: // CD-DA
             block_size = 2352;
             transfer_block_size = 2352;
             skip_bytes = 0;
-        }
-        else
-        {
+            break;
+
+        case 0x02: // Mode 1
+            skip_bytes = GetSkipbytesForTrack(trackInfo);
             block_size = GetBlocksizeForTrack(trackInfo);
-            transfer_block_size = GetSectorLengthFromMCS(mcs);
-            skip_bytes = GetSkipBytesFromMCS(mcs);
+            transfer_block_size = 2048;
+            break;
+
+        case 0x03: // Mode 2 formless
+            skip_bytes = 16;
+            block_size = 2352;
+            transfer_block_size = 2336;
+            break;
+
+        case 0x04: // Mode 2 form 1
+            skip_bytes = GetSkipbytesForTrack(trackInfo);
+            block_size = GetBlocksizeForTrack(trackInfo);
+            transfer_block_size = 2048;
+            break;
+
+        case 0x05: // Mode 2 form 2
+            block_size = 2352;
+            skip_bytes = 24;
+            transfer_block_size = 2328;
+            break;
+
+        case 0x00: // Type not specified - derive from MCS and track mode
+        default:
+            if (trackInfo.track_mode == CUETrack_AUDIO)
+            {
+                block_size = 2352;
+                transfer_block_size = 2352;
+                skip_bytes = 0;
+            }
+            else
+            {
+                block_size = GetBlocksizeForTrack(trackInfo);
+                transfer_block_size = GetSectorLengthFromMCS(mcs);
+                skip_bytes = GetSkipBytesFromMCS(mcs);
+            }
+            break;
         }
+
+        // Minimal logging - command parameters only (audio detection deferred to Update())
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                        "READ CD: USB=%s, LBA=%u, blocks=%u, type=0x%02x, MCS=0x%02x",
+                        m_IsFullSpeed ? "FS" : "HS",
+                        m_nblock_address, m_nnumber_blocks,
+                        expectedSectorType, mcs);
+
+        m_nbyteCount = m_CBW.dCBWDataTransferLength;
+        if (m_nnumber_blocks == 0)
+        {
+            m_nnumber_blocks = 1 + (m_nbyteCount) / transfer_block_size;
+        }
+
+        m_nState = TCDState::DataInRead;
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
         break;
     }
-
-    // Minimal logging - command parameters only (audio detection deferred to Update())
-    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                  "READ CD: USB=%s, LBA=%u, blocks=%u, type=0x%02x, MCS=0x%02x",
-                  m_IsFullSpeed ? "FS" : "HS",
-                  m_nblock_address, m_nnumber_blocks, 
-                  expectedSectorType, mcs);
-
-    m_nbyteCount = m_CBW.dCBWDataTransferLength;
-    if (m_nnumber_blocks == 0)
-    {
-        m_nnumber_blocks = 1 + (m_nbyteCount) / transfer_block_size;
-    }
-
-    m_nState = TCDState::DataInRead;
-    m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-    break;
-}
 
     // These commands are not implemented so we lie about it
     case 0xBB: // Set CDROM Speed
@@ -3402,72 +3401,92 @@ void CUSBCDGadget::Update()
 
             CDROM_DEBUG_LOG("UpdateRead", "Seek to %lu", block_size * m_nblock_address);
             offset = m_pDevice->Seek(block_size * m_nblock_address);
-            
+
             if (offset != (u64)(-1))
             {
-                // Use speed-appropriate batch limit
+                // Get speed-appropriate limits
                 size_t maxBlocks = GetMaxBlocksToRead();
+                size_t maxBufferSize = GetMaxBufferSize();
+
                 u32 blocks_to_read_in_batch = m_nnumber_blocks;
-                
+
                 if (blocks_to_read_in_batch > maxBlocks)
                 {
                     blocks_to_read_in_batch = maxBlocks;
                     m_nnumber_blocks -= maxBlocks;
-                    
-                    CDROM_DEBUG_LOG("UpdateRead", 
+
+                    CDROM_DEBUG_LOG("UpdateRead",
                                     "Batching: USB=%s, batch=%u blocks, remaining=%u",
                                     m_IsFullSpeed ? "FS" : "HS",
                                     blocks_to_read_in_batch, m_nnumber_blocks);
                 }
                 else
                 {
-                    CDROM_DEBUG_LOG("UpdateRead", 
+                    CDROM_DEBUG_LOG("UpdateRead",
                                     "Final batch: USB=%s, blocks=%u",
                                     m_IsFullSpeed ? "FS" : "HS",
                                     blocks_to_read_in_batch);
                     m_nnumber_blocks = 0;
                 }
 
-                // Calculate total size of the batch read
+                // Calculate sizes
                 u32 total_batch_size = blocks_to_read_in_batch * block_size;
+                u32 total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
 
-                // CRITICAL: Validate buffer size BEFORE reading
+                // CRITICAL: Validate against runtime buffer size limit
+                if (total_transfer_size > maxBufferSize)
+                {
+                    // Recalculate blocks to fit in buffer
+                    u32 safe_blocks = maxBufferSize / transfer_block_size;
+
+                    MLOGNOTE("UpdateRead",
+                             "BUFFER LIMIT: USB=%s, reducing from %u to %u blocks (transfer=%u bytes, limit=%u)",
+                             m_IsFullSpeed ? "FS" : "HS",
+                             blocks_to_read_in_batch, safe_blocks,
+                             total_transfer_size, (u32)maxBufferSize);
+
+                    blocks_to_read_in_batch = safe_blocks;
+                    total_batch_size = blocks_to_read_in_batch * block_size;
+                    total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
+
+                    // Adjust remaining blocks
+                    if (m_nnumber_blocks > 0)
+                    {
+                        m_nnumber_blocks += (maxBlocks - blocks_to_read_in_batch);
+                    }
+                }
+
+                // Secondary safety check against absolute DMA buffer size
                 if (total_batch_size > MaxInMessageSize)
                 {
                     MLOGERR("UpdateRead",
-                            "BUFFER OVERFLOW PREVENTED: requested=%u, buffer=%u, USB=%s, audio=%d",
+                            "BUFFER OVERFLOW: requested=%u, absolute_max=%u, USB=%s",
                             total_batch_size, (u32)MaxInMessageSize,
-                            m_IsFullSpeed ? "FS" : "HS", isAudioTrack);
-                    
-                    // Reduce batch to fit buffer (safety fallback)
+                            m_IsFullSpeed ? "FS" : "HS");
+
                     blocks_to_read_in_batch = MaxInMessageSize / block_size;
                     total_batch_size = blocks_to_read_in_batch * block_size;
-                    m_nnumber_blocks = (m_nnumber_blocks > blocks_to_read_in_batch) 
-                                     ? m_nnumber_blocks - blocks_to_read_in_batch 
-                                     : 0;
-                    
-                    MLOGNOTE("UpdateRead", "Reduced batch to %u blocks (%u bytes)",
-                             blocks_to_read_in_batch, total_batch_size);
+                    total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
+                    m_nnumber_blocks = 0; // Abort operation
                 }
 
-                // Enhanced logging for audio vs data reads
+                // Enhanced logging
                 if (isAudioTrack)
                 {
                     CDROM_DEBUG_LOG("UpdateRead",
-                                    "AUDIO READ: USB=%s, LBA=%u, batch=%u blocks (%u bytes), "
-                                    "transfer_size=%u, skip=%u, mcs=0x%02x",
+                                    "AUDIO: USB=%s, LBA=%u, blocks=%u, read=%u bytes, transfer=%u bytes, "
+                                    "mcs=0x%02x, skip=%u",
                                     m_IsFullSpeed ? "FS" : "HS",
                                     m_nblock_address,
                                     blocks_to_read_in_batch,
                                     total_batch_size,
-                                    transfer_block_size,
-                                    skip_bytes,
-                                    mcs);
+                                    total_transfer_size,
+                                    mcs, skip_bytes);
                 }
                 else
                 {
                     CDROM_DEBUG_LOG("UpdateRead",
-                                    "DATA READ: USB=%s, LBA=%u, batch=%u blocks (%u bytes)",
+                                    "DATA: USB=%s, LBA=%u, blocks=%u, bytes=%u",
                                     m_IsFullSpeed ? "FS" : "HS",
                                     m_nblock_address,
                                     blocks_to_read_in_batch,
@@ -3476,21 +3495,21 @@ void CUSBCDGadget::Update()
 
                 // Perform the read
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
-                CDROM_DEBUG_LOG("UpdateRead", "Read %d bytes in batch", readCount);
+                CDROM_DEBUG_LOG("UpdateRead", "Read %d bytes", readCount);
 
-                // Validate read succeeded completely
+                // Validate read
                 if (readCount < static_cast<int>(total_batch_size))
                 {
                     MLOGERR("UpdateRead",
                             "PARTIAL READ: requested=%u, received=%d, USB=%s, audio=%d",
                             total_batch_size, readCount,
                             m_IsFullSpeed ? "FS" : "HS", isAudioTrack);
-                    setSenseData(0x04, 0x11, 0x00); // UNRECOVERED READ ERROR
+                    setSenseData(0x04, 0x11, 0x00);
                     sendCheckCondition();
                     return;
                 }
 
-                // ...existing copy loop code...
+                // Copy to transfer buffer
                 u8 *dest_ptr = m_InBuffer;
                 u32 total_copied = 0;
 
@@ -3498,7 +3517,7 @@ void CUSBCDGadget::Update()
                 {
                     if (transfer_block_size > block_size)
                     {
-                        // ...existing MCS sector reconstruction code...
+                        // MCS sector reconstruction
                         u8 sector2352[2352] = {0};
                         int offset = 0;
 
@@ -3558,29 +3577,21 @@ void CUSBCDGadget::Update()
                 m_nbyteCount -= total_copied;
                 m_nState = TCDState::DataIn;
 
-                // Log transfer initiation
-                if (isAudioTrack)
-                {
-                    CDROM_DEBUG_LOG("UpdateRead",
-                                    "AUDIO TRANSFER START: Sending %u bytes (USB %s), "
-                                    "next_LBA=%u, remaining=%u blocks",
-                                    total_copied,
-                                    m_IsFullSpeed ? "FS" : "HS",
-                                    m_nblock_address,
-                                    m_nnumber_blocks);
-                }
+                CDROM_DEBUG_LOG("UpdateRead",
+                                "TRANSFER: %u bytes, next_LBA=%u, remaining=%u blocks",
+                                total_copied, m_nblock_address, m_nnumber_blocks);
 
                 // Begin USB transfer
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, 
-                                          m_InBuffer, total_copied);
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                           m_InBuffer, total_copied);
             }
         }
-        
+
         if (!m_CDReady || offset == (u64)(-1))
         {
             MLOGERR("UpdateRead", "failed, %s, offset=%llu",
                     m_CDReady ? "ready" : "not ready", offset);
-            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+            setSenseData(0x02, 0x04, 0x00);
             sendCheckCondition();
         }
         break;
