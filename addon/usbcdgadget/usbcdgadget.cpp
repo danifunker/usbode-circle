@@ -2039,7 +2039,7 @@ case 0x43: // READ TOC/PMA/ATIP -- bluescsi inspired
             // Current Position Header
             TUSBCDSubChannelHeaderReply header;
             memset(&header, 0, SIZE_SUBCHANNEL_HEADER_REPLY);
-            header.audioStatus = 0x00; // Audio status not supported
+            header.audioStatus = 0x15; // Audio status not supported
             header.dataLength = SIZE_SUBCHANNEL_01_DATA_REPLY;
 
             // Override audio status by querying the player
@@ -2970,7 +2970,7 @@ case 0x43: // READ TOC/PMA/ATIP -- bluescsi inspired
                 memset(&codepage, 0, sizeof(codepage));
                 codepage.pageCodeAndPS = 0x0e;
                 codepage.pageLength = 16;
-                codepage.IMMEDAndSOTC = 0x04;
+                codepage.IMMEDAndSOTC = 0x05;
                 codepage.CDDAOutput0Select = 0x01; // audio channel 0
                 codepage.Output0Volume = volume;
                 codepage.CDDAOutput1Select = 0x02; // audio channel 1
@@ -3151,7 +3151,7 @@ case 0x43: // READ TOC/PMA/ATIP -- bluescsi inspired
                 memset(&codepage, 0, sizeof(codepage));
                 codepage.pageCodeAndPS = 0x0e;
                 codepage.pageLength = 16;
-                codepage.IMMEDAndSOTC = 0x04;
+                codepage.IMMEDAndSOTC = 0x05;
                 codepage.CDDAOutput0Select = 0x01; // audio channel 0
                 codepage.Output0Volume = volume;
                 codepage.CDDAOutput1Select = 0x02; // audio channel 1
