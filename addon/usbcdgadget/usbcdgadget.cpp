@@ -3386,7 +3386,6 @@ void CUSBCDGadget::HandleSCSICommand()
 //(IO must not be attempted in functions called from IRQ)
 void CUSBCDGadget::Update()
 {
-    // MLOGDEBUG ("CUSBCDGadget::Update", "entered skip=%u, transfer=%u", skip_bytes, transfer_block_size);
     switch (m_nState)
     {
     case TCDState::DataInRead:
@@ -3436,7 +3435,6 @@ void CUSBCDGadget::Update()
                 // CRITICAL: Validate against runtime buffer size limit
                 if (total_transfer_size > maxBufferSize)
                 {
-                    // Recalculate blocks to fit in buffer
                     u32 safe_blocks = maxBufferSize / transfer_block_size;
 
                     MLOGNOTE("UpdateRead",
@@ -3449,7 +3447,6 @@ void CUSBCDGadget::Update()
                     total_batch_size = blocks_to_read_in_batch * block_size;
                     total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
 
-                    // Adjust remaining blocks
                     if (m_nnumber_blocks > 0)
                     {
                         m_nnumber_blocks += (maxBlocks - blocks_to_read_in_batch);
@@ -3467,7 +3464,7 @@ void CUSBCDGadget::Update()
                     blocks_to_read_in_batch = MaxInMessageSize / block_size;
                     total_batch_size = blocks_to_read_in_batch * block_size;
                     total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
-                    m_nnumber_blocks = 0; // Abort operation
+                    m_nnumber_blocks = 0;
                 }
 
                 // Enhanced logging
@@ -3493,7 +3490,7 @@ void CUSBCDGadget::Update()
                                     total_batch_size);
                 }
 
-                // Perform the read
+                // Perform the read from DVD/CD device
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
                 CDROM_DEBUG_LOG("UpdateRead", "Read %d bytes", readCount);
 
@@ -3521,7 +3518,6 @@ void CUSBCDGadget::Update()
                         u8 sector2352[2352] = {0};
                         int offset = 0;
 
-                        // SYNC (12 bytes)
                         if (mcs & 0x10)
                         {
                             memset(sector2352 + offset, 0x00, 1);
@@ -3530,7 +3526,6 @@ void CUSBCDGadget::Update()
                             offset += 12;
                         }
 
-                        // HEADER (4 bytes)
                         if (mcs & 0x08)
                         {
                             u32 lba = m_nblock_address + i;
@@ -3546,7 +3541,6 @@ void CUSBCDGadget::Update()
                             offset += 4;
                         }
 
-                        // USER DATA (2048 bytes)
                         if (mcs & 0x04)
                         {
                             u8 *current_block_start = m_FileChunk + (i * block_size);
@@ -3554,7 +3548,6 @@ void CUSBCDGadget::Update()
                             offset += 2048;
                         }
 
-                        // EDC/ECC (288 bytes)
                         if (mcs & 0x02)
                         {
                             memset(sector2352 + offset, 0x00, 288);
@@ -3570,6 +3563,18 @@ void CUSBCDGadget::Update()
                     }
                     dest_ptr += transfer_block_size;
                     total_copied += transfer_block_size;
+                }
+
+                // **CRITICAL FIX: Cache coherency for USB Full Speed**
+                if (m_IsFullSpeed)
+                {
+                    // Ensure all data writes are flushed to RAM before DMA
+                    CleanDataCache();
+
+                    // Memory barrier to guarantee write completion
+                    DataSyncBarrier();
+
+                    CDROM_DEBUG_LOG("UpdateRead", "USB FS: Cache flushed for DMA");
                 }
 
                 // Update state
@@ -3596,31 +3601,32 @@ void CUSBCDGadget::Update()
         }
         break;
     }
+
     case 0xBD: // MECHANISM STATUS
     {
         u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
 
         struct MechanismStatus
         {
-            u8 fault : 1;           // bit 0
-            u8 changer_state : 2;   // bits 2-1
-            u8 current_slot : 5;    // bits 7-3
-            u8 mechanism_state : 5; // bits 4-0 of byte 1
-            u8 door_open : 1;       // bit 4 of byte 1
-            u8 reserved1 : 2;       // bits 7-6
-            u8 current_lba[3];      // bytes 2-4 (24-bit LBA)
-            u8 num_slots;           // byte 5
-            u16 slot_table_length;  // bytes 6-7
+            u8 fault : 1;
+            u8 changer_state : 2;
+            u8 current_slot : 5;
+            u8 mechanism_state : 5;
+            u8 door_open : 1;
+            u8 reserved1 : 2;
+            u8 current_lba[3];
+            u8 num_slots;
+            u16 slot_table_length;
         } PACKED;
 
         MechanismStatus status = {0};
         status.fault = 0;
-        status.changer_state = 0;      // No changer
-        status.current_slot = 0;       // Slot 0
-        status.mechanism_state = 0x00; // Idle
-        status.door_open = 0;          // Door closed (tray loaded)
-        status.num_slots = 1;          // Single slot device
-        status.slot_table_length = 0;  // No slot table
+        status.changer_state = 0;
+        status.current_slot = 0;
+        status.mechanism_state = 0x00;
+        status.door_open = 0;
+        status.num_slots = 1;
+        status.slot_table_length = 0;
 
         int length = sizeof(MechanismStatus);
         if (allocationLength < length)
@@ -3633,64 +3639,6 @@ void CUSBCDGadget::Update()
         m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
         break;
     }
-
-        /*
-                case TCDState::DataOutWrite:
-                        {
-                                //process block from host
-                                assert(m_nnumber_blocks>0);
-                                u64 offset=0;
-                                int writeCount=0;
-                                if(m_CDReady)
-                                {
-                                        offset=m_pDevice->Seek(BLOCK_SIZE*m_nblock_address);
-                                        if(offset!=(u64)(-1))
-                                        {
-                                                writeCount=m_pDevice->Write(m_OutBuffer,BLOCK_SIZE);
-                                        }
-                                        if(writeCount>0)
-                                        {
-                                                if(writeCount<BLOCK_SIZE)
-                                                {
-                                                        MLOGERR("UpdateWrite","writeCount = %u ",writeCount);
-                                                        m_CSW.bmCSWStatus=CD_CSW_STATUS_FAIL;
-                                                        m_ReqSenseReply.bSenseKey = 0x2;
-                                                        m_ReqSenseReply.bAddlSenseCode = 0x1;
-                                                        SendCSW();
-                                                        break;
-                                                }
-                                                m_nnumber_blocks--;
-                                                m_nblock_address++;
-                                                if(m_nnumber_blocks==0)  //done receiving data from host
-                                                {
-                                                        SendCSW();
-                                                        break;
-                                                }
-                                        }
-                                }
-                                if(!m_CDReady || offset==(u64)(-1) || writeCount<=0)
-                                {
-                                        MLOGERR("UpdateWrite","failed, %s, offset=%i, writeCount=%i",
-                                                m_CDReady?"ready":"not ready",offset,writeCount);
-                                        m_CSW.bmCSWStatus=CD_CSW_STATUS_FAIL;
-                                        m_ReqSenseReply.bSenseKey = 2;
-                                        m_ReqSenseReply.bAddlSenseCode = 1;
-                                        SendCSW();
-                                        break;
-                                }
-                                else
-                                {
-                                        if(m_nnumber_blocks>0)  //get next block
-                                        {
-                                                m_pEP[EPOut]->BeginTransfer(
-                                                        CUSBCDGadgetEndpoint::TransferDataOut,
-                                                        m_OutBuffer,512);
-                                                m_nState=TCDState::DataOut;
-                                        }
-                                }
-                                break;
-                        }
-        */
 
     default:
         break;
