@@ -327,12 +327,27 @@ void CUSBCDGadget::SetDevice(ICueDevice *dev)
     {
         MLOGNOTE("CUSBCDGadget::SetDevice", "Changing device - ejecting old media");
 
-        // We own this pointer now, so free the memory
+        // **CRITICAL: Reset ALL transfer state before device change**
+        m_nblock_address = 0;
+        m_nnumber_blocks = 0;
+        m_nbyteCount = 0;
+        block_size = 0;
+        transfer_block_size = 0;
+        skip_bytes = 0;
+        mcs = 0;
+
+        // Cancel any pending transfers
+        if (m_nState == TCDState::DataInRead || m_nState == TCDState::DataIn)
+        {
+            MLOGNOTE("CUSBCDGadget::SetDevice", "Cancelling pending transfer state");
+            m_nState = TCDState::ReceiveCBW;
+        }
+
+        // Free the old device
         delete m_pDevice;
         m_pDevice = nullptr;
 
         // Tell the host the disc has changed
-        // TODO: implement a state engine to manage this transition
         m_CDReady = false;
         m_mediaState = MediaState::NO_MEDIUM;
         m_SenseParams.bSenseKey = 0x02;      // Not Ready
@@ -340,18 +355,29 @@ void CUSBCDGadget::SetDevice(ICueDevice *dev)
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
+
+        // Give host time to process media removal event
+        CTimer::Get()->MsDelay(100);
     }
 
+    // Set new device
     m_pDevice = dev;
     m_mediaType = m_pDevice->GetMediaType();
     MLOGNOTE("CUSBCDGadget::SetDevice", "Media type set to %d", m_mediaType);
-    cueParser = CUEParser(m_pDevice->GetCueSheet()); // FIXME. Ensure cuesheet is not null or empty
 
-    MLOGNOTE("CUSBCDGadget::SetDevice", "entered");
+    // Initialize CUE parser with new device's cue sheet
+    cueParser = CUEParser(m_pDevice->GetCueSheet());
 
+    // **USE ORIGINAL WORKING CODE** - GetSkipbytes() and GetBlocksize()
+    // already restart the parser and get the first track internally
     data_skip_bytes = GetSkipbytes();
     data_block_size = GetBlocksize();
 
+    MLOGNOTE("CUSBCDGadget::SetDevice",
+             "Media initialized: type=%d, block_size=%d, skip_bytes=%d",
+             m_mediaType, data_block_size, data_skip_bytes);
+
+    // Transition to UNIT_ATTENTION state
     m_CDReady = true;
     m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
     m_SenseParams.bSenseKey = 0x06;
@@ -359,7 +385,10 @@ void CUSBCDGadget::SetDevice(ICueDevice *dev)
     m_SenseParams.bAddlSenseCodeQual = 0x00;
     bmCSWStatus = CD_CSW_STATUS_FAIL;
     discChanged = true;
-    CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice", "Block size is %d, m_CDReady = %d", block_size, m_CDReady);
+
+    MLOGNOTE("CUSBCDGadget::SetDevice",
+             "Media change complete: ready=%d, state=%d",
+             m_CDReady, m_mediaState);
 }
 
 int CUSBCDGadget::GetBlocksize()
@@ -1579,12 +1608,10 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-    case 0xa8: // Read (12) - similar to READ(10) but with 32-bit block count
+    case 0xa8: // Read (12)
     {
         if (m_CDReady)
         {
-            // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Read (12)");
-            // will be updated if read fails on any block
             m_CSW.bmCSWStatus = bmCSWStatus;
 
             // Where to start reading (LBA) - 4 bytes
@@ -1595,33 +1622,50 @@ void CUSBCDGadget::HandleSCSICommand()
             m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) |
                                (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
 
+            // **FIX: Calculate block parameters for the CURRENT LBA being read**
+            // This ensures correct values when switching between Audio CD and DVD
+            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+            if (trackInfo.track_number != -1)
+            {
+                block_size = GetBlocksizeForTrack(trackInfo);
+                skip_bytes = GetSkipbytesForTrack(trackInfo);
+            }
+            else
+            {
+                // Fallback to cached values if track lookup fails
+                block_size = data_block_size;
+                skip_bytes = data_skip_bytes;
+            }
+
             // Transfer Block Size is the size of data to return to host
-            // Block Size and Skip Bytes is worked out from cue sheet
-            // For a CDROM, this is always 2048
+            // For standard READ(12), this is always 2048
             transfer_block_size = 2048;
-            block_size = data_block_size; // set at SetDevice
-            skip_bytes = data_skip_bytes; // set at SetDevice;
             mcs = 0;
 
             m_nbyteCount = m_CBW.dCBWDataTransferLength;
 
-            // What is this?
             if (m_nnumber_blocks == 0)
             {
                 m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
             }
+
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ(12): USB=%s, LBA=%u, blocks=%u, block_size=%u, skip=%u",
+                            m_IsFullSpeed ? "FS" : "HS",
+                            m_nblock_address, m_nnumber_blocks, block_size, skip_bytes);
+
             m_CSW.bmCSWStatus = bmCSWStatus;
-            m_nState = TCDState::DataInRead; // see Update() function
+            m_nState = TCDState::DataInRead;
         }
         else
         {
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, %s", m_CDReady ? "ready" : "not ready");
-            setSenseData(0x02, 0x04, 0x00); // Not Ready, Logical Unit Not Ready
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, %s",
+                            m_CDReady ? "ready" : "not ready");
+            setSenseData(0x02, 0x04, 0x00);
             sendCheckCondition();
         }
         break;
     }
-
     case 0x12: // Inquiry
     {
         int allocationLength = (m_CBW.CBWCB[3] << 8) | m_CBW.CBWCB[4];
@@ -1790,43 +1834,54 @@ void CUSBCDGadget::HandleSCSICommand()
     {
         if (m_CDReady)
         {
-            // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Read (10)");
-            // will be updated if read fails on any block
             m_CSW.bmCSWStatus = bmCSWStatus;
 
             // Where to start reading (LBA)
-            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
+                               (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 
             // Number of blocks to read (LBA)
             m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
 
+            // **FIX: Calculate block parameters for the CURRENT LBA being read**
+            // This ensures correct values when switching between Audio CD and DVD
+            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+            if (trackInfo.track_number != -1)
+            {
+                block_size = GetBlocksizeForTrack(trackInfo);
+                skip_bytes = GetSkipbytesForTrack(trackInfo);
+            }
+            else
+            {
+                // Fallback to cached values if track lookup fails
+                block_size = data_block_size;
+                skip_bytes = data_skip_bytes;
+            }
+
             // Transfer Block Size is the size of data to return to host
-            // Block Size and Skip Bytes is worked out from cue sheet
-            // For a CDROM, this is always 2048
+            // For standard READ(10), this is always 2048
             transfer_block_size = 2048;
-            block_size = data_block_size; // set at SetDevice
-            skip_bytes = data_skip_bytes; // set at SetDevice;
             mcs = 0;
 
             m_nbyteCount = m_CBW.dCBWDataTransferLength;
 
-            // What is this?
             if (m_nnumber_blocks == 0)
             {
                 m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
             }
+
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                            "READ(10): USB=%s, LBA=%u, blocks=%u",
+                            "READ(10): USB=%s, LBA=%u, blocks=%u, block_size=%u, skip=%u",
                             m_IsFullSpeed ? "FS" : "HS",
-                            m_nblock_address, m_nnumber_blocks);
+                            m_nblock_address, m_nnumber_blocks, block_size, skip_bytes);
 
             m_CSW.bmCSWStatus = bmCSWStatus;
-            m_nState = TCDState::DataInRead; // see Update() function
+            m_nState = TCDState::DataInRead;
         }
         else
         {
             CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s", m_CDReady ? "ready" : "not ready");
-            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+            setSenseData(0x02, 0x04, 0x00);
             sendCheckCondition();
         }
         break;
