@@ -503,6 +503,23 @@ struct TUSBCDDVDReadFeatureReply
 } PACKED;
 #define SIZE_DVD_READ_HEADER_REPLY 8
 
+struct TUSBCDAudioConfigurationDescriptor
+{
+    TUSBConfigurationDescriptor Configuration;
+    
+    // Data interface (existing bulk endpoints)
+    TUSBInterfaceDescriptor DataInterface;
+    TUSBEndpointDescriptor EndpointInBulk;
+    TUSBEndpointDescriptor EndpointOutBulk;
+    
+    // Audio streaming interface (alternate setting 0 - no bandwidth)
+    TUSBInterfaceDescriptor AudioInterfaceAlt0;
+    
+    // Audio streaming interface (alternate setting 1 - active)
+    TUSBInterfaceDescriptor AudioInterfaceAlt1;
+    TUSBEndpointDescriptor EndpointInAudio;
+} PACKED;
+
 // ============================================================================
 // Vendor-Specific Toolbox Commands
 // ============================================================================
@@ -707,6 +724,23 @@ private:
         TUSBEndpointDescriptor EndpointOut;
     } PACKED;
 
+    struct TUSBMSTGadgetConfigurationDescriptorHighSpeedWithAudio
+{
+    TUSBConfigurationDescriptor Configuration;
+    
+    // Data interface (bulk endpoints)
+    TUSBInterfaceDescriptor DataInterface;
+    TUSBEndpointDescriptor EndpointInBulk;
+    TUSBEndpointDescriptor EndpointOutBulk;
+    
+    // Audio streaming interface - Alternate 0 (zero bandwidth)
+    TUSBInterfaceDescriptor AudioInterfaceAlt0;
+    
+    // Audio streaming interface - Alternate 1 (active)
+    TUSBInterfaceDescriptor AudioInterfaceAlt1;
+    TUSBEndpointDescriptor EndpointInAudio;
+} PACKED;
+
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
 
@@ -735,13 +769,20 @@ private:
 
     // Buffer size constants
     static const size_t MaxOutMessageSize = 2048;
-    static const size_t MaxBlocksToRead = 16; // WARNING increasing this overflow some buffer. Not sure why because we size the buffer correctly
+    static const size_t MaxBlocksToReadFullSpeed = 16;  // USB 1.1: 16 blocks = 37,632 bytes max
+    static const size_t MaxBlocksToReadHighSpeed = 32;  // USB 2.0: 32 blocks = 75,264 bytes max
     static const size_t MaxSectorSize = 2352;
-    static const size_t MaxInMessageSize = MaxBlocksToRead * MaxSectorSize;
+    static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize; // 75,264 bytes
 
     DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // DMA buffer for IN transfers
     DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // DMA buffer for OUT transfers
     u8 *m_FileChunk = new u8[MaxInMessageSize];     // Temporary buffer for file reads
+
+    inline size_t GetMaxBlocksToRead() const
+    {
+        return m_IsFullSpeed ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed;
+    }
+
 
     // ========================================================================
     // Instance Variables - SCSI Reply Structures
