@@ -215,27 +215,38 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
 
 // DACs don't support volume control, so we scale the data
 // accordingly instead
-void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
+void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount)
+{
     if (volumeByte == 0xff && defaultVolumeByte == 0xff)
         return;
 
-    // Convert both to Q12 scale
-    u16 defaultScale = (defaultVolumeByte == 0xff) ? 4096 : (defaultVolumeByte << 4);  // max = 0xff << 4 = 4080
-    u16 volumeScale  = (volumeByte == 0xff)         ? 4096 : (volumeByte << 4);
+    // **FIX: Proper 16-bit signed sample handling**
+    s16 *samples = reinterpret_cast<s16 *>(buffer);
+    u32 sampleCount = byteCount / 2;
 
-    // Combine both: result is Q12 * Q12 >> 12 = Q12 again
-    u16 finalScale = (defaultScale * volumeScale) >> 12;
+    // Convert volume bytes to 16-bit scale factor
+    // Use 16-bit precision to avoid quantization noise
+    u32 defaultScale = (defaultVolumeByte == 0xff) ? 65536 : ((u32)defaultVolumeByte * 257);  // 0-65535
+    u32 volumeScale  = (volumeByte == 0xff)        ? 65536 : ((u32)volumeByte * 257);
 
-    for (u32 i = 0; i < byteCount; i += 2) {
-        short sample = (short)((buffer[i + 1] << 8) | buffer[i]);
-        int scaled = (sample * finalScale) >> 12;
-        buffer[i] = (u8)(scaled & 0xFF);
-        buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
+    // Combined scale: (scale1 * scale2) >> 16
+    u32 finalScale = (defaultScale * volumeScale) >> 16;
+
+    for (u32 i = 0; i < sampleCount; i++)
+    {
+        // **CRITICAL: Work with signed 32-bit to prevent overflow**
+        s32 sample = samples[i];
+        s32 scaled = (sample * (s32)finalScale) >> 16;
+
+        // **ADD: Clipping prevents wrap-around distortion**
+        if (scaled > 32767) scaled = 32767;
+        if (scaled < -32768) scaled = -32768;
+
+        samples[i] = (s16)scaled;
     }
 }
 
 void CCDPlayer::Run(void) {
-
     // Initialize buffer state variables.
     m_BufferBytesValid = 0;
     m_BufferReadPos = 0;
@@ -246,6 +257,9 @@ void CCDPlayer::Run(void) {
 
     LOGNOTE("CD Player Run Loop initializing. Queue Size is %d frames", total_frames);
 
+    // **CHANGE 1: Add prefill to prevent initial underrun**
+    boolean prefilled = FALSE;
+
     while (true) {
         if (state == SEEKING || state == SEEKING_PLAYING) {
             LOGNOTE("Seeking to sector %u (byte %u)", address, unsigned(address * SECTOR_SIZE));
@@ -255,7 +269,8 @@ void CCDPlayer::Run(void) {
             memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
             m_BufferBytesValid = 0;
             m_BufferReadPos = 0;
-            m_BytesProcessedInSector = 0; // Reset byte progress on seek
+            m_BytesProcessedInSector = 0;
+            prefilled = FALSE; // **CHANGE 2: Reset prefill flag on seek**
 
             if (offset != (u64)(-1)) {
                 LOGNOTE("Seeking successful");
@@ -267,31 +282,69 @@ void CCDPlayer::Run(void) {
         }
 
         if (state == PLAYING) {
-            // Fill the read buffer if it has been consumed.
-            if (m_BufferReadPos >= m_BufferBytesValid) {
+            // **CHANGE 3: Prefill buffer before starting playback**
+            if (!prefilled) {
+                LOGNOTE("Pre-filling audio buffer before playback start");
+                
+                // Read initial data without writing to DAC yet
+                u64 sectors_remaining = (address < end_address) ? (end_address - address) : 0;
+                if (sectors_remaining > 0) {
+                    u64 sectors_to_read = (AUDIO_BUFFER_SIZE / SECTOR_SIZE < sectors_remaining) 
+                        ? (AUDIO_BUFFER_SIZE / SECTOR_SIZE) 
+                        : sectors_remaining;
+                    int bytes_to_read = sectors_to_read * SECTOR_SIZE;
+                    
+                    u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
+                    if (offset != (u64)(-1)) {
+                        int readCount = m_pBinFileDevice->Read(m_ReadBuffer, bytes_to_read);
+                        if (readCount > 0) {
+                            m_BufferBytesValid = readCount;
+                            m_BufferReadPos = 0;
+                            prefilled = TRUE;
+                            LOGNOTE("Prefilled %d bytes", readCount);
+                        }
+                    }
+                }
+                
+                if (!prefilled) {
+                    LOGERR("Prefill failed, stopping");
+                    state = STOPPED_ERROR;
+                    continue;
+                }
+            }
+
+            // **CHANGE 4: Read ahead when buffer is half-empty instead of fully empty**
+            unsigned int bytes_available_in_buffer = m_BufferBytesValid - m_BufferReadPos;
+            boolean should_read = (bytes_available_in_buffer < AUDIO_BUFFER_SIZE / 2);
+
+            if (should_read) {
                 m_BufferReadPos = 0; // Reset read position
 
                 u64 sectors_remaining = (address < end_address) ? (end_address - address) : 0;
                 if (sectors_remaining == 0) {
-                    LOGNOTE("Playback finished, no sectors remaining.");
-                    state = STOPPED_OK;
-                    m_BufferBytesValid = 0;
+                    // **CHANGE 5: Only stop when buffer fully drained**
+                    if (bytes_available_in_buffer == 0) {
+                        LOGNOTE("Playback finished, no sectors remaining.");
+                        state = STOPPED_OK;
+                        m_BufferBytesValid = 0;
+                    }
                     continue;
                 }
 
-                u64 sectors_to_read_now = (AUDIO_BUFFER_SIZE / SECTOR_SIZE < sectors_remaining) ? (AUDIO_BUFFER_SIZE / SECTOR_SIZE) : sectors_remaining;
+                u64 sectors_to_read_now = (AUDIO_BUFFER_SIZE / SECTOR_SIZE < sectors_remaining) 
+                    ? (AUDIO_BUFFER_SIZE / SECTOR_SIZE) 
+                    : sectors_remaining;
                 int bytes_to_read = sectors_to_read_now * SECTOR_SIZE;
 
-		// Because another task could have moved the file pointer after a Yield(),
+                // Because another task could have moved the file pointer after a Yield(),
                 // we MUST seek to our intended address before every read operation.
                 u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
                 if (offset == (u64)(-1)) {
                     LOGERR("Pre-read seek failed at position %u", address * SECTOR_SIZE);
                     state = STOPPED_ERROR;
-                    continue; // Re-evaluate state in the next loop iteration.
+                    continue;
                 }
 
-                //LOGDBG("Buffer exhausted. Reading %d bytes from file.", bytes_to_read);
                 int readCount = m_pBinFileDevice->Read(m_ReadBuffer, bytes_to_read);
 
                 if (readCount < 0) {
@@ -315,16 +368,16 @@ void CCDPlayer::Run(void) {
                 unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
                 unsigned int bytes_for_sound_device = available_queue_size * BYTES_PER_FRAME;
 
-                unsigned int bytes_available_in_buffer = m_BufferBytesValid - m_BufferReadPos;
-                unsigned int bytes_to_process = (bytes_for_sound_device < bytes_available_in_buffer) ? bytes_for_sound_device : bytes_available_in_buffer;
+                bytes_available_in_buffer = m_BufferBytesValid - m_BufferReadPos;
+                unsigned int bytes_to_process = (bytes_for_sound_device < bytes_available_in_buffer) 
+                    ? bytes_for_sound_device 
+                    : bytes_available_in_buffer;
 
                 bytes_to_process -= (bytes_to_process % BYTES_PER_FRAME);
 
                 if (bytes_to_process > 0) {
-                    // copy from read buffer to write chunk.
-                    for (unsigned int i = 0; i < bytes_to_process; ++i) {
-                        m_WriteChunk[i] = m_ReadBuffer[m_BufferReadPos + i];
-                    }
+                    // **CHANGE 6: Use memcpy instead of byte-by-byte loop**
+                    memcpy(m_WriteChunk, m_ReadBuffer + m_BufferReadPos, bytes_to_process);
 
                     ScaleVolume(m_WriteChunk, bytes_to_process);
 
@@ -350,9 +403,14 @@ void CCDPlayer::Run(void) {
                             state = STOPPED_OK;
                         }
                     }
+                } else {
+                    // **CHANGE 7: Only yield when DAC queue is full**
+                    CScheduler::Get()->Yield();
                 }
             }
+        } else {
+            // **CHANGE 8: Always yield when not playing**
+            CScheduler::Get()->Yield();
         }
-        CScheduler::Get()->Yield();
     }
 }
