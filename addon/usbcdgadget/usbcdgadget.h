@@ -775,21 +775,9 @@ private:
     static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize; // 75,264 bytes
     static const size_t MaxInMessageSizeFullSpeed = MaxBlocksToReadFullSpeed * MaxSectorSize; // 37,632 bytes
 
-    DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // DMA buffer for IN transfers
-    DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // DMA buffer for OUT transfers
-    u8 *m_FileChunk = new u8[MaxInMessageSize];     // Temporary buffer for file reads
-
-    inline size_t GetMaxBufferSize() const
-    {
-        return m_IsFullSpeed ? MaxInMessageSizeFullSpeed : MaxInMessageSize;
-    }
-
-    inline size_t GetMaxBlocksToRead() const
-    {
-        return m_IsFullSpeed ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed;
-    }
-
-
+    alignas(64) DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);       // USB IN transfers
+    alignas(64) DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize);     // USB OUT transfers  
+    alignas(64) DMA_BUFFER(u8, m_FileChunk, MaxInMessageSize);      // File staging buffer    
     // ========================================================================
     // Instance Variables - SCSI Reply Structures
     // ========================================================================
