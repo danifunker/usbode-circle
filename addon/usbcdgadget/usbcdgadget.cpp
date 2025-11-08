@@ -162,10 +162,7 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
       m_pEP{nullptr, nullptr, nullptr}
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
-             "Initializing: USB %s, MaxBlocks=%u, BufferSize=%u bytes",
-             isFullSpeed ? "Full-Speed (1.1)" : "High-Speed (2.0)",
-             isFullSpeed ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed,
-             (u32)MaxInMessageSize);
+             "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
 
     // Fetch hardware serial number for unique USB device identification
@@ -207,7 +204,22 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
     }
 
     if (pDevice)
+    {
+                MLOGNOTE("CUSBCDGadget::CUSBCDGadget", 
+                 "Constructor calling SetDevice()...");
+
         SetDevice(pDevice);
+
+    }
+    else{
+                MLOGNOTE("CUSBCDGadget::CUSBCDGadget", 
+                 "Constructor: No initial device provided");
+
+    }
+    MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
+             "=== CONSTRUCTOR EXIT === m_CDReady=%d, mediaState=%d",
+             m_CDReady, (int)m_mediaState);
+
 }
 
 CUSBCDGadget::~CUSBCDGadget(void)
@@ -313,7 +325,9 @@ void CUSBCDGadget::AddEndpoints(void)
 // must set device before usb activation
 void CUSBCDGadget::SetDevice(ICueDevice *dev)
 {
-    CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice", "entered");
+    MLOGNOTE("CUSBCDGadget::SetDevice", 
+             "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d", 
+             dev, m_pDevice, (int)m_nState);
 
     // Hand the new device to the CD Player
     CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
@@ -323,42 +337,60 @@ void CUSBCDGadget::SetDevice(ICueDevice *dev)
         MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
     }
 
-    // Are we changing the device?
-    if (m_pDevice && m_pDevice != dev)
+    // Are we changing the device on an already-active USB connection?
+    boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
+    
+    if (bDiscSwap || !m_CDReady)
     {
-        MLOGNOTE("CUSBCDGadget::SetDevice", "Changing device - ejecting old media");
-
-        // We own this pointer now, so free the memory
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Disc swap detected - ejecting old media");
         delete m_pDevice;
         m_pDevice = nullptr;
 
-        // Tell the host the disc has changed
-        // TODO: implement a state engine to manage this transition
         m_CDReady = false;
         m_mediaState = MediaState::NO_MEDIUM;
-        m_SenseParams.bSenseKey = 0x02;      // Not Ready
-        m_SenseParams.bAddlSenseCode = 0x3a; // MEDIUM NOT PRESENT
+        m_SenseParams.bSenseKey = 0x02;
+        m_SenseParams.bAddlSenseCode = 0x3a;
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
+        
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Media ejected: state=NO_MEDIUM, sense=02/3a/00");
     }
 
     m_pDevice = dev;
     m_mediaType = m_pDevice->GetMediaType();
     MLOGNOTE("CUSBCDGadget::SetDevice", "Media type set to %d", m_mediaType);
-    cueParser = CUEParser(m_pDevice->GetCueSheet()); // FIXME. Ensure cuesheet is not null or empty
+    cueParser = CUEParser(m_pDevice->GetCueSheet());
 
     data_skip_bytes = GetSkipbytes();
     data_block_size = GetBlocksize();
 
-    m_CDReady = true;
-    m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
-    m_SenseParams.bSenseKey = 0x06;
-    m_SenseParams.bAddlSenseCode = 0x28; // MEDIUM MAY HAVE CHANGED
-    m_SenseParams.bAddlSenseCodeQual = 0x00;
-    bmCSWStatus = CD_CSW_STATUS_FAIL;
-    discChanged = true;
-    CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice", "Block size is %d, m_CDReady = %d", block_size, m_CDReady);
+    // Only set media ready if this is a disc swap
+    // Initial load will be handled by OnActivate() when USB becomes active
+    if (bDiscSwap)
+    {
+        m_CDReady = true;
+        m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
+        m_SenseParams.bSenseKey = 0x06;
+        m_SenseParams.bAddlSenseCode = 0x28;
+        m_SenseParams.bAddlSenseCodeQual = 0x00;
+        bmCSWStatus = CD_CSW_STATUS_FAIL;
+        discChanged = true;
+        
+        MLOGNOTE("CUSBCDGadget::SetDevice", 
+                 "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
+    }
+    else
+    {
+        // Initial load - leave NOT READY, OnActivate will handle it
+        MLOGNOTE("CUSBCDGadget::SetDevice", 
+                 "Initial load: Deferring media ready state to OnActivate()");
+    }
+    
+    MLOGNOTE("CUSBCDGadget::SetDevice", 
+             "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
+             m_CDReady, (int)m_mediaState, 
+             m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 }
 
 int CUSBCDGadget::GetBlocksize()
@@ -1337,11 +1369,35 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate()
 {
-    MLOGNOTE("CD OnActivate", "state = %i, USB speed = %s",
-             m_nState, m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)");
-    m_CDReady = true;
+    MLOGNOTE("CD OnActivate", 
+             "=== ENTRY === state=%d, USB=%s, m_CDReady=%d, mediaState=%d",
+             (int)m_nState, 
+             m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
+             m_CDReady, (int)m_mediaState);
+    
+    CTimer::Get()->MsDelay(10);
+
+    // Set media ready NOW - USB endpoints are active
+    if (m_pDevice && !m_CDReady)
+    {
+        m_CDReady = true;
+        m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
+        m_SenseParams.bSenseKey = 0x06;
+        m_SenseParams.bAddlSenseCode = 0x28;
+        m_SenseParams.bAddlSenseCodeQual = 0x00;
+        bmCSWStatus = CD_CSW_STATUS_FAIL;
+        discChanged = true;
+        
+        MLOGNOTE("CD OnActivate", 
+                 "Initial media ready: Set UNIT_ATTENTION, sense=06/28/00");
+    }
+    
     m_nState = TCDState::ReceiveCBW;
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
+    
+    MLOGNOTE("CD OnActivate", 
+             "=== EXIT === Waiting for CBW, m_CDReady=%d, mediaState=%d",
+             m_CDReady, (int)m_mediaState);
 }
 
 void CUSBCDGadget::SendCSW()
@@ -1515,6 +1571,11 @@ void CUSBCDGadget::HandleSCSICommand()
     {
     case 0x00: // Test unit ready
     {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", 
+             "TEST UNIT READY: m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
+             m_CDReady, (int)m_mediaState,
+             m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+
         if (!m_CDReady)
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
@@ -1526,14 +1587,18 @@ void CUSBCDGadget::HandleSCSICommand()
 
         if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
         {
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", 
+                 "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
             setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
             sendCheckCondition();
             break;
         }
 
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", 
+                "TEST UNIT READY -> GOOD STATUS");
+
         // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
-        m_CSW.bmCSWStatus = bmCSWStatus;
-        SendCSW();
+        sendGoodStatus(); 
         break;
     }
 
@@ -1541,9 +1606,10 @@ void CUSBCDGadget::HandleSCSICommand()
     {
         u8 blocks = (u8)(m_CBW.CBWCB[4]);
 
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                        "Request Sense CMD: bSenseKey 0x%02x, bAddlSenseCode 0x%02x, bAddlSenseCodeQual 0x%02x",
-                        m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand",
+                "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x -> reporting to host",
+                (int)m_mediaState,
+                m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 
         u8 length = sizeof(TUSBCDRequestSenseReply);
         if (blocks < length)
@@ -1563,7 +1629,8 @@ void CUSBCDGadget::HandleSCSICommand()
         m_nState = TCDState::SendReqSenseReply;
 
         // CRITICAL FIX: Clear sense data AFTER reporting it (SCSI autoclearing behavior)
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Clearing sense data after reporting");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", 
+             "REQUEST SENSE: Clearing sense data after reporting");
         clearSenseData();
 
         // Update media state machine: transition from UNIT_ATTENTION to READY
@@ -1571,8 +1638,8 @@ void CUSBCDGadget::HandleSCSICommand()
         {
             m_mediaState = MediaState::MEDIUM_PRESENT_READY;
             bmCSWStatus = CD_CSW_STATUS_OK; // Clear global CHECK CONDITION flag
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                            "Media state transition: UNIT_ATTENTION -> READY");
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand",
+                    "REQUEST SENSE: State transition UNIT_ATTENTION -> READY");
         }
 
         break;
@@ -1976,6 +2043,14 @@ void CUSBCDGadget::HandleSCSICommand()
 
     case 0x43: // READ TOC/PMA/ATIP -- bluescsi inspired
     {
+    if (!m_CDReady)
+    {
+        MLOGNOTE("READ TOC", "FAILED - CD not ready");
+        setSenseData(0x02, 0x04, 0x00); // NOT READY, LOGICAL UNIT NOT READY
+        sendCheckCondition();
+        break;
+    }
+
         // LOG FULL COMMAND BYTES
         CDROM_DEBUG_LOG("READ TOC", "CMD bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
                         m_CBW.CBWCB[0], m_CBW.CBWCB[1], m_CBW.CBWCB[2], m_CBW.CBWCB[3],
@@ -3009,11 +3084,10 @@ void CUSBCDGadget::HandleSCSICommand()
             default:
             {
                 // We don't support this code page
-                bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
-                m_SenseParams.bSenseKey = 0x05;      // Illegal Request
-                m_SenseParams.bAddlSenseCode = 0x24; // INVALID FIELD IN COMMAND PACKET
-                m_SenseParams.bAddlSenseCodeQual = 0x00;
-                break;
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) unsupported page 0x%02x", page);
+                setSenseData(0x05, 0x24, 0x00);
+                sendCheckCondition();
+                return;
             }
             }
 
@@ -3191,11 +3265,9 @@ void CUSBCDGadget::HandleSCSICommand()
             {
                 // We don't support this code page
                 // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) unsupported page 0x%02x", page);
-                bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
-                m_SenseParams.bSenseKey = 0x05;      // Illegal Request
-                m_SenseParams.bAddlSenseCode = 0x24; // INVALID FIELD IN COMMAND PACKET
-                m_SenseParams.bAddlSenseCodeQual = 0x00;
-                break;
+                setSenseData(0x05, 0x24, 0x00);  // INVALID FIELD IN COMMAND PACKET
+                sendCheckCondition();   
+                return;
             }
             }
 
@@ -3663,3 +3735,4 @@ case TCDState::DataInRead:
         break;
     }
 }
+//NEW VERSION OF THE CODE
