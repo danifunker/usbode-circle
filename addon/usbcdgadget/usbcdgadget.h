@@ -787,9 +787,9 @@ private:
         0x05,                                     // Peripheral type = CD/DVD
         0x80,                                     // RMB set = removable media
         0x00,                                     // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
-        0x32,                                     // Response Data Format = This response is SPC3 format
+        0x02,                                     // Response Data Format = This response is SPC3 format
         0x1F,                                     // Additional Length
-        0x50,                                     // SCCS ACC TPGS 3PC Reserved PROTECT
+        0x01,                                     // SCCS ACC TPGS 3PC Reserved PROTECT
         0x00,                                     // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
         0x00,                                     // Obsolete Obsolete WBUS16a SYNCa LINKED Obsolete CMDQUE VS
         {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, // Vendor Identification

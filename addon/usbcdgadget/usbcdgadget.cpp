@@ -1901,7 +1901,7 @@ void CUSBCDGadget::HandleSCSICommand()
 
                 u8 SupportedVPDPageReply[] = {
                     0x05, // Byte 0: Peripheral Device Type (0x05 for Optical Memory Device)
-                    0x80, // Byte 1: Page Code (0x80 for Supported VPD Pages page)
+                    0x00, // Byte 1: Page Code (0x00 for Supported VPD Pages page)
                     0x00, // Byte 2: Page Length (MSB) - total length of page codes following
                     0x03, // Byte 3: Page Length (LSB) - 3 supported page codes
                     0x00, // Byte 4: Supported VPD Page Code: Supported VPD Pages (this page itself)
@@ -2222,6 +2222,15 @@ void CUSBCDGadget::HandleSCSICommand()
             sendCheckCondition();
             break;
         }
+
+        CDROM_DEBUG_LOG("HandleSCSICommand::READ TOC",
+                        "  Format=0x%02x, MSF=%d, Track=%d, AllocLen=%d",
+                        m_CBW.CBWCB[2] & 0x0F,
+                        (m_CBW.CBWCB[1] >> 1) & 1,
+                        m_CBW.CBWCB[6],
+                        (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+    
+
 
         // LOG FULL COMMAND BYTES
         CDROM_DEBUG_LOG("READ TOC", "CMD bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
@@ -3249,8 +3258,11 @@ void CUSBCDGadget::HandleSCSICommand()
         int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
         u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
 
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                        "Mode Sense (10): page=0x%02x, page_control=0x%02x", page, page_control);
+        CDROM_DEBUG_LOG("HandleSCSICommand", 
+                        "  CMD=0x%02x, Page=0x%02x, PC=%d, AllocLen=%d",
+                        m_CBW.CBWCB[0], page, page_control,
+                        (m_CBW.CBWCB[0] == 0x1a) ? m_CBW.CBWCB[4] : 
+                        ((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]));
 
         int length = 0;
 
