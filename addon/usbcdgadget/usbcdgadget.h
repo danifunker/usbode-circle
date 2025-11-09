@@ -559,6 +559,8 @@ public:
     // void SetDeviceBlocks(u64 nBlocks);
     /// \return Capacity of the block device in number of blocks (a 512 bytes)
     // u64 GetBlocks (void) const;
+    void DebugPrintCueSheet();
+
 
 protected:
     // ========================================================================
