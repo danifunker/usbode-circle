@@ -49,15 +49,22 @@ CDROMService::CDROMService()
 
 void CDROMService::SetDevice(ICueDevice* pBinFileDevice) {
     LOGNOTE("CDROM setting device");
-    m_CDGadget->SetDevice(pBinFileDevice);
-
+    
     // We defer initialization of the CD Gadget until the first CD image is loaded
     if (!isInitialized) {
-	bool ok = m_CDGadget->Initialize();
-	assert(ok && "Failed to initialize CD Gadget");
-    	LOGNOTE("Initialized USB CD gadget");
-	isInitialized = true;
+        // First load: Initialize USB BEFORE setting device
+        bool ok = m_CDGadget->Initialize();
+        assert(ok && "Failed to initialize CD Gadget");
+        LOGNOTE("Initialized USB CD gadget");
+        isInitialized = true;
+        
+        // Give USB enumeration a moment to complete
+        // This ensures OnActivate() has been called before we set the device
+        CScheduler::Get()->MsSleep(100);
     }
+    
+    // Now set the device (will be handled correctly by OnActivate or as disc swap)
+    m_CDGadget->SetDevice(pBinFileDevice);
 }
 
 boolean CDROMService::Initialize() {
