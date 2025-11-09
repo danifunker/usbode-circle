@@ -28,6 +28,7 @@
 #include <circle/types.h>
 
 class CUSBCDGadget;
+class ScsiCommandDispatcher;
 
 
 class CUSBCDGadgetEndpoint : public CDWUSBGadgetEndpoint /// Endpoint of the USB mass storage gadget
@@ -42,6 +43,7 @@ public:
 
 private:
 	friend class CUSBCDGadget;
+	friend class ScsiCommandDispatcher;
 
 	enum TCDTransferMode
 	{
