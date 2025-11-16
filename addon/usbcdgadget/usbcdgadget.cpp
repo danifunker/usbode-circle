@@ -837,10 +837,10 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
 // Add these helper functions to your class
 void CUSBCDGadget::LBA2MSF(int32_t LBA, uint8_t *MSF, bool relative)
 {
-    if (!relative)
-    {
-        LBA += 150; // Add 2-second pregap for absolute addressing
-    }
+    // if (!relative)
+    // {
+    //     LBA += 150; // Add 2-second pregap for absolute addressing
+    // }
 
     uint32_t ulba = LBA;
     if (LBA < 0)
@@ -1446,7 +1446,7 @@ u32 CUSBCDGadget::msf_to_lba(u8 minutes, u8 seconds, u8 frames)
     u32 lba = ((u32)minutes * 60 * 75) + ((u32)seconds * 75) + (u32)frames;
 
     // Adjust for the 150-frame (2-second) offset.
-    lba = lba - 150;
+    //lba = lba - 150;
 
     return lba;
 }

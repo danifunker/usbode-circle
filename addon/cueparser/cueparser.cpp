@@ -126,16 +126,20 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size)
 
             if (index == 0)
             {
-                // INDEX 00: Pregap/pause before track
-                // We note it exists but use INDEX 01 as track_start for playback
+                // INDEX 00: Pregap/pause - this is the track's START position
+                m_track_info.track_start = m_track_info.file_start + time + m_track_info.cumulative_offset;
                 got_pause = true;
             }
             else if (index == 1)
             {
-                // INDEX 01: Actual start of track data
-                // This is what we use for both track_start and data_start
-                m_track_info.track_start = m_track_info.file_start + time + m_track_info.cumulative_offset;
-                m_track_info.data_start = m_track_info.track_start;
+                // INDEX 01: Actual audio data start
+                if (!got_pause)
+                {
+                    // No INDEX 00, so INDEX 01 is both track_start and data_start
+                    m_track_info.track_start = m_track_info.file_start + time + m_track_info.cumulative_offset;
+                }
+                // Always set data_start to INDEX 01
+                m_track_info.data_start = m_track_info.file_start + time + m_track_info.cumulative_offset;
                 got_data = true;
             }
         }

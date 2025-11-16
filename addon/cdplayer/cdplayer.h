@@ -63,6 +63,7 @@ class CCDPlayer : public CTask {
     boolean SetDevice(ICueDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();
+    boolean PlaybackStop();
     boolean SetVolume(u8 vol);
     boolean SetDefaultVolume(u8 vol);
     u8 GetVolume();

@@ -119,13 +119,25 @@ boolean CCDPlayer::SetVolume(u8 vol) {
 
 boolean CCDPlayer::Pause() {
     LOGNOTE("CD Player pausing");
-    state = PAUSED;
+    if (state != PLAYING && state != PAUSED) {
+        return false;
+    }
+    if (state != PAUSED)
+    { 
+        state = PAUSED;
+    }
     return true;
 }
 
 boolean CCDPlayer::Resume() {
     LOGNOTE("CD Player resuming");
     state = PLAYING;
+    return true;
+}
+
+boolean CCDPlayer::PlaybackStop() {
+    LOGNOTE("CD Player stopping playback");
+    state = STOPPED_OK;
     return true;
 }
 

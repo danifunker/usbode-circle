@@ -62,8 +62,6 @@ static inline u16 htons(u16 x)
 // CD-ROM Constants
 // ============================================================================
 
-#define LEADOUT_OFFSET 150
-
 // Profile codes (MMC-3)
 #define PROFILE_CDROM 0x0008
 #define PROFILE_DVD_ROM 0x0010
