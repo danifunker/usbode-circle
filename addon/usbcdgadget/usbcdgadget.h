@@ -503,6 +503,32 @@ struct TUSBCDDVDReadFeatureReply
 } PACKED;
 #define SIZE_DVD_READ_HEADER_REPLY 8
 
+// Feature 0010h - Random Readable - Ability to read data from random locations
+struct TUSBCDRandomReadableFeatureReply
+{
+    u16 featureCode;           // 0x0010
+    u8 VersionPersistentCurrent; // Version, Persistent, Current bits
+    u8 AdditionalLength;       // Length of additional data (8 bytes)
+    u32 blockSize;             // Logical block size (2048 bytes, big-endian)
+    u16 blocking;              // Number of logical blocks per device read (big-endian)
+    u8 pp;                     // Error Recovery Page Present bit
+    u8 reserved;               // Reserved
+} PACKED;
+#define SIZE_RANDOM_READABLE_REPLY 12
+
+// Feature 0107h - Real Time Streaming - Support for real-time data streaming
+struct TUSBCDRealTimeStreamingFeatureReply
+{
+    u16 featureCode;           // 0x0107
+    u8 VersionPersistentCurrent; // Version, Persistent, Current bits
+    u8 AdditionalLength;       // Length of additional data (4 bytes)
+    u8 flags;                  // SW, WSPD, MP2A, SCS, RBCB bits
+    u8 reserved1;              // Reserved
+    u8 reserved2;              // Reserved
+    u8 reserved3;              // Reserved
+} PACKED;
+#define SIZE_REAL_TIME_STREAMING_REPLY 8
+
 struct TUSBCDAudioConfigurationDescriptor
 {
     TUSBConfigurationDescriptor Configuration;
@@ -961,6 +987,31 @@ private:
         0x00,          // reserved
         0x00           // reserved
     };
+
+    // Feature 0010h - Random Readable - Ability to read data from random locations
+    // Block size: 2048 bytes, Blocking: 1, PP (Error Recovery Page Present): 1
+    TUSBCDRandomReadableFeatureReply randomreadable = {
+        htons(0x0010), // featureCode
+        0x01,          // VersionPersistentCurrent (version=0, persistent=0, current=1)
+        0x08,          // AdditionalLength (8 bytes)
+        htonl(2048),   // blockSize (2048 bytes for CD-ROM)
+        htons(1),      // blocking (1 logical block per read)
+        0x01,          // pp (Error Recovery Page Present)
+        0x00           // reserved
+    };
+
+    // Feature 0107h - Real Time Streaming - Essential for smooth CD-DA playback
+    // This feature tells the OS that the device can maintain real-time audio streams
+    // Flags: SW=1, WSPD=1, MP2A=1, SCS=1 (bits 0-3)
+    TUSBCDRealTimeStreamingFeatureReply rtstreaming = {
+        htons(0x0107), // featureCode
+        0x01,          // VersionPersistentCurrent (version=0, persistent=0, current=1)
+        0x04,          // AdditionalLength (4 bytes)
+        0x0F,          // flags (SW=1, WSPD=1, MP2A=1, SCS=1, RBCB=0)
+        0x00,          // reserved1
+        0x00,          // reserved2
+        0x00           // reserved3
+    };    
 
     // ========================================================================
     // Instance Variables - Transfer State
