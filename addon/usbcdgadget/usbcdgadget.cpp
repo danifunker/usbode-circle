@@ -642,7 +642,26 @@ void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocatio
             CDROM_DEBUG_LOG("DoReadTOC", "%s", buf);
         }
     }
+    // Quake 2 Debug Logging
+    MLOGNOTE("TOC", "========================================");
+    MLOGNOTE("TOC", "COMPLETE TOC DUMP");
+    MLOGNOTE("TOC", "First: %d, Last: %d", firsttrack, lasttrack);
+    cueParser.restart();
+    const CUETrackInfo *dumpTrack;
+    while ((dumpTrack = cueParser.next_track()) != nullptr)
+    {
+        u8 control = (dumpTrack->track_mode == CUETrack_AUDIO) ? 0x00 : 0x04;
+        MLOGNOTE("TOC", "Track %02d: Ctrl=0x%X, LBA=%6u, Mode=%d %s",
+                dumpTrack->track_number,
+                control,
+                dumpTrack->track_start,
+                dumpTrack->track_mode,
+                (dumpTrack->track_mode == CUETrack_AUDIO) ? "[AUDIO]" : "[DATA]");
+    }
 
+    MLOGNOTE("TOC", "Leadout:  Ctrl=0x04, LBA=%6u", leadout);
+    MLOGNOTE("TOC", "========================================");
+    // End Quake 2 Debug Logging
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, len);
     m_nState = TCDState::DataIn;
     m_nnumber_blocks = 0;
@@ -844,13 +863,13 @@ void CUSBCDGadget::LBA2MSFBCD(int32_t LBA, uint8_t *MSF, bool relative)
     MSF[2] = ((MSF[2] / 10) << 4) | (MSF[2] % 10);
 }
 
-int32_t CUSBCDGadget::MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative)
-{
-    int32_t lba = (m * 60 + s) * 75 + f;
-    if (!relative)
-        lba -= 150;
-    return lba;
-}
+// int32_t CUSBCDGadget::MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative)
+// {
+//     int32_t lba = (m * 60 + s) * 75 + f;
+//     if (!relative)
+//         lba -= 150;
+//     return lba;
+// }
 
 // Update your existing function to use the helper
 u32 CUSBCDGadget::GetAddress(u32 lba, int msf, boolean relative)
@@ -892,27 +911,41 @@ CUETrackInfo CUSBCDGadget::GetTrackInfoForLBA(u32 lba)
     // Iterate to find our track
     CUETrackInfo lastTrack = {};
     lastTrack.track_number = -1;
+    // Quake 2 Debug Logging
+    CDROM_DEBUG_LOG("GetTrackInfo", "Looking up LBA %u", lba);
+    // End Quake 2 Debug Logging
     while ((trackInfo = cueParser.next_track()) != nullptr)
     {
-        MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Iterating: Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
+        // Quake 2 Debug Logging
+        CDROM_DEBUG_LOG("GetTrackInfo", "  Checking track %d: start=%u, mode=%d",
+             trackInfo->track_number, trackInfo->track_start, trackInfo->track_mode);
+        // End Quake 2 Debug Logging
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetTrackInfoForLBA", "Iterating: Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
 
         //  Shortcut for when our LBA is the start address of this track
         if (trackInfo->track_start == lba)
         {
-            MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut track_start == lba, returning track %d", trackInfo->track_number);
+            // Quake 2 Debug Logging
+            CDROM_DEBUG_LOG("GetTrackInfo", "  -> EXACT MATCH! Returning track %d", trackInfo->track_number);
+            // End Quake 2 Debug Logging
+            CDROM_DEBUG_LOG("CUSBCDGadget::GetTrackInfoForLBA", "Shortcut track_start == lba, returning track %d", trackInfo->track_number);
             return *trackInfo;
         }
 
         if (lba < trackInfo->track_start)
         {
-            MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Found LBA %lu in track %d", lba, lastTrack.track_number);
+            // Quake 2 Debug Logging
+                    CDROM_DEBUG_LOG("GetTrackInfo", "  -> LBA %u < track_start %u, returning PREVIOUS track %d", 
+                 lba, trackInfo->track_start, lastTrack.track_number);
+            // End Quake 2 Debug Logging
+            CDROM_DEBUG_LOG("CUSBCDGadget::GetTrackInfoForLBA", "Found LBA %lu in track %d", lba, lastTrack.track_number);
             return lastTrack;
         }
 
         lastTrack = *trackInfo;
     }
 
-    MLOGDEBUG("CUSBCDGadget::GetTrackInfoForLBA", "Returning last track");
+    MLOGNOTE("GetTrackInfo", "  -> End of tracks, returning last track %d", lastTrack.track_number);
     return lastTrack;
 }
 
@@ -1418,18 +1451,18 @@ u32 CUSBCDGadget::msf_to_lba(u8 minutes, u8 seconds, u8 frames)
     return lba;
 }
 
-u32 CUSBCDGadget::lba_to_msf(u32 lba, boolean relative)
-{
-    if (!relative)
-        lba = lba + 150; // MSF values are offset by 2mins. Weird
+// u32 CUSBCDGadget::lba_to_msf(u32 lba, boolean relative)
+// {
+//     if (!relative)
+//         lba = lba + 150; // MSF values are offset by 2mins. Weird
 
-    u8 minutes = lba / (75 * 60);
-    u8 seconds = (lba / 75) % 60;
-    u8 frames = lba % 75;
-    u8 reserved = 0;
+//     u8 minutes = lba / (75 * 60);
+//     u8 seconds = (lba / 75) % 60;
+//     u8 frames = lba % 75;
+//     u8 reserved = 0;
 
-    return (frames << 24) | (seconds << 16) | (minutes << 8) | reserved;
-}
+//     return (frames << 24) | (seconds << 16) | (minutes << 8) | reserved;
+// }
 
 int CUSBCDGadget::GetSectorLengthFromMCS(uint8_t mainChannelSelection)
 {
@@ -3009,7 +3042,20 @@ void CUSBCDGadget::HandleSCSICommand()
         int num_blocks = end_lba - start_lba;
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO MSF. Start MSF %d:%d:%d, End MSF: %d:%d:%d, start LBA %u, end LBA %u", SM, SS, SF, EM, ES, EF, start_lba, end_lba);
 
+        // Quake 2 Logging
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "========================================");
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "PLAY AUDIO MSF REQUEST");
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "Start: MSF %02d:%02d:%02d = LBA %u", SM, SS, SF, start_lba);
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "End:   MSF %02d:%02d:%02d = LBA %u", EM, ES, EF, end_lba);
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "Blocks: %d", num_blocks);        
+
         CUETrackInfo trackInfo = GetTrackInfoForLBA(start_lba);
+        // Quake 2 Debug Logging
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "Track Lookup for LBA %u:", start_lba);
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "  -> Track number: %d", trackInfo.track_number);
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "  -> Track mode: %d (0=AUDIO, 1=MODE1)", trackInfo.track_mode);
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "  -> Track start LBA: %u", trackInfo.track_start);
+        CDROM_DEBUG_LOG("PLAY_AUDIO", "========================================");
         if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
         {
             // Play the audio

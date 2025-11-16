@@ -42,35 +42,43 @@
 #include <string.h>
 #include <strings.h>
 
-CUEParser::CUEParser() : CUEParser("") {
+CUEParser::CUEParser() : CUEParser("")
+{
 }
 
-CUEParser::CUEParser(const char *cue_sheet) : m_cue_sheet(cue_sheet) {
+CUEParser::CUEParser(const char *cue_sheet) : m_cue_sheet(cue_sheet)
+{
     restart();
 }
 
-void CUEParser::restart() {
+void CUEParser::restart()
+{
     m_parse_pos = m_cue_sheet;
     memset(&m_track_info, 0, sizeof(m_track_info));
 }
 
-const CUETrackInfo *CUEParser::next_track() {
+const CUETrackInfo *CUEParser::next_track()
+{
     return next_track(0);
 }
 
-const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
+const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size)
+{
     // Previous track info is needed to track file offset
     uint32_t prev_track_start = m_track_info.track_start;
     m_track_info.cumulative_offset += m_track_info.unstored_pregap_length;
-    uint32_t prev_sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);  // Defaults to 2352 before first track
+    uint32_t prev_sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode); // Defaults to 2352 before first track
 
     bool got_file = false;
     bool got_track = false;
     bool got_data = false;
-    bool got_pause = false;  // true if a period of silence (INDEX 00) was encountered for a track
-    while (!(got_track && got_data) && start_line()) {
-        if (strncasecmp(m_parse_pos, "FILE ", 5) == 0) {
-            if (m_track_info.file_index > 0) {
+    bool got_pause = false; // true if a period of silence (INDEX 00) was encountered for a track
+    while (!(got_track && got_data) && start_line())
+    {
+        if (strncasecmp(m_parse_pos, "FILE ", 5) == 0)
+        {
+            if (m_track_info.file_index > 0)
+            {
                 // Take into account the length of last track in previous file.
                 uint32_t last_track_blocks = (prev_file_size - m_track_info.file_offset) / m_track_info.sector_length;
                 m_track_info.file_start = m_track_info.data_start + last_track_blocks;
@@ -85,7 +93,9 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             prev_track_start = 0;
             prev_sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);
             got_file = true;
-        } else if (strncasecmp(m_parse_pos, "TRACK ", 6) == 0) {
+        }
+        else if (strncasecmp(m_parse_pos, "TRACK ", 6) == 0)
+        {
             const char *track_num = skip_space(m_parse_pos + 6);
             char *endptr;
             m_track_info.track_number = strtoul(track_num, &endptr, 10);
@@ -97,12 +107,16 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             got_track = true;
             got_data = false;
             got_pause = false;
-        } else if (strncasecmp(m_parse_pos, "PREGAP ", 7) == 0) {
+        }
+        else if (strncasecmp(m_parse_pos, "PREGAP ", 7) == 0)
+        {
             // Unstored pregap, which offsets the data start on CD but does not
             // affect the offset in data file.
             const char *time_str = skip_space(m_parse_pos + 7);
             m_track_info.unstored_pregap_length = parse_time(time_str);
-        } else if (strncasecmp(m_parse_pos, "INDEX ", 6) == 0) {
+        }
+        else if (strncasecmp(m_parse_pos, "INDEX ", 6) == 0)
+        {
             const char *index_str = skip_space(m_parse_pos + 6);
             char *endptr;
             int index = strtoul(index_str, &endptr, 10);
@@ -110,13 +124,18 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             const char *time_str = skip_space(endptr);
             uint32_t time = parse_time(time_str);
 
-            if (index == 0) {
-                // Stored pregap that is present both on CD and in data file
-                m_track_info.track_start = m_track_info.file_start + time + m_track_info.cumulative_offset;
+            if (index == 0)
+            {
+                // INDEX 00: Pregap/pause before track
+                // We note it exists but use INDEX 01 as track_start for playback
                 got_pause = true;
-            } else if (index == 1) {
-                // Data content of the track
-                m_track_info.data_start = m_track_info.file_start + time + m_track_info.cumulative_offset;
+            }
+            else if (index == 1)
+            {
+                // INDEX 01: Actual start of track data
+                // This is what we use for both track_start and data_start
+                m_track_info.track_start = m_track_info.file_start + time + m_track_info.cumulative_offset;
+                m_track_info.data_start = m_track_info.track_start;
                 got_data = true;
             }
         }
@@ -124,13 +143,16 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
         next_line();
     }
 
-    if (got_data && !got_pause) {
-        m_track_info.track_start = m_track_info.data_start;
-        m_track_info.data_start += m_track_info.unstored_pregap_length;
-    }
+    // if (got_data && !got_pause)
+    // {
+    //     m_track_info.track_start = m_track_info.data_start;
+    //     m_track_info.data_start += m_track_info.unstored_pregap_length;
+    // }
 
-    if (got_track && got_data) {
-        if (!got_file) {
+    if (got_track && got_data)
+    {
+        if (!got_file)
+        {
             // Advance file position by the length of previous track
             m_track_info.file_offset += (uint64_t)(m_track_info.track_start - (prev_track_start + m_track_info.cumulative_offset)) * prev_sector_length;
         }
@@ -140,49 +162,62 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
         m_track_info.file_offset += (uint64_t)stored_pregap * m_track_info.sector_length;
 
         return &m_track_info;
-    } else {
+    }
+    else
+    {
         return nullptr;
     }
 }
 
-bool isspace(char c) {
+bool isspace(char c)
+{
     // Check for space, tab, newline, vertical tab, form feed, carriage return
     return c == ' ' || c == '\t' || c == '\n' ||
            c == '\v' || c == '\f' || c == '\r';
 }
 
-bool CUEParser::start_line() {
+bool CUEParser::start_line()
+{
     // Skip initial whitespace
-    while (isspace(*m_parse_pos)) {
+    while (isspace(*m_parse_pos))
+    {
         m_parse_pos++;
     }
     return *m_parse_pos != '\0';
 }
 
-void CUEParser::next_line() {
+void CUEParser::next_line()
+{
     // Find end of current line
     const char *p = m_parse_pos;
-    while (*p != '\n' && *p != '\0') {
+    while (*p != '\n' && *p != '\0')
+    {
         p++;
     }
 
     // Skip any linefeeds
-    while (*p == '\n' || *p == '\r') {
+    while (*p == '\n' || *p == '\r')
+    {
         p++;
     }
 
     m_parse_pos = p;
 }
 
-const char *CUEParser::skip_space(const char *p) const {
-    while (isspace(*p)) p++;
+const char *CUEParser::skip_space(const char *p) const
+{
+    while (isspace(*p))
+        p++;
     return p;
 }
 
-const char *CUEParser::read_quoted(const char *src, char *dest, int dest_size) {
+const char *CUEParser::read_quoted(const char *src, char *dest, int dest_size)
+{
     // Search for starting quote
-    while (*src != '"') {
-        if (*src == '\0' || *src == '\n') {
+    while (*src != '"')
+    {
+        if (*src == '\0' || *src == '\n')
+        {
             // Unexpected end of line / file
             dest[0] = '\0';
             return src;
@@ -195,8 +230,10 @@ const char *CUEParser::read_quoted(const char *src, char *dest, int dest_size) {
 
     // Copy text until ending quote
     int len = 0;
-    while (*src != '"' && *src != '\0' && *src != '\n') {
-        if (len < dest_size - 1) {
+    while (*src != '"' && *src != '\0' && *src != '\n')
+    {
+        if (len < dest_size - 1)
+        {
             dest[len++] = *src;
         }
 
@@ -205,22 +242,27 @@ const char *CUEParser::read_quoted(const char *src, char *dest, int dest_size) {
 
     dest[len] = '\0';
 
-    if (*src == '"') src++;
+    if (*src == '"')
+        src++;
     return src;
 }
 
-uint32_t CUEParser::parse_time(const char *src) {
+uint32_t CUEParser::parse_time(const char *src)
+{
     char *endptr;
     uint32_t minutes = strtoul(src, &endptr, 10);
-    if (*endptr == ':') endptr++;
+    if (*endptr == ':')
+        endptr++;
     uint32_t seconds = strtoul(endptr, &endptr, 10);
-    if (*endptr == ':') endptr++;
+    if (*endptr == ':')
+        endptr++;
     uint32_t frames = strtoul(endptr, &endptr, 10);
 
     return frames + 75 * (seconds + 60 * minutes);
 }
 
-CUEFileMode CUEParser::parse_file_mode(const char *src) {
+CUEFileMode CUEParser::parse_file_mode(const char *src)
+{
     if (strncasecmp(src, "BIN", 3) == 0)
         return CUEFile_BINARY;
     else if (strncasecmp(src, "MOTOROLA", 8) == 0)
@@ -232,10 +274,11 @@ CUEFileMode CUEParser::parse_file_mode(const char *src) {
     else if (strncasecmp(src, "AIFF", 4) == 0)
         return CUEFile_AIFF;
     else
-        return CUEFile_BINARY;  // Default to binary mode
+        return CUEFile_BINARY; // Default to binary mode
 }
 
-CUETrackMode CUEParser::parse_track_mode(const char *src) {
+CUETrackMode CUEParser::parse_track_mode(const char *src)
+{
     if (strncasecmp(src, "AUDIO", 5) == 0)
         return CUETrack_AUDIO;
     else if (strncasecmp(src, "CDG", 3) == 0)
@@ -257,42 +300,49 @@ CUETrackMode CUEParser::parse_track_mode(const char *src) {
     else if (strncasecmp(src, "CDI/2352", 8) == 0)
         return CUETrack_CDI_2352;
     else
-        return CUETrack_MODE1_2048;  // Default to data track
+        return CUETrack_MODE1_2048; // Default to data track
 }
 
-uint32_t CUEParser::get_sector_length(CUEFileMode filemode, CUETrackMode trackmode) {
-    if (filemode == CUEFile_BINARY || filemode == CUEFile_MOTOROLA) {
-        switch (trackmode) {
-            case CUETrack_AUDIO:
-                return 2352;
-            case CUETrack_CDG:
-                return 2448;
-            case CUETrack_MODE1_2048:
-                return 2048;
-            case CUETrack_MODE1_2352:
-                return 2352;
-            case CUETrack_MODE2_2048:
-                return 2048;
-            case CUETrack_MODE2_2324:
-                return 2324;
-            case CUETrack_MODE2_2336:
-                return 2336;
-            case CUETrack_MODE2_2352:
-                return 2352;
-            case CUETrack_CDI_2336:
-                return 2336;
-            case CUETrack_CDI_2352:
-                return 2352;
-            default:
-                return 2048;
+uint32_t CUEParser::get_sector_length(CUEFileMode filemode, CUETrackMode trackmode)
+{
+    if (filemode == CUEFile_BINARY || filemode == CUEFile_MOTOROLA)
+    {
+        switch (trackmode)
+        {
+        case CUETrack_AUDIO:
+            return 2352;
+        case CUETrack_CDG:
+            return 2448;
+        case CUETrack_MODE1_2048:
+            return 2048;
+        case CUETrack_MODE1_2352:
+            return 2352;
+        case CUETrack_MODE2_2048:
+            return 2048;
+        case CUETrack_MODE2_2324:
+            return 2324;
+        case CUETrack_MODE2_2336:
+            return 2336;
+        case CUETrack_MODE2_2352:
+            return 2352;
+        case CUETrack_CDI_2336:
+            return 2336;
+        case CUETrack_CDI_2352:
+            return 2352;
+        default:
+            return 2048;
         }
-    } else {
+    }
+    else
+    {
         return 0;
     }
 }
 
-void CUEParser::remove_dot_slash(char *filename, size_t length) {
-    if (strncasecmp(filename, "./", 2) == 0 || strncasecmp(filename, ".\\", 2) == 0) {
+void CUEParser::remove_dot_slash(char *filename, size_t length)
+{
+    if (strncasecmp(filename, "./", 2) == 0 || strncasecmp(filename, ".\\", 2) == 0)
+    {
         memmove(filename, filename + 2, length - 2);
     }
 }
