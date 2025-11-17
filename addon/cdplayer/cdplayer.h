@@ -71,6 +71,7 @@ class CCDPlayer : public CTask {
     u32 GetCurrentAddress();
     boolean Seek(u32 lba);
     boolean Play(u32 lba, u32 num_blocks);
+    boolean PlaybackStop();
     boolean SoundTest();
     size_t buffer_available();
     size_t buffer_free_space();
