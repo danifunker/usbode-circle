@@ -217,6 +217,25 @@ struct ModePage0x01Data
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X01 12
 
+// Mode Page 0x08 (Caching)
+struct ModePage0x08Data
+{
+    u8 pageCodeAndPS;     // 0x08
+    u8 pageLength;        // 0x12 (18 bytes)
+    u8 cachingFlags;      // Bit 2: WCE, Bit 0: RCD
+    u8 demandReadRetention;
+    u8 writeRetention;
+    u16 disablePrefetchTransfer;
+    u16 minPrefetch;
+    u16 maxPrefetch;
+    u16 maxPrefetchCeiling;
+    u8 flags2;
+    u8 numCacheSegments;
+    u16 cacheSegmentSize;
+    u8 reserved;
+    u8 obsolete[3];
+} PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X08 20
 // Mode Page 0x0E (CD Audio Control Page)
 struct ModePage0x0EData
 {
@@ -234,7 +253,17 @@ struct ModePage0x0EData
     u8 Output3Volume;
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X0E 16
-
+// Mode Page 0x1C (Informational Exceptions Control)
+struct ModePage0x1CData
+{
+    u8 pageCodeAndPS;     // 0x1C
+    u8 pageLength;        // 0x0A (10 bytes)
+    u8 flags;             // PERF, EBF, EWASC, DEXCPT, TEST, LOGERR
+    u8 mrie;              // Method of Reporting Informational Exceptions
+    u32 intervalTimer;    // Interval timer (big-endian)
+    u32 reportCount;      // Report count (big-endian)
+} PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X1C 12
 // Mode Page 0x1A (Power Condition)
 struct ModePage0x1AData
 {

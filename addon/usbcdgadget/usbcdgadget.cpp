@@ -3221,6 +3221,54 @@ void CUSBCDGadget::HandleSCSICommand()
                     break;
             }
 
+            case 0x0D:
+            { // CD Device Parameters
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                                "MODE SENSE(10) Page 0x0D (CD Device Parameters)");
+
+                struct CDDeviceParametersPage
+                {
+                    u8 pageCode;   // 0x0D
+                    u8 pageLength; // 0x06
+                    u8 reserved1;
+                    u8 inactivityTimer; // Minutes before standby
+                    u16 secondsPerMSF;  // S/MSF units per second
+                    u16 framesPerMSF;   // F/MSF units per second
+                } PACKED;
+
+                CDDeviceParametersPage codePage = {0};
+                codePage.pageCode = 0x0D;
+                codePage.pageLength = 0x06;
+                codePage.inactivityTimer = 0x00;    // No auto-standby
+                codePage.secondsPerMSF = htons(60); // 60 S units per second
+                codePage.framesPerMSF = htons(75);  // 75 F units per second
+
+                // memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+
+                memcpy(m_InBuffer + length, &codePage, sizeof(codePage));
+                length += sizeof(codePage);
+                if (page != 0x3f)
+                        break;            
+                }            
+
+            case 0x08:
+            {
+                // Mode Page 0x08 (Caching)
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x08 (Caching)");
+
+                ModePage0x08Data codepage;
+                memset(&codepage, 0, sizeof(codepage));
+                codepage.pageCodeAndPS = 0x08;
+                codepage.pageLength = 0x12;
+                codepage.cachingFlags = 0x00;  // RCD=0, WCE=0
+
+                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                length += sizeof(codepage);
+
+                if (page != 0x3f)
+                    break;
+            }            
+
             case 0x1a:
             {
                 // Mode Page 0x1A (Power Condition)
@@ -3238,7 +3286,7 @@ void CUSBCDGadget::HandleSCSICommand()
 
                 if (page != 0x3f)
                     break;
-            }
+            }            
 
             case 0x2a:
             {
@@ -3290,6 +3338,49 @@ void CUSBCDGadget::HandleSCSICommand()
                 break;
             }
 
+            case 0x1c:
+            {
+                // Mode Page 0x1C (Informational Exceptions Control)
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x1c response");
+
+                ModePage0x1CData codepage;
+                memset(&codepage, 0, sizeof(codepage));
+                codepage.pageCodeAndPS = 0x1c;
+                codepage.pageLength = 0x0a;
+                codepage.flags = 0x00;  // No special flags
+                codepage.mrie = 0x00;   // No reporting
+
+                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                length += sizeof(codepage);
+
+                if (page != 0x3f)
+                    break;
+            }
+
+            case 0x31:
+            {
+                // Page 0x31 - Apple vendor-specific page
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x31 (Apple vendor page)");
+
+                // Return minimal vendor page structure
+                struct VendorPage {
+                    u8 pageCode;
+                    u8 pageLength;
+                    u8 reserved[10];  // Minimal padding
+                } PACKED;
+
+                VendorPage codepage;
+                memset(&codepage, 0, sizeof(codepage));
+                codepage.pageCode = 0x31;
+                codepage.pageLength = 0x0a;  // 10 bytes
+
+                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                length += sizeof(codepage);
+
+                if (page != 0x3f)
+                    break;
+            }            
+
             default:
             {
                 // We don't support this code page
@@ -3327,7 +3418,7 @@ void CUSBCDGadget::HandleSCSICommand()
         int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
         u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = %02x, allocationLength = %lu", LLBAA, DBD, page, allocationLength);
-
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) RAW CBWCB[2]=0x%02x, page=0x%02x, page_control=0x%02x", m_CBW.CBWCB[2], page, page_control);
         int length = 0;
 
         // We don't support saved values
@@ -3368,8 +3459,24 @@ void CUSBCDGadget::HandleSCSICommand()
                 if (page != 0x3f)
                     break;
             }
+            case 0x08:
+            {
+                // Mode Page 0x08 (Caching)
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x08 (Caching)");
 
-                // In case 0x5a, add new page:
+                ModePage0x08Data codepage;
+                memset(&codepage, 0, sizeof(codepage));
+                codepage.pageCodeAndPS = 0x08;
+                codepage.pageLength = 0x12;
+                codepage.cachingFlags = 0x00;  // RCD=0, WCE=0
+
+                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                length += sizeof(codepage);
+
+                if (page != 0x3f)
+                    break;
+            }
+            // In case 0x5a, add new page:
             case 0x0D:
             { // CD Device Parameters
                 CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
@@ -3396,8 +3503,9 @@ void CUSBCDGadget::HandleSCSICommand()
 
                 memcpy(m_InBuffer + length, &codePage, sizeof(codePage));
                 length += sizeof(codePage);
-                break;
-            }
+                if (page != 0x3f)
+                        break;            
+                }
 
             case 0x1a:
             {
@@ -3417,6 +3525,25 @@ void CUSBCDGadget::HandleSCSICommand()
                 if (page != 0x3f)
                     break;
             }
+
+            case 0x1c:
+            {
+                // Mode Page 0x1C (Informational Exceptions Control)
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x1c response");
+
+                ModePage0x1CData codepage;
+                memset(&codepage, 0, sizeof(codepage));
+                codepage.pageCodeAndPS = 0x1c;
+                codepage.pageLength = 0x0a;
+                codepage.flags = 0x00;  // No special flags
+                codepage.mrie = 0x00;   // No reporting
+
+                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                length += sizeof(codepage);
+
+                if (page != 0x3f)
+                    break;
+            }            
 
             case 0x2a:
             {
@@ -3469,6 +3596,30 @@ void CUSBCDGadget::HandleSCSICommand()
 
                 break;
             }
+
+            case 0x31:
+            {
+                // Page 0x31 - Apple vendor-specific page
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x31 (Apple vendor page)");
+
+                // Return minimal vendor page structure
+                struct VendorPage {
+                    u8 pageCode;
+                    u8 pageLength;
+                    u8 reserved[10];  // Minimal padding
+                } PACKED;
+
+                VendorPage codepage;
+                memset(&codepage, 0, sizeof(codepage));
+                codepage.pageCode = 0x31;
+                codepage.pageLength = 0x0a;  // 10 bytes
+
+                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                length += sizeof(codepage);
+
+                if (page != 0x3f)
+                    break;
+            }                      
 
             default:
             {
