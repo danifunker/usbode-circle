@@ -1,7 +1,6 @@
 #include "mdsparser.h"
 #include <stdlib.h>
-#include <string.hh>
-#include <strings.h>
+#include <cstring>
 
 void utf16_to_utf8(const uint16_t* utf16_string, char* utf8_string) {
     int i = 0;

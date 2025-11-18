@@ -68,7 +68,7 @@ bool CMDSFileDevice::Init() {
         return false;
     }
 
-    // Generate CUE sheet
+    // Generate CUE sheet from MDS data
     char cue_buffer[4096];
     char* cue_ptr = cue_buffer;
     int remaining = sizeof(cue_buffer);
@@ -77,18 +77,37 @@ bool CMDSFileDevice::Init() {
     cue_ptr += len;
     remaining -= len;
 
+    // Process all sessions
     for (int i = 0; i < m_parser->getNumSessions(); i++) {
         MDS_SessionBlock* session = m_parser->getSession(i);
+        
+        // Process all track blocks in this session
         for (int j = 0; j < session->num_all_blocks; j++) {
             MDS_TrackBlock* track = m_parser->getTrack(i, j);
             MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
 
-            const char* mode_str = (track->mode == 0x00) ? "AUDIO" : "MODE1/2352";
-            len = snprintf(cue_ptr, remaining, "  TRACK %02d %s\n", track->tno, mode_str);
+            // Only process actual track entries (point is the track number)
+            // Skip lead-in entries (point 0xA0, 0xA1, 0xA2)
+            if (track->point == 0 || track->point >= 0xA0) {
+                continue;
+            }
+
+            // Determine track mode string
+            const char* mode_str;
+            if (track->mode == 0xA9) {
+                // Audio track
+                mode_str = "AUDIO";
+            } else {
+                // Data track - use MODE1/2352 for raw sector data
+                mode_str = "MODE1/2352";
+            }
+
+            len = snprintf(cue_ptr, remaining, "  TRACK %02d %s\n", track->point, mode_str);
             cue_ptr += len;
             remaining -= len;
 
-            if (extra->pregap > 0) {
+            // Add PREGAP if present
+            if (extra && extra->pregap > 0) {
                 int minutes = extra->pregap / (75 * 60);
                 int seconds = (extra->pregap / 75) % 60;
                 int frames = extra->pregap % 75;
@@ -97,6 +116,8 @@ bool CMDSFileDevice::Init() {
                 remaining -= len;
             }
 
+            // Add INDEX 01 with the track's start position
+            // start_sector is in LBA (logical block address) format
             int minutes = track->start_sector / (75 * 60);
             int seconds = (track->start_sector / 75) % 60;
             int frames = track->start_sector % 75;
@@ -108,6 +129,8 @@ bool CMDSFileDevice::Init() {
 
     m_cue_sheet = new char[strlen(cue_buffer) + 1];
     strcpy(m_cue_sheet, cue_buffer);
+    
+    LOGNOTE("Generated CUE sheet:\n%s", m_cue_sheet);
 
     return true;
 }
