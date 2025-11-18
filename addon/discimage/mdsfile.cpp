@@ -25,28 +25,43 @@ bool CMDSFileDevice::Init() {
     }
 
     // Open MDF file
-    const char* mdf_filename = m_parser->getMDFilename();
-    LOGNOTE("MDF filename from parser: %s", mdf_filename);
+    const char* mdf_filename_from_mds = m_parser->getMDFilename();
+    LOGNOTE("MDF filename from parser: %s", mdf_filename_from_mds);
     char mdf_path[255];
+    char mdf_filename[255];  // For CUE sheet - just the filename without path
 
-    if (strcmp(mdf_filename, "*.mdf") == 0) {
-        // Handle wildcard filename
+    if (strcmp(mdf_filename_from_mds, "*.mdf") == 0) {
+        // Handle wildcard filename - derive from MDS filename
         const char* extension = strrchr(m_mds_filename, '.');
-        if (extension) {
-            snprintf(mdf_path, sizeof(mdf_path), "%.*s.mdf", (int)(extension - m_mds_filename), m_mds_filename);
+        const char* last_slash = strrchr(m_mds_filename, '/');
+        const char* basename_start = last_slash ? last_slash + 1 : m_mds_filename;
+        
+        if (extension && extension > basename_start) {
+            // Extract just the base filename for the CUE sheet
+            snprintf(mdf_filename, sizeof(mdf_filename), "%.*s.mdf", 
+                    (int)(extension - basename_start), basename_start);
+            // Full path for opening
+            snprintf(mdf_path, sizeof(mdf_path), "%.*s.mdf", 
+                    (int)(extension - m_mds_filename), m_mds_filename);
         } else {
+            snprintf(mdf_filename, sizeof(mdf_filename), "%s.mdf", basename_start);
             snprintf(mdf_path, sizeof(mdf_path), "%s.mdf", m_mds_filename);
         }
     } else {
+        // Use the filename from MDS
         const char* last_slash = strrchr(m_mds_filename, '/');
         if (last_slash) {
-            snprintf(mdf_path, sizeof(mdf_path), "%.*s%s", (int)(last_slash - m_mds_filename + 1), m_mds_filename, mdf_filename);
+            snprintf(mdf_path, sizeof(mdf_path), "%.*s%s", 
+                    (int)(last_slash - m_mds_filename + 1), m_mds_filename, mdf_filename_from_mds);
         } else {
-            snprintf(mdf_path, sizeof(mdf_path), "%s", mdf_filename);
+            snprintf(mdf_path, sizeof(mdf_path), "%s", mdf_filename_from_mds);
         }
+        // Just copy the filename for CUE
+        snprintf(mdf_filename, sizeof(mdf_filename), "%s", mdf_filename_from_mds);
     }
 
     LOGNOTE("Attempting to open MDF file at: %s", mdf_path);
+    LOGNOTE("MDF filename for CUE sheet: %s", mdf_filename);
     m_pFile = new FIL();
     FRESULT result = f_open(m_pFile, mdf_path, FA_READ);
     if (result != FR_OK) {
@@ -73,6 +88,7 @@ bool CMDSFileDevice::Init() {
     char* cue_ptr = cue_buffer;
     int remaining = sizeof(cue_buffer);
 
+    // Use the resolved filename (not wildcard) in the CUE sheet
     int len = snprintf(cue_ptr, remaining, "FILE \"%s\" BINARY\n", mdf_filename);
     cue_ptr += len;
     remaining -= len;
