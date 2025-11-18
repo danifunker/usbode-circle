@@ -1,5 +1,4 @@
 #include "mdsfile.h"
-
 #include <assert.h>
 #include <circle/stdarg.h>
 #include <circle/util.h>
@@ -27,17 +26,16 @@ bool CMDSFileDevice::Init() {
 
     // Open MDF file
     const char* mdf_filename = m_parser->getMDFilename();
+    LOGNOTE("MDF filename from parser: %s", mdf_filename);
     char mdf_path[255];
 
     if (strcmp(mdf_filename, "*.mdf") == 0) {
         // Handle wildcard filename
-        const char* last_slash = strrchr(m_mds_filename, '/');
-        const char* mds_basename = last_slash ? last_slash + 1 : m_mds_filename;
-        const char* extension = strrchr(mds_basename, '.');
+        const char* extension = strrchr(m_mds_filename, '.');
         if (extension) {
-            snprintf(mdf_path, sizeof(mdf_path), "%.*s.mdf", (int)(extension - mds_basename), mds_basename);
+            snprintf(mdf_path, sizeof(mdf_path), "%.*s.mdf", (int)(extension - m_mds_filename), m_mds_filename);
         } else {
-            snprintf(mdf_path, sizeof(mdf_path), "%s.mdf", mds_basename);
+            snprintf(mdf_path, sizeof(mdf_path), "%s.mdf", m_mds_filename);
         }
     } else {
         const char* last_slash = strrchr(m_mds_filename, '/');
@@ -48,12 +46,25 @@ bool CMDSFileDevice::Init() {
         }
     }
 
+    LOGNOTE("Attempting to open MDF file at: %s", mdf_path);
     m_pFile = new FIL();
     FRESULT result = f_open(m_pFile, mdf_path, FA_READ);
     if (result != FR_OK) {
-        LOGERR("Cannot open MDF file for reading");
+        LOGERR("Cannot open MDF file for reading (FatFs error %d)", result);
         delete m_pFile;
         m_pFile = nullptr;
+
+        LOGNOTE("Scanning for similar files...");
+        DIR dir;
+        FILINFO fno;
+        if (f_opendir(&dir, "1:/") == FR_OK) {
+            while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != 0) {
+                if (!(fno.fattrib & AM_DIR)) {
+                    LOGNOTE("Found file: %s", fno.fname);
+                }
+            }
+            f_closedir(&dir);
+        }
         return false;
     }
 

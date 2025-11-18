@@ -1,18 +1,34 @@
 #include "mdsparser.h"
 #include <stdlib.h>
-#include <string.h>
+#include <string.hh>
 #include <strings.h>
 
 void utf16_to_utf8(const uint16_t* utf16_string, char* utf8_string) {
     int i = 0;
     int j = 0;
     while (utf16_string[i] != 0) {
-        if (utf16_string[i] < 0x80) {
-            utf8_string[j++] = (char)utf16_string[i];
+        uint32_t codepoint = utf16_string[i];
+        if (codepoint >= 0xD800 && codepoint <= 0xDBFF) {
+            // surrogate pair
+            uint32_t high_surrogate = codepoint;
+            uint32_t low_surrogate = utf16_string[++i];
+            codepoint = 0x10000 + ((high_surrogate - 0xD800) << 10) | (low_surrogate - 0xDC00);
+        }
+
+        if (codepoint < 0x80) {
+            utf8_string[j++] = (char)codepoint;
+        } else if (codepoint < 0x800) {
+            utf8_string[j++] = (char)(0xC0 | (codepoint >> 6));
+            utf8_string[j++] = (char)(0x80 | (codepoint & 0x3F));
+        } else if (codepoint < 0x10000) {
+            utf8_string[j++] = (char)(0xE0 | (codepoint >> 12));
+            utf8_string[j++] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+            utf8_string[j++] = (char)(0x80 | (codepoint & 0x3F));
         } else {
-            // This is a simplified conversion that only handles the BMP
-            utf8_string[j++] = (char)(0xC0 | (utf16_string[i] >> 6));
-            utf8_string[j++] = (char)(0x80 | (utf16_string[i] & 0x3F));
+            utf8_string[j++] = (char)(0xF0 | (codepoint >> 18));
+            utf8_string[j++] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
+            utf8_string[j++] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+            utf8_string[j++] = (char)(0x80 | (codepoint & 0x3F));
         }
         i++;
     }
@@ -79,8 +95,23 @@ MDSParser::MDSParser(const char *mds_file) {
     }
 
     if (m_mdf_filename != nullptr) {
-        utf16_to_utf8((const uint16_t*)m_mdf_filename, m_mdf_filename_utf8);
-        m_mdf_filename = m_mdf_filename_utf8;
+        // The footer block is found by iterating tracks, but let's re-fetch it for clarity
+        MDS_Footer* footer = nullptr;
+        if (m_header.num_sessions > 0 && m_sessions[0].num_all_blocks > 0) {
+            for (int i = 0; i < m_sessions[0].num_all_blocks; i++) {
+                MDS_TrackBlock* track = &m_tracks[0][i];
+                if (track->footer_offset > 0 && track->footer_offset < 0x100000) {
+                    footer = (MDS_Footer*)(mds_file + track->footer_offset);
+                    break;
+                }
+            }
+        }
+
+        if (footer && footer->widechar_filename) {
+            utf16_to_utf8((const uint16_t*)m_mdf_filename, m_mdf_filename_utf8);
+            m_mdf_filename = m_mdf_filename_utf8;
+        }
+        // If not widechar, it's already a standard C-string, so no conversion is needed.
     } else {
         m_valid = false;
     }
