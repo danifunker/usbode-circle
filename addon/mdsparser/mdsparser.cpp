@@ -3,6 +3,22 @@
 #include <string.h>
 #include <strings.h>
 
+void utf16_to_utf8(const uint16_t* utf16_string, char* utf8_string) {
+    int i = 0;
+    int j = 0;
+    while (utf16_string[i] != 0) {
+        if (utf16_string[i] < 0x80) {
+            utf8_string[j++] = (char)utf16_string[i];
+        } else {
+            // This is a simplified conversion that only handles the BMP
+            utf8_string[j++] = (char)(0xC0 | (utf16_string[i] >> 6));
+            utf8_string[j++] = (char)(0x80 | (utf16_string[i] & 0x3F));
+        }
+        i++;
+    }
+    utf8_string[j] = '\0';
+}
+
 MDSParser::MDSParser(const char *mds_file) {
     m_mds_file = mds_file;
     memcpy(&m_header, mds_file, sizeof(MDS_Header));
@@ -22,8 +38,8 @@ MDSParser::MDSParser(const char *mds_file) {
     memcpy(m_sessions, mds_file + m_header.sessions_blocks_offset, sizeof(MDS_SessionBlock) * m_header.num_sessions);
 
     // Parse tracks
-    m_tracks = new MDS_TrackBlock*[m_header.num_sessions];
-    m_track_extras = new MDS_TrackExtraBlock*[m_header.num_sessions];
+    m_tracks = new MDS_TrackBlock*[m_header.num_sessions]();
+    m_track_extras = new MDS_TrackExtraBlock*[m_header.num_sessions]();
     for (int i = 0; i < m_header.num_sessions; i++) {
         if (m_sessions[i].tracks_blocks_offset > 0x100000 || m_sessions[i].num_all_blocks > 100) {
             m_valid = false;
@@ -46,10 +62,25 @@ MDSParser::MDSParser(const char *mds_file) {
         }
     }
 
-    // Get MDF filename
-    if (m_header.num_sessions > 0 && m_sessions[0].num_all_blocks > 0 && m_tracks[0][0].footer_offset > 0 && m_tracks[0][0].footer_offset < 0x100000) {
-        MDS_Footer* footer = (MDS_Footer*)(mds_file + m_tracks[0][0].footer_offset);
-        m_mdf_filename = (mds_file + footer->filename_offset);
+    // Get MDF filename by finding the first actual track
+    m_mdf_filename = nullptr;
+    if (m_header.num_sessions > 0) {
+        for (int i = 0; i < m_sessions[0].num_all_blocks; i++) {
+            MDS_TrackBlock* track = &m_tracks[0][i];
+
+            if (track->footer_offset > 0 && track->footer_offset < 0x100000) {
+                MDS_Footer* footer = (MDS_Footer*)(mds_file + track->footer_offset);
+                if (footer && footer->filename_offset > 0 && footer->filename_offset < 0x100000) {
+                    m_mdf_filename = (mds_file + footer->filename_offset);
+                    break;
+                }
+            }
+        }
+    }
+
+    if (m_mdf_filename != nullptr) {
+        utf16_to_utf8((const uint16_t*)m_mdf_filename, m_mdf_filename_utf8);
+        m_mdf_filename = m_mdf_filename_utf8;
     } else {
         m_valid = false;
     }

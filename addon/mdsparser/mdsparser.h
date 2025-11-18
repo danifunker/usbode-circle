@@ -89,10 +89,11 @@ class MDSParser {
 
    private:
     MDS_Header m_header;
-    MDS_SessionBlock* m_sessions;
-    MDS_TrackBlock** m_tracks;
-    MDS_TrackExtraBlock** m_track_extras;
-    const char* m_mdf_filename;
+    MDS_SessionBlock* m_sessions = nullptr;
+    MDS_TrackBlock** m_tracks = nullptr;
+    MDS_TrackExtraBlock** m_track_extras = nullptr;
+    const char* m_mdf_filename = nullptr;
+    char m_mdf_filename_utf8[256];
     bool m_valid;
     const char* m_mds_file;
 };
