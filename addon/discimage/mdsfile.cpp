@@ -5,6 +5,7 @@
 #include <circle/util.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "../mdsparser/mdsparser.h"
 
@@ -29,11 +30,9 @@ bool CMDSFileDevice::Init() {
     char mdf_path[255];
     const char* last_slash = strrchr(m_mds_filename, '/');
     if (last_slash) {
-        strncpy(mdf_path, m_mds_filename, last_slash - m_mds_filename + 1);
-        mdf_path[last_slash - m_mds_filename + 1] = '\0';
-        strcat(mdf_path, mdf_filename);
+        snprintf(mdf_path, sizeof(mdf_path), "%.*s%s", (int)(last_slash - m_mds_filename + 1), m_mds_filename, mdf_filename);
     } else {
-        strcpy(mdf_path, mdf_filename);
+        snprintf(mdf_path, sizeof(mdf_path), "%s", mdf_filename);
     }
 
     m_pFile = new FIL();
@@ -46,37 +45,45 @@ bool CMDSFileDevice::Init() {
     }
 
     // Generate CUE sheet
-    std::string cue = "FILE \"" + std::string(mdf_filename) + "\" BINARY\n";
+    char cue_buffer[4096];
+    char* cue_ptr = cue_buffer;
+    int remaining = sizeof(cue_buffer);
+
+    int len = snprintf(cue_ptr, remaining, "FILE \"%s\" BINARY\n", mdf_filename);
+    cue_ptr += len;
+    remaining -= len;
+
     for (int i = 0; i < m_parser->getNumSessions(); i++) {
         MDS_SessionBlock* session = m_parser->getSession(i);
         for (int j = 0; j < session->num_all_blocks; j++) {
             MDS_TrackBlock* track = m_parser->getTrack(i, j);
             MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
 
-            std::string track_str = "  TRACK " + std::to_string(track->tno) + " ";
-            if (track->mode == 0x00) {
-                track_str += "AUDIO\n";
-            } else {
-                track_str += "MODE1/2352\n";
-            }
-            cue += track_str;
+            const char* mode_str = (track->mode == 0x00) ? "AUDIO" : "MODE1/2352";
+            len = snprintf(cue_ptr, remaining, "  TRACK %02d %s\n", track->tno, mode_str);
+            cue_ptr += len;
+            remaining -= len;
 
             if (extra->pregap > 0) {
                 int minutes = extra->pregap / (75 * 60);
                 int seconds = (extra->pregap / 75) % 60;
                 int frames = extra->pregap % 75;
-                cue += "    PREGAP " + std::to_string(minutes) + ":" + std::to_string(seconds) + ":" + std::to_string(frames) + "\n";
+                len = snprintf(cue_ptr, remaining, "    PREGAP %02d:%02d:%02d\n", minutes, seconds, frames);
+                cue_ptr += len;
+                remaining -= len;
             }
 
             int minutes = track->start_sector / (75 * 60);
             int seconds = (track->start_sector / 75) % 60;
             int frames = track->start_sector % 75;
-            cue += "    INDEX 01 " + std::to_string(minutes) + ":" + std::to_string(seconds) + ":" + std::to_string(frames) + "\n";
+            len = snprintf(cue_ptr, remaining, "    INDEX 01 %02d:%02d:%02d\n", minutes, seconds, frames);
+            cue_ptr += len;
+            remaining -= len;
         }
     }
 
-    m_cue_sheet = new char[cue.length() + 1];
-    strcpy(m_cue_sheet, cue.c_str());
+    m_cue_sheet = new char[strlen(cue_buffer) + 1];
+    strcpy(m_cue_sheet, cue_buffer);
 
     return true;
 }

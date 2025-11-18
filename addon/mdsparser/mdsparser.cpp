@@ -49,7 +49,7 @@ MDSParser::MDSParser(const char *mds_file) {
     // Get MDF filename
     if (m_header.num_sessions > 0 && m_sessions[0].num_all_blocks > 0 && m_tracks[0][0].footer_offset > 0 && m_tracks[0][0].footer_offset < 0x100000) {
         MDS_Footer* footer = (MDS_Footer*)(mds_file + m_tracks[0][0].footer_offset);
-        m_mdf_filename = (char*)(mds_file + footer->filename_offset);
+        m_mdf_filename = (mds_file + footer->filename_offset);
     } else {
         m_valid = false;
     }

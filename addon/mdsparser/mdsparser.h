@@ -92,7 +92,7 @@ class MDSParser {
     MDS_SessionBlock* m_sessions;
     MDS_TrackBlock** m_tracks;
     MDS_TrackExtraBlock** m_track_extras;
-    char* m_mdf_filename;
+    const char* m_mdf_filename;
     bool m_valid;
     const char* m_mds_file;
 };
