@@ -21,3 +21,4 @@ a:visited {color: #0066CC;}
 .pagination .current {background-color: #3A7CA5; color: #FFFFFF; border-color: #2C5F7C;}
 .pagination a:hover {background-color: #BBDEFB;}
 .page-info {text-align: center; margin: 5px 0; font-size: 14px; color: #666;}
+#log {width:80%; height:600px; border:1px solid #ccc; padding:8px; overflow-y:scroll; overflow-x:auto; font-family:monospace; white-space:pre; background-color:#f9f9f9;}
