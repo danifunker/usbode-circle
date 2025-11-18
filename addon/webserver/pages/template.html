@@ -1,53 +1,29 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>USBODE - USB Optical Drive Emulator</title>
-    {{#meta_refresh_url}}
-    <meta http-equiv="refresh" content="{{meta_refresh_timeout}};url={{meta_refresh_url}}">
-    {{/meta_refresh_url}}
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body {background-color: #EAEAEA; color: #333333; font-family: "Times New Roman", serif; margin: 0; padding: 0;}
-        h1, h2, h3 {color: #1E4D8C;}
-        a {color: #0066CC;}
-        a:visited {color: #0066CC;}
-        .container {width: 100%; margin: 0; padding: 0;}
-        .header {background-color: #3A7CA5; padding: 10px; height: 80px; text-align: center; color: #FFFFFF;}
-        .header h1, .header h2 {color: #FFFFFF; margin: 5px 0;}
-        .content {padding: 10px; background-color: #FFFFFF; min-height: 300px;}
-        .footer {background-color: #3A7CA5; padding: 10px; text-align: center; color: #FFFFFF;}
-        .button {background-color: #4CAF50; padding: 7px 15px; text-decoration: none; border: 1px solid #2E8B57; color: #FFFFFF; margin: 5px; display: inline-block;}
-        .info-box {background-color: #F5F5F5; padding: 10px; margin: 10px 0;}
-        .warning {background-color: #FFDDDD; padding: 10px; margin: 10px 0; color: #990000;}
-        .file-link {padding: 8px; margin: 5px 0; display: block; font-size: 16px; word-wrap: break-word; overflow-wrap: break-word;}
-        .file-link-even {background-color: #E3F2FD;}
-        .file-link-odd {background-color: #BBDEFB;}
-        .header-bar {background-color: #2C5F7C; color: #FFFFFF; padding: 5px;}
-        .usb-info {background-color: #E3F2FD; border-top: 1px solid #BBDEFB; padding: 5px; text-align: center; margin-top: 20px;}
-        .build-info {font-size: 9px; text-align: left; color: #CCCCCC; padding: 5px 0 0 5px; margin-top: 2px;}
-        .pagination {display: flex; justify-content: center; margin: 15px 0; background-color: #F5F5F5; padding: 8px; border-radius: 3px;}
-        .pagination a, .pagination span {margin: 0 3px; padding: 4px 8px; text-decoration: none; color: #0066CC; border: 1px solid #BBDEFB; background-color: #E3F2FD;}
-        .pagination .current {background-color: #3A7CA5; color: #FFFFFF; border-color: #2C5F7C;}
-        .pagination a:hover {background-color: #BBDEFB;}
-        .page-info {text-align: center; margin: 5px 0; font-size: 14px; color: #666;}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-		<a href="/"><img src="/logo.jpg" alt="Logo" align="left" height="100%" style="margin-right:10px;"></a>
-            <h1>USBODE</h1>
-            <h2>USB Optical Drive Emulator</h2>
-        </div>
-	{{#cdrom}}
-        <div class="content">
-		{{>content}}
-        </div>
-	{{/cdrom}}
-	{{^cdrom}}
-		<p>Device is in USB Mass Storage Mode</p>
-	{{/cdrom}}
-        <div class="usb-info">
+    <head>
+        <title>USBODE - USB Optical Drive Emulator</title>
+        {{#meta_refresh_url}}
+        <meta http-equiv="refresh" content="{{meta_refresh_timeout}};url={{meta_refresh_url}}"/>
+        {{/meta_refresh_url}}
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <link href="/style.css" rel="stylesheet"/>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <a href="/"><img src="/logo.jpg" alt="Logo" align="left" height="100%" style="margin-right:10px;"></a>
+                <h1>USBODE</h1>
+                <h2>USB Optical Drive Emulator</h2>
+            </div>
+        {{#cdrom}}
+            <div class="content">
+            {{>content}}
+            </div>
+        {{/cdrom}}
+        {{^cdrom}}
+            <p>Device is in USB Mass Storage Mode</p>
+        {{/cdrom}}
+            <div class="usb-info">
                 <p>USB Mode: {{ usb_mode }}</p>
                 <div style="margin-top: 10px; text-align: center;">
                     <a href="/shutdown" class="button">Shutdown</a>
@@ -55,13 +31,13 @@
                     <a href="/config" class="button">Configuration</a>
                     <a href="/log" class="button">Log Viewer</a>
                 </div>
-        </div>
-        <div class="footer">
+            </div>
+            <div class="footer">
                 <p>Version {{ version }}</p>
-            <div class="build-info">
+                <div class="build-info">
                     Build: {{ build_info}}
+                </div>
             </div>
         </div>
-    </div>
-</body>
+    </body>
 </html>
