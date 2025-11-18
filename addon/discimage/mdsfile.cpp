@@ -28,11 +28,24 @@ bool CMDSFileDevice::Init() {
     // Open MDF file
     const char* mdf_filename = m_parser->getMDFilename();
     char mdf_path[255];
-    const char* last_slash = strrchr(m_mds_filename, '/');
-    if (last_slash) {
-        snprintf(mdf_path, sizeof(mdf_path), "%.*s%s", (int)(last_slash - m_mds_filename + 1), m_mds_filename, mdf_filename);
+
+    if (strcmp(mdf_filename, "*.mdf") == 0) {
+        // Handle wildcard filename
+        const char* last_slash = strrchr(m_mds_filename, '/');
+        const char* mds_basename = last_slash ? last_slash + 1 : m_mds_filename;
+        const char* extension = strrchr(mds_basename, '.');
+        if (extension) {
+            snprintf(mdf_path, sizeof(mdf_path), "%.*s.mdf", (int)(extension - mds_basename), mds_basename);
+        } else {
+            snprintf(mdf_path, sizeof(mdf_path), "%s.mdf", mds_basename);
+        }
     } else {
-        snprintf(mdf_path, sizeof(mdf_path), "%s", mdf_filename);
+        const char* last_slash = strrchr(m_mds_filename, '/');
+        if (last_slash) {
+            snprintf(mdf_path, sizeof(mdf_path), "%.*s%s", (int)(last_slash - m_mds_filename + 1), m_mds_filename, mdf_filename);
+        } else {
+            snprintf(mdf_path, sizeof(mdf_path), "%s", mdf_filename);
+        }
     }
 
     m_pFile = new FIL();

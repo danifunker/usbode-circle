@@ -233,6 +233,12 @@ void SCSITBService::Run() {
 			// Load it
 			char* imageName = m_FileEntries[next_cd].name;
 			ICueDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
+
+			if (cueBinFileDevice == nullptr) {
+				LOGERR("Failed to load image: %s", imageName);
+				next_cd = -1;
+				continue;
+			}
 			
 			// Set the new device in the CD gadget
     			cdromservice->SetDevice(cueBinFileDevice);
