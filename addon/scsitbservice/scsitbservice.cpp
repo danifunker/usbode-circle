@@ -29,6 +29,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <discimage/cuebinfile.h>
+#include <discimage/mdsfile.h>
 #include <discimage/cuedevice.h>
 #include <discimage/util.h>
 
@@ -170,7 +171,7 @@ bool SCSITBService::RefreshCache() {
 	//LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
         const char* ext = strrchr(fno.fname, '.');
         if (ext != nullptr) {
-            if (iequals(ext, ".iso") || iequals(ext, ".bin")) {
+            if (iequals(ext, ".iso") || iequals(ext, ".bin") || iequals(ext, ".mds")) {
 		if (m_FileCount >= MAX_FILES)
                     break;
 		//LOGNOTE("SCSITBService::RefreshCache() adding file %s to m_FileEntries", fno.fname);

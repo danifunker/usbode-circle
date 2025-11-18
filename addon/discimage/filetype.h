@@ -3,7 +3,8 @@
 
 enum class FileType {
     ISO,
-    CUEBIN
+    CUEBIN,
+    MDS
 };
 
 enum class MEDIA_TYPE {

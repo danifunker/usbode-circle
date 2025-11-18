@@ -42,6 +42,18 @@ bool hasCueExtension(const char* imageName) {
     return false;
 }
 
+bool hasMdsExtension(const char* imageName) {
+    size_t len = strlen(imageName);
+    if (len >= 4) {
+        const char* ext = imageName + len - 4;
+        return tolower(ext[0]) == '.' &&
+               tolower(ext[1]) == 'm' &&
+               tolower(ext[2]) == 'd' &&
+               tolower(ext[3]) == 's';
+    }
+    return false;
+}
+
 bool hasBinExtension(const char* imageName) {
     size_t len = strlen(imageName);
     if (len >= 4) {
@@ -134,7 +146,33 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
     return true;
 }
 
+ICueDevice* loadMDSFileDevice(const char* imageName) {
+    MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+    // Construct full path
+    char fullPath[255];  // FIXME limits
+    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
+
+    char* mds_str = nullptr;
+
+    if (!ReadFileToString(fullPath, &mds_str)) {
+        return nullptr;
+    }
+
+    // Create our device
+    CMDSFileDevice* cMDSFileDevice = new CMDSFileDevice(fullPath, mds_str, mediaType);
+    if (!cMDSFileDevice->Init()) {
+        delete cMDSFileDevice;
+        return nullptr;
+    }
+
+    return cMDSFileDevice;
+}
+
 ICueDevice* loadCueBinFileDevice(const char* imageName) {
+    if (hasMdsExtension(imageName)) {
+        return loadMDSFileDevice(imageName);
+    }
+
     MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
     // Construct full path
     char fullPath[255];  // FIXME limits

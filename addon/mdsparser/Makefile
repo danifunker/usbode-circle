@@ -7,9 +7,9 @@ STDLIBHOME = $(USBODEHOME)/circle-stdlib
 NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
-OBJS    = cuebinfile.o util.o mdsfile.o
+OBJS    = mdsparser.o
 
-libdiscimage.a: $(OBJS)
+libmdsparser.a: $(OBJS)
 	@echo "  AR    $@"
 	@rm -f $@
 	@$(AR) cr $@ $(OBJS)
