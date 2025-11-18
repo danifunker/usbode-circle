@@ -217,6 +217,25 @@ struct ModePage0x01Data
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X01 12
 
+// Mode Page 0x08 (Caching)
+struct ModePage0x08Data
+{
+    u8 pageCodeAndPS;     // 0x08
+    u8 pageLength;        // 0x12 (18 bytes)
+    u8 cachingFlags;      // Bit 2: WCE, Bit 0: RCD
+    u8 demandReadRetention;
+    u8 writeRetention;
+    u16 disablePrefetchTransfer;
+    u16 minPrefetch;
+    u16 maxPrefetch;
+    u16 maxPrefetchCeiling;
+    u8 flags2;
+    u8 numCacheSegments;
+    u16 cacheSegmentSize;
+    u8 reserved;
+    u8 obsolete[3];
+} PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X08 20
 // Mode Page 0x0E (CD Audio Control Page)
 struct ModePage0x0EData
 {
@@ -234,7 +253,17 @@ struct ModePage0x0EData
     u8 Output3Volume;
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X0E 16
-
+// Mode Page 0x1C (Informational Exceptions Control)
+struct ModePage0x1CData
+{
+    u8 pageCodeAndPS;     // 0x1C
+    u8 pageLength;        // 0x0A (10 bytes)
+    u8 flags;             // PERF, EBF, EWASC, DEXCPT, TEST, LOGERR
+    u8 mrie;              // Method of Reporting Informational Exceptions
+    u32 intervalTimer;    // Interval timer (big-endian)
+    u32 reportCount;      // Report count (big-endian)
+} PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X1C 12
 // Mode Page 0x1A (Power Condition)
 struct ModePage0x1AData
 {
@@ -332,6 +361,39 @@ struct TUSBCDReadDiscStructureHeader
     u16 dataLength;
     u8 reserved[2];
 } PACKED;
+
+// DVD Physical Format Information (Format 0x00) - 17 bytes payload
+struct DVDPhysicalFormatInfo
+{
+    // Byte 0: Book type and part version
+    u8 bookTypePartVer;      // bits 7-4: book type, bits 3-0: part version
+    // Byte 1: Disc size and maximum transfer rate
+    u8 discSizeMaxRate;      // bits 7-4: max rate, bits 3-0: disc size
+    // Byte 2: Number of layers, track path, layer type
+    u8 layersPathType;       // bit 7: reserved, bits 6-5: num layers, bit 4: track path, bits 3-0: layer type
+    // Byte 3: Linear density and track density
+    u8 densities;            // bits 7-4: track density, bits 3-0: linear density
+    // Bytes 4-6: Data area start sector (24-bit, big-endian)
+    u8 dataStartSector[3];   // Start sector of data area
+    // Bytes 7-9: Data area end sector (24-bit, big-endian)
+    u8 dataEndSector[3];     // End sector of data area
+    // Bytes 10-12: End sector of layer 0 (24-bit, big-endian)
+    u8 layer0EndSector[3];   // End sector of layer 0 (for dual-layer)
+    // Byte 13: BCA flag
+    u8 bcaFlag;              // bit 7: BCA present, bits 6-0: reserved
+    // Bytes 14-16: Media specific (reserved for DVD-ROM)
+    u8 reserved[3];
+} PACKED;
+#define SIZE_DVD_PHYSICAL_FORMAT 17
+// DVD Copyright Information (Format 0x01) - 4 bytes payload
+struct DVDCopyrightInfo
+{
+    u8 copyrightProtectionType;  // 0x00=None, 0x01=CSS/CPPM
+    u8 regionManagementInfo;     // Region codes (bitfield)
+    u8 reserved1;
+    u8 reserved2;
+} PACKED;
+#define SIZE_DVD_COPYRIGHT_INFO 4
 
 struct TUSBCDTrackInformationBlock
 {
@@ -503,6 +565,44 @@ struct TUSBCDDVDReadFeatureReply
 } PACKED;
 #define SIZE_DVD_READ_HEADER_REPLY 8
 
+// Feature 0010h - Random Readable - Ability to read data from random locations
+struct TUSBCDRandomReadableFeatureReply
+{
+    u16 featureCode;           // 0x0010
+    u8 VersionPersistentCurrent; // Version, Persistent, Current bits
+    u8 AdditionalLength;       // Length of additional data (8 bytes)
+    u32 blockSize;             // Logical block size (2048 bytes, big-endian)
+    u16 blocking;              // Number of logical blocks per device read (big-endian)
+    u8 pp;                     // Error Recovery Page Present bit
+    u8 reserved;               // Reserved
+} PACKED;
+#define SIZE_RANDOM_READABLE_REPLY 12
+// Feature 0106h - DVD CSS - Content Scramble System support
+struct TUSBCDDVDCSSFeatureReply
+{
+    u16 featureCode;           // 0x0106
+    u8 VersionPersistentCurrent; // Version, Persistent, Current bits
+    u8 AdditionalLength;       // Length of additional data (4 bytes)
+    u8 reserved1;              // Reserved
+    u8 reserved2;              // Reserved
+    u8 reserved3;              // Reserved
+    u8 cssVersion;             // CSS version number (0x01)
+} PACKED;
+#define SIZE_DVD_CSS_REPLY 8
+
+// Feature 0107h - Real Time Streaming - Support for real-time data streaming
+struct TUSBCDRealTimeStreamingFeatureReply
+{
+    u16 featureCode;           // 0x0107
+    u8 VersionPersistentCurrent; // Version, Persistent, Current bits
+    u8 AdditionalLength;       // Length of additional data (4 bytes)
+    u8 flags;                  // SW, WSPD, MP2A, SCS, RBCB bits
+    u8 reserved1;              // Reserved
+    u8 reserved2;              // Reserved
+    u8 reserved3;              // Reserved
+} PACKED;
+#define SIZE_REAL_TIME_STREAMING_REPLY 8
+
 struct TUSBCDAudioConfigurationDescriptor
 {
     TUSBConfigurationDescriptor Configuration;
@@ -641,7 +741,7 @@ private:
     int GetMediumType();
     int GetSectorLengthFromMCS(uint8_t mainChannelSelection);
     int GetSkipBytesFromMCS(uint8_t mainChannelSelection);
-
+    boolean m_bReportDVDCSS = false;  // Whether to report CSS copy protection
     // ========================================================================
     // Address Conversion Utilities (BlueSCSI-inspired)
     // ========================================================================
@@ -946,7 +1046,7 @@ private:
         htons(0x001e), // featureCode
         0x0b,          // VersionPersistentCurrent
         0x04,          // AdditionalLength
-        0x00,          // DAPC2FlagsCDText
+        0x03,          // DAPC2FlagsCDText
         0x00,          // reserved
         0x00,          // reserved
         0x00           // reserved
@@ -960,6 +1060,44 @@ private:
         0x00,          // reserved
         0x00,          // reserved
         0x00           // reserved
+    };
+
+    // Feature 0010h - Random Readable - Ability to read data from random locations
+    // Block size: 2048 bytes, Blocking: 1, PP (Error Recovery Page Present): 1
+    TUSBCDRandomReadableFeatureReply randomreadable = {
+        htons(0x0010), // featureCode
+        0x01,          // VersionPersistentCurrent (version=0, persistent=0, current=1)
+        0x08,          // AdditionalLength (8 bytes)
+        htonl(2048),   // blockSize (2048 bytes for CD-ROM)
+        htons(1),      // blocking (1 logical block per read)
+        0x01,          // pp (Error Recovery Page Present)
+        0x00           // reserved
+    };
+
+    // Feature 0107h - Real Time Streaming - Essential for smooth CD-DA playback
+    // This feature tells the OS that the device can maintain real-time audio streams
+    // Flags: SW=1, WSPD=1, MP2A=1, SCS=1 (bits 0-3)
+    TUSBCDRealTimeStreamingFeatureReply rtstreaming = {
+        htons(0x0107), // featureCode
+        0x01,          // VersionPersistentCurrent (version=0, persistent=0, current=1)
+        0x04,          // AdditionalLength (4 bytes)
+        0x0F,          // flags (SW=1, WSPD=1, MP2A=1, SCS=1, RBCB=0)
+        0x00,          // reserved1
+        0x00,          // reserved2
+        0x00           // reserved3
+    };
+
+    // Feature 0106h - DVD CSS - Content Scramble System support
+    // This feature indicates CSS copy protection support for DVDs
+    // CSS Version 1 is the standard version
+    TUSBCDDVDCSSFeatureReply dvdcss = {
+        htons(0x0106), // featureCode
+        0x01,          // VersionPersistentCurrent (version=0, persistent=0, current=1)
+        0x04,          // AdditionalLength (4 bytes)
+        0x00,          // reserved1
+        0x00,          // reserved2
+        0x00,          // reserved3
+        0x01           // cssVersion (CSS version 1)
     };
 
     // ========================================================================

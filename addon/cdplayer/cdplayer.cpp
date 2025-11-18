@@ -118,12 +118,24 @@ boolean CCDPlayer::SetVolume(u8 vol) {
 }
 
 boolean CCDPlayer::Pause() {
+    // Only allow pause when currently playing
+    if (state != PLAYING) {
+        LOGNOTE("CD Player: Pause requested in invalid state (%u)", state);
+        return false;
+    }
+
     LOGNOTE("CD Player pausing");
     state = PAUSED;
     return true;
 }
 
 boolean CCDPlayer::Resume() {
+    // Resume only valid from paused state
+    if (state != PAUSED) {
+        LOGNOTE("CD Player: Resume requested in invalid state (%u)", state);
+        return false;
+    }
+
     LOGNOTE("CD Player resuming");
     state = PLAYING;
     return true;
@@ -207,11 +219,36 @@ boolean CCDPlayer::SoundTest() {
 boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
     LOGNOTE("CD Player playing from %u for %u blocks", lba, num_blocks);
 
+    // Play is valid only if we're not already playing or paused
+    if (state == PLAYING || state == PAUSED) {
+        LOGNOTE("CD Player: Play requested while paused/playing (state=%u)", state);
+        return false;
+    }
+
+    // Validate media presence
+    if (m_pBinFileDevice == nullptr) {
+        LOGERR("CD Player: Play requested but no device set");
+        return false;
+    }
+
     address = lba;
     end_address = address + num_blocks;
-    state = SEEKING_PLAYING;
+    state = SEEKING_PLAYING; // seek then transition to PLAYING in Run()
     return true;
 }
+
+boolean CCDPlayer::PlaybackStop() {
+    // Stop only valid if playing or paused
+    if (state != PLAYING && state != PAUSED && state != SEEKING_PLAYING) {
+        LOGNOTE("CD Player: Stop requested in invalid state (%u)", state);
+        return false;
+    }
+
+    LOGNOTE("CD Player stopping playback");
+    state = STOPPED_OK;
+    return true;
+}
+
 
 // DACs don't support volume control, so we scale the data
 // accordingly instead
