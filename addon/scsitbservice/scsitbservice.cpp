@@ -170,7 +170,7 @@ bool SCSITBService::RefreshCache() {
 	//LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
         const char* ext = strrchr(fno.fname, '.');
         if (ext != nullptr) {
-            if (iequals(ext, ".iso") || iequals(ext, ".bin")) {
+            if (iequals(ext, ".iso") || iequals(ext, ".bin") || iequals(ext, ".mds")) {
 		if (m_FileCount >= MAX_FILES)
                     break;
 		//LOGNOTE("SCSITBService::RefreshCache() adding file %s to m_FileEntries", fno.fname);
@@ -231,10 +231,10 @@ void SCSITBService::Run() {
 
 			// Load it
 			char* imageName = m_FileEntries[next_cd].name;
-			ICueDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
+			IImageDevice* imageDevice = loadImageDevice(imageName);
 			
 			// Set the new device in the CD gadget
-    			cdromservice->SetDevice(cueBinFileDevice);
+			cdromservice->SetDevice(imageDevice);
 
 			// Save current mounted image name
 			// TODO only if different

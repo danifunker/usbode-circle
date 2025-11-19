@@ -122,3 +122,6 @@ const char *CCueBinFileDevice::GetCueSheet() const {
     return m_cue_str;
 }
 
+MEDIA_TYPE CCueBinFileDevice::GetMediaType() const {
+    return m_mediaType;
+}

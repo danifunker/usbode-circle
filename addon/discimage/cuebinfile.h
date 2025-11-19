@@ -26,8 +26,8 @@ class CCueBinFileDevice : public ICueDevice {
     u64 Seek(u64 ullOffset);
     u64 GetSize(void) const;
     u64 Tell() const;
-    const char* GetCueSheet() const;
-    MEDIA_TYPE GetMediaType() const override { return m_mediaType; }
+    const char* GetCueSheet() const override;
+    MEDIA_TYPE GetMediaType() const override;
 
    private:
     FIL* m_pFile;
