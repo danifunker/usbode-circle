@@ -24,22 +24,40 @@ CMdsFileDevice::CMdsFileDevice(const char* mdsPath) : m_cueSheet(nullptr), m_fil
             *mdf_filename_end = '\0';
         }
 
+        char mdfFilename[255];
+        if (strcmp(mdf_filename_start, "*.mdf") == 0) {
+            strncpy(mdfFilename, mdsPath, sizeof(mdfFilename));
+            mdfFilename[sizeof(mdfFilename) - 1] = '\0';
+            char* ext = strrchr(mdfFilename, '.');
+            if (ext) {
+                strcpy(ext, ".mdf");
+            }
+        } else {
+            strncpy(mdfFilename, mdf_filename_start, sizeof(mdfFilename));
+            mdfFilename[sizeof(mdfFilename) - 1] = '\0';
+        }
+
         char mdfPath[255];
         strncpy(mdfPath, mdsPath, sizeof(mdfPath));
         mdfPath[sizeof(mdfPath) - 1] = '\0';
         char* mds_filename_in_path = strrchr(mdfPath, '/');
         if (mds_filename_in_path) {
             *(mds_filename_in_path + 1) = '\0';
-            strncat(mdfPath, mdf_filename_start, sizeof(mdfPath) - strlen(mdfPath) - 1);
+            strncat(mdfPath, mdfFilename, sizeof(mdfPath) - strlen(mdfPath) - 1);
+        } else {
+            // Handle the case where there is no path, just a filename
+            strncpy(mdfPath, mdfFilename, sizeof(mdfPath));
+            mdfPath[sizeof(mdfPath) - 1] = '\0';
         }
+
 
         FRESULT res = f_open(&m_mdfFile, mdfPath, FA_READ);
         if (res == FR_OK) {
             m_fileOpen = true;
 
-            size_t cueSheetLen = strlen("FILE \"\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n") + strlen(mdf_filename_start) + 1;
+            size_t cueSheetLen = strlen("FILE \"\" BINARY\n  TRACK 01 MODE1/2352\n    PREGAP 00:02:00\n    INDEX 01 00:00:00\n") + strlen(mdfFilename) + 1;
             m_cueSheet = new char[cueSheetLen];
-            snprintf(m_cueSheet, cueSheetLen, "FILE \"%s\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n", mdf_filename_start);
+            snprintf(m_cueSheet, cueSheetLen, "FILE \"%s\" BINARY\n  TRACK 01 MODE1/2352\n    PREGAP 00:02:00\n    INDEX 01 00:00:00\n", mdfFilename);
         } else {
             LOGERR("Failed to open MDF file %s", mdfPath);
         }
