@@ -716,6 +716,9 @@ private:
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
 
+    bool m_readSubchannels = false;
+    u8 m_subchannelMode = 0;
+
     // ========================================================================
     // CUE Sheet and Track Management
     // ========================================================================

@@ -115,6 +115,7 @@ bool CMDSFileDevice::Init() {
             LOGNOTE("    start_sector: %u", track->start_sector);
             LOGNOTE("    start_offset: %llu", (unsigned long long)track->start_offset);
             LOGNOTE("    sector_size: %u", track->sector_size);
+            LOGNOTE("    subchannel: 0x%02x", track->subchannel);
 
             // Only process actual track entries (point is the track number)
             // Skip lead-in entries (point 0xA0, 0xA1, 0xA2)
@@ -163,7 +164,35 @@ bool CMDSFileDevice::Init() {
     strcpy(m_cue_sheet, cue_buffer);
     
     LOGNOTE("Generated CUE sheet:\n%s", m_cue_sheet);
+    
+    // Detect if this image has subchannel data (SafeDisc support)
+    m_hasSubchannels = false;
+    for (int i = 0; i < m_parser->getNumSessions(); i++) {
+        MDS_SessionBlock* session = m_parser->getSession(i);
+        for (int j = 0; j < session->num_all_blocks; j++) {
+            MDS_TrackBlock* track = m_parser->getTrack(i, j);
+            
+            // Skip non-track entries
+            if (track->point == 0 || track->point >= 0xA0) {
+                continue;
+            }
+            
+            // Check if ANY track has subchannel data
+            // MDS format: subchannel field indicates presence
+            // 0x00 = no subchannels
+            // 0x08 = PW subchannels (96 bytes)
+            if (track->subchannel != 0) {
+                m_hasSubchannels = true;
+                LOGNOTE("Track %d has subchannel data (type: 0x%02x, sector_size: %u)", 
+                        track->point, track->subchannel, track->sector_size);
+            }
+        }
+    }
+    
+    LOGNOTE("=== Image has subchannel data: %s ===", 
+            m_hasSubchannels ? "YES (SafeDisc compatible)" : "NO");
     LOGNOTE("=== End MDS Debug ===");
+    
     return true;
 }
 
@@ -193,6 +222,53 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
         return -1;
     }
 
+    // For images with subchannels, we need special handling
+    // The file has 2448-byte sectors (2352 + 96), but callers expect 2352
+    if (m_hasSubchannels) {
+        // Determine current position to find which track we're in
+        u64 current_pos = Tell();
+        u32 lba = current_pos / 2352;  // Logical sector number
+        
+        int session, trackIdx;
+        MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
+        
+        if (track && track->sector_size == 2448) {
+            // This track has subchannel data embedded
+            // We need to read only the user data (2352 bytes) and skip subchannel (96 bytes)
+            
+            size_t sectors_to_read = nSize / 2352;
+            u8* dest = (u8*)pBuffer;
+            size_t total_read = 0;
+            
+            LOGDBG("Reading %u sectors with subchannel skipping from LBA %u", 
+                   sectors_to_read, lba);
+            
+            for (size_t i = 0; i < sectors_to_read; i++) {
+                UINT bytes_read = 0;
+                
+                // Read 2352 bytes of user data
+                FRESULT result = f_read(m_pFile, dest, 2352, &bytes_read);
+                if (result != FR_OK || bytes_read != 2352) {
+                    LOGERR("Failed to read sector %u user data (got %u bytes)", i, bytes_read);
+                    return total_read > 0 ? total_read : -1;
+                }
+                
+                // Skip 96 bytes of subchannel data
+                result = f_lseek(m_pFile, f_tell(m_pFile) + 96);
+                if (result != FR_OK) {
+                    LOGERR("Failed to skip subchannel data at sector %u", i);
+                    return total_read > 0 ? total_read : -1;
+                }
+                
+                dest += 2352;
+                total_read += 2352;
+            }
+            
+            return total_read;
+        }
+    }
+    
+    // Standard read for images without subchannels or tracks with normal sector size
     UINT nBytesRead = 0;
     FRESULT result = f_read(m_pFile, pBuffer, nSize, &nBytesRead);
     if (result != FR_OK) {

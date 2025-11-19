@@ -156,9 +156,9 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "USBODE00001"                // Template Serial Number (index 3) - will be replaced with hardware serial
 };
 
-CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice)    : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
-      m_pDevice(pDevice),
-      m_pEP{nullptr, nullptr, nullptr}
+CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice) : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
+                                                                                                             m_pDevice(pDevice),
+                                                                                                             m_pEP{nullptr, nullptr, nullptr}
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
              "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
@@ -1907,6 +1907,25 @@ void CUSBCDGadget::HandleSCSICommand()
         m_nnumber_blocks = (m_CBW.CBWCB[6] << 16) | (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
         mcs = (m_CBW.CBWCB[9] >> 3) & 0x1F;
 
+        // Subchannel selection from byte 10
+        u8 subChannelSelection = m_CBW.CBWCB[10] & 0x07;
+
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                        "READ CD: USB=%s, LBA=%u, blocks=%u, type=0x%02x, MCS=0x%02x, subchan=0x%02x",
+                        m_IsFullSpeed ? "FS" : "HS",
+                        m_nblock_address, m_nnumber_blocks,
+                        expectedSectorType, mcs, subChannelSelection);
+
+        // Check subchannel request compatibility
+        if (subChannelSelection != 0 && !m_pDevice->HasSubchannelData())
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ CD: Subchannel requested but image has no subchannel data");
+            setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+            sendCheckCondition();
+            break;
+        }
+
         // Get track info for validation
         CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
 
@@ -2011,12 +2030,36 @@ void CUSBCDGadget::HandleSCSICommand()
             break;
         }
 
-        // Minimal logging - command parameters only (audio detection deferred to Update())
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                        "READ CD: USB=%s, LBA=%u, blocks=%u, type=0x%02x, MCS=0x%02x",
-                        m_IsFullSpeed ? "FS" : "HS",
-                        m_nblock_address, m_nnumber_blocks,
-                        expectedSectorType, mcs);
+        // Add subchannel data size if requested
+        if (subChannelSelection != 0)
+        {
+            // Subchannel selections:
+            // 0x00 = No subchannel
+            // 0x01 = Raw P-W (96 bytes)
+            // 0x02 = Q subchannel (16 bytes) - formatted
+            // 0x04 = P-W subchannel (96 bytes) - deinterleaved and error corrected
+
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ CD: Adding subchannel data (type 0x%02x)", subChannelSelection);
+
+            // Most requests are for raw P-W (96 bytes)
+            if (subChannelSelection == 0x01)
+            {
+                transfer_block_size += 96; // Add raw P-W subchannel
+            }
+            else if (subChannelSelection == 0x02)
+            {
+                transfer_block_size += 16; // Add formatted Q subchannel
+            }
+            else
+            {
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                                "READ CD: Unsupported subchannel type 0x%02x", subChannelSelection);
+                setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+                sendCheckCondition();
+                break;
+            }
+        }
 
         m_nbyteCount = m_CBW.dCBWDataTransferLength;
         if (m_nnumber_blocks == 0)
@@ -3247,8 +3290,8 @@ void CUSBCDGadget::HandleSCSICommand()
                 memcpy(m_InBuffer + length, &codePage, sizeof(codePage));
                 length += sizeof(codePage);
                 if (page != 0x3f)
-                        break;            
-                }            
+                    break;
+            }
 
             case 0x08:
             {
@@ -3259,14 +3302,14 @@ void CUSBCDGadget::HandleSCSICommand()
                 memset(&codepage, 0, sizeof(codepage));
                 codepage.pageCodeAndPS = 0x08;
                 codepage.pageLength = 0x12;
-                codepage.cachingFlags = 0x00;  // RCD=0, WCE=0
+                codepage.cachingFlags = 0x00; // RCD=0, WCE=0
 
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
 
                 if (page != 0x3f)
                     break;
-            }            
+            }
 
             case 0x1a:
             {
@@ -3285,7 +3328,7 @@ void CUSBCDGadget::HandleSCSICommand()
 
                 if (page != 0x3f)
                     break;
-            }            
+            }
 
             case 0x2a:
             {
@@ -3346,8 +3389,8 @@ void CUSBCDGadget::HandleSCSICommand()
                 memset(&codepage, 0, sizeof(codepage));
                 codepage.pageCodeAndPS = 0x1c;
                 codepage.pageLength = 0x0a;
-                codepage.flags = 0x00;  // No special flags
-                codepage.mrie = 0x00;   // No reporting
+                codepage.flags = 0x00; // No special flags
+                codepage.mrie = 0x00;  // No reporting
 
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
@@ -3362,23 +3405,24 @@ void CUSBCDGadget::HandleSCSICommand()
                 CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x31 (Apple vendor page)");
 
                 // Return minimal vendor page structure
-                struct VendorPage {
+                struct VendorPage
+                {
                     u8 pageCode;
                     u8 pageLength;
-                    u8 reserved[10];  // Minimal padding
+                    u8 reserved[10]; // Minimal padding
                 } PACKED;
 
                 VendorPage codepage;
                 memset(&codepage, 0, sizeof(codepage));
                 codepage.pageCode = 0x31;
-                codepage.pageLength = 0x0a;  // 10 bytes
+                codepage.pageLength = 0x0a; // 10 bytes
 
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
 
                 if (page != 0x3f)
                     break;
-            }            
+            }
 
             default:
             {
@@ -3467,7 +3511,7 @@ void CUSBCDGadget::HandleSCSICommand()
                 memset(&codepage, 0, sizeof(codepage));
                 codepage.pageCodeAndPS = 0x08;
                 codepage.pageLength = 0x12;
-                codepage.cachingFlags = 0x00;  // RCD=0, WCE=0
+                codepage.cachingFlags = 0x00; // RCD=0, WCE=0
 
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
@@ -3503,8 +3547,8 @@ void CUSBCDGadget::HandleSCSICommand()
                 memcpy(m_InBuffer + length, &codePage, sizeof(codePage));
                 length += sizeof(codePage);
                 if (page != 0x3f)
-                        break;            
-                }
+                    break;
+            }
 
             case 0x1a:
             {
@@ -3534,15 +3578,15 @@ void CUSBCDGadget::HandleSCSICommand()
                 memset(&codepage, 0, sizeof(codepage));
                 codepage.pageCodeAndPS = 0x1c;
                 codepage.pageLength = 0x0a;
-                codepage.flags = 0x00;  // No special flags
-                codepage.mrie = 0x00;   // No reporting
+                codepage.flags = 0x00; // No special flags
+                codepage.mrie = 0x00;  // No reporting
 
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
 
                 if (page != 0x3f)
                     break;
-            }            
+            }
 
             case 0x2a:
             {
@@ -3602,23 +3646,24 @@ void CUSBCDGadget::HandleSCSICommand()
                 CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x31 (Apple vendor page)");
 
                 // Return minimal vendor page structure
-                struct VendorPage {
+                struct VendorPage
+                {
                     u8 pageCode;
                     u8 pageLength;
-                    u8 reserved[10];  // Minimal padding
+                    u8 reserved[10]; // Minimal padding
                 } PACKED;
 
                 VendorPage codepage;
                 memset(&codepage, 0, sizeof(codepage));
                 codepage.pageCode = 0x31;
-                codepage.pageLength = 0x0a;  // 10 bytes
+                codepage.pageLength = 0x0a; // 10 bytes
 
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
 
                 if (page != 0x3f)
                     break;
-            }                      
+            }
 
             default:
             {
@@ -3979,7 +4024,43 @@ void CUSBCDGadget::Update()
                 // SINGLE LOG: Only log completion if debug enabled
                 CDROM_DEBUG_LOG("UpdateRead", "Transferred %u bytes, next_LBA=%u, remaining=%u",
                                 total_copied, m_nblock_address, m_nnumber_blocks);
+                // If subchannel data was requested via READ CD command, append it
+                if (mcs != 0 && m_pDevice->HasSubchannelData())
+                {
+                    u8 subChannelSelection = mcs & 0x07; // Extract from saved mcs value
 
+                    if (subChannelSelection != 0)
+                    {
+                        CDROM_DEBUG_LOG("UpdateRead", "Appending subchannel data for %u blocks",
+                                        blocks_to_read_in_batch);
+
+                        // Append subchannel data for each sector we just read
+                        for (u32 i = 0; i < blocks_to_read_in_batch; i++)
+                        {
+                            u32 current_lba = m_nblock_address - blocks_to_read_in_batch + i;
+                            u8 subchannel_buf[96];
+
+                            int sc_result = m_pDevice->ReadSubchannel(current_lba, subchannel_buf);
+
+                            if (sc_result == 96)
+                            {
+                                // Copy subchannel data after this sector's main data
+                                u32 offset = total_copied + (i * 96);
+                                memcpy(m_InBuffer + offset, subchannel_buf, 96);
+                                total_copied += 96;
+                            }
+                            else
+                            {
+                                // If subchannel read fails, zero-fill
+                                CDROM_DEBUG_LOG("UpdateRead", "Subchannel read failed for LBA %u, zero-filling",
+                                                current_lba);
+                                u32 offset = total_copied + (i * 96);
+                                memset(m_InBuffer + offset, 0, 96);
+                                total_copied += 96;
+                            }
+                        }
+                    }
+                }
                 // Begin USB transfer
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                            m_InBuffer, total_copied);
