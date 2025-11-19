@@ -2,6 +2,7 @@
 #define _IIMAGEDEVICE_H
 
 #include <circle/device.h>
+#include "filetype.h"
 
 enum class IMAGE_TYPE {
     UNKNOWN,
@@ -19,6 +20,7 @@ public:
 
     virtual MEDIA_TYPE GetMediaType() const = 0;
     virtual const char* GetCueSheet() const = 0;
+    virtual u64 Tell() const = 0;
 };
 
 #endif

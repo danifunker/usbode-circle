@@ -7,7 +7,7 @@ STDLIBHOME = $(USBODEHOME)/circle-stdlib
 NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
-OBJS	= main.o kernel.o
+OBJS	= main.o kernel.o syscalls.o
 
 include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk

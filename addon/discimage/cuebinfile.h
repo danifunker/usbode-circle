@@ -25,7 +25,7 @@ class CCueBinFileDevice : public ICueDevice {
     int Write(const void* pBuffer, size_t nCount);
     u64 Seek(u64 ullOffset);
     u64 GetSize(void) const;
-    u64 Tell() const;
+    u64 Tell() const override;
     const char* GetCueSheet() const override;
     MEDIA_TYPE GetMediaType() const override;
 

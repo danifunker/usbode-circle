@@ -2,6 +2,7 @@
 #define _MDSFILE_H
 
 #include "imagedevice.h"
+#include <fatfs/ff.h>
 
 class IMdsDevice : public IImageDevice {
 public:
@@ -18,6 +19,7 @@ public:
     int Write(const void* pBuffer, size_t nSize) override;
     u64 Seek(u64 ullOffset) override;
     u64 GetSize(void) const override;
+    u64 Tell() const override;
 
     MEDIA_TYPE GetMediaType() const override;
     const char* GetCueSheet() const override;

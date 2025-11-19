@@ -47,7 +47,7 @@ CDROMService::CDROMService()
     assert(ok == true);
 }
 
-void CDROMService::SetDevice(ICueDevice* pBinFileDevice) {
+void CDROMService::SetDevice(IImageDevice* pBinFileDevice) {
     LOGNOTE("CDROM setting device");
     
     // We defer initialization of the CD Gadget until the first CD image is loaded

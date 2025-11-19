@@ -13,4 +13,5 @@ bool hasBinExtension(const char* imageName);
 void change_extension_to_cue(char* fullPath);
 IImageDevice* loadImageDevice(const char* imageName);
 bool hasDvdHint(const char* imageName);
+bool ReadFileToString(const char* fullPath, char** out_str);
 #endif  // UTIL_H

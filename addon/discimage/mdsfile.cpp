@@ -3,20 +3,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <circle/util.h>
+#include "util.h"
 
 LOGMODULE("CMdsFileDevice");
 
-// For strlcpy
-#include <circle/util.h>
-
-// For ReadFileToString
-#include "util.h"
-
-//
-// Given a path to an MDS file, this class will parse the MDS file,
-// and generate a CUE sheet in memory. The CUE sheet will then be
-// used to mount the MDF file.
-//
 CMdsFileDevice::CMdsFileDevice(const char* mdsPath) : m_cueSheet(nullptr), m_fileOpen(false) {
     char* mdsContent = nullptr;
     if (!ReadFileToString(mdsPath, &mdsContent)) {
@@ -24,7 +15,6 @@ CMdsFileDevice::CMdsFileDevice(const char* mdsPath) : m_cueSheet(nullptr), m_fil
         return;
     }
 
-    // Find the MDF filename in the MDS content
     const char* mdf_filename_key = "Filename=";
     char* mdf_filename_start = strstr(mdsContent, mdf_filename_key);
     if (mdf_filename_start) {
@@ -35,18 +25,18 @@ CMdsFileDevice::CMdsFileDevice(const char* mdsPath) : m_cueSheet(nullptr), m_fil
         }
 
         char mdfPath[255];
-        strlcpy(mdfPath, mdsPath, sizeof(mdfPath));
+        strncpy(mdfPath, mdsPath, sizeof(mdfPath));
+        mdfPath[sizeof(mdfPath) - 1] = '\0';
         char* mds_filename_in_path = strrchr(mdfPath, '/');
         if (mds_filename_in_path) {
             *(mds_filename_in_path + 1) = '\0';
-            strlcat(mdfPath, mdf_filename_start, sizeof(mdfPath));
+            strncat(mdfPath, mdf_filename_start, sizeof(mdfPath) - strlen(mdfPath) - 1);
         }
 
         FRESULT res = f_open(&m_mdfFile, mdfPath, FA_READ);
         if (res == FR_OK) {
             m_fileOpen = true;
 
-            // Generate CUE sheet
             size_t cueSheetLen = strlen("FILE \"\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n") + strlen(mdf_filename_start) + 1;
             m_cueSheet = new char[cueSheetLen];
             snprintf(m_cueSheet, cueSheetLen, "FILE \"%s\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n", mdf_filename_start);
@@ -78,7 +68,7 @@ int CMdsFileDevice::Read(void* pBuffer, size_t nSize) {
 }
 
 int CMdsFileDevice::Write(const void* pBuffer, size_t nSize) {
-    return -1; // Not supported
+    return -1;
 }
 
 u64 CMdsFileDevice::Seek(u64 ullOffset) {
@@ -99,8 +89,14 @@ u64 CMdsFileDevice::GetSize(void) const {
     return f_size(&m_mdfFile);
 }
 
+u64 CMdsFileDevice::Tell() const {
+    if (!m_fileOpen) {
+        return 0;
+    }
+    return f_tell(&m_mdfFile);
+}
+
 MEDIA_TYPE CMdsFileDevice::GetMediaType() const {
-    // TODO: Detect media type from MDS file
     return MEDIA_TYPE::CD;
 }
 
