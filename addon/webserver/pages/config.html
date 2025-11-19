@@ -1,4 +1,4 @@
-<div class="navigation">
+            <div class="navigation">
                 <a href="/" class="button">Back to Home</a>
             </div>
 
@@ -107,7 +107,7 @@
                     <strong>Note:</strong> Changes will take effect after reboot. Some settings may require a complete power cycle.
                 </div>
 
-                <div style="text-align: center; margin: 30px 0;">
+                <div class="center margin">
                     <button type="submit" name="action" value="save" class="button">Save Configuration</button>
                     <button type="submit" name="action" value="save_reboot" class="button">Save & Reboot</button>
                     <button type="submit" name="action" value="save_shutdown" class="button">Save & Shutdown</button>
@@ -129,7 +129,7 @@
                 </form>
                 
                 {{#message}}
-                <div style="background-color: #E3F2FD; padding: 10px; margin: 10px 0; border-left: 4px solid #2196F3;">{{message}}</div>
+                <div class="message">{{message}}</div>
                 {{/message}}
             </div>
             {{/sound_test_available}}
@@ -139,7 +139,7 @@
                 <h3>Audio Test</h3>
                 <div class="form-group">
                     <label>Audio Test:</label>
-                    <div class="current-value" style="color: #666; font-style: italic;">Sound test not available (not in CDROM mode or sound not enabled)</div>
+                    <div class="current-value unavailable">Sound test not available (not in CDROM mode or sound not enabled)</div>
                 </div>
             </div>
             {{/sound_test_available}}

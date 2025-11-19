@@ -5,8 +5,10 @@ a:visited {color: #0066CC;}
 .container {width: 100%; margin: 0; padding: 0;}
 .header {background-color: #3A7CA5; padding: 10px; height: 80px; text-align: center; color: #FFFFFF;}
 .header h1, .header h2 {color: #FFFFFF; margin: 5px 0;}
+.header img { float: left; height: 100%; margin-right:10px; }
 .content {padding: 10px; background-color: #FFFFFF; min-height: 300px;}
 .footer {background-color: #3A7CA5; padding: 10px; text-align: center; color: #FFFFFF;}
+p {margin-bottom: 10px;}
 .button {background-color: #4CAF50; padding: 7px 15px; text-decoration: none; border: 1px solid #2E8B57; color: #FFFFFF; margin: 5px; display: inline-block;}
 .info-box {background-color: #F5F5F5; padding: 10px; margin: 10px 0;}
 .warning {background-color: #FFDDDD; padding: 10px; margin: 10px 0; color: #990000;}
@@ -22,3 +24,8 @@ a:visited {color: #0066CC;}
 .pagination a:hover {background-color: #BBDEFB;}
 .page-info {text-align: center; margin: 5px 0; font-size: 14px; color: #666;}
 #log {width:80%; height:600px; border:1px solid #ccc; padding:8px; overflow-y:scroll; overflow-x:auto; font-family:monospace; white-space:pre; background-color:#f9f9f9;}
+.current {font-weight:bold; border:2px solid #4CAF50;}
+.center {text-align: center;}
+.margin {margin: 30px 0;}
+.message {background-color: #E3F2FD; padding: 10px; margin: 10px 0; border-left: 4px solid #2196F3;}
+.unavailable {color: #666; font-style: italic;}

@@ -62,7 +62,7 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
             std::string style = "";
             if (full_name == current_image) {
                 current = " (Current)";
-                style = " style=\"font-weight:bold;border:2px solid #4CAF50;\"";
+                style = " current";
             }
 
             mustache::data link;
