@@ -61,21 +61,13 @@ assets/%.h: assets/%.jpg
 assets/%.h: assets/%.css
 	@echo "  EMBED $@"
 	@in="$<"; out="$@"; \
-	base="$${in##*/}"; \
-	var="assets_$${base//./_}"; \
-	\
+	var="assets_$${in##*/}"; var="$${var//./_}"; \
 	printf 'const char %s[] =\n' "$$var" > "$$out"; \
 	while IFS= read -r line || [ -n "$$line" ]; do \
 		esc="$$(printf '%s' "$$line" | sed 's/\\/\\\\/g; s/"/\\"/g')"; \
-		if [ -n "$$line" ] || [ "$$line" = "" ]; then \
-			printf '"%s\\n"\n' "$$esc" >> "$$out"; \
-		else \
-			printf '"%s"\n' "$$esc" >> "$$out"; \
-		fi; \
+		printf '"%s%s"\n' "$$esc" "$$( [ -n "$$line" ] || [ "$$line" = "" ] && printf '\n' )" >> "$$out"; \
 	done < "$$in"; \
-	\
-	printf ';\n' >> "$$out"; \
-	printf 'const unsigned int %s_len = sizeof(%s) - 1;\n' "$$var" "$$var" >> "$$out"
+	printf ';\nconst unsigned int %s_len = sizeof(%s) - 1;\n' "$$var" "$$var" >> "$$out"
 
 .PHONY: clean
 
