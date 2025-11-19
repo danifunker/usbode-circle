@@ -35,7 +35,7 @@
 "            <div class=\"footer\">\n"
 "                <p>Version {{ version }}</p>\n"
 "                <div class=\"build-info\">\n"
-"                    Build: {{ build_info}}\n"
+"                    Build: {{ build_info }}\n"
 "                </div>\n"
 "            </div>\n"
 "        </div>\n"
