@@ -2,8 +2,14 @@
 #define _CUEBINFILETYTPES_H
 
 enum class FileType {
-    ISO,
-    CUEBIN
+    UNKNOWN,
+    ISO,        // Plain ISO image
+    CUEBIN,     // CUE/BIN pair
+    MDS,        // MDS/MDF pair (Alcohol 120%)
+    // Future formats:
+    // NRG,     // Nero image
+    // CDI,     // DiscJuggler
+    // CCD,     // CloneCD
 };
 
 enum class MEDIA_TYPE {
@@ -11,4 +17,5 @@ enum class MEDIA_TYPE {
     CD,
     DVD
 };
+
 #endif

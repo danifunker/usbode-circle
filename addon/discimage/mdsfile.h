@@ -1,5 +1,5 @@
-#ifndef _CUEBINDEVICE_H
-#define _CUEBINDEVICE_H
+#ifndef _MDSFILEDEVICE_H
+#define _MDSFILEDEVICE_H
 
 #include <circle/device.h>
 #include <circle/fs/partitionmanager.h>
@@ -12,15 +12,16 @@
 #include <linux/kernel.h>
 
 #include "filetype.h"
-#include "cuedevice.h"  // Now extends IImageDevice
+#include "mdsdevice.h"  // Changed from cuedevice.h
+#include "../mdsparser/mdsparser.h"
 
-#define DEFAULT_IMAGE_FILENAME "image.iso"
-
-/// Implementation of CUE/BIN and ISO image support
-class CCueBinFileDevice : public ICueDevice {
+/// Implementation of MDS/MDF image support (Alcohol 120% format)
+/// MDS format includes subchannel data, making it suitable for copy-protected discs
+class CMDSFileDevice : public IMDSDevice {
    public:
-    CCueBinFileDevice(FIL* pFile, char* cue_str = nullptr, MEDIA_TYPE mediaType = MEDIA_TYPE::CD);
-    ~CCueBinFileDevice(void);
+    CMDSFileDevice(const char* mds_filename, char* mds_str, MEDIA_TYPE mediaType = MEDIA_TYPE::CD);
+    ~CMDSFileDevice(void);
+    bool Init();
 
     // ========================================================================
     // CDevice interface
@@ -35,42 +36,37 @@ class CCueBinFileDevice : public ICueDevice {
     u64 GetSize(void) const override;
     u64 Tell() const override;
     MEDIA_TYPE GetMediaType() const override { return m_mediaType; }
-    FileType GetFileType() const override { 
-        return m_FileType; // Can be ISO or CUEBIN
-    }
+    FileType GetFileType() const override { return FileType::MDS; }
     
-    // Track information - will need to parse CUE sheet
+    // Track information from MDS parser
     int GetNumTracks() const override;
     u32 GetTrackStart(int track) const override;
     u32 GetTrackLength(int track) const override;
     bool IsAudioTrack(int track) const override;
     
-    // CUE/BIN files do NOT have subchannel data
-    bool HasSubchannelData() const override { return false; }
-    int ReadSubchannel(u32 lba, u8* subchannel) override { return -1; }
+    // Subchannel support - the key feature of MDS format
+    bool HasSubchannelData() const override { return m_hasSubchannels; }
+    int ReadSubchannel(u32 lba, u8* subchannel) override;
     
     // ========================================================================
-    // ICueDevice interface
+    // IMDSDevice interface
     // ========================================================================
-    const char* GetCueSheet() const override;
+    MDSParser* GetParser() const override { return m_parser; }
+    
+    /// Get a generated CUE sheet for backward compatibility
+    const char* GetCompatibilityCueSheet() const override { return m_cue_sheet; }
 
    private:
     FIL* m_pFile;
-    FileType m_FileType = FileType::ISO;
-    char* m_cue_str = nullptr;
+    char* m_mds_str = nullptr;
+    char* m_cue_sheet = nullptr;  // Generated for compatibility
+    const char* m_mds_filename;
     MEDIA_TYPE m_mediaType;
+    MDSParser* m_parser;
+    bool m_hasSubchannels = false;
     
-    // Track parsing state (lazy initialization)
-    mutable bool m_tracksParsed = false;
-    mutable int m_numTracks = 0;
-    // TODO: Add track structure storage
-    
-    void ParseCueSheet() const;
-    
-    static constexpr const char* default_cue_sheet =
-        "FILE \"image.iso\" BINARY\n"
-        "  TRACK 01 MODE1/2048\n"
-        "    INDEX 01 00:00:00\n";
+    // Helper to find track containing an LBA
+    MDS_TrackBlock* FindTrackForLBA(u32 lba, int* sessionOut, int* trackOut) const;
 };
 
 #endif

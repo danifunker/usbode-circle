@@ -122,3 +122,35 @@ const char *CCueBinFileDevice::GetCueSheet() const {
     return m_cue_str;
 }
 
+// Add to cuebinfile.cpp
+
+void CCueBinFileDevice::ParseCueSheet() const {
+    if (m_tracksParsed) return;
+    
+    // TODO: Implement proper CUE sheet parser
+    // For now, simple default implementation
+    m_numTracks = 1;
+    m_tracksParsed = true;
+}
+
+int CCueBinFileDevice::GetNumTracks() const {
+    ParseCueSheet();
+    return m_numTracks;
+}
+
+u32 CCueBinFileDevice::GetTrackStart(int track) const {
+    ParseCueSheet();
+    if (track == 0) return 0;
+    return 0; // TODO: Parse from CUE
+}
+
+u32 CCueBinFileDevice::GetTrackLength(int track) const {
+    ParseCueSheet();
+    // Simple calculation for single data track
+    return GetSize() / 2048;
+}
+
+bool CCueBinFileDevice::IsAudioTrack(int track) const {
+    ParseCueSheet();
+    return false; // TODO: Parse from CUE
+}
