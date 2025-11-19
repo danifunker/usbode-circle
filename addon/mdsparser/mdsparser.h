@@ -75,6 +75,8 @@ typedef struct
 
 #pragma pack(pop)
 
+void utf16_to_utf8(const uint16_t* utf16_string, char* utf8_string, int utf8_string_size);
+
 class MDSParser {
    public:
     MDSParser(const char *mds_file);

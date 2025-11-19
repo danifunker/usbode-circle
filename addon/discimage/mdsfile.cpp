@@ -73,7 +73,7 @@ bool CMDSFileDevice::Init() {
     char* cue_ptr = cue_buffer;
     int remaining = sizeof(cue_buffer);
 
-    int len = snprintf(cue_ptr, remaining, "FILE \"%s\" BINARY\n", mdf_filename);
+    int len = snprintf(cue_ptr, remaining, "FILE \"%s\" BINARY\n", mdf_path);
     cue_ptr += len;
     remaining -= len;
 
@@ -83,8 +83,18 @@ bool CMDSFileDevice::Init() {
             MDS_TrackBlock* track = m_parser->getTrack(i, j);
             MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
 
-            const char* mode_str = (track->mode == 0x00) ? "AUDIO" : "MODE1/2352";
-            len = snprintf(cue_ptr, remaining, "  TRACK %02d %s\n", track->tno, mode_str);
+            if (track->point < 1 || track->point > 99) continue;
+
+            const char* mode_str;
+            switch (track->mode) {
+                case 0x00: mode_str = "AUDIO"; break;
+                case 0x10: mode_str = "MODE1/2048"; break;
+                case 0x11: mode_str = "MODE1/2352"; break;
+                case 0x20: mode_str = "MODE2/2336"; break;
+                case 0x21: mode_str = "MODE2/2352"; break;
+                default:   mode_str = "MODE1/2352"; break;
+            }
+            len = snprintf(cue_ptr, remaining, "  TRACK %02d %s\n", track->point, mode_str);
             cue_ptr += len;
             remaining -= len;
 
@@ -108,6 +118,8 @@ bool CMDSFileDevice::Init() {
 
     m_cue_sheet = new char[strlen(cue_buffer) + 1];
     strcpy(m_cue_sheet, cue_buffer);
+
+    LOGNOTE("Generated CUE sheet:\n%s", m_cue_sheet);
 
     return true;
 }

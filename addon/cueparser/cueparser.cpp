@@ -41,6 +41,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <circle/logger.h>
+
+LOGMODULE("cueparser");
 
 CUEParser::CUEParser() : CUEParser("") {
 }
@@ -89,6 +92,7 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             const char *track_num = skip_space(m_parse_pos + 6);
             char *endptr;
             m_track_info.track_number = strtoul(track_num, &endptr, 10);
+            LOGNOTE("Parsed track number: %d", m_track_info.track_number);
             m_track_info.track_mode = parse_track_mode(skip_space(endptr));
             m_track_info.sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);
             m_track_info.unstored_pregap_length = 0;

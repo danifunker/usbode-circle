@@ -1,9 +1,8 @@
 #include "mdsparser.h"
 #include <stdlib.h>
-#include <string.h>
-#include <strings.h>
+#include <cstring>
 
-void utf16_to_utf8(const uint16_t* utf16_string, char* utf8_string) {
+void utf16_to_utf8(const uint16_t* utf16_string, char* utf8_string, int utf8_string_size) {
     int i = 0;
     int j = 0;
     while (utf16_string[i] != 0) {
@@ -16,15 +15,19 @@ void utf16_to_utf8(const uint16_t* utf16_string, char* utf8_string) {
         }
 
         if (codepoint < 0x80) {
+            if (j + 1 >= utf8_string_size) break;
             utf8_string[j++] = (char)codepoint;
         } else if (codepoint < 0x800) {
+            if (j + 2 >= utf8_string_size) break;
             utf8_string[j++] = (char)(0xC0 | (codepoint >> 6));
             utf8_string[j++] = (char)(0x80 | (codepoint & 0x3F));
         } else if (codepoint < 0x10000) {
+            if (j + 3 >= utf8_string_size) break;
             utf8_string[j++] = (char)(0xE0 | (codepoint >> 12));
             utf8_string[j++] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
             utf8_string[j++] = (char)(0x80 | (codepoint & 0x3F));
         } else {
+            if (j + 4 >= utf8_string_size) break;
             utf8_string[j++] = (char)(0xF0 | (codepoint >> 18));
             utf8_string[j++] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
             utf8_string[j++] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
@@ -108,7 +111,7 @@ MDSParser::MDSParser(const char *mds_file) {
         }
 
         if (footer && footer->widechar_filename) {
-            utf16_to_utf8((const uint16_t*)m_mdf_filename, m_mdf_filename_utf8);
+            utf16_to_utf8((const uint16_t*)m_mdf_filename, m_mdf_filename_utf8, sizeof(m_mdf_filename_utf8));
             m_mdf_filename = m_mdf_filename_utf8;
         }
         // If not widechar, it's already a standard C-string, so no conversion is needed.
