@@ -12,7 +12,7 @@
 #include <linux/kernel.h>
 
 #include "filetype.h"
-#include "mdsdevice.h"  // Changed from cuedevice.h
+#include "mdsdevice.h"
 #include "../mdsparser/mdsparser.h"
 
 /// Implementation of MDS/MDF image support (Alcohol 120% format)

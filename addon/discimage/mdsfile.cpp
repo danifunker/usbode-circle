@@ -233,12 +233,6 @@ u64 CMDSFileDevice::GetSize(void) const {
     return size;
 }
 
-const char *CMDSFileDevice::GetCueSheet() const {
-    return m_cue_sheet;
-}
-
-// Add to mdsfile.cpp
-
 int CMDSFileDevice::GetNumTracks() const {
     if (!m_parser) return 0;
     

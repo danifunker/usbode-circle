@@ -84,7 +84,9 @@ public:
     /// Subchannel data is required for copy-protected discs (SafeDisc, etc.)
     /// \return true if subchannel data is available
     virtual bool HasSubchannelData() const { return false; }
-    
+    // Legacy CUE sheet support (for backward compatibility)
+    // Both CUE/BIN and MDS formats can provide a CUE representation
+    virtual const char* GetCueSheet() const { return nullptr; }    
     /// Read subchannel data for a specific sector
     /// \param lba Logical Block Address (sector number)
     /// \param subchannel Buffer to receive 96 bytes of subchannel data (P-W channels)

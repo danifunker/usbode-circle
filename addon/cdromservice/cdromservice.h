@@ -30,17 +30,16 @@
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
 #include <usbcdgadget/usbcdgadget.h>
-#include <discimage/cuedevice.h>
+#include <discimage/imagedevice.h>  // Changed from cuedevice.h
 
 class CDROMService : public CTask {
    public:
     CDROMService();
     ~CDROMService(void);
     boolean Initialize();
-    void SetDevice(ICueDevice* pBinFileDevice);
+    void SetDevice(IImageDevice* pDevice); 
     void Run(void);
 
-   private:
    private:
     CUSBCDGadget* m_CDGadget = nullptr;
     static CDROMService *s_pThis;

@@ -156,8 +156,7 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "USBODE00001"                // Template Serial Number (index 3) - will be replaced with hardware serial
 };
 
-CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, ICueDevice *pDevice)
-    : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
+CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice)    : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_pDevice(pDevice),
       m_pEP{nullptr, nullptr, nullptr}
 {
@@ -321,7 +320,7 @@ void CUSBCDGadget::AddEndpoints(void)
 }
 
 // must set device before usb activation
-void CUSBCDGadget::SetDevice(ICueDevice *dev)
+void CUSBCDGadget::SetDevice(IImageDevice *dev)
 {
     MLOGNOTE("CUSBCDGadget::SetDevice",
              "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",

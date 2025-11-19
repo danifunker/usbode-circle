@@ -1,5 +1,5 @@
 //
-// syslogdaemon.h
+// cdplayer.h
 //
 // Circle - A C++ bare metal environment for Raspberry Pi
 // Copyright (C) 2017  R. Stange <rsta2@o2online.de>
@@ -35,7 +35,7 @@
 #include <circle/util.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
-#include <discimage/cuebinfile.h>
+#include <discimage/imagedevice.h>
 
 #define SECTOR_SIZE 2352
 #define BATCH_SIZE 16 
@@ -60,7 +60,7 @@ class CCDPlayer : public CTask {
     CCDPlayer(const char *pSoundDevice);
     ~CCDPlayer(void);
     boolean Initialize();
-    boolean SetDevice(ICueDevice *pBinFileDevice);
+    boolean SetDevice(IImageDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();
     boolean SetVolume(u8 vol);
@@ -96,7 +96,7 @@ class CCDPlayer : public CTask {
     CSynchronizationEvent m_Event;
     static CCDPlayer *s_pThis;
     CSoundBaseDevice *m_pSound;
-    CDevice *m_pBinFileDevice;
+    IImageDevice *m_pBinFileDevice;
     u32 address;
     u32 end_address;
     PlayState state;
