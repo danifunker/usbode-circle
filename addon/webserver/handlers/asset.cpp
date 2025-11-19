@@ -10,6 +10,7 @@
 // Include files for the assets
 #include "logo.h"
 #include "favicon.h"
+#include "style.h"
 
 LOGMODULE("assethandler");
 
@@ -23,6 +24,7 @@ struct StaticAsset {
 static const std::map<std::string, StaticAsset> g_staticAssets = {
     { "/logo.jpg",     { assets_logo_jpg, assets_logo_jpg_len, "image/jpeg" } },
     { "/favicon.ico",  { assets_favicon_ico, assets_favicon_ico_len, "image/x-icon" } },
+    { "/style.css",    { assets_style_css, assets_style_css_len, "text/css" } },
     // Add more assets here
 };
 

@@ -23,7 +23,7 @@
 "                        <select name=\"displayhat\" id=\"displayhat\">\n"
 "                            <option value=\"none\" {{#displayhat_none}}selected{{/displayhat_none}}>None</option>\n"
 "                            <option value=\"pirateaudiolineout\" {{#displayhat_pirateaudio}}selected{{/displayhat_pirateaudio}}>Pirate Audio Line Out (Glossy Version)</option>\n"
-"                            <option value=\"pirateaudiolineout-matte\" {{#displayhat_pirateaudio_matte}}selected{{/displayhat_pirateaudio_matte}}>Pirate Audio Line Out (Matte)</option>\n"
+"                            <option value=\"pirateaudiolineout-matte\" {{#displayhat_pirateaudio_matte}}selected{{/displayhat_pirateaudio_matte}}>Pirate Audio Line Out (Matte Version)</option>\n"
 "                            <option value=\"waveshare\" {{#displayhat_waveshare}}selected{{/displayhat_waveshare}}>Waveshare OLED</option>\n"
 "                            <option value=\"sh1106\" {{#displayhat_sh1106}}selected{{/displayhat_sh1106}}>Generic SH1106 OLED</option>\n"
 "                            <option value=\"st7789\" {{#displayhat_st7789}}selected{{/displayhat_st7789}}>Generic ST7789 OLED</option>\n"
