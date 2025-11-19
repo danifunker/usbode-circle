@@ -65,9 +65,9 @@ assets/%.h: assets/%.css
 	printf 'const char %s[] =\n' "$$var" > "$$out"; \
 	while IFS= read -r line || [ -n "$$line" ]; do \
 		esc="$$(printf '%s' "$$line" | sed 's/\\/\\\\/g; s/"/\\"/g')"; \
-		printf '"%s%s"\n' "$$esc" "$$( [ -n "$$line" ] || [ "$$line" = "" ] && printf '\n' )" >> "$$out"; \
+		printf '"%s\\n"\n' "$$esc" >> "$$out"; \
 	done < "$$in"; \
-	printf ';\nconst unsigned int %s_len = sizeof(%s) - 1;\n' "$$var" "$$var" >> "$$out"
+	printf ';\n\nconst unsigned int %s_len = sizeof(%s) - 1;\n' "$$var" "$$var" >> "$$out"
 
 .PHONY: clean
 
