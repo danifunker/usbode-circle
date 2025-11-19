@@ -24,6 +24,9 @@ bool CMDSFileDevice::Init() {
         return false;
     }
 
+    LOGNOTE("=== MDS Parser Debug Info ===");
+    LOGNOTE("Number of sessions: %d", m_parser->getNumSessions());
+
     // Open MDF file
     const char* mdf_filename_from_mds = m_parser->getMDFilename();
     LOGNOTE("MDF filename from parser: %s", mdf_filename_from_mds);
@@ -96,11 +99,22 @@ bool CMDSFileDevice::Init() {
     // Process all sessions
     for (int i = 0; i < m_parser->getNumSessions(); i++) {
         MDS_SessionBlock* session = m_parser->getSession(i);
-        
+        LOGNOTE("Session %d:", i);
+        LOGNOTE("  session_start: %llu", (unsigned long long)session->session_start);
+        LOGNOTE("  session_end: %llu", (unsigned long long)session->session_end);
+        LOGNOTE("  num_all_blocks: %d", session->num_all_blocks);
+
         // Process all track blocks in this session
         for (int j = 0; j < session->num_all_blocks; j++) {
             MDS_TrackBlock* track = m_parser->getTrack(i, j);
             MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
+
+            LOGNOTE("  Track block %d:", j);
+            LOGNOTE("    mode: 0x%02x", track->mode);
+            LOGNOTE("    point: %d (0x%02x)", track->point, track->point);
+            LOGNOTE("    start_sector: %u", track->start_sector);
+            LOGNOTE("    start_offset: %llu", (unsigned long long)track->start_offset);
+            LOGNOTE("    sector_size: %u", track->sector_size);
 
             // Only process actual track entries (point is the track number)
             // Skip lead-in entries (point 0xA0, 0xA1, 0xA2)
@@ -124,6 +138,8 @@ bool CMDSFileDevice::Init() {
 
             // Add PREGAP if present
             if (extra && extra->pregap > 0) {
+                LOGNOTE("    pregap: %u", extra->pregap);
+                LOGNOTE("    length: %u", extra->length);
                 int minutes = extra->pregap / (75 * 60);
                 int seconds = (extra->pregap / 75) % 60;
                 int frames = extra->pregap % 75;
@@ -147,7 +163,7 @@ bool CMDSFileDevice::Init() {
     strcpy(m_cue_sheet, cue_buffer);
     
     LOGNOTE("Generated CUE sheet:\n%s", m_cue_sheet);
-
+    LOGNOTE("=== End MDS Debug ===");
     return true;
 }
 
@@ -208,13 +224,37 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
 
     // Don't seek if we're already there
     if (Tell() == nOffset)
-	    return nOffset;
+        return nOffset;
 
-    FRESULT result = f_lseek(m_pFile, nOffset);
-    if (result != FR_OK) {
-        LOGERR("Seek to offset %llu is not ok, err %d", nOffset, result);
-        return 0;
+    // Calculate which LBA is being requested
+    u32 lba = nOffset / 2352;  // Assuming 2352 bytes per sector
+    u32 offset_in_sector = nOffset % 2352;
+    
+    // Find which track contains this LBA
+    int session, trackIdx;
+    MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
+    
+    if (!track) {
+        LOGERR("Seek: LBA %u not found in any track", lba);
+        return static_cast<u64>(-1);
     }
+    
+    // Calculate offset into MDF file
+    u32 sectors_from_track_start = lba - track->start_sector;
+    u64 actual_file_offset = track->start_offset + 
+                             (sectors_from_track_start * track->sector_size) + 
+                             offset_in_sector;
+    
+    LOGDBG("Seek: LBA %u (offset %llu) -> track %d, file offset %llu", 
+           lba, nOffset, track->point, actual_file_offset);
+    
+    FRESULT result = f_lseek(m_pFile, actual_file_offset);
+    if (result != FR_OK) {
+        LOGERR("Seek to file offset %llu failed, err %d", actual_file_offset, result);
+        return static_cast<u64>(-1);
+    }
+    
+    // Return the logical offset that was requested (not the physical file offset)
     return nOffset;
 }
 
