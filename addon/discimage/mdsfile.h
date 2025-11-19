@@ -54,7 +54,7 @@ class CMDSFileDevice : public IMDSDevice {
     MDSParser* GetParser() const override { return m_parser; }
     
     /// Get a generated CUE sheet for backward compatibility
-    const char* GetCompatibilityCueSheet() const override { return m_cue_sheet; }
+    const char* GetCueSheet() const override { return m_cue_sheet; }
 
    private:
     FIL* m_pFile;

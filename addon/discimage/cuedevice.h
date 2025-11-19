@@ -17,8 +17,8 @@ public:
     
     /// Get the CUE sheet describing this disc
     /// \return CUE sheet as a string, or nullptr if not available
-    virtual const char* GetCueSheet() const = 0;
-    
+    virtual const char* GetCueSheet() const = 0;  // MUST override
+        
     /// CUE/BIN files are always this type
     FileType GetFileType() const override { 
         return FileType::CUEBIN; 

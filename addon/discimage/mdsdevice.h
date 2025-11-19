@@ -40,7 +40,7 @@ public:
     /// Optional: Get a generated CUE sheet for compatibility
     /// Some tools may expect a CUE sheet representation
     /// \return Generated CUE sheet, or nullptr
-    virtual const char* GetCompatibilityCueSheet() const { return nullptr; }
+    virtual const char* GetCueSheet() const override { return nullptr; }
 };
 
 #endif

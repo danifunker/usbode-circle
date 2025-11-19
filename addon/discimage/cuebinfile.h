@@ -52,8 +52,8 @@ class CCueBinFileDevice : public ICueDevice {
     // ========================================================================
     // ICueDevice interface
     // ========================================================================
-    const char* GetCueSheet() const override;
-
+    const char* GetCueSheet() const override; 
+    
    private:
     FIL* m_pFile;
     FileType m_FileType = FileType::ISO;
