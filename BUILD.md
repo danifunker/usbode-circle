@@ -33,7 +33,7 @@ To build for a single architecture with build number:
 `make RASPPI=4 BUILD_NUMBER=123 dist-single`
 
 To build for a single (Pi3/Zero 2 W) architecture in 64-bit with debug flags on mode:
-`ARCH_MODE=64 RASPI=3 make dist-single DEBUG_FLAGS=USB_GADGET_DEBUG`
+`ARCH_MODE=64 RASPPI=3 make dist-single DEBUG_FLAGS=USB_GADGET_DEBUG`
 
 The build number will be displayed as `2.2.5-123` but stored internally as just `123`.
 
