@@ -1,6 +1,0 @@
-"<p>{{status}}</p>\n"
-"\n"
-"<div>\n"
-"    <a class=\"button\" href=\"/\">Return to File List</a>\n"
-"</div>\n"
-""

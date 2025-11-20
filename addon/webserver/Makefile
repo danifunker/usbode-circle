@@ -76,3 +76,5 @@ clean:
 	@rm -f $(OBJS) $(DEPS) libwebserver.a
 	@rm -rf handlers/*.d 
 	@rm -f *.d 
+	@rm -f pages/*.h
+	@rm -f assets/*.h
