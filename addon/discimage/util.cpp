@@ -23,6 +23,7 @@
 #include "util.h"
 #include "cuebinfile.h"
 #include "mdsfile.h"
+#include "chdfile.h"
 
 LOGMODULE("discimage-util");
 
@@ -76,6 +77,18 @@ bool hasIsoExtension(const char* imageName) {
                tolower(ext[1]) == 'i' &&
                tolower(ext[2]) == 's' &&
                tolower(ext[3]) == 'o';
+    }
+    return false;
+}
+
+bool hasChdExtension(const char* imageName) {
+    size_t len = strlen(imageName);
+    if (len >= 4) {
+        const char* ext = imageName + len - 4;
+        return tolower(ext[0]) == '.' &&
+               tolower(ext[1]) == 'c' &&
+               tolower(ext[2]) == 'h' &&
+               tolower(ext[3]) == 'd';
     }
     return false;
 }
@@ -242,17 +255,44 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imageName) {
     return device;
 }
 
+IImageDevice* loadCHDFileDevice(const char* imageName) {
+    LOGNOTE("Loading CHD image: %s", imageName);
+    
+    MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+    
+    // Construct full path
+    char fullPath[255];
+    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
+    
+    // Create CHD device
+    CCHDFileDevice* chdDevice = new CCHDFileDevice(fullPath, mediaType);
+    if (!chdDevice->Init()) {
+        LOGERR("Failed to initialize CHD device: %s", imageName);
+        delete chdDevice;
+        return nullptr;
+    }
+    
+    LOGNOTE("Successfully loaded CHD device: %s (has subchannels: %s)", 
+            imageName, 
+            chdDevice->HasSubchannelData() ? "yes" : "no");
+    
+    return chdDevice;
+}
+
 // ============================================================================
 // Main Entry Point - Plugin Selection
 // ============================================================================
 IImageDevice* loadImageDevice(const char* imageName) {
     LOGNOTE("loadImageDevice called for: %s", imageName);
     
-    // Plugin selection based on file extension
     if (hasMdsExtension(imageName)) {
         LOGNOTE("Detected MDS format - using MDS plugin");
         return loadMDSFileDevice(imageName);
     } 
+    else if (hasChdExtension(imageName)) {
+        LOGNOTE("Detected CHD format - using CHD plugin");
+        return loadCHDFileDevice(imageName);
+    }
     else if (hasCueExtension(imageName) || hasBinExtension(imageName) || hasIsoExtension(imageName)) {
         LOGNOTE("Detected CUE/BIN/ISO format - using CUE plugin");
         return loadCueBinIsoFileDevice(imageName);

@@ -1,0 +1,291 @@
+#include "chdfile.h"
+#include <circle/logger.h>
+#include <string.h>
+#include <stdio.h>
+
+LOGMODULE("chdfile");
+
+CCHDFileDevice::CCHDFileDevice(const char* chd_filename, MEDIA_TYPE mediaType)
+    : m_chd_filename(chd_filename),
+      m_mediaType(mediaType) {
+    LOGNOTE("CCHDFileDevice created for: %s", chd_filename);
+    memset(m_tracks, 0, sizeof(m_tracks));
+}
+
+CCHDFileDevice::~CCHDFileDevice() {
+    if (m_chd) {
+        chd_close(m_chd);
+        m_chd = nullptr;
+    }
+    if (m_cue_sheet) {
+        delete[] m_cue_sheet;
+        m_cue_sheet = nullptr;
+    }
+}
+
+bool CCHDFileDevice::ParseTrackMetadata() {
+    // Get track metadata from CHD
+    // CHD stores CD metadata in a specific format string
+    char metadata[256];
+    uint32_t metadata_length = sizeof(metadata);
+    uint32_t metadata_index = 0;
+    
+    m_numTracks = 0;
+    
+    // Iterate through all CD track metadata tags
+    while (m_numTracks < CD_MAX_TRACKS) {
+        chd_error err = chd_get_metadata(m_chd, CDROM_TRACK_METADATA2_TAG, 
+                                         metadata_index, metadata, metadata_length, 
+                                         nullptr, nullptr, nullptr);
+        
+        if (err != CHDERR_NONE) {
+            // Try old metadata format
+            err = chd_get_metadata(m_chd, CDROM_TRACK_METADATA_TAG, 
+                                  metadata_index, metadata, metadata_length,
+                                  nullptr, nullptr, nullptr);
+            if (err != CHDERR_NONE)
+                break;
+        }
+        
+        // Parse metadata string: "TRACK:track TYPE:type SUBTYPE:subtype FRAMES:frames"
+        CHDTrackInfo& track = m_tracks[m_numTracks];
+        
+        if (sscanf(metadata, "TRACK:%u TYPE:%u SUBTYPE:%*u FRAMES:%u",
+                   &track.trackNumber, &track.trackType, &track.frames) == 3) {
+            
+            track.startLBA = (m_numTracks > 0) ? 
+                (m_tracks[m_numTracks - 1].startLBA + m_tracks[m_numTracks - 1].frames) : 0;
+            
+            // Determine data size based on track type
+            switch (track.trackType) {
+                case CD_TRACK_MODE1:
+                case CD_TRACK_MODE2_FORM1:
+                    track.dataSize = 2048;
+                    break;
+                case CD_TRACK_MODE1_RAW:
+                case CD_TRACK_MODE2_RAW:
+                case CD_TRACK_AUDIO:
+                    track.dataSize = 2352;
+                    break;
+                case CD_TRACK_MODE2:
+                case CD_TRACK_MODE2_FORM_MIX:
+                    track.dataSize = 2336;
+                    break;
+                case CD_TRACK_MODE2_FORM2:
+                    track.dataSize = 2324;
+                    break;
+                default:
+                    track.dataSize = 2352;
+                    break;
+            }
+            
+            LOGNOTE("Track %d: Type=%d, Start=%u, Frames=%u, DataSize=%u",
+                    track.trackNumber, track.trackType, track.startLBA, 
+                    track.frames, track.dataSize);
+            
+            m_numTracks++;
+        }
+        
+        metadata_index++;
+    }
+    
+    return m_numTracks > 0;
+}
+
+bool CCHDFileDevice::Init() {
+    LOGNOTE("Initializing CHD file: %s", m_chd_filename);
+    
+    // Open the CHD file
+    chd_error err = chd_open(m_chd_filename, CHD_OPEN_READ, nullptr, &m_chd);
+    if (err != CHDERR_NONE) {
+        LOGERR("Failed to open CHD file: %s (error: %d)", m_chd_filename, err);
+        return false;
+    }
+    
+    // Get CHD header info
+    const chd_header* header = chd_get_header(m_chd);
+    if (!header) {
+        LOGERR("Failed to get CHD header");
+        chd_close(m_chd);
+        m_chd = nullptr;
+        return false;
+    }
+    
+    LOGNOTE("CHD version: %d, hunk size: %d bytes", 
+            header->version, header->hunkbytes);
+    
+    // Parse track metadata
+    if (!ParseTrackMetadata()) {
+        LOGERR("No CD-ROM tracks found in CHD");
+        chd_close(m_chd);
+        m_chd = nullptr;
+        return false;
+    }
+    
+    LOGNOTE("CHD has %d tracks", m_numTracks);
+    
+    // Determine frame size from first track
+    m_frameSize = m_tracks[0].dataSize;
+    
+    // Check for subchannel data
+    m_hasSubchannels = (header->hunkbytes == CD_FRAME_SIZE * CD_FRAMES_PER_HUNK);
+    
+    if (m_hasSubchannels) {
+        LOGNOTE("CHD contains subchannel data");
+    }
+    
+    // Generate CUE sheet for compatibility
+    GenerateCueSheet();
+    
+    return true;
+}
+
+void CCHDFileDevice::GenerateCueSheet() {
+    // Allocate buffer for CUE sheet (generous size)
+    size_t bufSize = 4096;
+    m_cue_sheet = new char[bufSize];
+    char* buf = m_cue_sheet;
+    size_t remaining = bufSize;
+    
+    // Write FILE line
+    int written = snprintf(buf, remaining, "FILE \"%s\" BINARY\n", m_chd_filename);
+    buf += written;
+    remaining -= written;
+    
+    // Write track entries
+    for (int i = 0; i < m_numTracks && remaining > 100; i++) {
+        const CHDTrackInfo& track = m_tracks[i];
+        
+        // Determine track mode string
+        const char* mode;
+        if (track.trackType == CD_TRACK_AUDIO) {
+            mode = "AUDIO";
+        } else if (track.dataSize == 2048) {
+            mode = "MODE1/2048";
+        } else {
+            mode = "MODE1/2352";
+        }
+        
+        // Calculate MSF for track start
+        u32 lba = track.startLBA;
+        u32 minutes = lba / (60 * 75);
+        u32 seconds = (lba / 75) % 60;
+        u32 frames = lba % 75;
+        
+        written = snprintf(buf, remaining,
+                          "  TRACK %02d %s\n"
+                          "    INDEX 01 %02d:%02d:%02d\n",
+                          track.trackNumber, mode,
+                          minutes, seconds, frames);
+        buf += written;
+        remaining -= written;
+    }
+    
+    LOGNOTE("Generated CUE sheet with %d tracks", m_numTracks);
+}
+
+int CCHDFileDevice::Read(void* pBuffer, size_t nCount) {
+    if (!m_chd || !pBuffer) return -1;
+    
+    // CHD reads in hunks - need to handle partial hunk reads
+    const chd_header* header = chd_get_header(m_chd);
+    u32 hunkBytes = header->hunkbytes;
+    u32 hunkNum = m_currentOffset / hunkBytes;
+    u32 hunkOffset = m_currentOffset % hunkBytes;
+    
+    size_t bytesRead = 0;
+    u8* dest = static_cast<u8*>(pBuffer);
+    u8* hunkBuf = new u8[hunkBytes];
+    
+    while (bytesRead < nCount) {
+        // Read the hunk
+        chd_error err = chd_read(m_chd, hunkNum, hunkBuf);
+        if (err != CHDERR_NONE) {
+            LOGERR("CHD read error at hunk %u: %d", hunkNum, err);
+            delete[] hunkBuf;
+            return bytesRead > 0 ? bytesRead : -1;
+        }
+        
+        // Copy data from hunk to output buffer
+        size_t chunkSize = hunkBytes - hunkOffset;
+        if (chunkSize > nCount - bytesRead) {
+            chunkSize = nCount - bytesRead;
+        }
+        
+        memcpy(dest + bytesRead, hunkBuf + hunkOffset, chunkSize);
+        bytesRead += chunkSize;
+        m_currentOffset += chunkSize;
+        
+        // Move to next hunk
+        hunkNum++;
+        hunkOffset = 0;
+    }
+    
+    delete[] hunkBuf;
+    return bytesRead;
+}
+
+int CCHDFileDevice::Write(const void* pBuffer, size_t nCount) {
+    // CHD files are read-only
+    return -1;
+}
+
+u64 CCHDFileDevice::Seek(u64 ullOffset) {
+    m_currentOffset = ullOffset;
+    return m_currentOffset;
+}
+
+u64 CCHDFileDevice::GetSize() const {
+    if (!m_chd) return 0;
+    const chd_header* header = chd_get_header(m_chd);
+    return header ? header->logicalbytes : 0;
+}
+
+u64 CCHDFileDevice::Tell() const {
+    return m_currentOffset;
+}
+
+int CCHDFileDevice::GetNumTracks() const {
+    return m_numTracks;
+}
+
+u32 CCHDFileDevice::GetTrackStart(int track) const {
+    if (track < 0 || track >= m_numTracks) return 0;
+    return m_tracks[track].startLBA;
+}
+
+u32 CCHDFileDevice::GetTrackLength(int track) const {
+    if (track < 0 || track >= m_numTracks) return 0;
+    return m_tracks[track].frames;
+}
+
+bool CCHDFileDevice::IsAudioTrack(int track) const {
+    if (track < 0 || track >= m_numTracks) return false;
+    return m_tracks[track].trackType == CD_TRACK_AUDIO;
+}
+
+int CCHDFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
+    if (!m_hasSubchannels || !subchannel) return -1;
+    
+    // Calculate which hunk contains this LBA
+    const chd_header* header = chd_get_header(m_chd);
+    u32 framesPerHunk = header->hunkbytes / CD_FRAME_SIZE;
+    u32 hunkNum = lba / framesPerHunk;
+    u32 frameInHunk = lba % framesPerHunk;
+    
+    // Read the hunk
+    u8* hunkBuf = new u8[header->hunkbytes];
+    chd_error err = chd_read(m_chd, hunkNum, hunkBuf);
+    
+    if (err != CHDERR_NONE) {
+        delete[] hunkBuf;
+        return -1;
+    }
+    
+    // Subchannel data is at the end of each frame
+    u32 frameOffset = frameInHunk * CD_FRAME_SIZE;
+    memcpy(subchannel, hunkBuf + frameOffset + CD_MAX_SECTOR_DATA, CD_MAX_SUBCODE_DATA);
+    
+    delete[] hunkBuf;
+    return CD_MAX_SUBCODE_DATA;
+}
