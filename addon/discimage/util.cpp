@@ -269,7 +269,7 @@ IImageDevice* loadCHDFileDevice(const char* imageName) {
     if (!chdDevice->Init()) {
         LOGERR("Failed to initialize CHD device: %s", imageName);
         delete chdDevice;
-        return nullptr;
+        return nullptr;  // This nullptr is causing the crash
     }
     
     LOGNOTE("Successfully loaded CHD device: %s (has subchannels: %s)", 
