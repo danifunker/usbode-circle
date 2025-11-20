@@ -2,3 +2,6 @@
 	path = circle-stdlib
 	url = https://github.com/smuehlst/circle-stdlib.git
 	ignore = dirty
+[submodule "addon/libchdr-src"]
+	path = addon/libchdr-src
+	url = https://github.com/rtissera/libchdr.git

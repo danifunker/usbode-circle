@@ -23,6 +23,7 @@
 #include "util.h"
 #include "cuebinfile.h"
 #include "mdsfile.h"
+#include "chdfile.h"
 
 LOGMODULE("discimage-util");
 
@@ -40,6 +41,18 @@ bool hasCueExtension(const char* imageName) {
                tolower(ext[1]) == 'c' &&
                tolower(ext[2]) == 'u' &&
                tolower(ext[3]) == 'e';
+    }
+    return false;
+}
+
+bool hasChdExtension(const char* imageName) {
+    size_t len = strlen(imageName);
+    if (len >= 4) {
+        const char* ext = imageName + len - 4;
+        return tolower(ext[0]) == '.' &&
+               tolower(ext[1]) == 'c' &&
+               tolower(ext[2]) == 'h' &&
+               tolower(ext[3]) == 'd';
     }
     return false;
 }
@@ -149,6 +162,29 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
 }
 
 // ============================================================================
+// CHD Plugin Loader
+// ============================================================================
+IImageDevice* loadCHDFileDevice(const char* imageName) {
+    LOGNOTE("Loading CHD image: %s", imageName);
+    
+    // Construct full path for CHD file
+    char fullPath[255];
+    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
+
+    // Create CHD device
+    CChdFileDevice* chdDevice = new CChdFileDevice(fullPath);
+    if (!chdDevice->Init()) {
+        LOGERR("Failed to initialize CHD device: %s", imageName);
+        delete chdDevice;
+        return nullptr;
+    }
+
+    LOGNOTE("Successfully loaded CHD device: %s", imageName);
+    
+    return chdDevice;
+}
+
+// ============================================================================
 // MDS Plugin Loader
 // ============================================================================
 IImageDevice* loadMDSFileDevice(const char* imageName) {
@@ -249,7 +285,11 @@ IImageDevice* loadImageDevice(const char* imageName) {
     LOGNOTE("loadImageDevice called for: %s", imageName);
     
     // Plugin selection based on file extension
-    if (hasMdsExtension(imageName)) {
+    if (hasChdExtension(imageName)) {
+        LOGNOTE("Detected CHD format - using CHD plugin");
+        return loadCHDFileDevice(imageName);
+    }
+    else if (hasMdsExtension(imageName)) {
         LOGNOTE("Detected MDS format - using MDS plugin");
         return loadMDSFileDevice(imageName);
     } 
