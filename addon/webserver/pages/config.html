@@ -1,146 +1,145 @@
-            <div class="navigation">
-                <a href="/" class="button">Back to Home</a>
-            </div>
+<div class="navigation">
+    <a href="/" class="button">Back to Home</a>
+</div>
 
-            {{#error_message}}
-            <div class="warning">
-                <strong>Error:</strong> {{error_message}}
-            </div>
-            {{/error_message}}
+{{#error_message}}
+<div class="message warning">
+    <strong>Error:</strong> {{error_message}}
+</div>
+{{/error_message}}
 
-            {{#success_message}}
-            <div class="success">
-                <strong>Success:</strong> {{success_message}}
-            </div>
-            {{/success_message}}
+{{#success_message}}
+<div class="message success">
+    <strong>Success:</strong> {{success_message}}
+</div>
+{{/success_message}}
 
-            <form method="POST" action="/config">
-                <div class="form-section">
-                    <h3>Display Configuration</h3>
-                    <div class="form-group">
-                        <label for="displayhat">Display HAT Type:</label>
-                        <div class="current-value">Current: {{current_displayhat}}</div>
-                        <select name="displayhat" id="displayhat">
-                            <option value="none" {{#displayhat_none}}selected{{/displayhat_none}}>None</option>
-                            <option value="pirateaudiolineout" {{#displayhat_pirateaudio}}selected{{/displayhat_pirateaudio}}>Pirate Audio Line Out (Glossy Version)</option>
-                            <option value="pirateaudiolineout-matte" {{#displayhat_pirateaudio_matte}}selected{{/displayhat_pirateaudio_matte}}>Pirate Audio Line Out (Matte Version)</option>
-                            <option value="waveshare" {{#displayhat_waveshare}}selected{{/displayhat_waveshare}}>Waveshare OLED</option>
-                            <option value="sh1106" {{#displayhat_sh1106}}selected{{/displayhat_sh1106}}>Generic SH1106 OLED</option>
-                            <option value="st7789" {{#displayhat_st7789}}selected{{/displayhat_st7789}}>Generic ST7789 OLED</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="screen_timeout">Screen Timeout (seconds):</label>
-                        <div class="current-value">Current: {{current_screen_timeout}} seconds</div>
-                        <input type="text" name="screen_timeout" id="screen_timeout" value="{{screen_timeout}}" size="6">
-                        <div class="current-value">Set to 0 to disable timeout</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="st7789_brightness">PirateAudioLineOut Display Brightness:</label>
-                        <div class="current-value">Current: {{current_st7789_brightness}}</div>
-                        <input type="number" name="st7789_brightness" id="st7789_brightness" value="{{st7789_brightness}}" min="0" max="4095">
-                        <div class="current-value">Range: 0-1024 (0 is off, 1024 is default)</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="st7789_sleep_brightness">PirateAudioLineOut Sleep Brightness:</label>
-                        <div class="current-value">Current: {{current_st7789_sleep_brightness}}</div>
-                        <input type="number" name="st7789_sleep_brightness" id="st7789_sleep_brightness" value="{{st7789_sleep_brightness}}" min="0" max="4095">
-                        <div class="current-value">Range: 0-1024 (0 is off, 32 is default)</div>
-                    </div>
-                </div>
+<form method="POST" action="/config">
+    <div class="form-section">
+        <h3>Display Configuration</h3>
+        <div class="form-group">
+            <label for="displayhat">Display HAT Type:</label>
+            <div class="current-value">Current: {{current_displayhat}}</div>
+            <select name="displayhat" id="displayhat">
+                <option value="none" {{#displayhat_none}}selected{{/displayhat_none}}>None</option>
+                <option value="pirateaudiolineout" {{#displayhat_pirateaudio}}selected{{/displayhat_pirateaudio}}>Pirate Audio Line Out (Glossy Version)</option>
+                <option value="pirateaudiolineout-matte" {{#displayhat_pirateaudio_matte}}selected{{/displayhat_pirateaudio_matte}}>Pirate Audio Line Out (Matte Version)</option>
+                <option value="waveshare" {{#displayhat_waveshare}}selected{{/displayhat_waveshare}}>Waveshare OLED</option>
+                <option value="sh1106" {{#displayhat_sh1106}}selected{{/displayhat_sh1106}}>Generic SH1106 OLED</option>
+                <option value="st7789" {{#displayhat_st7789}}selected{{/displayhat_st7789}}>Generic ST7789 OLED</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="screen_timeout">Screen Timeout (seconds):</label>
+            <div class="current-value">Current: {{current_screen_timeout}} seconds</div>
+            <input type="text" name="screen_timeout" id="screen_timeout" value="{{screen_timeout}}" size="6">
+            <div class="current-value">Set to 0 to disable timeout</div>
+        </div>
+        <div class="form-group">
+            <label for="st7789_brightness">PirateAudioLineOut Display Brightness:</label>
+            <div class="current-value">Current: {{current_st7789_brightness}}</div>
+            <input type="number" name="st7789_brightness" id="st7789_brightness" value="{{st7789_brightness}}" min="0" max="4095">
+            <div class="current-value">Range: 0-1024 (0 is off, 1024 is default)</div>
+        </div>
+        <div class="form-group">
+            <label for="st7789_sleep_brightness">PirateAudioLineOut Sleep Brightness:</label>
+            <div class="current-value">Current: {{current_st7789_sleep_brightness}}</div>
+            <input type="number" name="st7789_sleep_brightness" id="st7789_sleep_brightness" value="{{st7789_sleep_brightness}}" min="0" max="4095">
+            <div class="current-value">Range: 0-1024 (0 is off, 32 is default)</div>
+        </div>
+    </div>
 
-                <div class="form-section">
-                    <h3>Audio Configuration</h3>
-                    <div class="form-group">
-                        <label for="sounddev">Sound Device:</label>
-                        <div class="current-value">Current: {{current_sounddev}}</div>
-                        <select name="sounddev" id="sounddev">
-                            <option value="sndpwm" {{#sounddev_sndpwm}}selected{{/sounddev_sndpwm}}>PWM Audio (3.5mm jack)</option>
-                            <option value="sndi2s" {{#sounddev_sndi2s}}selected{{/sounddev_sndi2s}}>I2S Audio (HATs)</option>
-                            <option value="sndhdmi" {{#sounddev_sndhdmi}}selected{{/sounddev_sndhdmi}}>HDMI Audio</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="default_volume">CD Audio Out Volume:</label>
-                        <div class="current-value">Current: {{current_default_volume}}</div>
-                        <input type="number" id="default_volume" name="default_volume" min="0" max="255" value="{{current_default_volume}}">
-                        <div class="current-value">Set to 0 for silent, 255 maximum (255 is default)</div>
-                    </div>
-                </div>
+    <div class="form-section">
+        <h3>Audio Configuration</h3>
+        <div class="form-group">
+            <label for="sounddev">Sound Device:</label>
+            <div class="current-value">Current: {{current_sounddev}}</div>
+            <select name="sounddev" id="sounddev">
+                <option value="sndpwm" {{#sounddev_sndpwm}}selected{{/sounddev_sndpwm}}>PWM Audio (3.5mm jack)</option>
+                <option value="sndi2s" {{#sounddev_sndi2s}}selected{{/sounddev_sndi2s}}>I2S Audio (HATs)</option>
+                <option value="sndhdmi" {{#sounddev_sndhdmi}}selected{{/sounddev_sndhdmi}}>HDMI Audio</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="default_volume">CD Audio Out Volume:</label>
+            <div class="current-value">Current: {{current_default_volume}}</div>
+            <input type="number" id="default_volume" name="default_volume" min="0" max="255" value="{{current_default_volume}}">
+            <div class="current-value">Set to 0 for silent, 255 maximum (255 is default)</div>
+        </div>
+    </div>
 
-                <div class="form-section">
-                    <h3>USB Configuration</h3>
-                    <div class="form-group">
-                        <label for="usbspeed">USB Speed:</label>
-                        <div class="current-value">Current: {{current_usbspeed}}</div>
-                        <select name="usbspeed" id="usbspeed">
-                            <option value="high" {{#usbspeed_high}}selected{{/usbspeed_high}}>High Speed (USB 2.0)</option>
-                            <option value="full" {{#usbspeed_full}}selected{{/usbspeed_full}}>Full Speed (USB 1.1)</option>
-                        </select>
-                        <div class="current-value">Use Full Speed for better compatibility with retro computers</div>
-                    </div>
-                </div>
+    <div class="form-section">
+        <h3>USB Configuration</h3>
+        <div class="form-group">
+            <label for="usbspeed">USB Speed:</label>
+            <div class="current-value">Current: {{current_usbspeed}}</div>
+            <select name="usbspeed" id="usbspeed">
+                <option value="high" {{#usbspeed_high}}selected{{/usbspeed_high}}>High Speed (USB 2.0)</option>
+                <option value="full" {{#usbspeed_full}}selected{{/usbspeed_full}}>Full Speed (USB 1.1)</option>
+            </select>
+            <div class="current-value">Use Full Speed for better compatibility with retro computers</div>
+        </div>
+    </div>
 
-                <div class="form-section">
-                    <h3>Logging Configuration</h3>
-                    <div class="form-group">
-                        <label for="logfile">Log File Path:</label>
-                        <div class="current-value">Current: {{current_logfile}}</div>
-                        <input type="text" name="logfile" id="logfile" value="{{logfile}}" size="30">
-                        <div class="current-value">Leave empty to disable file logging. Will be automatically prefixed with 0:/</div>
-                    </div>
-                    <div class="form-group">
-                        <label for="loglevel">Log Level:</label>
-                        <div class="current-value">Current: {{current_loglevel}}</div>
-                        <select name="loglevel" id="loglevel">
-                            <option value="0" {{#loglevel_0}}selected{{/loglevel_0}}>0 - No logging</option>
-                            <option value="1" {{#loglevel_1}}selected{{/loglevel_1}}>1 - Panic only</option>
-                            <option value="2" {{#loglevel_2}}selected{{/loglevel_2}}>2 - Errors and panics</option>
-                            <option value="3" {{#loglevel_3}}selected{{/loglevel_3}}>3 - Warnings, errors, panics</option>
-                            <option value="4" {{#loglevel_4}}selected{{/loglevel_4}}>4 - Notes, warnings, errors, panics</option>
-                            <option value="5" {{#loglevel_5}}selected{{/loglevel_5}}>5 - Debug (all messages)</option>
-                        </select>
-                    </div>
-                </div>
+    <div class="form-section">
+        <h3>Logging Configuration</h3>
+        <div class="form-group">
+            <label for="logfile">Log File Path:</label>
+            <div class="current-value">Current: {{current_logfile}}</div>
+            <input type="text" name="logfile" id="logfile" value="{{logfile}}" size="30">
+            <div class="current-value">Leave empty to disable file logging. Will be automatically prefixed with 0:/</div>
+        </div>
+        <div class="form-group">
+            <label for="loglevel">Log Level:</label>
+            <div class="current-value">Current: {{current_loglevel}}</div>
+            <select name="loglevel" id="loglevel">
+                <option value="0" {{#loglevel_0}}selected{{/loglevel_0}}>0 - No logging</option>
+                <option value="1" {{#loglevel_1}}selected{{/loglevel_1}}>1 - Panic only</option>
+                <option value="2" {{#loglevel_2}}selected{{/loglevel_2}}>2 - Errors and panics</option>
+                <option value="3" {{#loglevel_3}}selected{{/loglevel_3}}>3 - Warnings, errors, panics</option>
+                <option value="4" {{#loglevel_4}}selected{{/loglevel_4}}>4 - Notes, warnings, errors, panics</option>
+                <option value="5" {{#loglevel_5}}selected{{/loglevel_5}}>5 - Debug (all messages)</option>
+            </select>
+        </div>
+    </div>
 
-                <div class="info-box">
-                    <strong>Note:</strong> Changes will take effect after reboot. Some settings may require a complete power cycle.
-                </div>
+    <div class="info-box">
+        <strong>Note:</strong> Changes will take effect after reboot. Some settings may require a complete power cycle.
+    </div>
 
-                <div class="center margin">
-                    <button type="submit" name="action" value="save" class="button">Save Configuration</button>
-                    <button type="submit" name="action" value="save_reboot" class="button">Save & Reboot</button>
-                    <button type="submit" name="action" value="save_shutdown" class="button">Save & Shutdown</button>
-                    <a href="/" class="button button-danger">Cancel</a>
-                </div>
-            </form>
-            
-            <!-- Sound test form moved outside main form -->
-            {{#sound_test_available}}
-            <div class="form-section">
-                <h3>Audio Test</h3>
-                <form method="POST" action="/config">
-                    <div class="form-group">
-                        <label>Audio Test:</label>
-                        <div class="current-value">Test audio output functionality (computer generated sound runs for about 6 seconds)</div>
-                        <input type="hidden" name="action" value="soundtest">
-                        <button type="submit" class="button">Execute Sound Test</button>
-                    </div>
-                </form>
-                
-                {{#message}}
-                <div class="message">{{message}}</div>
-                {{/message}}
-            </div>
-            {{/sound_test_available}}
-            
-            {{^sound_test_available}}
-            <div class="form-section">
-                <h3>Audio Test</h3>
-                <div class="form-group">
-                    <label>Audio Test:</label>
-                    <div class="current-value unavailable">Sound test not available (not in CDROM mode or sound not enabled)</div>
-                </div>
-            </div>
-            {{/sound_test_available}}
+    <div class="center margin">
+        <button type="submit" name="action" value="save" class="button">Save Configuration</button>
+        <button type="submit" name="action" value="save_reboot" class="button">Save & Reboot</button>
+        <button type="submit" name="action" value="save_shutdown" class="button">Save & Shutdown</button>
+        <a href="/" class="button button-danger">Cancel</a>
+    </div>
+</form>
+
+<!-- Sound test form moved outside main form -->
+{{#sound_test_available}}
+<div class="form-section">
+    <h3>Audio Test</h3>
+    <form method="POST" action="/config">
+        <div class="form-group">
+            <label>Audio Test:</label>
+            <div class="current-value">Test audio output functionality (computer generated sound runs for about 6 seconds)</div>
+            <input type="hidden" name="action" value="soundtest">
+            <button type="submit" class="button">Execute Sound Test</button>
+        </div>
+    </form>
+    {{#message}}
+    <div class="message">{{message}}</div>
+    {{/message}}
+</div>
+{{/sound_test_available}}
+
+{{^sound_test_available}}
+<div class="form-section">
+    <h3>Audio Test</h3>
+    <div class="form-group">
+        <label>Audio Test:</label>
+        <div class="current-value unavailable">Sound test not available (not in CDROM mode or sound not enabled)</div>
+    </div>
+</div>
+{{/sound_test_available}}
 

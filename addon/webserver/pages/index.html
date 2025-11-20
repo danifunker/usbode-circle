@@ -1,37 +1,35 @@
-	{{#cdrom}}
-        <div class="content">
-                <h3>File Selection</h3>
-                <div class="info-box">
-                    <p>Current File Loaded: <strong>{{image_name}}</strong></p>
-                </div>
-                <h4>Available Files</h4>
-                {{#links}}
-                <div class="file-link file-link-even{{{style}}}"><a href="/mount?file={{file_name}}">{{display_name}}{{current}}</a></div>
-                {{/links}}
-        
-		{{#pagination}}
-		<div class="pagination">
-		    {{#has_first}}
-		    <a href="/?page=1">1</a>
-		    {{/has_first}}
-		    
-		    {{#has_prev}}
-		    <a href="/?page={{prev_page}}">{{prev_page}}</a>
-		    {{/has_prev}}
-		    
-		    <span class="current">{{current_page}}</span>
-		    
-		    {{#has_next}}
-		    <a href="/?page={{next_page}}">{{next_page}}</a>
-		    {{/has_next}}
-		    
-		    {{#has_last}}
-		    <a href="/?page={{last_page}}">{{last_page}}</a>
-		    {{/has_last}}
-		</div>
-		{{/pagination}}
-        </div>
-	{{/cdrom}}
-	{{^cdrom}}
-		<p>Device is in USB Mass Storage Mode</p>
-	{{/cdrom}}
+{{#cdrom}}
+	<h3>File Selection</h3>
+	<div class="info-box">
+		<p>Current File Loaded: <strong>{{image_name}}</strong></p>
+	</div>
+	<h4>Available Files</h4>
+	{{#links}}
+		<div class="file{{{style}}}"><a href="/mount?file={{file_name}}">{{display_name}}</a> {{current}}</div>
+	{{/links}}
+	
+	{{#pagination}}
+	<div class="pagination">
+		{{#has_first}}
+		<a href="/?page=1">1</a>
+		{{/has_first}}
+		
+		{{#has_prev}}
+		<a href="/?page={{prev_page}}">{{prev_page}}</a>
+		{{/has_prev}}
+		
+		<span class="current">{{current_page}}</span>
+		
+		{{#has_next}}
+		<a href="/?page={{next_page}}">{{next_page}}</a>
+		{{/has_next}}
+		
+		{{#has_last}}
+		<a href="/?page={{last_page}}">{{last_page}}</a>
+		{{/has_last}}
+	</div>
+	{{/pagination}}
+{{/cdrom}}
+{{^cdrom}}
+	<p>Device is in USB Mass Storage Mode</p>
+{{/cdrom}}

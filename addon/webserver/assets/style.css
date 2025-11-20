@@ -5,16 +5,17 @@ a:visited {color: #0066CC;}
 .container {width: 100%; margin: 0; padding: 0;}
 .header {background-color: #3A7CA5; padding: 10px; height: 80px; text-align: center; color: #FFFFFF;}
 .header h1, .header h2 {color: #FFFFFF; margin: 5px 0;}
-.header img { float: left; height: 100%; margin-right:10px; }
+.header a { display: block; float: left; width: 80px; height: 80px; margin-right:10px; color: transparent; font-size: 0; background: url('/logo.jpg') no-repeat; }
 .content {padding: 10px; background-color: #FFFFFF; min-height: 300px;}
 .footer {background-color: #3A7CA5; padding: 10px; text-align: center; color: #FFFFFF;}
 p {margin-bottom: 10px;}
 .button {background-color: #4CAF50; padding: 7px 15px; text-decoration: none; border: 1px solid #2E8B57; color: #FFFFFF; margin: 5px; display: inline-block;}
 .info-box {background-color: #F5F5F5; padding: 10px; margin: 10px 0;}
-.warning {background-color: #FFDDDD; padding: 10px; margin: 10px 0; color: #990000;}
-.file-link {padding: 8px; margin: 5px 0; display: block; font-size: 16px; word-wrap: break-word; overflow-wrap: break-word;}
-.file-link-even {background-color: #E3F2FD;}
-.file-link-odd {background-color: #BBDEFB;}
+.message.warning {background-color: #FFDDDD; padding: 10px; margin: 10px 0; color: #990000;}
+.file {padding: 8px; margin: 5px 0; display: block; font-size: 16px; word-wrap: break-word; overflow-wrap: break-word;}
+.file {background-color: #E3F2FD;}
+.file:nth-child(odd) {background-color: #BBDEFB;}
+.file.current {font-weight:bold; border:2px solid #4CAF50;}
 .header-bar {background-color: #2C5F7C; color: #FFFFFF; padding: 5px;}
 .usb-info {background-color: #E3F2FD; border-top: 1px solid #BBDEFB; padding: 5px; text-align: center; margin-top: 20px;}
 .build-info {font-size: 9px; text-align: left; color: #CCCCCC; padding: 5px 0 0 5px; margin-top: 2px;}
@@ -24,8 +25,8 @@ p {margin-bottom: 10px;}
 .pagination a:hover {background-color: #BBDEFB;}
 .page-info {text-align: center; margin: 5px 0; font-size: 14px; color: #666;}
 #log {width:80%; height:600px; border:1px solid #ccc; padding:8px; overflow-y:scroll; overflow-x:auto; font-family:monospace; white-space:pre; background-color:#f9f9f9;}
-.current {font-weight:bold; border:2px solid #4CAF50;}
 .center {text-align: center;}
 .margin {margin: 30px 0;}
 .message {background-color: #E3F2FD; padding: 10px; margin: 10px 0; border-left: 4px solid #2196F3;}
 .unavailable {color: #666; font-style: italic;}
+.form-group {margin-top: 10px;}
