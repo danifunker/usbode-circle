@@ -170,7 +170,7 @@ bool SCSITBService::RefreshCache() {
 	//LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
         const char* ext = strrchr(fno.fname, '.');
         if (ext != nullptr) {
-            if (iequals(ext, ".iso") || iequals(ext, ".bin")) {
+            if (iequals(ext, ".iso") || iequals(ext, ".bin") || iequals(ext, ".mds")) {
 		if (m_FileCount >= MAX_FILES)
                     break;
 		//LOGNOTE("SCSITBService::RefreshCache() adding file %s to m_FileEntries", fno.fname);
@@ -215,37 +215,45 @@ bool SCSITBService::RefreshCache() {
 }
 
 void SCSITBService::Run() {
-	LOGNOTE("SCSITBService::Run started");
+    LOGNOTE("SCSITBService::Run started");
 
-	while (true) {
+    while (true) {
+        m_Lock.Acquire();
+        
+        if (next_cd > -1) {
+            if ((size_t)next_cd > m_FileCount) {
+                next_cd = -1;
+                m_Lock.Release();
+                continue;
+            }
 
-		m_Lock.Acquire ();
-		// Do we have a next cd?
-		if (next_cd > -1) {
+            // Load the image
+            char* imageName = m_FileEntries[next_cd].name;
+            IImageDevice* imageDevice = loadImageDevice(imageName);  // Changed
 
-			// Check if it's valid
-			if ((size_t)next_cd > m_FileCount) {
-				next_cd = -1;
-				continue;
-			}
+            if (imageDevice == nullptr) {
+                LOGERR("Failed to load image: %s", imageName);
+                next_cd = -1;
+                m_Lock.Release();
+                continue;
+            }
+            
+            LOGNOTE("Loaded image: %s (format: %d, has subchannels: %s)", 
+                    imageName, 
+                    (int)imageDevice->GetFileType(),
+                    imageDevice->HasSubchannelData() ? "yes" : "no");
+            
+            // Set the new device in the CD gadget
+            cdromservice->SetDevice(imageDevice);
 
-			// Load it
-			char* imageName = m_FileEntries[next_cd].name;
-			ICueDevice* cueBinFileDevice = loadCueBinFileDevice(imageName);
-			
-			// Set the new device in the CD gadget
-    			cdromservice->SetDevice(cueBinFileDevice);
+            // Save current mounted image name
+            configservice->SetCurrentImage(imageName);
 
-			// Save current mounted image name
-			// TODO only if different
-			configservice->SetCurrentImage(imageName);
-
-			current_cd = next_cd;
-
-			// Mark done
-			next_cd = -1;
-		}
-		m_Lock.Release ();
-		CScheduler::Get()->MsSleep(100);
-	}
+            current_cd = next_cd;
+            next_cd = -1;
+        }
+        
+        m_Lock.Release();
+        CScheduler::Get()->MsSleep(100);
+    }
 }

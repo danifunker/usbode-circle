@@ -32,7 +32,7 @@
 #include <usbcdgadget/usbcdgadgetendpoint.h>
 #include <circle/usb/usb.h>
 #include <cueparser/cueparser.h>
-#include <discimage/cuebinfile.h>
+#include <discimage/imagedevice.h>
 
 #ifndef USB_GADGET_DEVICE_ID_CD
 #define USB_GADGET_DEVICE_ID_CD 0x1d6b
@@ -643,13 +643,13 @@ public:
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
     /// \note pDevice must be initialized yet, when it is specified here.
     /// \note SetDevice() has to be called later, when pDevice is not specified here.
-    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, ICueDevice *pDevice = nullptr);
+    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice = nullptr);
 
     ~CUSBCDGadget(void);
 
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
     /// \note Call this, if pDevice has not been specified in the constructor.
-    void SetDevice(ICueDevice *pDevice);
+    void SetDevice(IImageDevice *pDevice);
 
     /// \brief Call this periodically from TASK_LEVEL to allow I/O operations!
     void Update(void);
@@ -715,6 +715,9 @@ private:
     // TOC formatting helpers
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
+
+    bool m_readSubchannels = false;
+    u8 m_subchannelMode = 0;
 
     // ========================================================================
     // CUE Sheet and Track Management
@@ -848,7 +851,7 @@ private:
     // Instance Variables - Device and USB State
     // ========================================================================
 
-    ICueDevice *m_pDevice;               // CUE-aware block device
+    IImageDevice *m_pDevice;             // Image device (Plugin System)
     CUSBCDGadgetEndpoint *m_pEP[NumEPs]; // Endpoint objects
 
     TCDState m_nState = Init; // SCSI command state machine

@@ -1,11 +1,11 @@
 //
-// Utils for cue/bin manipulation
+// Utils for disc image manipulation
 //
-// This is the entry point for listing and mounting CD images. All parts
+// This is the entry point for listing and mounting disc images. All parts
 // of USBODE will use this, not just the SCSI Toolbox
 //
 //
-// Copyright (C) 2025 Ian Cass
+// Copyright (C) 2025 Ian Cass, Dani Sarfati
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -21,8 +21,10 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "util.h"
+#include "cuebinfile.h"
+#include "mdsfile.h"
 
-LOGMODULE("cueparser-util");
+LOGMODULE("discimage-util");
 
 char tolower(char c) {
     if (c >= 'A' && c <= 'Z')
@@ -38,6 +40,18 @@ bool hasCueExtension(const char* imageName) {
                tolower(ext[1]) == 'c' &&
                tolower(ext[2]) == 'u' &&
                tolower(ext[3]) == 'e';
+    }
+    return false;
+}
+
+bool hasMdsExtension(const char* imageName) {
+    size_t len = strlen(imageName);
+    if (len >= 4) {
+        const char* ext = imageName + len - 4;
+        return tolower(ext[0]) == '.' &&
+               tolower(ext[1]) == 'm' &&
+               tolower(ext[2]) == 'd' &&
+               tolower(ext[3]) == 's';
     }
     return false;
 }
@@ -106,7 +120,7 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
     FIL* file = new FIL();
     FRESULT result = f_open(file, fullPath, FA_READ);
     if (result != FR_OK) {
-        LOGERR("Cannot open file for reading");
+        LOGERR("Cannot open file for reading: %s", fullPath);
         delete file;
         return false;
     }
@@ -134,52 +148,117 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
     return true;
 }
 
-ICueDevice* loadCueBinFileDevice(const char* imageName) {
+// ============================================================================
+// MDS Plugin Loader
+// ============================================================================
+IImageDevice* loadMDSFileDevice(const char* imageName) {
+    LOGNOTE("Loading MDS image: %s", imageName);
+    
     MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+    
+    // Construct full path for MDS file
+    char fullPath[255];
+    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
+
+    // Read MDS file into memory
+    char* mds_str = nullptr;
+    if (!ReadFileToString(fullPath, &mds_str)) {
+        LOGERR("Failed to read MDS file: %s", fullPath);
+        return nullptr;
+    }
+
+    // Create MDS device
+    CMDSFileDevice* mdsDevice = new CMDSFileDevice(fullPath, mds_str, mediaType);
+    if (!mdsDevice->Init()) {
+        LOGERR("Failed to initialize MDS device: %s", imageName);
+        delete mdsDevice;
+        return nullptr;
+    }
+
+    LOGNOTE("Successfully loaded MDS device: %s (has subchannels: %s)", 
+            imageName, 
+            mdsDevice->HasSubchannelData() ? "yes" : "no");
+    
+    // Returns IMDSDevice*, which is an IImageDevice*
+    return mdsDevice;
+}
+
+// ============================================================================
+// CUE/BIN/ISO Plugin Loader
+// ============================================================================
+IImageDevice* loadCueBinIsoFileDevice(const char* imageName) {
+    LOGNOTE("Loading CUE/BIN/ISO image: %s", imageName);
+    
+    MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+    
     // Construct full path
-    char fullPath[255];  // FIXME limits
+    char fullPath[255];
     snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
 
     FIL* imageFile = new FIL();
     char* cue_str = nullptr;
 
-    // Is this a bin?
+    // Handle BIN files - look for matching CUE
     if (hasBinExtension(fullPath)) {
-        //LOGNOTE("This is a bin file, changing to cue");
+        LOGNOTE("BIN file detected, looking for CUE file");
         change_extension_to_cue(fullPath);
     }
 
-    // Is this a cue?
+    // Handle CUE files
     if (hasCueExtension(fullPath)) {
-        // Load the cue
-        //LOGNOTE("This is a cue file, loading cue");
+        LOGNOTE("Loading CUE sheet from: %s", fullPath);
         if (!ReadFileToString(fullPath, &cue_str)) {
+            LOGERR("Failed to read CUE file: %s", fullPath);
+            delete imageFile;
             return nullptr;
         }
-        LOGNOTE("Loaded cue %s", cue_str);
+        LOGNOTE("Loaded CUE sheet");
 
-        // Load a bin file with the same name
+        // Switch to BIN file for data
         change_extension_to_bin(fullPath);
-        //LOGNOTE("Changed to bin %s", fullPath);
     }
 
-    // Load the image
-    //LOGNOTE("Opening image file %s", fullPath);
-    FRESULT Result = f_open(imageFile, fullPath, FA_READ);
-    if (Result != FR_OK) {
-        LOGERR("Cannot open image file for reading");
+    // Open the data file (BIN or ISO)
+    LOGNOTE("Opening data file: %s", fullPath);
+    FRESULT result = f_open(imageFile, fullPath, FA_READ);
+    if (result != FR_OK) {
+        LOGERR("Cannot open data file for reading: %s (error %d)", fullPath, result);
         delete imageFile;
+        if (cue_str) delete[] cue_str;
         return nullptr;
     }
-    LOGNOTE("Opened image file %s", fullPath);
+    LOGNOTE("Opened data file successfully");
 
-    // Create our device
-    ICueDevice* ccueBinFileDevice = new CCueBinFileDevice(imageFile, cue_str, mediaType);
+    // Create device
+    CCueBinFileDevice* device = new CCueBinFileDevice(imageFile, cue_str, mediaType);
 
-    // Cleanup
+    // Cleanup - CCueBinFileDevice takes ownership of cue_str if provided
     if (cue_str != nullptr)
         delete[] cue_str;
 
-    return ccueBinFileDevice;
+    LOGNOTE("Successfully loaded CUE/BIN/ISO device: %s", imageName);
+    
+    // Returns ICueDevice*, which is an IImageDevice*
+    return device;
 }
 
+// ============================================================================
+// Main Entry Point - Plugin Selection
+// ============================================================================
+IImageDevice* loadImageDevice(const char* imageName) {
+    LOGNOTE("loadImageDevice called for: %s", imageName);
+    
+    // Plugin selection based on file extension
+    if (hasMdsExtension(imageName)) {
+        LOGNOTE("Detected MDS format - using MDS plugin");
+        return loadMDSFileDevice(imageName);
+    } 
+    else if (hasCueExtension(imageName) || hasBinExtension(imageName) || hasIsoExtension(imageName)) {
+        LOGNOTE("Detected CUE/BIN/ISO format - using CUE plugin");
+        return loadCueBinIsoFileDevice(imageName);
+    }
+    else {
+        LOGERR("Unknown file format: %s", imageName);
+        return nullptr;
+    }
+}

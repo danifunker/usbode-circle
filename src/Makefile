@@ -36,6 +36,7 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(USBODEHOME)/addon/usbcdgadget/libusbcdgadget.a \
 	$(USBODEHOME)/addon/usbmsdgadget/libusbmsdgadget.a \
 	$(USBODEHOME)/addon/discimage/libdiscimage.a \
+	$(USBODEHOME)/addon/mdsparser/libmdsparser.a \
 	$(USBODEHOME)/addon/filelogdaemon/libfilelogdaemon.a \
 	$(USBODEHOME)/addon/setupstatus/libsetupstatus.a \
 	$(USBODEHOME)/addon/upgradestatus/libupgradestatus.a \
