@@ -25,7 +25,6 @@ CCHDFileDevice::~CCHDFileDevice() {
 
 bool CCHDFileDevice::ParseTrackMetadata() {
     // Get track metadata from CHD
-    // CHD stores CD metadata in a specific format string
     char metadata[256];
     uint32_t metadata_length = sizeof(metadata);
     uint32_t metadata_index = 0;
@@ -47,40 +46,51 @@ bool CCHDFileDevice::ParseTrackMetadata() {
                 break;
         }
         
-        // Parse metadata string: "TRACK:track TYPE:type SUBTYPE:subtype FRAMES:frames"
+        // Parse metadata string
         CHDTrackInfo& track = m_tracks[m_numTracks];
+        char typeStr[32];
         
-        if (sscanf(metadata, "TRACK:%u TYPE:%u SUBTYPE:%*u FRAMES:%u",
-                   &track.trackNumber, &track.trackType, &track.frames) == 3) {
+        // Try CHT2 format first (newer format with PREGAP)
+        if (sscanf(metadata, "TRACK:%u TYPE:%31s SUBTYPE:%*s FRAMES:%u",
+                   &track.trackNumber, typeStr, &track.frames) == 3) {
             
             track.startLBA = (m_numTracks > 0) ? 
                 (m_tracks[m_numTracks - 1].startLBA + m_tracks[m_numTracks - 1].frames) : 0;
             
-            // Determine data size based on track type
-            switch (track.trackType) {
-                case CD_TRACK_MODE1:
-                case CD_TRACK_MODE2_FORM1:
-                    track.dataSize = 2048;
-                    break;
-                case CD_TRACK_MODE1_RAW:
-                case CD_TRACK_MODE2_RAW:
-                case CD_TRACK_AUDIO:
-                    track.dataSize = 2352;
-                    break;
-                case CD_TRACK_MODE2:
-                case CD_TRACK_MODE2_FORM_MIX:
-                    track.dataSize = 2336;
-                    break;
-                case CD_TRACK_MODE2_FORM2:
-                    track.dataSize = 2324;
-                    break;
-                default:
-                    track.dataSize = 2352;
-                    break;
+            // Parse type string to track type enum
+            if (strcmp(typeStr, "AUDIO") == 0) {
+                track.trackType = CD_TRACK_AUDIO;
+                track.dataSize = 2352;
+            } else if (strcmp(typeStr, "MODE1") == 0 || strcmp(typeStr, "MODE1_2048") == 0) {
+                track.trackType = CD_TRACK_MODE1;
+                track.dataSize = 2048;
+            } else if (strcmp(typeStr, "MODE1_RAW") == 0 || strcmp(typeStr, "MODE1_2352") == 0) {
+                track.trackType = CD_TRACK_MODE1_RAW;
+                track.dataSize = 2352;
+            } else if (strcmp(typeStr, "MODE2") == 0 || strcmp(typeStr, "MODE2_2336") == 0) {
+                track.trackType = CD_TRACK_MODE2;
+                track.dataSize = 2336;
+            } else if (strcmp(typeStr, "MODE2_FORM1") == 0 || strcmp(typeStr, "MODE2_2048") == 0) {
+                track.trackType = CD_TRACK_MODE2_FORM1;
+                track.dataSize = 2048;
+            } else if (strcmp(typeStr, "MODE2_FORM2") == 0 || strcmp(typeStr, "MODE2_2324") == 0) {
+                track.trackType = CD_TRACK_MODE2_FORM2;
+                track.dataSize = 2324;
+            } else if (strcmp(typeStr, "MODE2_FORM_MIX") == 0) {
+                track.trackType = CD_TRACK_MODE2_FORM_MIX;
+                track.dataSize = 2336;
+            } else if (strcmp(typeStr, "MODE2_RAW") == 0 || strcmp(typeStr, "MODE2_2352") == 0) {
+                track.trackType = CD_TRACK_MODE2_RAW;
+                track.dataSize = 2352;
+            } else {
+                // Default to MODE1_RAW if unknown
+                LOGWARN("Unknown track type: %s, defaulting to MODE1_RAW", typeStr);
+                track.trackType = CD_TRACK_MODE1_RAW;
+                track.dataSize = 2352;
             }
             
-            LOGNOTE("Track %d: Type=%d, Start=%u, Frames=%u, DataSize=%u",
-                    track.trackNumber, track.trackType, track.startLBA, 
+            LOGNOTE("Track %d: Type=%s (%d), Start=%u, Frames=%u, DataSize=%u",
+                    track.trackNumber, typeStr, track.trackType, track.startLBA, 
                     track.frames, track.dataSize);
             
             m_numTracks++;
