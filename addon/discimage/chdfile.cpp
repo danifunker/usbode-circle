@@ -273,16 +273,16 @@ int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
         u32 readPosition = frameStartInHunk + offsetInSector;
 
         // DEBUG CODE - log first audio frame
-        if (absoluteFrame == 2912 && bytesRead == 0)
-        {
-            LOGNOTE("First audio frame: hunk=%u, frameInHunk=%u, readPos=%u",
-                    hunkNum, frameInHunk, readPosition);
-            LOGNOTE("First 16 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                    hunkBuf[readPosition + 0], hunkBuf[readPosition + 1], hunkBuf[readPosition + 2], hunkBuf[readPosition + 3],
-                    hunkBuf[readPosition + 4], hunkBuf[readPosition + 5], hunkBuf[readPosition + 6], hunkBuf[readPosition + 7],
-                    hunkBuf[readPosition + 8], hunkBuf[readPosition + 9], hunkBuf[readPosition + 10], hunkBuf[readPosition + 11],
-                    hunkBuf[readPosition + 12], hunkBuf[readPosition + 13], hunkBuf[readPosition + 14], hunkBuf[readPosition + 15]);
-        }
+        // if (absoluteFrame == 2912 && bytesRead == 0)
+        // {
+        //     LOGDBG("First audio frame: hunk=%u, frameInHunk=%u, readPos=%u",
+        //             hunkNum, frameInHunk, readPosition);
+        //     LOGDBG("First 16 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+        //             hunkBuf[readPosition + 0], hunkBuf[readPosition + 1], hunkBuf[readPosition + 2], hunkBuf[readPosition + 3],
+        //             hunkBuf[readPosition + 4], hunkBuf[readPosition + 5], hunkBuf[readPosition + 6], hunkBuf[readPosition + 7],
+        //             hunkBuf[readPosition + 8], hunkBuf[readPosition + 9], hunkBuf[readPosition + 10], hunkBuf[readPosition + 11],
+        //             hunkBuf[readPosition + 12], hunkBuf[readPosition + 13], hunkBuf[readPosition + 14], hunkBuf[readPosition + 15]);
+        // }
 
         // How much can we read from this sector?
         u32 bytesLeftInSector = sectorBytes - offsetInSector;
@@ -292,7 +292,6 @@ int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
             bytesToCopy = bytesLeftInSector;
         }
 
-        // Copy data (skip subchannel at end of frame)
         // Copy data (skip subchannel at end of frame)
         memcpy(dest + bytesRead, hunkBuf + readPosition, bytesToCopy);
 
