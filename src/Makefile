@@ -35,6 +35,10 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(USBODEHOME)/addon/webserver/libwebserver.a \
 	$(USBODEHOME)/addon/usbcdgadget/libusbcdgadget.a \
 	$(USBODEHOME)/addon/usbmsdgadget/libusbmsdgadget.a \
+	$(USBODEHOME)/addon/lzma/liblzma.a \
+	$(USBODEHOME)/addon/zlib/libz.a \
+	$(USBODEHOME)/addon/zstd/libzstd.a \
+	$(USBODEHOME)/addon/libchdr/libchdr.a \
 	$(USBODEHOME)/addon/discimage/libdiscimage.a \
 	$(USBODEHOME)/addon/mdsparser/libmdsparser.a \
 	$(USBODEHOME)/addon/filelogdaemon/libfilelogdaemon.a \

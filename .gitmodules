@@ -5,3 +5,4 @@
 [submodule "addon/libchdr-src"]
 	path = addon/libchdr-src
 	url = https://github.com/rtissera/libchdr.git
+	ignore = dirty
