@@ -6,7 +6,7 @@
 "                </div>\n"
 "                <h4>Available Files</h4>\n"
 "                {{#links}}\n"
-"                <div class=\"file-link file-link-even\"{{{style}}}><a href=\"/mount?file={{file_name}}\">{{display_name}}{{current}}</a></div>\n"
+"                <div class=\"file-link file-link-even{{{style}}}\"><a href=\"/mount?file={{file_name}}\">{{display_name}}{{current}}</a></div>\n"
 "                {{/links}}\n"
 "        \n"
 "\t\t{{#pagination}}\n"

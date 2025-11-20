@@ -44,6 +44,7 @@ handlers/shutdownpage.o: pages/shutdown.h
 handlers/logpage.o: pages/log.h
 handlers/asset.o: assets/logo.h
 handlers/asset.o: assets/favicon.h
+handlers/asset.o: assets/style.h
 
 pages/%.h: pages/%.html
 	@echo "  CONVERTTOOL   $@"
@@ -56,6 +57,17 @@ assets/%.h: assets/%.ico
 assets/%.h: assets/%.jpg
 	@echo "  XXD   $@"
 	@xxd -i $< $@
+
+assets/%.h: assets/%.css
+	@echo "  EMBED $@"
+	@in="$<"; out="$@"; \
+	var="assets_$${in##*/}"; var="$${var//./_}"; \
+	printf 'const char %s[] =\n' "$$var" > "$$out"; \
+	while IFS= read -r line || [ -n "$$line" ]; do \
+		esc="$$(printf '%s' "$$line" | sed 's/\\/\\\\/g; s/"/\\"/g')"; \
+		printf '"%s\\n"\n' "$$esc" >> "$$out"; \
+	done < "$$in"; \
+	printf ';\n\nconst unsigned int %s_len = sizeof(%s) - 1;\n' "$$var" "$$var" >> "$$out"
 
 .PHONY: clean
 
