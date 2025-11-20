@@ -101,3 +101,6 @@ buildtime.h
 dist64/
 imgout/
 buildinfo.json
+
+addon/webserver/pages/*.h
+addon/webserver/assets/*.h

@@ -61,7 +61,7 @@ assets/%.h: assets/%.jpg
 assets/%.h: assets/%.css
 	@echo "  EMBED $@"
 	@in="$<"; out="$@"; \
-	var="assets_$${in##*/}"; var="$${var//./_}"; \
+    var="assets_$${in##*/}"; var="$(echo "$$var" | tr . _)";
 	printf 'const char %s[] =\n' "$$var" > "$$out"; \
 	while IFS= read -r line || [ -n "$$line" ]; do \
 		esc="$$(printf '%s' "$$line" | sed 's/\\/\\\\/g; s/"/\\"/g')"; \
