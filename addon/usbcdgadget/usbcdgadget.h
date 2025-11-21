@@ -734,6 +734,7 @@ private:
 
     const char *m_StringDescriptor[4];
     u32 GetLeadoutLBA();
+    u32 GetMaxLBA();
 
     // Track format helpers
     int GetBlocksize();
