@@ -97,12 +97,11 @@ class CCDPlayer : public CTask {
     static CCDPlayer *s_pThis;
     CSoundBaseDevice *m_pSound;
     IImageDevice *m_pBinFileDevice;
-    u32 address;
-    u32 end_address;
-    PlayState state;
+    u32 address = 0;
+    u32 end_address = 0;
+    PlayState state = NONE;
     u8 volumeByte = 255;
-    u8 defaultVolumeByte = 255;
-
+    u8 defaultVolumeByte = 255;               
     u8 *m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
     u8 *m_WriteChunk;
     unsigned int m_BufferBytesValid = 0;

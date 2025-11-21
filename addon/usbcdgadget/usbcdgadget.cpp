@@ -387,8 +387,20 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
-
         MLOGNOTE("CUSBCDGadget::SetDevice", "Media ejected: state=NO_MEDIUM, sense=02/3a/00");
+        CTimer::Get()->MsDelay(100);
+    }
+    else
+    {
+        // Initial load: set media ready and unit attention
+        m_CDReady = true;
+        m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
+        m_SenseParams.bSenseKey = 0x06;
+        m_SenseParams.bAddlSenseCode = 0x28;
+        m_SenseParams.bAddlSenseCodeQual = 0x00;
+        bmCSWStatus = CD_CSW_STATUS_FAIL;
+        discChanged = true;
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Initial load: Set UNIT_ATTENTION, sense=06/28/00");
     }
 
     m_pDevice = dev;
@@ -431,11 +443,6 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     MLOGNOTE("CUSBCDGadget::SetDevice",
              "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
              max_lba, first_track.track_mode, first_track_blocksize);
-
-    MLOGNOTE("CUSBCDGadget::SetDevice",
-             "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
-             m_CDReady, (int)m_mediaState,
-             m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 }
 
 int CUSBCDGadget::GetBlocksize()
@@ -1657,16 +1664,16 @@ void CUSBCDGadget::HandleSCSICommand()
             setSenseData(0x02, 0x3A, 0x00); // NOT READY, MEDIUM NOT PRESENT
             m_mediaState = MediaState::NO_MEDIUM;
             sendCheckCondition();
+			CTimer::Get()->MsDelay(100);
             break;
         }
 
         if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
         {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand",
-                     "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", 
+                 "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
             setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
             sendCheckCondition();
-            CTimer::Get()->MsDelay(100);
             break;
         }
 
@@ -4090,7 +4097,7 @@ void CUSBCDGadget::Update()
 
                     // Partial reads are problematic - we can't easily handle them in the middle
                     // of a USB transfer, so treat as an error
-                    setSenseData(0x03, 0x11, 0x00); // MEDIUM ERROR / UNRECOVERED READ ERROR
+                    setSenseData(0x04, 0x11, 0x00); // MEDIUM ERROR / UNRECOVERED READ ERROR
                     sendCheckCondition();
                     return;
                 }

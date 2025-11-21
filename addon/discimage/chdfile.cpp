@@ -428,13 +428,13 @@ int CCHDFileDevice::ReadSubchannel(u32 lba, u8 *subchannel)
     memcpy(subchannel, hunkBuf + frameOffset + CD_MAX_SECTOR_DATA, CD_MAX_SUBCODE_DATA);
 
     // DEBUG: Log first subchannel read
-    if (lba == 0) {
-        LOGNOTE("ReadSubchannel LBA=0, first 16 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                subchannel[0], subchannel[1], subchannel[2], subchannel[3],
-                subchannel[4], subchannel[5], subchannel[6], subchannel[7],
-                subchannel[8], subchannel[9], subchannel[10], subchannel[11],
-                subchannel[12], subchannel[13], subchannel[14], subchannel[15]);
-    }
+    // if (lba == 0) {
+    //     LOGNOTE("ReadSubchannel LBA=0, first 16 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+    //             subchannel[0], subchannel[1], subchannel[2], subchannel[3],
+    //             subchannel[4], subchannel[5], subchannel[6], subchannel[7],
+    //             subchannel[8], subchannel[9], subchannel[10], subchannel[11],
+    //             subchannel[12], subchannel[13], subchannel[14], subchannel[15]);
+    // }
 
     delete[] hunkBuf;
     return CD_MAX_SUBCODE_DATA;
