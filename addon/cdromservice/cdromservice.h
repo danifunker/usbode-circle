@@ -32,18 +32,21 @@
 #include <usbcdgadget/usbcdgadget.h>
 #include <discimage/imagedevice.h>  // Changed from cuedevice.h
 
+
 class CDROMService : public CTask {
-   public:
-    CDROMService();
+public:
+    CDROMService(u16 vid, u16 pid);
     ~CDROMService(void);
     boolean Initialize();
-    void SetDevice(IImageDevice* pDevice); 
+    void SetDevice(IImageDevice* pDevice);
     void Run(void);
 
-   private:
+private:
     CUSBCDGadget* m_CDGadget = nullptr;
     static CDROMService *s_pThis;
     bool isInitialized = false;
+    u16 m_vid = 0;
+    u16 m_pid = 0;
 };
 
 #endif

@@ -659,6 +659,7 @@ public:
     // void SetDeviceBlocks(u64 nBlocks);
     /// \return Capacity of the block device in number of blocks (a 512 bytes)
     // u64 GetBlocks (void) const;
+    void ConfigureUSBIds(bool bClassicMacMode, u16 usUserVID = 0, u16 usUserPID = 0);
 
 protected:
     // ========================================================================

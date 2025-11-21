@@ -261,9 +261,14 @@ TShutdownMode CKernel::Run(void) {
     }
     LOGNOTE("Partition 1 (data/images) mounted successfully");
         
+
+    // Read VID/PID from config (with defaults)
+    u16 vendorId = config->GetProperty("usbcdrom_vid", (unsigned)USB_GADGET_VENDOR_ID, "usbode");
+    u16 productId = config->GetProperty("usbcdrom_pid", (unsigned)USB_GADGET_DEVICE_ID_CD, "usbode");
+
     // Start services that depend on both partitions
-    new CDROMService();
-    LOGNOTE("Started CDROM service");
+    new CDROMService(vendorId, productId);
+    LOGNOTE("Started CDROM service with VID: %04x PID: %04x", vendorId, productId);
 
     new SCSITBService();
     LOGNOTE("Started SCSITB service");
