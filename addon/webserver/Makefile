@@ -43,8 +43,11 @@ handlers/configpage.o: pages/config.h
 handlers/shutdownpage.o: pages/shutdown.h
 handlers/logpage.o: pages/log.h
 handlers/asset.o: assets/logo.h
+handlers/asset.o: assets/logo-text.h
 handlers/asset.o: assets/favicon.h
 handlers/asset.o: assets/style.h
+handlers/asset.o: assets/font-eot.h
+handlers/asset.o: assets/font-woff.h
 
 pages/%.h: pages/%.html
 	@echo "  CONVERTTOOL   $@"
@@ -55,6 +58,18 @@ assets/%.h: assets/%.ico
 	@xxd -i $< $@
 
 assets/%.h: assets/%.jpg
+	@echo "  XXD   $@"
+	@xxd -i $< $@
+
+assets/%.h: assets/%.png
+	@echo "  XXD   $@"
+	@xxd -i $< $@
+
+assets/%.h: assets/%.eot
+	@echo "  XXD   $@"
+	@xxd -i $< $@
+
+assets/%.h: assets/%.woff
 	@echo "  XXD   $@"
 	@xxd -i $< $@
 

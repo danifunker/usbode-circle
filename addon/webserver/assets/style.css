@@ -1,32 +1,201 @@
-body {background-color: #EAEAEA; color: #333333; font-family: "Times New Roman", serif; margin: 0; padding: 0;}
-h1, h2, h3 {color: #1E4D8C;}
-a {color: #0066CC;}
-a:visited {color: #0066CC;}
-.container {width: 100%; margin: 0; padding: 0;}
-.header {background-color: #3A7CA5; padding: 10px; height: 80px; text-align: center; color: #FFFFFF;}
-.header h1, .header h2 {color: #FFFFFF; margin: 5px 0;}
-.header a { display: block; float: left; width: 80px; height: 80px; margin-right:10px; color: transparent; font-size: 0; background: url('/logo.jpg') no-repeat; }
-.content {padding: 10px; background-color: #FFFFFF; min-height: 300px;}
-.footer {background-color: #3A7CA5; padding: 10px; text-align: center; color: #FFFFFF;}
-p {margin-bottom: 10px;}
-.button {background-color: #4CAF50; padding: 7px 15px; text-decoration: none; border: 1px solid #2E8B57; color: #FFFFFF; margin: 5px; display: inline-block;}
-.info-box {background-color: #F5F5F5; padding: 10px; margin: 10px 0;}
-.message.warning {background-color: #FFDDDD; padding: 10px; margin: 10px 0; color: #990000;}
-.file {padding: 8px; margin: 5px 0; display: block; font-size: 16px; word-wrap: break-word; overflow-wrap: break-word;}
-.file {background-color: #E3F2FD;}
-.file:nth-child(odd) {background-color: #BBDEFB;}
-.file.current {font-weight:bold; border:2px solid #4CAF50;}
-.header-bar {background-color: #2C5F7C; color: #FFFFFF; padding: 5px;}
-.usb-info {background-color: #E3F2FD; border-top: 1px solid #BBDEFB; padding: 5px; text-align: center; margin-top: 20px;}
-.build-info {font-size: 9px; text-align: left; color: #CCCCCC; padding: 5px 0 0 5px; margin-top: 2px;}
-.pagination {display: flex; justify-content: center; margin: 15px 0; background-color: #F5F5F5; padding: 8px; border-radius: 3px;}
-.pagination a, .pagination span {margin: 0 3px; padding: 4px 8px; text-decoration: none; color: #0066CC; border: 1px solid #BBDEFB; background-color: #E3F2FD;}
-.pagination .current {background-color: #3A7CA5; color: #FFFFFF; border-color: #2C5F7C;}
-.pagination a:hover {background-color: #BBDEFB;}
-.page-info {text-align: center; margin: 5px 0; font-size: 14px; color: #666;}
-#log {width:80%; height:600px; border:1px solid #ccc; padding:8px; overflow-y:scroll; overflow-x:auto; font-family:monospace; white-space:pre; background-color:#f9f9f9;}
-.center {text-align: center;}
-.margin {margin: 30px 0;}
-.message {background-color: #E3F2FD; padding: 10px; margin: 10px 0; border-left: 4px solid #2196F3;}
-.unavailable {color: #666; font-style: italic;}
-.form-group {margin-top: 10px;}
+/* Modern DOS 9x16 Regular font - LICENSE CC0 1.0 Universal - by Jayvee Enaguas https://tilde.club/~harvettfox96/ */
+@font-face {
+    font-family: 'modern_dos_9x16regular';
+    src: url('font-eot.eot');
+    src: url('font-eot.eot?#iefix') format('embedded-opentype'),
+         url('font-woff.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+body {
+	font-family: 'modern_dos_9x16regular', sans-serif; 
+    background-color: #111; 
+    color: #ccc; 
+    margin: 0; 
+    padding: 0;
+    font-size: 16px;
+    line-height: 1em;
+}
+body * {
+	font-family: 'modern_dos_9x16regular', sans-serif; 
+    font-weight: normal;
+    font-size: 16px;
+}
+strong, a, .form-group label {
+    color: #fff;
+}
+a {
+	text-decoration: none;
+}
+a:hover {
+	text-decoration: underline;
+}
+.button, button {
+	-webkit-appearance: none;
+	border: none;
+    color: #111;
+    background-color: #ddd;
+    text-decoration: none !important;
+	padding: 0 9px;
+}
+.button:hover, button.hover {
+    color: #000;
+    background-color: #fff;
+}
+.button.danger:hover, button.danger:hover {
+    color: #fff;
+    background-color: #a00;
+}
+.header {
+	position: relative;
+    margin: 32px 36px;
+    padding: 16px 27px;
+	padding-right: 108px;
+    border: 2px solid #ddd;
+}
+h1 {
+	font-size: 32px;
+	line-height: 32px;
+}
+h1, h2, h3 {
+    color: #fff;
+	margin-top: 0;
+	margin-bottom: 16px;
+}
+p {
+	margin: 0;
+}
+.header a.home {
+	position: absolute;
+	top: 50%;
+	right: 18px;
+    display: block;
+	margin-top: -41px;
+    width: 99px;
+    height: 82px;
+    background: url('/logo-text.png') 50% 50% no-repeat;
+    background-size: 100% auto;
+	color: transparent;
+	font-size: 0;
+}
+.header h2 {
+	margin-bottom: 0;
+}
+.content {
+	position: relative;
+    margin: 16px 36px;
+    padding: 16px 27px;
+	padding-top: 32px;
+    border: 2px solid #ddd;
+}
+.navigation {
+	margin-bottom: 16px;
+}
+.pagination {
+	margin: 16px 0px;
+}
+.message, .info-box {
+	padding: 16px 18px;
+	background-color: #ddd;
+	color: #111;
+	margin-bottom: 32px;
+	box-shadow: 9px 16px 0 #000;
+}
+.message strong, .info-box strong {
+	color: #000;
+}
+.message.warning {
+	background-color: #a00;
+}
+.message.success {
+	background-color: #0a0;
+}
+.message.warning, .message.warning strong, .message.success, .message.success strong  {
+	color: #fff;
+}
+.buttons {
+	text-align: center;
+	margin: 16px;
+}
+
+.usb-info {
+	margin: 16px 0;
+	margin-top: 32px;
+	border-top: 2px solid #ddd;
+	padding: 0 18px;
+	padding-top: 16px;
+	text-align: center;
+}
+.footer {
+	text-align: center;
+}
+.build-info {
+	padding: 16px 18px;
+}
+
+.files {
+    padding: 16px 18px;
+    border: 2px solid #ddd;
+}
+.file {
+	background-color: #222;
+}
+.file:nth-child(even){
+	background-color: #333;
+}
+.file.current {
+	background-color: #fff;
+	color: #333;
+}
+.file.current a {
+	color: #000;
+}
+
+.form-group {
+	margin-bottom: 16px;
+	padding: 16px 27px;
+    border: 2px solid #ddd;
+}
+.form-group label {
+	margin-bottom: 16px;
+}
+.form-group .current-value {
+	margin-top: 16px;
+}
+.form-group button {
+	margin-top: 16px;
+}
+input {
+	appearance: none;
+	-webkit-appearance: none;
+}
+input, select {
+	margin-top: 16px;
+	border: 0;
+	border-radius: 0;
+	font-family: 'modern_dos_9x16regular', sans-serif; 
+}
+select {
+	position: relative;
+	padding-right: 18px;
+}
+select::after {
+	content: '';
+	position: absolute;
+	width: 0px;
+	height: 0px;
+	border-style: solid;
+	border-width: 7px 4px 0 4px;
+	border-color: #000 transparent transparent transparent;
+	top: 50%;
+	margin-top: -4px;
+}
+#log {
+    margin: 16px 0;
+    padding: 16px 18px;
+	padding-top: 0;
+    border: 2px solid #ddd;
+    white-space: pre;
+    height: 640px;
+    overflow: scroll;
+}
