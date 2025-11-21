@@ -993,7 +993,12 @@ int CUSBCDGadget::GetLastTrackNumber()
 void CUSBCDGadget::CreateDevice(void)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "entered");
-    assert(m_pDevice);
+
+    if (!m_pDevice)
+    {
+        MLOGDEBUG("CreateDevice called but m_pDevice is null - disc not ready");
+        return;  // Just return early, don't crash
+    }
 }
 
 void CUSBCDGadget::OnSuspend(void)

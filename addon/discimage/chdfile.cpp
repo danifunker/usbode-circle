@@ -165,12 +165,30 @@ bool CCHDFileDevice::Init()
     // Determine frame size from first track
     m_frameSize = m_tracks[0].dataSize;
 
-    // Check for subchannel data
-    m_hasSubchannels = (header->hunkbytes == CD_FRAME_SIZE * CD_FRAMES_PER_HUNK);
+    // Check for subchannel data in the CHD
+    bool hasPhysicalSubchannels = (header->unitbytes == CD_FRAME_SIZE); // 2448 = has subchannel
 
-    if (m_hasSubchannels)
+    // Check if filename contains .subchan. flag to force enable subchannels
+    bool forceEnableSubchannels = (strstr(m_chd_filename, ".subchan.") != nullptr);
+
+    if (hasPhysicalSubchannels)
     {
-        LOGNOTE("CHD contains subchannel data");
+        if (forceEnableSubchannels)
+        {
+            LOGNOTE("CHD contains subchannel data - ENABLED (forced by .subchan. in filename)");
+            m_hasSubchannels = true;
+        }
+        else
+        {
+            LOGNOTE("CHD contains subchannel data (likely synthesized by chdman)");
+            LOGNOTE("Disabling subchannel reporting for compatibility - add .subchan. to filename to force enable");
+            m_hasSubchannels = false;
+        }
+    }
+    else
+    {
+        LOGNOTE("CHD does not contain subchannel data");
+        m_hasSubchannels = false;
     }
 
     // Generate CUE sheet for compatibility
@@ -343,12 +361,14 @@ u64 CCHDFileDevice::Seek(u64 ullOffset)
     return m_currentOffset;
 }
 
-u64 CCHDFileDevice::GetSize() const
-{
-    if (!m_chd)
-        return 0;
-    const chd_header *header = chd_get_header(m_chd);
-    return header ? header->logicalbytes : 0;
+u64 CCHDFileDevice::GetSize() const {
+    if (!m_chd) return 0;
+    const chd_header* header = chd_get_header(m_chd);
+    if (!header) return 0;
+    
+    // Always return size based on sector data only (2352 bytes), not including subchannel
+    u64 totalFrames = header->logicalbytes / header->unitbytes;
+    return totalFrames * CD_MAX_SECTOR_DATA;  // 2352 bytes per frame
 }
 
 u64 CCHDFileDevice::Tell() const
@@ -406,6 +426,15 @@ int CCHDFileDevice::ReadSubchannel(u32 lba, u8 *subchannel)
     // Subchannel data is at the end of each frame
     u32 frameOffset = frameInHunk * CD_FRAME_SIZE;
     memcpy(subchannel, hunkBuf + frameOffset + CD_MAX_SECTOR_DATA, CD_MAX_SUBCODE_DATA);
+
+    // DEBUG: Log first subchannel read
+    if (lba == 0) {
+        LOGNOTE("ReadSubchannel LBA=0, first 16 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                subchannel[0], subchannel[1], subchannel[2], subchannel[3],
+                subchannel[4], subchannel[5], subchannel[6], subchannel[7],
+                subchannel[8], subchannel[9], subchannel[10], subchannel[11],
+                subchannel[12], subchannel[13], subchannel[14], subchannel[15]);
+    }
 
     delete[] hunkBuf;
     return CD_MAX_SUBCODE_DATA;
