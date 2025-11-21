@@ -145,6 +145,14 @@ USBODE version 2.6.0 introduces HDMI audio support. Testing & development reveal
 
 The developer believes other sound outputs would work fine, however the above configuration replicates behavior of a traditional CDROM drive best, as it runs directly through the soundcard.
 
+## Custom USB PID / VID
+To set a custom USB PID/VID add the following lines into the `[usbode]` section of config.txt
+```
+usbcdrom_vid=0x0e8d
+usbcdrom_pid=0x1887
+```
+be sure to include the preceeding `0x` to instruct USBODE this is a hex number, not a decimal number.
+
 ## Notes about versions
 
 - The Stable version of this project is available under the [Main branch](https://github.com/danifunker/usbode-circle/tree/main). This project also has a [pipeline](https://github.com/danifunker/usbode-circle/actions) set up to facilitate rapid deployment of new features. The pipeline builds are cutting edge and are not guaranteed to be stable.
