@@ -31,6 +31,13 @@
 #include <linux/kernel.h>
 #include <usbcdgadget/usbcdgadget.h>
 #include <discimage/imagedevice.h>
+
+enum class USBMode
+{
+    STANDARD, // Standard USB Mass Storage (default)
+    ISD       // ISD/Que! Drive vendor-specific mode (Mac OS 9 CD Audio)
+};
+
 class CDROMService : public CTask
 {
 public:
@@ -48,12 +55,6 @@ private:
     u16 m_vid = 0;
     u16 m_pid = 0;
     USBMode m_usbMode = USBMode::STANDARD;
-};
-
-enum class USBMode
-{
-    STANDARD, // Standard USB Mass Storage (default)
-    ISD       // ISD/Que! Drive vendor-specific mode (Mac OS 9 CD Audio)
 };
 
 #endif
