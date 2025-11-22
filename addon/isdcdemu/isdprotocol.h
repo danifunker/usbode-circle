@@ -36,6 +36,8 @@ public:
     void SetDevice(IImageDevice *pDevice);
     bool GetPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t *pActualLength);
     bool HasPendingData() const { return m_nResponseDataLength > 0; }    
+    void SetStatus(u8 nStatus);
+    void NotifyTransferComplete(); // Ready
 
 private:
     // Parse aa-delimited vendor command batch
@@ -67,7 +69,7 @@ private:
     bool HandleCommand15(const u8 *pCmdData, size_t nCmdLength,
                          u8 *pResponse, size_t *pResponseLength);
     bool HandleCommand16(const u8 *pCmdData, size_t nCmdLength,
-                         u8 *pResponse, size_t *pResponseLength);
+                         u8 *pResponse, size_t *pResponseLength, u32 maxLBA = 0);
     bool HandleCommand17(const u8 *pCmdData, size_t nCmdLength,
                          u8 *pResponse, size_t *pResponseLength);
     u8 m_nLastStatus;

@@ -485,35 +485,35 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         }
         break;
 
-case DESCRIPTOR_CONFIGURATION:
-    if (!uchDescIndex)
-    {
-        if (m_bVendorSpecific)
+    case DESCRIPTOR_CONFIGURATION:
+        if (!uchDescIndex)
         {
-            *pLength = sizeof(TUSBISDConfigurationDescriptor);  // CHANGED - use ISD struct
-            
-            CString logMsg;
-            logMsg.Format("CONFIG descriptor size: %u bytes", (unsigned)*pLength);
-            CLogger::Get()->Write("GetDescriptor", LogNotice, logMsg);
-            
-            CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using ISD descriptor");
-            return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeedISD
-                                 : &s_ConfigurationDescriptorHighSpeedISD;
+            if (m_bVendorSpecific)
+            {
+                *pLength = sizeof(TUSBISDConfigurationDescriptor); // CHANGED - use ISD struct
+
+                CString logMsg;
+                logMsg.Format("CONFIG descriptor size: %u bytes", (unsigned)*pLength);
+                CLogger::Get()->Write("GetDescriptor", LogNotice, logMsg);
+
+                CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using ISD descriptor");
+                return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeedISD
+                                     : &s_ConfigurationDescriptorHighSpeedISD;
+            }
+            else
+            {
+                *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
+
+                CString logMsg;
+                logMsg.Format("CONFIG descriptor size: %u bytes", (unsigned)*pLength);
+                CLogger::Get()->Write("GetDescriptor", LogNotice, logMsg);
+
+                CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using STANDARD descriptor");
+                return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed
+                                     : &s_ConfigurationDescriptorHighSpeed;
+            }
         }
-        else
-        {
-            *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
-            
-            CString logMsg;
-            logMsg.Format("CONFIG descriptor size: %u bytes", (unsigned)*pLength);
-            CLogger::Get()->Write("GetDescriptor", LogNotice, logMsg);
-            
-            CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using STANDARD descriptor");
-            return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed
-                                 : &s_ConfigurationDescriptorHighSpeed;
-        }
-    }
-    break;
+        break;
 
     case DESCRIPTOR_STRING:
         // String descriptors - log for debugging
@@ -1369,43 +1369,43 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData
 {
     assert(pSetupData != nullptr);
     assert(pData != nullptr);
-    
+
     // LOG ALL CONTROL TRANSFERS
     CString logMsg;
     logMsg.Format("OnClassOrVendorRequest: bmRequestType=0x%02x bRequest=0x%02x wValue=0x%04x wIndex=0x%04x wLength=%d",
                   pSetupData->bmRequestType, pSetupData->bRequest,
                   pSetupData->wValue, pSetupData->wIndex, pSetupData->wLength);
     CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
-    
+
     // Let ISD protocol handle vendor-specific requests
     if (m_bVendorSpecific && m_pISDProtocol)
     {
         size_t responseLength = 0;
-        
+
         if (m_pISDProtocol->HandleControlTransfer(
-            pSetupData->bmRequestType,
-            pSetupData->bRequest,
-            pSetupData->wValue,
-            pSetupData->wIndex,
-            pSetupData->wLength,
-            pData,
-            &responseLength))
+                pSetupData->bmRequestType,
+                pSetupData->bRequest,
+                pSetupData->wValue,
+                pSetupData->wIndex,
+                pSetupData->wLength,
+                pData,
+                &responseLength))
         {
             // LOG THE RETURN VALUE
             logMsg.Format("OnClassOrVendorRequest: Returning %d bytes", (int)responseLength);
             CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
-            
+
             return (int)responseLength;
         }
-        
+
         // If ISD didn't handle it, log that too
         CLogger::Get()->Write("CUSBCDGadget", LogWarning, "OnClassOrVendorRequest: ISD handler returned false");
     }
-    
+
     // Fall back to base class for standard handling
     logMsg.Format("OnClassOrVendorRequest: Falling back to base class");
     CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
-    
+
     return CDWUSBGadget::OnClassOrVendorRequest(pSetupData, pData);
 }
 
@@ -1559,7 +1559,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 {
     // CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
     assert(m_nState != TCDState::Init);
-    
+
     if (bIn) // packet to host has been transferred
     {
         switch (m_nState)
@@ -1568,12 +1568,19 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         {
             m_nState = TCDState::ReceiveCBW;
             m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                       m_OutBuffer, SIZE_CBW);
+                                        m_OutBuffer, SIZE_CBW);
             break;
         }
-        
+
         case TCDState::DataIn:
         {
+            // NEW: Notify ISD protocol that bulk transfer completed
+            if (m_bVendorSpecific && m_pISDProtocol)
+            {
+                m_pISDProtocol->NotifyTransferComplete();
+            }
+
+            // EXISTING CODE continues unchanged:
             if (m_nnumber_blocks > 0)
             {
                 if (m_CDReady)
@@ -1583,7 +1590,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 else
                 {
                     MLOGERR("onXferCmplt DataIn", "failed, %s",
-                           m_CDReady ? "ready" : "not ready");
+                            m_CDReady ? "ready" : "not ready");
                     m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                     m_SenseParams.bSenseKey = 0x02;
                     m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
@@ -1597,13 +1604,12 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
             }
             break;
         }
-        
         case TCDState::SendReqSenseReply:
         {
             SendCSW();
             break;
         }
-        
+
         default:
         {
             MLOGERR("onXferCmplt", "dir=in, unhandled state = %i", m_nState);
@@ -1616,49 +1622,28 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
     {
         switch (m_nState)
         {
-case TCDState::ReceiveCBW:
-{
-    // NEW: Check for ISD pending data BEFORE processing CBW
-    if (m_bVendorSpecific && m_pISDProtocol)
-    {
-        CDROM_DEBUG_LOG("ReceiveCBW", "ISD mode: HasPendingData=%d", 
-                       m_pISDProtocol->HasPendingData() ? 1 : 0);
-        
-        if (m_pISDProtocol->HasPendingData())
+        case TCDState::ReceiveCBW:
         {
-            size_t actualLength = 0;
-            if (m_pISDProtocol->GetPendingResponseData(m_InBuffer, sizeof(m_InBuffer), &actualLength))
+            // Process normal CBW
+            if (nLength != SIZE_CBW)
             {
-                CDROM_DEBUG_LOG("ISD Bulk IN", "Sending %u bytes on bulk IN endpoint", (unsigned)actualLength);
-                m_nState = TCDState::DataIn;
-                m_nnumber_blocks = 0;
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, 
-                                          m_InBuffer, actualLength);
-                return;  // IMPORTANT: return here to prevent CBW processing
-            }
-        }
-    }
-    
-    // EXISTING CODE: Process normal CBW
-    if (nLength != SIZE_CBW)
-    {
-        MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
-        m_pEP[EPIn]->StallRequest(true);
-        break;
-    }
-            
-            memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
-            
-            if (m_CBW.dCBWSignature != VALID_CBW_SIG)
-            {
-                MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x",
-                       m_CBW.dCBWSignature);
+                MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
                 m_pEP[EPIn]->StallRequest(true);
                 break;
             }
-            
+
+            memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
+
+            if (m_CBW.dCBWSignature != VALID_CBW_SIG)
+            {
+                MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x",
+                        m_CBW.dCBWSignature);
+                m_pEP[EPIn]->StallRequest(true);
+                break;
+            }
+
             m_CSW.dCSWTag = m_CBW.dCBWTag;
-            
+
             if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0) // meaningful CBW
             {
                 HandleSCSICommand(); // will update m_nstate
@@ -1666,15 +1651,16 @@ case TCDState::ReceiveCBW:
             }
             break;
         }
-        
+
         case TCDState::DataOut:
         {
-            CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ", m_nState, bIn ? "IN" : "OUT", nLength);
+            CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ",
+                            m_nState, bIn ? "IN" : "OUT", nLength);
             ProcessOut(nLength);
             SendCSW();
             break;
         }
-        
+
         default:
         {
             MLOGERR("onXferCmplt", "dir=out, unhandled state = %i", m_nState);
@@ -4342,6 +4328,21 @@ void CUSBCDGadget::HandleSCSICommand()
 void CUSBCDGadget::Update()
 {
     // MLOGDEBUG ("CUSBCDGadget::Update", "entered skip=%u, transfer=%u", skip_bytes, transfer_block_size);
+    if (m_bVendorSpecific && m_pISDProtocol &&
+        m_nState == TCDState::ReceiveCBW &&
+        m_pISDProtocol->HasPendingData())
+    {
+        size_t actualLength = 0;
+        if (m_pISDProtocol->GetPendingResponseData(m_InBuffer, sizeof(m_InBuffer), &actualLength))
+        {
+            CDROM_DEBUG_LOG("ISD Bulk IN", "Sending %u bytes on bulk IN endpoint", (unsigned)actualLength);
+            m_nState = TCDState::DataIn;
+            m_nnumber_blocks = 0; // No more blocks after this
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                       m_InBuffer, actualLength);
+            return; // Return immediately - don't process state machine
+        }
+    }
     switch (m_nState)
     {
     case TCDState::DataInRead:
