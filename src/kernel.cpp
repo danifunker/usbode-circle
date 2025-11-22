@@ -309,19 +309,37 @@ TShutdownMode CKernel::Run(void)
     // Parse USB mode (standard or isd)
     USBMode usbMode = USBMode::STANDARD; // Default
     const char *usbModeStr = config->GetProperty("usbcdrom_mode", "standard", "usbode");
+CString logMsg;
+logMsg.Format("Config read: usbcdrom_mode='%s'", usbModeStr ? usbModeStr : "(null)");
+CLogger::Get()->Write("kernel", LogNotice, logMsg);
+
+if (usbModeStr)
+{
+    logMsg.Format("Comparing: '%s' vs 'isd' (strcasecmp result=%d)", 
+                  usbModeStr, strcasecmp(usbModeStr, "isd"));
+    CLogger::Get()->Write("kernel", LogNotice, logMsg);
+}
 
     if (usbModeStr && strcasecmp(usbModeStr, "isd") == 0)
     {
         usbMode = USBMode::ISD;
+        CLogger::Get()->Write("kernel", LogNotice, "Matched! Setting USB Mode: ISD");
 
         // Use default Que! Drive VID/PID if not explicitly overridden
         if (vendorId == USB_GADGET_VENDOR_ID && productId == USB_GADGET_DEVICE_ID_CD)
         {
             vendorId = 0x07E5;  // QPS Inc.
-            productId = 0x015C; // Que! Drive 525
+            productId = 0x5C01; // Que! Drive 525
             // LOGNOTE("Using default Que! Drive VID:PID (07E5:015C)");
         }
     }
+    else{
+        CLogger::Get()->Write("kernel", LogNotice, "Setting USB Mode: STANDARD");
+    }
+
+    logMsg.Format("About to create CDROMService with usbMode=%d (ISD=%d, STANDARD=%d)",
+              (int)usbMode, (int)USBMode::ISD, (int)USBMode::STANDARD);
+    CLogger::Get()->Write("kernel", LogNotice, logMsg);
 
     // Start services that depend on both partitions
     new CDROMService(vendorId, productId, usbMode);

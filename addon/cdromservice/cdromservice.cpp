@@ -39,7 +39,7 @@ LOGMODULE("cdrom");
 CDROMService *CDROMService::s_pThis = nullptr;
 
 CDROMService::CDROMService(u16 vid, u16 pid, USBMode mode)
-    : CTask(CDROM_STACK_SIZE), m_vid(vid), m_pid(pid)
+    : CTask(CDROM_STACK_SIZE), m_vid(vid), m_pid(pid), m_usbMode(mode)
 {
     // I am the one and only!
     assert(s_pThis == nullptr);
@@ -80,6 +80,11 @@ boolean CDROMService::Initialize()
     LOGNOTE("CDROM Initializing");
     CInterruptSystem *m_Interrupt = CInterruptSystem::Get();
     bool isVendorSpecific = (m_usbMode == USBMode::ISD);
+    CString logMsg;
+    logMsg.Format("CDROMService::Initialize: m_usbMode=%d, isVendorSpecific=%d (ISD=%d, STANDARD=%d)",
+                  (int)m_usbMode, (int)isVendorSpecific, 
+                  (int)USBMode::ISD, (int)USBMode::STANDARD);
+    CLogger::Get()->Write("cdrom", LogNotice, logMsg);    
     m_CDGadget = new CUSBCDGadget(m_Interrupt, CKernelOptions::Get()->GetUSBFullSpeed(), nullptr, isVendorSpecific);
     // Configure VID/PID before initializing
     m_CDGadget->ConfigureUSBIds(isVendorSpecific, m_vid, m_pid);

@@ -258,8 +258,12 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
       m_bVendorSpecific(bVendorSpecific),
       m_pISDProtocol(nullptr)  // Initialize to nullptr
 {
+    CString logMsg;
+    logMsg.Format("CUSBCDGadget constructor: bVendorSpecific param=%d, m_bVendorSpecific=%d",
+                  (int)bVendorSpecific, (int)m_bVendorSpecific);
+    CLogger::Get()->Write("CUSBCDGadget::CUSBCDGadget", LogNotice, logMsg);
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
-             "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
+             "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d, bVendorSpecific=%d, m_bVendorSpecific=%d", pDevice, isFullSpeed, bVendorSpecific, m_bVendorSpecific);
     m_IsFullSpeed = isFullSpeed;
 
     // Fetch hardware serial number for unique USB device identification
@@ -344,7 +348,11 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "DESCRIPTOR_DEVICE %02x", uchDescIndex);
         if (!uchDescIndex)
         {
-            // Use runtime VID/PID from base class members
+            CString logMsg;
+            logMsg.Format("GetDescriptor DEVICE: m_bVendorSpecific=%d, using %s descriptor", 
+                         m_bVendorSpecific,
+                         m_bVendorSpecific ? "ISD" : "STANDARD");
+            CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, logMsg);            // Use runtime VID/PID from base class members
             // Select descriptor based on mode
             static TUSBDeviceDescriptor DeviceDesc;
             DeviceDesc = m_bVendorSpecific ? s_DeviceDescriptorISD : s_DeviceDescriptor;
@@ -360,15 +368,20 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         if (!uchDescIndex)
         {
             *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
-
+            CString logMsg;
+            logMsg.Format("GetDescriptor CONFIG: m_bVendorSpecific=%d, m_IsFullSpeed=%d", 
+                         m_bVendorSpecific, m_IsFullSpeed);
+            CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, logMsg);
             // Select descriptor based on mode and speed
             if (m_bVendorSpecific)
             {
+                CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using ISD descriptor");
                 return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeedISD
                                      : &s_ConfigurationDescriptorHighSpeedISD;
             }
             else
             {
+                CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using STANDARD descriptor");
                 return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed
                                      : &s_ConfigurationDescriptorHighSpeed;
             }
