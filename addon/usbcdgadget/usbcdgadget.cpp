@@ -148,6 +148,99 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0     // bInterval
         }};
 
+// NEW: ISD mode descriptors
+const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptorISD =
+    {
+        sizeof(TUSBDeviceDescriptor),
+        DESCRIPTOR_DEVICE,
+        0x200, // bcdUSB
+        0xFF,  // bDeviceClass - VENDOR SPECIFIC
+        0,     // bDeviceSubClass
+        0,     // bDeviceProtocol
+        64,    // bMaxPacketSize0
+        USB_GADGET_VENDOR_ID,
+        USB_GADGET_DEVICE_ID_CD,
+        0x000,   // bcdDevice
+        1, 2, 3, // strings
+        1        // num configurations
+};
+
+const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorFullSpeedISD =
+    {
+        {
+            sizeof(TUSBConfigurationDescriptor),
+            DESCRIPTOR_CONFIGURATION,
+            sizeof(TUSBMSTGadgetConfigurationDescriptor),
+            1, // bNumInterfaces
+            1,
+            0,
+            0x80,   // bmAttributes (bus-powered)
+            500 / 2 // bMaxPower (500mA)
+        },
+        {
+            sizeof(TUSBInterfaceDescriptor),
+            DESCRIPTOR_INTERFACE,
+            0,                // bInterfaceNumber
+            0,                // bAlternateSetting
+            2,                // bNumEndpoints
+            0xFF, 0x00, 0x00, // bInterfaceClass, SubClass, Protocol - VENDOR SPECIFIC
+            0                 // iInterface
+        },
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x81, // IN number 1
+            2,    // bmAttributes (Bulk)
+            64,   // wMaxPacketSize
+            0     // bInterval
+        },
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x02, // OUT number 2
+            2,    // bmAttributes (Bulk)
+            64,   // wMaxPacketSize
+            0     // bInterval
+        }};
+
+const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorHighSpeedISD =
+    {
+        {
+            sizeof(TUSBConfigurationDescriptor),
+            DESCRIPTOR_CONFIGURATION,
+            sizeof(TUSBMSTGadgetConfigurationDescriptor),
+            1, // bNumInterfaces
+            1,
+            0,
+            0x80,   // bmAttributes (bus-powered)
+            500 / 2 // bMaxPower (500mA)
+        },
+        {
+            sizeof(TUSBInterfaceDescriptor),
+            DESCRIPTOR_INTERFACE,
+            0,                // bInterfaceNumber
+            0,                // bAlternateSetting
+            2,                // bNumEndpoints
+            0xFF, 0x00, 0x00, // bInterfaceClass, SubClass, Protocol - VENDOR SPECIFIC
+            0                 // iInterface
+        },
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x81, // IN number 1
+            2,    // bmAttributes (Bulk)
+            512,  // wMaxPacketSize
+            0     // bInterval
+        },
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x02, // OUT number 2
+            2,    // bmAttributes (Bulk)
+            512,  // wMaxPacketSize
+            0     // bInterval
+        }};
+
 const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
     {
         "\x04\x03\x09\x04", // Language ID
@@ -156,9 +249,10 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "USBODE00001"                // Template Serial Number (index 3) - will be replaced with hardware serial
 };
 
-CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice) : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
-                                                                                                             m_pDevice(pDevice),
-                                                                                                             m_pEP{nullptr, nullptr, nullptr}
+CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice, bool bVendorSpecific) : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
+                                                                                                                                   m_pDevice(pDevice),
+                                                                                                                                   m_pEP{nullptr, nullptr, nullptr},
+                                                                                                                                   m_bVendorSpecific(bVendorSpecific)
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
              "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
@@ -228,9 +322,7 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "entered");
     assert(pLength);
-
     u8 uchDescIndex = wValue & 0xFF;
-
     switch (wValue >> 8)
     {
     case DESCRIPTOR_DEVICE:
@@ -238,10 +330,11 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         if (!uchDescIndex)
         {
             // Use runtime VID/PID from base class members
-            static TUSBDeviceDescriptor DeviceDesc = s_DeviceDescriptor;
+            // Select descriptor based on mode
+            static TUSBDeviceDescriptor DeviceDesc;
+            DeviceDesc = m_bVendorSpecific ? s_DeviceDescriptorISD : s_DeviceDescriptor;
             DeviceDesc.idVendor = GetVendorId();
             DeviceDesc.idProduct = GetProductId();
-
             *pLength = sizeof DeviceDesc;
             return &DeviceDesc;
         }
@@ -252,7 +345,18 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         if (!uchDescIndex)
         {
             *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
-            return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
+
+            // Select descriptor based on mode and speed
+            if (m_bVendorSpecific)
+            {
+                return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeedISD
+                                     : &s_ConfigurationDescriptorHighSpeedISD;
+            }
+            else
+            {
+                return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed
+                                     : &s_ConfigurationDescriptorHighSpeed;
+            }
         }
         break;
 
@@ -288,10 +392,8 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
     default:
         break;
     }
-
     return nullptr;
 }
-
 void CUSBCDGadget::ConfigureUSBIds(bool bClassicMacMode, u16 usUserVID, u16 usUserPID)
 {
     u16 vendorId, productId;
@@ -327,30 +429,39 @@ void CUSBCDGadget::ConfigureUSBIds(bool bClassicMacMode, u16 usUserVID, u16 usUs
 void CUSBCDGadget::AddEndpoints(void)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::AddEndpoints", "entered");
+
     assert(!m_pEP[EPOut]);
     if (m_IsFullSpeed)
-        m_pEP[EPOut] = new CUSBCDGadgetEndpoint(
-            reinterpret_cast<const TUSBEndpointDescriptor *>(
-                &s_ConfigurationDescriptorFullSpeed.EndpointOut),
-            this);
+    {
+        const TUSBEndpointDescriptor *pOutDesc = m_bVendorSpecific
+                                                     ? &s_ConfigurationDescriptorFullSpeedISD.EndpointOut
+                                                     : &s_ConfigurationDescriptorFullSpeed.EndpointOut;
+        m_pEP[EPOut] = new CUSBCDGadgetEndpoint(pOutDesc, this);
+    }
     else
-        m_pEP[EPOut] = new CUSBCDGadgetEndpoint(
-            reinterpret_cast<const TUSBEndpointDescriptor *>(
-                &s_ConfigurationDescriptorHighSpeed.EndpointOut),
-            this);
+    {
+        const TUSBEndpointDescriptor *pOutDesc = m_bVendorSpecific
+                                                     ? &s_ConfigurationDescriptorHighSpeedISD.EndpointOut
+                                                     : &s_ConfigurationDescriptorHighSpeed.EndpointOut;
+        m_pEP[EPOut] = new CUSBCDGadgetEndpoint(pOutDesc, this);
+    }
     assert(m_pEP[EPOut]);
 
     assert(!m_pEP[EPIn]);
     if (m_IsFullSpeed)
-        m_pEP[EPIn] = new CUSBCDGadgetEndpoint(
-            reinterpret_cast<const TUSBEndpointDescriptor *>(
-                &s_ConfigurationDescriptorFullSpeed.EndpointIn),
-            this);
+    {
+        const TUSBEndpointDescriptor *pInDesc = m_bVendorSpecific
+                                                    ? &s_ConfigurationDescriptorFullSpeedISD.EndpointIn
+                                                    : &s_ConfigurationDescriptorFullSpeed.EndpointIn;
+        m_pEP[EPIn] = new CUSBCDGadgetEndpoint(pInDesc, this);
+    }
     else
-        m_pEP[EPIn] = new CUSBCDGadgetEndpoint(
-            reinterpret_cast<const TUSBEndpointDescriptor *>(
-                &s_ConfigurationDescriptorHighSpeed.EndpointIn),
-            this);
+    {
+        const TUSBEndpointDescriptor *pInDesc = m_bVendorSpecific
+                                                    ? &s_ConfigurationDescriptorHighSpeedISD.EndpointIn
+                                                    : &s_ConfigurationDescriptorHighSpeed.EndpointIn;
+        m_pEP[EPIn] = new CUSBCDGadgetEndpoint(pInDesc, this);
+    }
     assert(m_pEP[EPIn]);
 
     m_nState = TCDState::Init;

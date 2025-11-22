@@ -220,9 +220,9 @@ struct ModePage0x01Data
 // Mode Page 0x08 (Caching)
 struct ModePage0x08Data
 {
-    u8 pageCodeAndPS;     // 0x08
-    u8 pageLength;        // 0x12 (18 bytes)
-    u8 cachingFlags;      // Bit 2: WCE, Bit 0: RCD
+    u8 pageCodeAndPS; // 0x08
+    u8 pageLength;    // 0x12 (18 bytes)
+    u8 cachingFlags;  // Bit 2: WCE, Bit 0: RCD
     u8 demandReadRetention;
     u8 writeRetention;
     u16 disablePrefetchTransfer;
@@ -256,12 +256,12 @@ struct ModePage0x0EData
 // Mode Page 0x1C (Informational Exceptions Control)
 struct ModePage0x1CData
 {
-    u8 pageCodeAndPS;     // 0x1C
-    u8 pageLength;        // 0x0A (10 bytes)
-    u8 flags;             // PERF, EBF, EWASC, DEXCPT, TEST, LOGERR
-    u8 mrie;              // Method of Reporting Informational Exceptions
-    u32 intervalTimer;    // Interval timer (big-endian)
-    u32 reportCount;      // Report count (big-endian)
+    u8 pageCodeAndPS;  // 0x1C
+    u8 pageLength;     // 0x0A (10 bytes)
+    u8 flags;          // PERF, EBF, EWASC, DEXCPT, TEST, LOGERR
+    u8 mrie;           // Method of Reporting Informational Exceptions
+    u32 intervalTimer; // Interval timer (big-endian)
+    u32 reportCount;   // Report count (big-endian)
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X1C 12
 // Mode Page 0x1A (Power Condition)
@@ -366,21 +366,21 @@ struct TUSBCDReadDiscStructureHeader
 struct DVDPhysicalFormatInfo
 {
     // Byte 0: Book type and part version
-    u8 bookTypePartVer;      // bits 7-4: book type, bits 3-0: part version
+    u8 bookTypePartVer; // bits 7-4: book type, bits 3-0: part version
     // Byte 1: Disc size and maximum transfer rate
-    u8 discSizeMaxRate;      // bits 7-4: max rate, bits 3-0: disc size
+    u8 discSizeMaxRate; // bits 7-4: max rate, bits 3-0: disc size
     // Byte 2: Number of layers, track path, layer type
-    u8 layersPathType;       // bit 7: reserved, bits 6-5: num layers, bit 4: track path, bits 3-0: layer type
+    u8 layersPathType; // bit 7: reserved, bits 6-5: num layers, bit 4: track path, bits 3-0: layer type
     // Byte 3: Linear density and track density
-    u8 densities;            // bits 7-4: track density, bits 3-0: linear density
+    u8 densities; // bits 7-4: track density, bits 3-0: linear density
     // Bytes 4-6: Data area start sector (24-bit, big-endian)
-    u8 dataStartSector[3];   // Start sector of data area
+    u8 dataStartSector[3]; // Start sector of data area
     // Bytes 7-9: Data area end sector (24-bit, big-endian)
-    u8 dataEndSector[3];     // End sector of data area
+    u8 dataEndSector[3]; // End sector of data area
     // Bytes 10-12: End sector of layer 0 (24-bit, big-endian)
-    u8 layer0EndSector[3];   // End sector of layer 0 (for dual-layer)
+    u8 layer0EndSector[3]; // End sector of layer 0 (for dual-layer)
     // Byte 13: BCA flag
-    u8 bcaFlag;              // bit 7: BCA present, bits 6-0: reserved
+    u8 bcaFlag; // bit 7: BCA present, bits 6-0: reserved
     // Bytes 14-16: Media specific (reserved for DVD-ROM)
     u8 reserved[3];
 } PACKED;
@@ -388,8 +388,8 @@ struct DVDPhysicalFormatInfo
 // DVD Copyright Information (Format 0x01) - 4 bytes payload
 struct DVDCopyrightInfo
 {
-    u8 copyrightProtectionType;  // 0x00=None, 0x01=CSS/CPPM
-    u8 regionManagementInfo;     // Region codes (bitfield)
+    u8 copyrightProtectionType; // 0x00=None, 0x01=CSS/CPPM
+    u8 regionManagementInfo;    // Region codes (bitfield)
     u8 reserved1;
     u8 reserved2;
 } PACKED;
@@ -568,53 +568,53 @@ struct TUSBCDDVDReadFeatureReply
 // Feature 0010h - Random Readable - Ability to read data from random locations
 struct TUSBCDRandomReadableFeatureReply
 {
-    u16 featureCode;           // 0x0010
+    u16 featureCode;             // 0x0010
     u8 VersionPersistentCurrent; // Version, Persistent, Current bits
-    u8 AdditionalLength;       // Length of additional data (8 bytes)
-    u32 blockSize;             // Logical block size (2048 bytes, big-endian)
-    u16 blocking;              // Number of logical blocks per device read (big-endian)
-    u8 pp;                     // Error Recovery Page Present bit
-    u8 reserved;               // Reserved
+    u8 AdditionalLength;         // Length of additional data (8 bytes)
+    u32 blockSize;               // Logical block size (2048 bytes, big-endian)
+    u16 blocking;                // Number of logical blocks per device read (big-endian)
+    u8 pp;                       // Error Recovery Page Present bit
+    u8 reserved;                 // Reserved
 } PACKED;
 #define SIZE_RANDOM_READABLE_REPLY 12
 // Feature 0106h - DVD CSS - Content Scramble System support
 struct TUSBCDDVDCSSFeatureReply
 {
-    u16 featureCode;           // 0x0106
+    u16 featureCode;             // 0x0106
     u8 VersionPersistentCurrent; // Version, Persistent, Current bits
-    u8 AdditionalLength;       // Length of additional data (4 bytes)
-    u8 reserved1;              // Reserved
-    u8 reserved2;              // Reserved
-    u8 reserved3;              // Reserved
-    u8 cssVersion;             // CSS version number (0x01)
+    u8 AdditionalLength;         // Length of additional data (4 bytes)
+    u8 reserved1;                // Reserved
+    u8 reserved2;                // Reserved
+    u8 reserved3;                // Reserved
+    u8 cssVersion;               // CSS version number (0x01)
 } PACKED;
 #define SIZE_DVD_CSS_REPLY 8
 
 // Feature 0107h - Real Time Streaming - Support for real-time data streaming
 struct TUSBCDRealTimeStreamingFeatureReply
 {
-    u16 featureCode;           // 0x0107
+    u16 featureCode;             // 0x0107
     u8 VersionPersistentCurrent; // Version, Persistent, Current bits
-    u8 AdditionalLength;       // Length of additional data (4 bytes)
-    u8 flags;                  // SW, WSPD, MP2A, SCS, RBCB bits
-    u8 reserved1;              // Reserved
-    u8 reserved2;              // Reserved
-    u8 reserved3;              // Reserved
+    u8 AdditionalLength;         // Length of additional data (4 bytes)
+    u8 flags;                    // SW, WSPD, MP2A, SCS, RBCB bits
+    u8 reserved1;                // Reserved
+    u8 reserved2;                // Reserved
+    u8 reserved3;                // Reserved
 } PACKED;
 #define SIZE_REAL_TIME_STREAMING_REPLY 8
 
 struct TUSBCDAudioConfigurationDescriptor
 {
     TUSBConfigurationDescriptor Configuration;
-    
+
     // Data interface (existing bulk endpoints)
     TUSBInterfaceDescriptor DataInterface;
     TUSBEndpointDescriptor EndpointInBulk;
     TUSBEndpointDescriptor EndpointOutBulk;
-    
+
     // Audio streaming interface (alternate setting 0 - no bandwidth)
     TUSBInterfaceDescriptor AudioInterfaceAlt0;
-    
+
     // Audio streaming interface (alternate setting 1 - active)
     TUSBInterfaceDescriptor AudioInterfaceAlt1;
     TUSBEndpointDescriptor EndpointInAudio;
@@ -643,7 +643,7 @@ public:
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
     /// \note pDevice must be initialized yet, when it is specified here.
     /// \note SetDevice() has to be called later, when pDevice is not specified here.
-    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice = nullptr);
+    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice = nullptr, boolean bVendorSpecific = false);
 
     ~CUSBCDGadget(void);
 
@@ -660,6 +660,7 @@ public:
     /// \return Capacity of the block device in number of blocks (a 512 bytes)
     // u64 GetBlocks (void) const;
     void ConfigureUSBIds(bool bClassicMacMode, u16 usUserVID = 0, u16 usUserPID = 0);
+    bool IsVendorSpecificMode() const { return m_bVendorSpecific; }
 
 protected:
     // ========================================================================
@@ -746,7 +747,7 @@ private:
     int GetMediumType();
     int GetSectorLengthFromMCS(uint8_t mainChannelSelection);
     int GetSkipBytesFromMCS(uint8_t mainChannelSelection);
-    boolean m_bReportDVDCSS = false;  // Whether to report CSS copy protection
+    boolean m_bReportDVDCSS = false; // Whether to report CSS copy protection
     // ========================================================================
     // Address Conversion Utilities (BlueSCSI-inspired)
     // ========================================================================
@@ -778,7 +779,7 @@ private:
 
     /// \brief Convert ASCII string to UTF-16 USB string descriptor
     const void *ToStringDescriptor(const char *pString, size_t *pLength);
-
+    bool m_bVendorSpecific;
     // ========================================================================
     // State Machine
     // ========================================================================
@@ -820,6 +821,8 @@ private:
     static const TUSBDeviceDescriptor s_DeviceDescriptor;
     static const char *const s_StringDescriptorTemplate[];
 
+    static const TUSBDeviceDescriptor s_DeviceDescriptorISD;
+
     /// \brief USB configuration descriptor with interface and endpoints
     struct TUSBMSTGadgetConfigurationDescriptor
     {
@@ -829,22 +832,25 @@ private:
         TUSBEndpointDescriptor EndpointOut;
     } PACKED;
 
+    static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeedISD;
+    static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeedISD;
+
     struct TUSBMSTGadgetConfigurationDescriptorHighSpeedWithAudio
-{
-    TUSBConfigurationDescriptor Configuration;
-    
-    // Data interface (bulk endpoints)
-    TUSBInterfaceDescriptor DataInterface;
-    TUSBEndpointDescriptor EndpointInBulk;
-    TUSBEndpointDescriptor EndpointOutBulk;
-    
-    // Audio streaming interface - Alternate 0 (zero bandwidth)
-    TUSBInterfaceDescriptor AudioInterfaceAlt0;
-    
-    // Audio streaming interface - Alternate 1 (active)
-    TUSBInterfaceDescriptor AudioInterfaceAlt1;
-    TUSBEndpointDescriptor EndpointInAudio;
-} PACKED;
+    {
+        TUSBConfigurationDescriptor Configuration;
+
+        // Data interface (bulk endpoints)
+        TUSBInterfaceDescriptor DataInterface;
+        TUSBEndpointDescriptor EndpointInBulk;
+        TUSBEndpointDescriptor EndpointOutBulk;
+
+        // Audio streaming interface - Alternate 0 (zero bandwidth)
+        TUSBInterfaceDescriptor AudioInterfaceAlt0;
+
+        // Audio streaming interface - Alternate 1 (active)
+        TUSBInterfaceDescriptor AudioInterfaceAlt1;
+        TUSBEndpointDescriptor EndpointInAudio;
+    } PACKED;
 
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
@@ -873,15 +879,15 @@ private:
 
     // Buffer size constants
     static const size_t MaxOutMessageSize = 2048;
-    static const size_t MaxBlocksToReadFullSpeed = 16;  // USB 1.1: 16 blocks = 37,632 bytes max
-    static const size_t MaxBlocksToReadHighSpeed = 32;  // USB 2.0: 32 blocks = 75,264 bytes max
+    static const size_t MaxBlocksToReadFullSpeed = 16; // USB 1.1: 16 blocks = 37,632 bytes max
+    static const size_t MaxBlocksToReadHighSpeed = 32; // USB 2.0: 32 blocks = 75,264 bytes max
     static const size_t MaxSectorSize = 2352;
-    static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize; // 75,264 bytes
+    static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize;          // 75,264 bytes
     static const size_t MaxInMessageSizeFullSpeed = MaxBlocksToReadFullSpeed * MaxSectorSize; // 37,632 bytes
 
-    alignas(64) DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);       // USB IN transfers
-    alignas(64) DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize);     // USB OUT transfers  
-    alignas(64) DMA_BUFFER(u8, m_FileChunk, MaxInMessageSize);      // File staging buffer    
+    alignas(64) DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // USB IN transfers
+    alignas(64) DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // USB OUT transfers
+    alignas(64) DMA_BUFFER(u8, m_FileChunk, MaxInMessageSize);  // File staging buffer
     // ========================================================================
     // Instance Variables - SCSI Reply Structures
     // ========================================================================

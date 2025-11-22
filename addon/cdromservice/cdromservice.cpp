@@ -26,14 +26,19 @@
 #include <circle/util.h>
 #include <circle/logger.h>
 
-//TODO reduce stack size of USBCDGadget
+// TODO reduce stack size of USBCDGadget
 #define CDROM_STACK_SIZE TASK_STACK_SIZE * 1.5
+
+#define DEFAULT_STANDARD_VID USB_GADGET_VENDOR_ID
+#define DEFAULT_STANDARD_PID USB_GADGET_DEVICE_ID_CD
+#define DEFAULT_ISD_VID 0x07E5 // Que! Drive (QPS Inc.)
+#define DEFAULT_ISD_PID 0x015C // Que! Drive 525
 
 LOGMODULE("cdrom");
 
 CDROMService *CDROMService::s_pThis = nullptr;
 
-CDROMService::CDROMService(u16 vid, u16 pid)
+CDROMService::CDROMService(u16 vid, u16 pid, USBMode mode)
     : CTask(CDROM_STACK_SIZE), m_vid(vid), m_pid(pid)
 {
     // I am the one and only!
@@ -46,48 +51,55 @@ CDROMService::CDROMService(u16 vid, u16 pid)
     assert(ok == true);
 }
 
-void CDROMService::SetDevice(IImageDevice* pDevice) {  // Changed from ICueDevice*
+void CDROMService::SetDevice(IImageDevice *pDevice)
+{ // Changed from ICueDevice*
     LOGNOTE("CDROM setting device (type: %d)", (int)pDevice->GetFileType());
-    
+
     // Log if this device has subchannel support
-    if (pDevice->HasSubchannelData()) {
+    if (pDevice->HasSubchannelData())
+    {
         LOGNOTE("Device has subchannel data - copy protection support enabled");
     }
-    
+
     // We defer initialization of the CD Gadget until the first CD image is loaded
-    if (!isInitialized) {
+    if (!isInitialized)
+    {
         bool ok = m_CDGadget->Initialize();
         assert(ok && "Failed to initialize CD Gadget");
         LOGNOTE("Initialized USB CD gadget");
         isInitialized = true;
-        
+
         CScheduler::Get()->MsSleep(100);
     }
-    
+
     m_CDGadget->SetDevice(pDevice);
 }
 
-boolean CDROMService::Initialize() {
+boolean CDROMService::Initialize()
+{
     LOGNOTE("CDROM Initializing");
-    CInterruptSystem* m_Interrupt = CInterruptSystem::Get();
-    m_CDGadget = new CUSBCDGadget(m_Interrupt, CKernelOptions::Get()->GetUSBFullSpeed());
+    CInterruptSystem *m_Interrupt = CInterruptSystem::Get();
+    bool isVendorSpecific = (m_usbMode == USBMode::ISD);
+    m_CDGadget = new CUSBCDGadget(m_Interrupt, CKernelOptions::Get()->GetUSBFullSpeed(), nullptr, isVendorSpecific);
     // Configure VID/PID before initializing
-    m_CDGadget->ConfigureUSBIds(false, m_vid, m_pid);
+    m_CDGadget->ConfigureUSBIds(isVendorSpecific, m_vid, m_pid);
     LOGNOTE("Configured USB CD gadget VID: %04x PID: %04x", m_vid, m_pid);
     return true;
 }
 
-CDROMService::~CDROMService(void) {
+CDROMService::~CDROMService(void)
+{
     s_pThis = nullptr;
 }
 
-void CDROMService::Run(void) {
+void CDROMService::Run(void)
+{
     LOGNOTE("CDROM Run Loop entered");
 
-    while (true) {
-	    m_CDGadget->UpdatePlugAndPlay();
-            m_CDGadget->Update();
-	    CScheduler::Get()->Yield();
+    while (true)
+    {
+        m_CDGadget->UpdatePlugAndPlay();
+        m_CDGadget->Update();
+        CScheduler::Get()->Yield();
     }
-
 }
