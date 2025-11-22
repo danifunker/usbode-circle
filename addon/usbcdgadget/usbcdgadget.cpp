@@ -37,6 +37,7 @@
 #include <circle/bcmpropertytags.h>
 #include <configservice/configservice.h>
 #include <circle/synchronize.h>
+#include <isdcdemu/isdprotocol.h>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...) // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
@@ -249,10 +250,13 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "USBODE00001"                // Template Serial Number (index 3) - will be replaced with hardware serial
 };
 
-CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice, bool bVendorSpecific) : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
-                                                                                                                                   m_pDevice(pDevice),
-                                                                                                                                   m_pEP{nullptr, nullptr, nullptr},
-                                                                                                                                   m_bVendorSpecific(bVendorSpecific)
+CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, 
+                           IImageDevice *pDevice, bool bVendorSpecific) 
+    : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
+      m_pDevice(pDevice),
+      m_pEP{nullptr, nullptr, nullptr},
+      m_bVendorSpecific(bVendorSpecific),
+      m_pISDProtocol(nullptr)  // Initialize to nullptr
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
              "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
@@ -273,6 +277,11 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
         // Fallback to default serial number if hardware fetch fails
         strcpy(m_HardwareSerialNumber, "USBODE-00000001");
         MLOGERR("CUSBCDGadget::CUSBCDGadget", "Failed to get hardware serial, using fallback: %s", m_HardwareSerialNumber);
+    }
+
+    if (m_bVendorSpecific)
+    {
+        m_pISDProtocol = new ISDProtocol(pDevice);
     }
 
     // Initialize string descriptors with hardware serial number
@@ -315,6 +324,12 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
 
 CUSBCDGadget::~CUSBCDGadget(void)
 {
+    if (m_pISDProtocol)
+    {
+        delete m_pISDProtocol;
+        m_pISDProtocol = nullptr;
+    }
+
     assert(0);
 }
 
@@ -473,7 +488,14 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     MLOGNOTE("CUSBCDGadget::SetDevice",
              "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",
              dev, m_pDevice, (int)m_nState);
-
+    
+    // Update ISD protocol handler if it exists
+    if (m_pISDProtocol)
+    {
+        m_pISDProtocol->SetDevice(dev);
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Updated ISD protocol device");
+    }
+    
     // Hand the new device to the CD Player
     CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
     if (cdplayer)
@@ -481,16 +503,14 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         cdplayer->SetDevice(dev);
         MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
     }
-
+    
     // Are we changing the device on an already-active USB connection?
     boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
-
     if (bDiscSwap || !m_CDReady)
     {
         MLOGNOTE("CUSBCDGadget::SetDevice", "Disc swap detected - ejecting old media");
         delete m_pDevice;
         m_pDevice = nullptr;
-
         m_CDReady = false;
         m_mediaState = MediaState::NO_MEDIUM;
         m_SenseParams.bSenseKey = 0x02;
@@ -498,20 +518,17 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
-
         MLOGNOTE("CUSBCDGadget::SetDevice", "Media ejected: state=NO_MEDIUM, sense=02/3a/00");
     }
-
+    
     m_pDevice = dev;
     m_mediaType = m_pDevice->GetMediaType();
     MLOGNOTE("CUSBCDGadget::SetDevice", "Media type set to %d", m_mediaType);
+    
     cueParser = CUEParser(m_pDevice->GetCueSheet());
-
     data_skip_bytes = GetSkipbytes();
     data_block_size = GetBlocksize();
-
-    // Only set media ready if this is a disc swap
-    // Initial load will be handled by OnActivate() when USB becomes active
+    
     // Only set media ready if this is a disc swap
     // Initial load will be handled by OnActivate() when USB becomes active
     if (bDiscSwap)
@@ -525,30 +542,27 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         discChanged = true;
         CTimer::Get()->MsDelay(100);
         MLOGNOTE("CUSBCDGadget::SetDevice",
-                 "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
+                "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
     }
     else
     {
         // Initial load - leave NOT READY, OnActivate will handle it
         MLOGNOTE("CUSBCDGadget::SetDevice",
-                 "Initial load: Deferring media ready state to OnActivate()");
+                "Initial load: Deferring media ready state to OnActivate()");
     }
-
+    
     // Log disc boundaries for debugging
     u32 max_lba = GetMaxLBA();
     CUETrackInfo first_track = GetTrackInfoForLBA(0);
     int first_track_blocksize = GetBlocksizeForTrack(first_track);
-
     MLOGNOTE("CUSBCDGadget::SetDevice",
-             "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
-             max_lba, first_track.track_mode, first_track_blocksize);
-
+            "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
+            max_lba, first_track.track_mode, first_track_blocksize);
     MLOGNOTE("CUSBCDGadget::SetDevice",
-             "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
-             m_CDReady, (int)m_mediaState,
-             m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+            "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
+            m_CDReady, (int)m_mediaState,
+            m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 }
-
 int CUSBCDGadget::GetBlocksize()
 {
     cueParser.restart();
@@ -1213,14 +1227,21 @@ const void *CUSBCDGadget::ToStringDescriptor(const char *pString, size_t *pLengt
 
 int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData)
 {
-    CDROM_DEBUG_LOG("CUSBCDGadget::OnClassOrVendorRequest", "entered");
-    if (pSetupData->bmRequestType == 0xA1 && pSetupData->bRequest == 0xfe) // get max LUN
+    assert(pSetupData != nullptr);
+    assert(pData != nullptr);
+    
+    // Let ISD protocol handle vendor-specific requests
+    if (m_bVendorSpecific && m_pISDProtocol)
     {
-        MLOGDEBUG("OnClassOrVendorRequest", "state = %i", m_nState);
-        pData[0] = 0;
-        return 1;
+        int result = HandleISDControlTransfer(pSetupData, pData);
+        if (result >= 0)
+        {
+            return result;  // ISD handled it
+        }
     }
-    return -1;
+    
+    // Fall back to base class for standard handling
+    return CDWUSBGadget::OnClassOrVendorRequest(pSetupData, pData);
 }
 
 void CUSBCDGadget::DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength)
@@ -1712,6 +1733,44 @@ void FillModePage2A(ModePage0x2AData &codepage)
     codepage.maxReadSpeed = htons(1378);      // Some hosts check this field
 }
 
+int CUSBCDGadget::HandleISDControlTransfer(const TSetupData *pSetupData, u8 *pData)
+{
+    assert(pSetupData != nullptr);
+    assert(pData != nullptr);
+    
+    size_t responseLength = 0;
+    
+    // Call ISD protocol handler
+    bool handled = m_pISDProtocol->HandleControlTransfer(
+        pSetupData->bmRequestType,
+        pSetupData->bRequest,
+        pSetupData->wValue,
+        pSetupData->wIndex,
+        pSetupData->wLength,
+        pData,
+        &responseLength
+    );
+    
+    if (handled)
+    {
+        // Return the response length (or 0 if no response data)
+        return (int)responseLength;
+    }
+    
+    // Not handled by ISD protocol
+    return -1;  // Will cause STALL
+}
+
+void CUSBCDGadget::ParseISDCommands(const u8 *data, size_t length)
+{
+    // This is now handled inside ISDProtocol::ParseCommandBatch
+    // This method can be removed or kept as a wrapper
+    if (m_pISDProtocol)
+    {
+        // ISDProtocol handles this internally
+        CDROM_DEBUG_LOG("ParseISDCommands", "Delegating to ISDProtocol");
+    }
+}
 // TODO: This entire method is a monster. Break up into a Function table of static methods
 //
 //  Each command lives in its own .cpp file with a class that has a static Handle() function.
@@ -3679,6 +3738,31 @@ void CUSBCDGadget::HandleSCSICommand()
 
     case 0x5a: // Mode Sense (10)
     {
+
+
+    // Let ISD protocol handle MODE SENSE in vendor-specific mode
+    if (m_bVendorSpecific && m_pISDProtocol)
+    {
+        size_t responseLength = 0;
+        
+        // Pass the CDB (Command Descriptor Block) from m_CBW.CBWCB
+        if (m_pISDProtocol->HandleModeSense(m_CBW.CBWCB, m_InBuffer, 
+                                           sizeof(m_InBuffer), &responseLength))
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
+                           "MODE SENSE handled by ISD protocol (%d bytes)", 
+                           responseLength);
+            
+            m_nnumber_blocks = 0;
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, 
+                                      m_InBuffer, responseLength);
+            m_nState = TCDState::DataIn;
+            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+            return;  // ISD handled it, we're done
+        }
+        // If ISD didn't handle it, fall through to standard handling
+    }
+
         // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
 
         int LLBAA = (m_CBW.CBWCB[1] >> 7) & 0x01; // We don't support this
