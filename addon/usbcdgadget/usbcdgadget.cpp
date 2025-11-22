@@ -1242,6 +1242,11 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData
 {
     assert(pSetupData != nullptr);
     assert(pData != nullptr);
+    CString logMsg;
+    logMsg.Format("OnClassOrVendorRequest: bmRequestType=0x%02x bRequest=0x%02x wValue=0x%04x wIndex=0x%04x wLength=%d",
+                  pSetupData->bmRequestType, pSetupData->bRequest,
+                  pSetupData->wValue, pSetupData->wIndex, pSetupData->wLength);
+    CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
     
     // Let ISD protocol handle vendor-specific requests
     if (m_bVendorSpecific && m_pISDProtocol)
