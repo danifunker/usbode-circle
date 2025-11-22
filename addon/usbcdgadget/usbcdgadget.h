@@ -680,10 +680,9 @@ protected:
     /// \param pString Pointer to ASCII C-string
     /// \param pLength Pointer to variable, which receives the descriptor size
     /// \return Pointer to string descriptor in class-internal buffer
-    virtual bool OnSetup(const void *pSetupData);
     int HandleISDControlTransfer(const TSetupData *pSetupData, u8 *pData);
     void ParseISDCommands(const u8 *data, size_t length);
-    
+
 private:
     void AddEndpoints(void) override;
     void CreateDevice(void) override;
