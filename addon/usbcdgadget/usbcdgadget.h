@@ -98,6 +98,7 @@ struct TUSBCDCSW // Command Status Wrapper - 13 bytes
 #define CD_CSW_STATUS_OK 0
 #define CD_CSW_STATUS_FAIL 1
 #define CD_CSW_STATUS_PHASE_ERR 2
+class ISDProtocol;
 
 // ============================================================================
 // SCSI Sense Data
@@ -679,7 +680,10 @@ protected:
     /// \param pString Pointer to ASCII C-string
     /// \param pLength Pointer to variable, which receives the descriptor size
     /// \return Pointer to string descriptor in class-internal buffer
-
+    virtual bool OnSetup(const void *pSetupData);
+    int HandleISDControlTransfer(const TSetupData *pSetupData, u8 *pData);
+    void ParseISDCommands(const u8 *data, size_t length);
+    
 private:
     void AddEndpoints(void) override;
     void CreateDevice(void) override;
@@ -717,7 +721,7 @@ private:
     // TOC formatting helpers
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
-
+    
     bool m_readSubchannels = false;
     u8 m_subchannelMode = 0;
 
@@ -780,6 +784,10 @@ private:
     /// \brief Convert ASCII string to UTF-16 USB string descriptor
     const void *ToStringDescriptor(const char *pString, size_t *pLength);
     bool m_bVendorSpecific;
+    ISDProtocol *m_pISDProtocol; 
+        bool OnControlMessage(u8 bmRequestType, u8 bRequest, 
+                         u16 wValue, u16 wIndex, u16 wLength,
+                         u8 *pData);
     // ========================================================================
     // State Machine
     // ========================================================================
