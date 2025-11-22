@@ -39,7 +39,7 @@ LOGMODULE("cdrom");
 CDROMService *CDROMService::s_pThis = nullptr;
 
 CDROMService::CDROMService(u16 vid, u16 pid, USBMode mode)
-    : CTask(CDROM_STACK_SIZE), m_vid(vid), m_pid(pid)
+    : CTask(CDROM_STACK_SIZE), m_vid(vid), m_pid(pid), m_usbMode(mode)
 {
     // I am the one and only!
     assert(s_pThis == nullptr);

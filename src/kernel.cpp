@@ -318,7 +318,7 @@ TShutdownMode CKernel::Run(void)
         if (vendorId == USB_GADGET_VENDOR_ID && productId == USB_GADGET_DEVICE_ID_CD)
         {
             vendorId = 0x07E5;  // QPS Inc.
-            productId = 0x015C; // Que! Drive 525
+            productId = 0x5C01; // Que! Drive 525
             // LOGNOTE("Using default Que! Drive VID:PID (07E5:015C)");
         }
     }
