@@ -839,9 +839,6 @@ private:
         TUSBEndpointDescriptor EndpointOut;
     } PACKED;
 
-    static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeedISD;
-    static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeedISD;
-
     struct TUSBMSTGadgetConfigurationDescriptorHighSpeedWithAudio
     {
         TUSBConfigurationDescriptor Configuration;
@@ -861,6 +858,31 @@ private:
 
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
+
+
+    // New struct for ISD mode with 3 alternate settings (matches real ISD drive)
+struct TUSBISDConfigurationDescriptor
+{
+    TUSBConfigurationDescriptor Configuration;
+    
+    // Alternate Setting 0: 1 endpoint (OUT only)
+    TUSBInterfaceDescriptor InterfaceAlt0;
+    TUSBEndpointDescriptor EndpointAlt0Out;
+    
+    // Alternate Setting 1: 2 endpoints (OUT + IN)
+    TUSBInterfaceDescriptor InterfaceAlt1;
+    TUSBEndpointDescriptor EndpointAlt1Out;
+    TUSBEndpointDescriptor EndpointAlt1In;
+    
+    // Alternate Setting 2: 2 endpoints (OUT + IN)
+    TUSBInterfaceDescriptor InterfaceAlt2;
+    TUSBEndpointDescriptor EndpointAlt2Out;
+    TUSBEndpointDescriptor EndpointAlt2In;
+} PACKED;
+
+    static const TUSBISDConfigurationDescriptor s_ConfigurationDescriptorFullSpeedISD;
+    static const TUSBISDConfigurationDescriptor s_ConfigurationDescriptorHighSpeedISD;
+
 
     // ========================================================================
     // Instance Variables - Device and USB State

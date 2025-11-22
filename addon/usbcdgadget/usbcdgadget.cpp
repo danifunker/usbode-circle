@@ -71,6 +71,23 @@ const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
         1        // num configurations
 };
 
+// ISD Device Descriptor (add to usbcdgadget.cpp)
+const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptorISD =
+    {
+        sizeof(TUSBDeviceDescriptor),
+        DESCRIPTOR_DEVICE,
+        0x200, // bcdUSB
+        0xFF,  // bDeviceClass - VENDOR SPECIFIC
+        0,     // bDeviceSubClass
+        0,     // bDeviceProtocol
+        64,    // bMaxPacketSize0
+        USB_GADGET_VENDOR_ID,
+        USB_GADGET_DEVICE_ID_CD,
+        0x200,   // bcdDevice (version 2.0)
+        1, 2, 3, // strings
+        1        // num configurations
+};
+
 const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorFullSpeed =
     {
         {
@@ -149,96 +166,201 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0     // bInterval
         }};
 
-// NEW: ISD mode descriptors
-const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptorISD =
+// Full-Speed ISD Configuration Descriptor (matches real Que! Drive exactly)
+const CUSBCDGadget::TUSBISDConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorFullSpeedISD =
     {
-        sizeof(TUSBDeviceDescriptor),
-        DESCRIPTOR_DEVICE,
-        0x200, // bcdUSB
-        0xFF,  // bDeviceClass - VENDOR SPECIFIC
-        0,     // bDeviceSubClass
-        0,     // bDeviceProtocol
-        64,    // bMaxPacketSize0
-        USB_GADGET_VENDOR_ID,
-        USB_GADGET_DEVICE_ID_CD,
-        0x000,   // bcdDevice
-        1, 2, 3, // strings
-        1        // num configurations
-};
-
-const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorFullSpeedISD =
-    {
+        // Configuration Descriptor (9 bytes)
         {
             sizeof(TUSBConfigurationDescriptor),
             DESCRIPTOR_CONFIGURATION,
-            sizeof(TUSBMSTGadgetConfigurationDescriptor),
-            1, // bNumInterfaces
-            1,
-            0,
-            0x80,   // bmAttributes (bus-powered)
-            500 / 2 // bMaxPower (500mA)
+            sizeof(TUSBISDConfigurationDescriptor), // Total: 71 bytes
+            1,                                      // bNumInterfaces
+            1,                                      // bConfigurationValue
+            0,                                      // iConfiguration
+            0xC0,                                   // bmAttributes (self-powered)
+            0                                       // bMaxPower (0mA for self-powered)
         },
+
+        // Interface 0, Alternate Setting 0 (9 bytes)
         {
             sizeof(TUSBInterfaceDescriptor),
             DESCRIPTOR_INTERFACE,
-            0,                // bInterfaceNumber
-            0,                // bAlternateSetting
-            2,                // bNumEndpoints
-            0xFF, 0x00, 0x00, // bInterfaceClass, SubClass, Protocol - VENDOR SPECIFIC
-            0                 // iInterface
+            0,    // bInterfaceNumber
+            0,    // bAlternateSetting = 0
+            1,    // bNumEndpoints = 1 (OUT only)
+            0xFF, // bInterfaceClass (Vendor Specific)
+            0x00, // bInterfaceSubClass
+            0xFF, // bInterfaceProtocol
+            0     // iInterface
         },
+        // Endpoint 01 OUT (7 bytes)
         {
             sizeof(TUSBEndpointDescriptor),
             DESCRIPTOR_ENDPOINT,
-            0x81, // IN number 1
-            2,    // bmAttributes (Bulk)
+            0x01, // bEndpointAddress (OUT, endpoint 1)
+            0x02, // bmAttributes (Bulk)
             64,   // wMaxPacketSize
             0     // bInterval
         },
+
+        // Interface 0, Alternate Setting 1 (9 bytes)
+        {
+            sizeof(TUSBInterfaceDescriptor),
+            DESCRIPTOR_INTERFACE,
+            0,    // bInterfaceNumber
+            1,    // bAlternateSetting = 1
+            2,    // bNumEndpoints = 2 (OUT + IN)
+            0xFF, // bInterfaceClass (Vendor Specific)
+            0x00, // bInterfaceSubClass
+            0xFF, // bInterfaceProtocol
+            0     // iInterface
+        },
+        // Endpoint 01 OUT (7 bytes)
         {
             sizeof(TUSBEndpointDescriptor),
             DESCRIPTOR_ENDPOINT,
-            0x02, // OUT number 2
-            2,    // bmAttributes (Bulk)
+            0x01, // bEndpointAddress (OUT, endpoint 1)
+            0x02, // bmAttributes (Bulk)
+            64,   // wMaxPacketSize
+            0     // bInterval
+        },
+        // Endpoint 82 IN (7 bytes)
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x82, // bEndpointAddress (IN, endpoint 2)
+            0x02, // bmAttributes (Bulk)
+            64,   // wMaxPacketSize
+            0     // bInterval
+        },
+
+        // Interface 0, Alternate Setting 2 (9 bytes)
+        {
+            sizeof(TUSBInterfaceDescriptor),
+            DESCRIPTOR_INTERFACE,
+            0,    // bInterfaceNumber
+            2,    // bAlternateSetting = 2
+            2,    // bNumEndpoints = 2 (OUT + IN)
+            0xFF, // bInterfaceClass (Vendor Specific)
+            0x00, // bInterfaceSubClass
+            0xFF, // bInterfaceProtocol
+            0     // iInterface
+        },
+        // Endpoint 01 OUT (7 bytes)
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x01, // bEndpointAddress (OUT, endpoint 1)
+            0x02, // bmAttributes (Bulk)
+            64,   // wMaxPacketSize
+            0     // bInterval
+        },
+        // Endpoint 82 IN (7 bytes)
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x82, // bEndpointAddress (IN, endpoint 2)
+            0x02, // bmAttributes (Bulk)
             64,   // wMaxPacketSize
             0     // bInterval
         }};
 
-const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorHighSpeedISD =
+// High-Speed ISD Configuration Descriptor (same structure, different packet sizes)
+const CUSBCDGadget::TUSBISDConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorHighSpeedISD =
     {
+        // Configuration Descriptor (9 bytes)
         {
             sizeof(TUSBConfigurationDescriptor),
             DESCRIPTOR_CONFIGURATION,
-            sizeof(TUSBMSTGadgetConfigurationDescriptor),
-            1, // bNumInterfaces
-            1,
-            0,
-            0x80,   // bmAttributes (bus-powered)
-            500 / 2 // bMaxPower (500mA)
+            sizeof(TUSBISDConfigurationDescriptor), // Total: 71 bytes
+            1,                                      // bNumInterfaces
+            1,                                      // bConfigurationValue
+            0,                                      // iConfiguration
+            0xC0,                                   // bmAttributes (self-powered)
+            0                                       // bMaxPower (0mA for self-powered)
         },
+
+        // Interface 0, Alternate Setting 0 (9 bytes)
         {
             sizeof(TUSBInterfaceDescriptor),
             DESCRIPTOR_INTERFACE,
-            0,                // bInterfaceNumber
-            0,                // bAlternateSetting
-            2,                // bNumEndpoints
-            0xFF, 0x00, 0x00, // bInterfaceClass, SubClass, Protocol - VENDOR SPECIFIC
-            0                 // iInterface
+            0,    // bInterfaceNumber
+            0,    // bAlternateSetting = 0
+            1,    // bNumEndpoints = 1 (OUT only)
+            0xFF, // bInterfaceClass (Vendor Specific)
+            0x00, // bInterfaceSubClass
+            0xFF, // bInterfaceProtocol
+            0     // iInterface
         },
+        // Endpoint 01 OUT (7 bytes)
         {
             sizeof(TUSBEndpointDescriptor),
             DESCRIPTOR_ENDPOINT,
-            0x81, // IN number 1
-            2,    // bmAttributes (Bulk)
-            512,  // wMaxPacketSize
+            0x01, // bEndpointAddress (OUT, endpoint 1)
+            0x02, // bmAttributes (Bulk)
+            512,  // wMaxPacketSize (high-speed)
             0     // bInterval
         },
+
+        // Interface 0, Alternate Setting 1 (9 bytes)
+        {
+            sizeof(TUSBInterfaceDescriptor),
+            DESCRIPTOR_INTERFACE,
+            0,    // bInterfaceNumber
+            1,    // bAlternateSetting = 1
+            2,    // bNumEndpoints = 2 (OUT + IN)
+            0xFF, // bInterfaceClass (Vendor Specific)
+            0x00, // bInterfaceSubClass
+            0xFF, // bInterfaceProtocol
+            0     // iInterface
+        },
+        // Endpoint 01 OUT (7 bytes)
         {
             sizeof(TUSBEndpointDescriptor),
             DESCRIPTOR_ENDPOINT,
-            0x02, // OUT number 2
-            2,    // bmAttributes (Bulk)
-            512,  // wMaxPacketSize
+            0x01, // bEndpointAddress (OUT, endpoint 1)
+            0x02, // bmAttributes (Bulk)
+            512,  // wMaxPacketSize (high-speed)
+            0     // bInterval
+        },
+        // Endpoint 82 IN (7 bytes)
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x82, // bEndpointAddress (IN, endpoint 2)
+            0x02, // bmAttributes (Bulk)
+            512,  // wMaxPacketSize (high-speed)
+            0     // bInterval
+        },
+
+        // Interface 0, Alternate Setting 2 (9 bytes)
+        {
+            sizeof(TUSBInterfaceDescriptor),
+            DESCRIPTOR_INTERFACE,
+            0,    // bInterfaceNumber
+            2,    // bAlternateSetting = 2
+            2,    // bNumEndpoints = 2 (OUT + IN)
+            0xFF, // bInterfaceClass (Vendor Specific)
+            0x00, // bInterfaceSubClass
+            0xFF, // bInterfaceProtocol
+            0     // iInterface
+        },
+        // Endpoint 01 OUT (7 bytes)
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x01, // bEndpointAddress (OUT, endpoint 1)
+            0x02, // bmAttributes (Bulk)
+            512,  // wMaxPacketSize (high-speed)
+            0     // bInterval
+        },
+        // Endpoint 82 IN (7 bytes)
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x82, // bEndpointAddress (IN, endpoint 2)
+            0x02, // bmAttributes (Bulk)
+            512,  // wMaxPacketSize (high-speed)
             0     // bInterval
         }};
 
@@ -250,13 +372,13 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "USBODE00001"                // Template Serial Number (index 3) - will be replaced with hardware serial
 };
 
-CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, 
-                           IImageDevice *pDevice, bool bVendorSpecific) 
+CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed,
+                           IImageDevice *pDevice, bool bVendorSpecific)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_pDevice(pDevice),
       m_pEP{nullptr, nullptr, nullptr},
       m_bVendorSpecific(bVendorSpecific),
-      m_pISDProtocol(nullptr)  // Initialize to nullptr
+      m_pISDProtocol(nullptr) // Initialize to nullptr
 {
     CString logMsg;
     logMsg.Format("CUSBCDGadget constructor: bVendorSpecific param=%d, m_bVendorSpecific=%d",
@@ -349,10 +471,10 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         if (!uchDescIndex)
         {
             CString logMsg;
-            logMsg.Format("GetDescriptor DEVICE: m_bVendorSpecific=%d, using %s descriptor", 
-                         m_bVendorSpecific,
-                         m_bVendorSpecific ? "ISD" : "STANDARD");
-            CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, logMsg);            // Use runtime VID/PID from base class members
+            logMsg.Format("GetDescriptor DEVICE: m_bVendorSpecific=%d, using %s descriptor",
+                          m_bVendorSpecific,
+                          m_bVendorSpecific ? "ISD" : "STANDARD");
+            CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, logMsg); // Use runtime VID/PID from base class members
             // Select descriptor based on mode
             static TUSBDeviceDescriptor DeviceDesc;
             DeviceDesc = m_bVendorSpecific ? s_DeviceDescriptorISD : s_DeviceDescriptor;
@@ -363,30 +485,35 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         }
         break;
 
-    case DESCRIPTOR_CONFIGURATION:
-        CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "DESCRIPTOR_CONFIGURATION %02x", uchDescIndex);
-        if (!uchDescIndex)
+case DESCRIPTOR_CONFIGURATION:
+    if (!uchDescIndex)
+    {
+        if (m_bVendorSpecific)
+        {
+            *pLength = sizeof(TUSBISDConfigurationDescriptor);  // CHANGED - use ISD struct
+            
+            CString logMsg;
+            logMsg.Format("CONFIG descriptor size: %u bytes", (unsigned)*pLength);
+            CLogger::Get()->Write("GetDescriptor", LogNotice, logMsg);
+            
+            CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using ISD descriptor");
+            return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeedISD
+                                 : &s_ConfigurationDescriptorHighSpeedISD;
+        }
+        else
         {
             *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
+            
             CString logMsg;
-            logMsg.Format("GetDescriptor CONFIG: m_bVendorSpecific=%d, m_IsFullSpeed=%d", 
-                         m_bVendorSpecific, m_IsFullSpeed);
-            CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, logMsg);
-            // Select descriptor based on mode and speed
-            if (m_bVendorSpecific)
-            {
-                CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using ISD descriptor");
-                return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeedISD
-                                     : &s_ConfigurationDescriptorHighSpeedISD;
-            }
-            else
-            {
-                CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using STANDARD descriptor");
-                return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed
-                                     : &s_ConfigurationDescriptorHighSpeed;
-            }
+            logMsg.Format("CONFIG descriptor size: %u bytes", (unsigned)*pLength);
+            CLogger::Get()->Write("GetDescriptor", LogNotice, logMsg);
+            
+            CLogger::Get()->Write("CUSBCDGadget::GetDescriptor", LogNotice, "Using STANDARD descriptor");
+            return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed
+                                 : &s_ConfigurationDescriptorHighSpeed;
         }
-        break;
+    }
+    break;
 
     case DESCRIPTOR_STRING:
         // String descriptors - log for debugging
@@ -462,14 +589,14 @@ void CUSBCDGadget::AddEndpoints(void)
     if (m_IsFullSpeed)
     {
         const TUSBEndpointDescriptor *pOutDesc = m_bVendorSpecific
-                                                     ? &s_ConfigurationDescriptorFullSpeedISD.EndpointOut
+                                                     ? &s_ConfigurationDescriptorFullSpeedISD.EndpointAlt1Out // Changed
                                                      : &s_ConfigurationDescriptorFullSpeed.EndpointOut;
         m_pEP[EPOut] = new CUSBCDGadgetEndpoint(pOutDesc, this);
     }
     else
     {
         const TUSBEndpointDescriptor *pOutDesc = m_bVendorSpecific
-                                                     ? &s_ConfigurationDescriptorHighSpeedISD.EndpointOut
+                                                     ? &s_ConfigurationDescriptorHighSpeedISD.EndpointAlt1Out // Changed
                                                      : &s_ConfigurationDescriptorHighSpeed.EndpointOut;
         m_pEP[EPOut] = new CUSBCDGadgetEndpoint(pOutDesc, this);
     }
@@ -479,14 +606,14 @@ void CUSBCDGadget::AddEndpoints(void)
     if (m_IsFullSpeed)
     {
         const TUSBEndpointDescriptor *pInDesc = m_bVendorSpecific
-                                                    ? &s_ConfigurationDescriptorFullSpeedISD.EndpointIn
+                                                    ? &s_ConfigurationDescriptorFullSpeedISD.EndpointAlt1In // Changed
                                                     : &s_ConfigurationDescriptorFullSpeed.EndpointIn;
         m_pEP[EPIn] = new CUSBCDGadgetEndpoint(pInDesc, this);
     }
     else
     {
         const TUSBEndpointDescriptor *pInDesc = m_bVendorSpecific
-                                                    ? &s_ConfigurationDescriptorHighSpeedISD.EndpointIn
+                                                    ? &s_ConfigurationDescriptorHighSpeedISD.EndpointAlt1In // Changed
                                                     : &s_ConfigurationDescriptorHighSpeed.EndpointIn;
         m_pEP[EPIn] = new CUSBCDGadgetEndpoint(pInDesc, this);
     }
@@ -501,14 +628,14 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     MLOGNOTE("CUSBCDGadget::SetDevice",
              "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",
              dev, m_pDevice, (int)m_nState);
-    
+
     // Update ISD protocol handler if it exists
     if (m_pISDProtocol)
     {
         m_pISDProtocol->SetDevice(dev);
         MLOGNOTE("CUSBCDGadget::SetDevice", "Updated ISD protocol device");
     }
-    
+
     // Hand the new device to the CD Player
     CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
     if (cdplayer)
@@ -516,7 +643,7 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         cdplayer->SetDevice(dev);
         MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
     }
-    
+
     // Are we changing the device on an already-active USB connection?
     boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
     if (bDiscSwap || !m_CDReady)
@@ -533,15 +660,15 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         discChanged = true;
         MLOGNOTE("CUSBCDGadget::SetDevice", "Media ejected: state=NO_MEDIUM, sense=02/3a/00");
     }
-    
+
     m_pDevice = dev;
     m_mediaType = m_pDevice->GetMediaType();
     MLOGNOTE("CUSBCDGadget::SetDevice", "Media type set to %d", m_mediaType);
-    
+
     cueParser = CUEParser(m_pDevice->GetCueSheet());
     data_skip_bytes = GetSkipbytes();
     data_block_size = GetBlocksize();
-    
+
     // Only set media ready if this is a disc swap
     // Initial load will be handled by OnActivate() when USB becomes active
     if (bDiscSwap)
@@ -555,26 +682,26 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         discChanged = true;
         CTimer::Get()->MsDelay(100);
         MLOGNOTE("CUSBCDGadget::SetDevice",
-                "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
+                 "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
     }
     else
     {
         // Initial load - leave NOT READY, OnActivate will handle it
         MLOGNOTE("CUSBCDGadget::SetDevice",
-                "Initial load: Deferring media ready state to OnActivate()");
+                 "Initial load: Deferring media ready state to OnActivate()");
     }
-    
+
     // Log disc boundaries for debugging
     u32 max_lba = GetMaxLBA();
     CUETrackInfo first_track = GetTrackInfoForLBA(0);
     int first_track_blocksize = GetBlocksizeForTrack(first_track);
     MLOGNOTE("CUSBCDGadget::SetDevice",
-            "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
-            max_lba, first_track.track_mode, first_track_blocksize);
+             "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
+             max_lba, first_track.track_mode, first_track_blocksize);
     MLOGNOTE("CUSBCDGadget::SetDevice",
-            "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
-            m_CDReady, (int)m_mediaState,
-            m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+             "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
+             m_CDReady, (int)m_mediaState,
+             m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 }
 int CUSBCDGadget::GetBlocksize()
 {
@@ -1242,6 +1369,8 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData
 {
     assert(pSetupData != nullptr);
     assert(pData != nullptr);
+    
+    // LOG ALL CONTROL TRANSFERS
     CString logMsg;
     logMsg.Format("OnClassOrVendorRequest: bmRequestType=0x%02x bRequest=0x%02x wValue=0x%04x wIndex=0x%04x wLength=%d",
                   pSetupData->bmRequestType, pSetupData->bRequest,
@@ -1251,14 +1380,32 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData
     // Let ISD protocol handle vendor-specific requests
     if (m_bVendorSpecific && m_pISDProtocol)
     {
-        int result = HandleISDControlTransfer(pSetupData, pData);
-        if (result >= 0)
+        size_t responseLength = 0;
+        
+        if (m_pISDProtocol->HandleControlTransfer(
+            pSetupData->bmRequestType,
+            pSetupData->bRequest,
+            pSetupData->wValue,
+            pSetupData->wIndex,
+            pSetupData->wLength,
+            pData,
+            &responseLength))
         {
-            return result;  // ISD handled it
+            // LOG THE RETURN VALUE
+            logMsg.Format("OnClassOrVendorRequest: Returning %d bytes", (int)responseLength);
+            CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
+            
+            return (int)responseLength;
         }
+        
+        // If ISD didn't handle it, log that too
+        CLogger::Get()->Write("CUSBCDGadget", LogWarning, "OnClassOrVendorRequest: ISD handler returned false");
     }
     
     // Fall back to base class for standard handling
+    logMsg.Format("OnClassOrVendorRequest: Falling back to base class");
+    CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
+    
     return CDWUSBGadget::OnClassOrVendorRequest(pSetupData, pData);
 }
 
@@ -1412,6 +1559,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 {
     // CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
     assert(m_nState != TCDState::Init);
+    
     if (bIn) // packet to host has been transferred
     {
         switch (m_nState)
@@ -1420,9 +1568,10 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         {
             m_nState = TCDState::ReceiveCBW;
             m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                        m_OutBuffer, SIZE_CBW);
+                                       m_OutBuffer, SIZE_CBW);
             break;
         }
+        
         case TCDState::DataIn:
         {
             if (m_nnumber_blocks > 0)
@@ -1434,7 +1583,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 else
                 {
                     MLOGERR("onXferCmplt DataIn", "failed, %s",
-                            m_CDReady ? "ready" : "not ready");
+                           m_CDReady ? "ready" : "not ready");
                     m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
                     m_SenseParams.bSenseKey = 0x02;
                     m_SenseParams.bAddlSenseCode = 0x04;     // LOGICAL UNIT NOT READY
@@ -1448,11 +1597,13 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
             }
             break;
         }
+        
         case TCDState::SendReqSenseReply:
         {
             SendCSW();
             break;
         }
+        
         default:
         {
             MLOGERR("onXferCmplt", "dir=in, unhandled state = %i", m_nState);
@@ -1465,58 +1616,65 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
     {
         switch (m_nState)
         {
-        case TCDState::ReceiveCBW:
+case TCDState::ReceiveCBW:
+{
+    // NEW: Check for ISD pending data BEFORE processing CBW
+    if (m_bVendorSpecific && m_pISDProtocol)
+    {
+        CDROM_DEBUG_LOG("ReceiveCBW", "ISD mode: HasPendingData=%d", 
+                       m_pISDProtocol->HasPendingData() ? 1 : 0);
+        
+        if (m_pISDProtocol->HasPendingData())
         {
-            if (nLength != SIZE_CBW)
+            size_t actualLength = 0;
+            if (m_pISDProtocol->GetPendingResponseData(m_InBuffer, sizeof(m_InBuffer), &actualLength))
             {
-                MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
-                m_pEP[EPIn]->StallRequest(true);
-                break;
+                CDROM_DEBUG_LOG("ISD Bulk IN", "Sending %u bytes on bulk IN endpoint", (unsigned)actualLength);
+                m_nState = TCDState::DataIn;
+                m_nnumber_blocks = 0;
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, 
+                                          m_InBuffer, actualLength);
+                return;  // IMPORTANT: return here to prevent CBW processing
             }
+        }
+    }
+    
+    // EXISTING CODE: Process normal CBW
+    if (nLength != SIZE_CBW)
+    {
+        MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
+        m_pEP[EPIn]->StallRequest(true);
+        break;
+    }
+            
             memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
+            
             if (m_CBW.dCBWSignature != VALID_CBW_SIG)
             {
                 MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x",
-                        m_CBW.dCBWSignature);
+                       m_CBW.dCBWSignature);
                 m_pEP[EPIn]->StallRequest(true);
                 break;
             }
+            
             m_CSW.dCSWTag = m_CBW.dCBWTag;
+            
             if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0) // meaningful CBW
             {
                 HandleSCSICommand(); // will update m_nstate
                 break;
-            } // TODO: response for not meaningful CBW
+            }
             break;
         }
-
+        
         case TCDState::DataOut:
         {
             CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ", m_nState, bIn ? "IN" : "OUT", nLength);
-            // process block from host
-            // assert(m_nnumber_blocks>0);
-
             ProcessOut(nLength);
-
-            /*
-            if(m_CDReady)
-            {
-                    m_nState=TCDState::DataOutWrite; //see Update function
-            }
-            else
-            {
-                    MLOGERR("onXferCmplt DataOut","failed, %s",
-                            m_CDReady?"ready":"not ready");
-                    m_CSW.bmCSWStatus=CD_CSW_STATUS_FAIL;
-                    m_ReqSenseReply.bSenseKey = 2;
-                    m_ReqSenseReply.bAddlSenseCode = 1;
-                    SendCSW();
-            }
-            */
             SendCSW();
             break;
         }
-
+        
         default:
         {
             MLOGERR("onXferCmplt", "dir=out, unhandled state = %i", m_nState);
@@ -1526,7 +1684,6 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         }
     }
 }
-
 void CUSBCDGadget::ProcessOut(size_t nLength)
 {
     // This code is assuming that the payload is a Mode Select payload.
@@ -1755,9 +1912,9 @@ int CUSBCDGadget::HandleISDControlTransfer(const TSetupData *pSetupData, u8 *pDa
 {
     assert(pSetupData != nullptr);
     assert(pData != nullptr);
-    
+
     size_t responseLength = 0;
-    
+
     // Call ISD protocol handler
     bool handled = m_pISDProtocol->HandleControlTransfer(
         pSetupData->bmRequestType,
@@ -1766,17 +1923,16 @@ int CUSBCDGadget::HandleISDControlTransfer(const TSetupData *pSetupData, u8 *pDa
         pSetupData->wIndex,
         pSetupData->wLength,
         pData,
-        &responseLength
-    );
-    
+        &responseLength);
+
     if (handled)
     {
         // Return the response length (or 0 if no response data)
         return (int)responseLength;
     }
-    
+
     // Not handled by ISD protocol
-    return -1;  // Will cause STALL
+    return -1; // Will cause STALL
 }
 
 void CUSBCDGadget::ParseISDCommands(const u8 *data, size_t length)
@@ -3757,29 +3913,28 @@ void CUSBCDGadget::HandleSCSICommand()
     case 0x5a: // Mode Sense (10)
     {
 
-
-    // Let ISD protocol handle MODE SENSE in vendor-specific mode
-    if (m_bVendorSpecific && m_pISDProtocol)
-    {
-        size_t responseLength = 0;
-        
-        // Pass the CDB (Command Descriptor Block) from m_CBW.CBWCB
-        if (m_pISDProtocol->HandleModeSense(m_CBW.CBWCB, m_InBuffer, 
-                                           sizeof(m_InBuffer), &responseLength))
+        // Let ISD protocol handle MODE SENSE in vendor-specific mode
+        if (m_bVendorSpecific && m_pISDProtocol)
         {
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", 
-                           "MODE SENSE handled by ISD protocol (%d bytes)", 
-                           responseLength);
-            
-            m_nnumber_blocks = 0;
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, 
-                                      m_InBuffer, responseLength);
-            m_nState = TCDState::DataIn;
-            m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-            return;  // ISD handled it, we're done
+            size_t responseLength = 0;
+
+            // Pass the CDB (Command Descriptor Block) from m_CBW.CBWCB
+            if (m_pISDProtocol->HandleModeSense(m_CBW.CBWCB, m_InBuffer,
+                                                sizeof(m_InBuffer), &responseLength))
+            {
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                                "MODE SENSE handled by ISD protocol (%d bytes)",
+                                responseLength);
+
+                m_nnumber_blocks = 0;
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                           m_InBuffer, responseLength);
+                m_nState = TCDState::DataIn;
+                m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+                return; // ISD handled it, we're done
+            }
+            // If ISD didn't handle it, fall through to standard handling
         }
-        // If ISD didn't handle it, fall through to standard handling
-    }
 
         // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
 
