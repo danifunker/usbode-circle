@@ -30,23 +30,30 @@
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
 #include <usbcdgadget/usbcdgadget.h>
-#include <discimage/imagedevice.h>  // Changed from cuedevice.h
-
-
-class CDROMService : public CTask {
+#include <discimage/imagedevice.h>
+class CDROMService : public CTask
+{
 public:
-    CDROMService(u16 vid, u16 pid);
+    CDROMService(u16 vid, u16 pid, USBMode mode = USBMode::STANDARD);
     ~CDROMService(void);
     boolean Initialize();
-    void SetDevice(IImageDevice* pDevice);
+    void SetDevice(IImageDevice *pDevice);
     void Run(void);
+    USBMode GetUSBMode() const { return m_usbMode; }
 
 private:
-    CUSBCDGadget* m_CDGadget = nullptr;
+    CUSBCDGadget *m_CDGadget = nullptr;
     static CDROMService *s_pThis;
     bool isInitialized = false;
     u16 m_vid = 0;
     u16 m_pid = 0;
+    USBMode m_usbMode = USBMode::STANDARD;
+};
+
+enum class USBMode
+{
+    STANDARD, // Standard USB Mass Storage (default)
+    ISD       // ISD/Que! Drive vendor-specific mode (Mac OS 9 CD Audio)
 };
 
 #endif

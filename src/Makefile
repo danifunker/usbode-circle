@@ -34,6 +34,7 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(CIRCLEHOME)/addon/display/libdisplay.a \
 	$(USBODEHOME)/addon/webserver/libwebserver.a \
 	$(USBODEHOME)/addon/usbcdgadget/libusbcdgadget.a \
+	$(USBODEHOME)/addon/isdcdemu/libisdcdemu.a \
 	$(USBODEHOME)/addon/usbmsdgadget/libusbmsdgadget.a \
 	$(USBODEHOME)/addon/lzma/liblzma.a \
 	$(USBODEHOME)/addon/zlib/libz.a \
