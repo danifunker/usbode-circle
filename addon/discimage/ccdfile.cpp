@@ -130,34 +130,19 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
         } else if (current_track != -1) {
             if (strncmp(line, "MODE=", 5) == 0) {
                  m_tracks[current_track].is_audio = (atoi(line + 5) == 0);
-            } else if (strncmp(line, "INDEX 01", 8) == 0) {
-				char* p = line + 8;
+            } else if (strncmp(line, "INDEX 1", 7) == 0) {
+				char* p = line + 7;
 				while (*p == ' ' || *p == '\t' || *p == '=') {
 					p++;
 				}
 				char *endptr;
-				long min = strtol(p, &endptr, 10);
-				if (*endptr != ':')
-				{
-					LOGERR("Malformed MSF timestamp (min): %s", line);
+				long lba = strtol(p, &endptr, 10);
+				if (endptr == p || (*endptr != '\0' && *endptr != ' ' && *endptr != '\t')) {
+					LOGERR("Malformed LBA value for INDEX 1: %s", line);
 					continue;
 				}
-				p = endptr + 1;
-				long sec = strtol(p, &endptr, 10);
-				if (*endptr != ':')
-				{
-					LOGERR("Malformed MSF timestamp (sec): %s", line);
-					continue;
-				}
-				p = endptr + 1;
-				long frame = strtol(p, &endptr, 10);
-				if (*endptr != '\0')
-				{
-					LOGERR("Malformed MSF timestamp (frame): %s", line);
-					continue;
-				}
-                m_tracks[current_track].start_lba = (min * 60 * 75) + (sec * 75) + frame;
-            }
+				m_tracks[current_track].start_lba = lba;
+			}
         }
     }
 
