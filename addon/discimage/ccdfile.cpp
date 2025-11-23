@@ -109,6 +109,11 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
     // Second pass: parse track info
     context = ccd_buffer; // Reset context
     while ((line = read_line(&context)) != NULL) {
+		// Trim leading whitespace
+		while (*line == ' ' || *line == '\t') {
+			line++;
+		}
+
         if (strncmp(line, "[TRACK ", 7) == 0) {
             char* endptr;
             long val = strtol(line + 7, &endptr, 10);
@@ -125,14 +130,33 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
         } else if (current_track != -1) {
             if (strncmp(line, "MODE=", 5) == 0) {
                  m_tracks[current_track].is_audio = (atoi(line + 5) == 0);
-            } else if (strncmp(line, "INDEX 01=", 9) == 0) {
-                char* endptr;
-                long long val = strtoll(line + 9, &endptr, 10);
-                if (endptr == line + 9 || *endptr != '\0') {
-                    LOGERR("Malformed LBA: %s", line);
-                    continue;
-                }
-                m_tracks[current_track].start_lba = val;
+            } else if (strncmp(line, "INDEX 01", 8) == 0) {
+				char* p = line + 8;
+				while (*p == ' ' || *p == '\t' || *p == '=') {
+					p++;
+				}
+				char *endptr;
+				long min = strtol(p, &endptr, 10);
+				if (*endptr != ':')
+				{
+					LOGERR("Malformed MSF timestamp (min): %s", line);
+					continue;
+				}
+				p = endptr + 1;
+				long sec = strtol(p, &endptr, 10);
+				if (*endptr != ':')
+				{
+					LOGERR("Malformed MSF timestamp (sec): %s", line);
+					continue;
+				}
+				p = endptr + 1;
+				long frame = strtol(p, &endptr, 10);
+				if (*endptr != '\0')
+				{
+					LOGERR("Malformed MSF timestamp (frame): %s", line);
+					continue;
+				}
+                m_tracks[current_track].start_lba = (min * 60 * 75) + (sec * 75) + frame;
             }
         }
     }

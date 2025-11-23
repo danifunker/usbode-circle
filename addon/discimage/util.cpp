@@ -206,9 +206,6 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imageName) {
     CCueBinFileDevice* device = new CCueBinFileDevice(imageFile, cue_str, mediaType);
 
     // CCueBinFileDevice takes ownership of cue_str if provided
-    if (cue_str != nullptr) {
-        delete[] cue_str;
-    }
 
     LOGNOTE("Successfully loaded CUE/BIN/ISO device: %s", imageName);
     
