@@ -24,6 +24,7 @@
 #include "cuebinfile.h"
 #include "mdsfile.h"
 #include "chdfile.h"
+#include "ccdfile.h"
 
 LOGMODULE("discimage-util");
 
@@ -93,6 +94,18 @@ bool hasChdExtension(const char* imageName) {
     return false;
 }
 
+bool hasCcdExtension(const char* imageName) {
+    size_t len = strlen(imageName);
+    if (len >= 4) {
+        const char* ext = imageName + len - 4;
+        return tolower(ext[0]) == '.' &&
+               tolower(ext[1]) == 'c' &&
+               tolower(ext[2]) == 'c' &&
+               tolower(ext[3]) == 'd';
+    }
+    return false;
+}
+
 void change_extension_to_bin(char* fullPath) {
     size_t len = strlen(fullPath);
     if (len >= 3) {
@@ -108,6 +121,24 @@ void change_extension_to_cue(char* fullPath) {
         fullPath[len - 3] = 'c';
         fullPath[len - 2] = 'u';
         fullPath[len - 1] = 'e';
+    }
+}
+
+void change_extension_to_img(char* fullPath) {
+    size_t len = strlen(fullPath);
+    if (len >= 3) {
+        fullPath[len - 3] = 'i';
+        fullPath[len - 2] = 'm';
+        fullPath[len - 1] = 'g';
+    }
+}
+
+void change_extension_to_sub(char* fullPath) {
+    size_t len = strlen(fullPath);
+    if (len >= 3) {
+        fullPath[len - 3] = 's';
+        fullPath[len - 2] = 'u';
+        fullPath[len - 1] = 'b';
     }
 }
 
@@ -279,6 +310,44 @@ IImageDevice* loadCHDFileDevice(const char* imageName) {
     return chdDevice;
 }
 
+IImageDevice* loadCcdFileDevice(const char* imageName) {
+    LOGNOTE("Loading CCD image: %s", imageName);
+
+    MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+
+    // Construct full path
+    char fullPath[255];
+    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
+
+    char* ccd_str = nullptr;
+    if (!ReadFileToString(fullPath, &ccd_str)) {
+        LOGERR("Failed to read CCD file: %s", fullPath);
+        return nullptr;
+    }
+
+    // Derive .img and .sub filenames
+    char imgPath[255];
+    char subPath[255];
+    strcpy(imgPath, fullPath);
+    strcpy(subPath, fullPath);
+
+    change_extension_to_img(imgPath);
+    change_extension_to_sub(subPath);
+
+    CCcdFileDevice* ccdDevice = new CCcdFileDevice(imgPath, subPath, ccd_str, mediaType);
+    if (!ccdDevice->Init()) {
+        LOGERR("Failed to initialize CCD device: %s", imageName);
+        delete ccdDevice;
+        return nullptr;
+    }
+
+    LOGNOTE("Successfully loaded CCD device: %s (has subchannels: %s)",
+            imageName,
+            ccdDevice->HasSubchannelData() ? "yes" : "no");
+
+    return ccdDevice;
+}
+
 // ============================================================================
 // Main Entry Point - Plugin Selection
 // ============================================================================
@@ -292,6 +361,10 @@ IImageDevice* loadImageDevice(const char* imageName) {
     else if (hasChdExtension(imageName)) {
         LOGNOTE("Detected CHD format - using CHD plugin");
         return loadCHDFileDevice(imageName);
+    }
+    else if (hasCcdExtension(imageName)) {
+        LOGNOTE("Detected CCD format - using CCD plugin");
+        return loadCcdFileDevice(imageName);
     }
     else if (hasCueExtension(imageName) || hasBinExtension(imageName) || hasIsoExtension(imageName)) {
         LOGNOTE("Detected CUE/BIN/ISO format - using CUE plugin");

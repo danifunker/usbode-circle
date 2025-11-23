@@ -14,8 +14,11 @@ bool hasMdsExtension(const char* imageName);
 bool hasIsoExtension(const char* imageName);
 bool hasCueExtension(const char* imageName);
 bool hasChdExtension(const char* imageName);
+bool hasCcdExtension(const char* imageName);
 void change_extension_to_cue(char* fullPath);
 void change_extension_to_bin(char* fullPath);
+void change_extension_to_img(char* fullPath);
+void change_extension_to_sub(char* fullPath);
 bool hasDvdHint(const char* imageName);
 
 // Image loading - returns base IImageDevice interface
@@ -25,6 +28,7 @@ IImageDevice* loadImageDevice(const char* imageName);
 IImageDevice* loadMDSFileDevice(const char* imageName);
 IImageDevice* loadCueBinIsoFileDevice(const char* imageName);
 IImageDevice* loadCHDFileDevice(const char* imageName);
+IImageDevice* loadCcdFileDevice(const char* imageName);
 // Legacy compatibility function
 // TODO: Remove once all code migrated to IImageDevice
 inline ICueDevice* loadCueBinFileDevice(const char* imageName) {
