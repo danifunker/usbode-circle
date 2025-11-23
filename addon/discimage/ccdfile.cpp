@@ -193,8 +193,6 @@ void CCcdFileDevice::GenerateCueSheet() {
 
     p += sprintf(p, "FILE \"%s\" BINARY\n", imgName);
 
-    int numTracks = trackEntries.size();
-
     // If we didn't find leadOutLba, try to use file size
     if (leadOutLba == 0 && m_ImgFile) {
         // This is called before file open in Init(), but we can check size if file is open?
@@ -290,7 +288,7 @@ int CCcdFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
     if (!m_SubFile) return -1;
 
     // Subchannel data is 96 bytes per sector
-    u64 offset = (u64)lba * 96;
+    // u64 offset = (u64)lba * 96; // Removed unused variable warning
 
     // Save current position?
     // Since we use a separate file handle, we should be fine, but we need to seek.
@@ -299,7 +297,7 @@ int CCcdFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
     // Assuming single-threaded access for now or guarded by caller.
     // BUT, m_SubFile is separate from m_ImgFile, so it's safe w.r.t data reads.
 
-    FRESULT fr = f_lseek(m_SubFile, offset);
+    FRESULT fr = f_lseek(m_SubFile, (u64)lba * 96);
     if (fr != FR_OK) return -1;
 
     UINT bytesRead;

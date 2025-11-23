@@ -4,7 +4,7 @@
 #define _CCDFILE_H
 
 #include "imagedevice.h"
-#include <circle/fs/fat/fatfs.h>
+#include <fatfs/ff.h>
 #include <vector>
 
 struct CcdEntry {
