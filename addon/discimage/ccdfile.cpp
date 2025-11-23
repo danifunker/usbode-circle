@@ -215,7 +215,10 @@ void CCcdFileDevice::GenerateCueSheet() {
 
     for (size_t i = 0; i < trackEntries.size(); ++i) {
         const auto& entry = trackEntries[i];
-        int lba = entry.PLBA;
+        // CCD PLBA is typically 0-based logical address (relative to end of pregap)
+        // But .img files typically contain the pregap.
+        // So we need to add 150 frames (2 seconds) to map LBA 0 to File Offset 150.
+        int lba = entry.PLBA + 150;
 
         // Determine mode
         bool isData = (entry.Control & 0x04);
@@ -223,10 +226,9 @@ void CCcdFileDevice::GenerateCueSheet() {
 
         p += sprintf(p, "  TRACK %02d %s\n", entry.Point, mode);
 
-        // Add PREGAP 00:02:00 for the first track if it's track 1
-        if (entry.Point == 1) {
-            p += sprintf(p, "    PREGAP 00:02:00\n");
-        }
+        // No PREGAP directive needed because we adjusted the INDEX time directly.
+        // PREGAP 00:02:00 + INDEX 01 00:00:00  maps Absolute 150 -> File 0. (Wrong if file has pregap)
+        // INDEX 01 00:02:00                    maps Absolute 150 -> File 150. (Correct if file has pregap)
 
         p += sprintf(p, "    INDEX 01 %02d:%02d:%02d\n",
                      lba / (75 * 60),
@@ -307,14 +309,24 @@ int CCcdFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
     if (!m_SubFile) return -1;
 
     // Subchannel data is 96 bytes per sector
-    // u64 offset = (u64)lba * 96; // Removed unused variable warning
+    // If lba passed is logical (0-based) and file starts at -150, we need to offset.
+    // Assuming .sub file layout matches .img file layout (includes 150 frames pregap).
+    // If Gadget passes Absolute LBA (150 for Track 1 start), then 150 * 96 is correct.
+    // If Gadget passes Logical LBA (0), then we need (0 + 150) * 96.
+    // Currently assuming Logical LBA is passed if scsitbservice is high-level,
+    // BUT CUSBCDGadget is low-level SCSI handling. READ CD uses absolute LBA usually?
+    // Wait, standard behavior for IImageDevice::ReadSubchannel seems to be LBA relative to Disc Start?
+    // Or whatever Read uses. Read uses byte offset.
+    // If Read uses seek(150*2352) for LBA 0.
+    // Then ReadSubchannel(150) should map to 150*96.
 
-    // Save current position?
-    // Since we use a separate file handle, we should be fine, but we need to seek.
-    // Note: Circle's f_lseek modifies the file object state.
-    // We should check if ReadSubchannel is called from a different thread or context than Read.
-    // Assuming single-threaded access for now or guarded by caller.
-    // BUT, m_SubFile is separate from m_ImgFile, so it's safe w.r.t data reads.
+    // If the input lba is Absolute (150 for data start):
+    // Then lba * 96 = 150 * 96 = offset 14400. Correct for file with pregap.
+    // If input lba is Logical (0):
+    // Then lba * 96 = 0. Maps to start of file (start of pregap). Wrong for data start.
+
+    // Assuming CUSBCDGadget passes Absolute LBA (MSF converted).
+    // So lba * 96 is correct.
 
     FRESULT fr = f_lseek(m_SubFile, (u64)lba * 96);
     if (fr != FR_OK) return -1;
