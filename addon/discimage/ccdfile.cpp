@@ -85,12 +85,16 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
     int current_track = -1;
     int max_tracks = 0;
 
-    // First pass: count tracks to allocate memory
-    while ((line = read_line(&context)) != NULL) {
-        if (strncmp(line, "[TRACK ", 7) == 0) {
+    // First pass: count tracks to allocate memory (non-destructive)
+    for (const char* p = ccd_buffer; *p; ++p) {
+        if (*p == '\n' && strncmp(p + 1, "[TRACK ", 7) == 0) {
             max_tracks++;
         }
     }
+    if (strncmp(ccd_buffer, "[TRACK ", 7) == 0) {
+        max_tracks++;
+    }
+
 
     if (max_tracks == 0) {
         LOGERR("No tracks found in CCD file");
@@ -99,6 +103,7 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
     }
 
     m_tracks = new TrackInfo[max_tracks];
+    memset(m_tracks, 0, sizeof(TrackInfo) * max_tracks);
     m_numTracks = max_tracks;
 
     // Second pass: parse track info
