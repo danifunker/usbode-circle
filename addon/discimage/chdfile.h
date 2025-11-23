@@ -68,6 +68,12 @@ class CCHDFileDevice : public ICHDDevice {
     // Track info parsed from CHD metadata
     CHDTrackInfo m_tracks[CD_MAX_TRACKS];
     int m_numTracks;
+
+    // Hunk cache
+    u8* m_hunkBuffer;
+    u32 m_hunkSize;
+    u32 m_cachedHunkNum;
+    int m_lastTrackIndex;
     
     // Helper to parse CHD track metadata
     bool ParseTrackMetadata();
