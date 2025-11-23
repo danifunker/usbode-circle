@@ -22,8 +22,20 @@ static char* parseValue(const char* line, const char* key) {
     const char* p = strstr(line, key);
     if (!p) return nullptr;
 
+    // Check if the match is exact key word (e.g. "Point" shouldn't match "Points")
+    // but for CCD we mostly care about prefix
+
     p += strlen(key);
-    while (*p && (*p == ' ' || *p == '=')) p++;
+
+    // Handle spaces before '='
+    while (*p && isspace(*p)) p++;
+
+    // Check for '='
+    if (*p != '=') return nullptr;
+    p++; // skip '='
+
+    // Skip spaces after '='
+    while (*p && isspace(*p)) p++;
 
     char* value = new char[strlen(p) + 1];
     strcpy(value, p);
@@ -126,12 +138,13 @@ bool CCcdFileDevice::ParseCcd() {
             memset(&currentEntry, 0, sizeof(CcdEntry));
             inEntry = true;
         } else if (inEntry) {
-            if (beginsWith(line, "Session=")) currentEntry.Session = parseInt(line, "Session=");
-            else if (beginsWith(line, "Point=")) currentEntry.Point = parseInt(line, "Point=");
-            else if (beginsWith(line, "ADR=")) currentEntry.ADR = parseInt(line, "ADR=");
-            else if (beginsWith(line, "Control=")) currentEntry.Control = parseInt(line, "Control=");
-            else if (beginsWith(line, "TrackNo=")) currentEntry.TrackNo = parseInt(line, "TrackNo=");
-            else if (beginsWith(line, "PLBA=")) currentEntry.PLBA = parseInt(line, "PLBA=");
+            // Use simple key matching without '=' in the call, parseValue handles '='
+            if (strstr(line, "Session")) currentEntry.Session = parseInt(line, "Session");
+            else if (strstr(line, "Point")) currentEntry.Point = parseInt(line, "Point");
+            else if (strstr(line, "ADR")) currentEntry.ADR = parseInt(line, "ADR");
+            else if (strstr(line, "Control")) currentEntry.Control = parseInt(line, "Control");
+            else if (strstr(line, "TrackNo")) currentEntry.TrackNo = parseInt(line, "TrackNo");
+            else if (strstr(line, "PLBA")) currentEntry.PLBA = parseInt(line, "PLBA");
             // Add other fields if needed
         }
 
@@ -209,6 +222,12 @@ void CCcdFileDevice::GenerateCueSheet() {
         const char* mode = isData ? "MODE1/2352" : "AUDIO";
 
         p += sprintf(p, "  TRACK %02d %s\n", entry.Point, mode);
+
+        // Add PREGAP 00:02:00 for the first track if it's track 1
+        if (entry.Point == 1) {
+            p += sprintf(p, "    PREGAP 00:02:00\n");
+        }
+
         p += sprintf(p, "    INDEX 01 %02d:%02d:%02d\n",
                      lba / (75 * 60),
                      (lba / 75) % 60,
