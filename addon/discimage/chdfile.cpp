@@ -20,7 +20,8 @@ CChdFileDevice::CChdFileDevice(const char* chd_filename) :
     m_chd(nullptr),
     m_cue_sheet(nullptr),
     m_chd_filename(chd_filename),
-    m_ullOffset(0)
+    m_ullOffset(0),
+    m_track_metadata(nullptr)
 {
 }
 
@@ -35,6 +36,9 @@ CChdFileDevice::~CChdFileDevice(void)
     }
     if (m_cue_sheet) {
         free(m_cue_sheet);
+    }
+    if (m_track_metadata) {
+        delete[] m_track_metadata;
     }
 }
 
@@ -58,28 +62,20 @@ bool CChdFileDevice::Init()
 
     if (num_tracks > 0)
     {
+        m_track_metadata = new chd_track_metadata[num_tracks];
+        for (u32 i = 0; i < num_tracks; i++) {
+            GetTrackMetadata(i, &m_track_metadata[i]);
+        }
+
         // Allocate a large buffer for the CUE sheet. 4k should be enough.
         m_cue_sheet = (char*)malloc(4096);
         char* cue_ptr = m_cue_sheet;
         cue_ptr += sprintf(cue_ptr, "FILE \"%s\" BINARY\n", m_chd_filename);
 
         for (u32 i = 0; i < num_tracks; i++) {
-            char metadata_tag[256];
-            snprintf(metadata_tag, sizeof(metadata_tag), CUE_METADATA_TRACK_FORMAT, i + 1);
-            
-            u8 buffer[256];
-            u32 track_type = 0;
-            u32 track_subtype = 0;
-
-            chd_get_metadata_value(m_chd, metadata_tag, CUE_METADATA_TRACK_TYPE, buffer, sizeof(buffer));
-            sscanf((char*)buffer, "%d", &track_type);
-
-            chd_get_metadata_value(m_chd, metadata_tag, CUE_METADATA_TRACK_SUBTYPE, buffer, sizeof(buffer));
-            sscanf((char*)buffer, "%d", &track_subtype);
-
             const char* track_mode = "MODE1/2352";
-            if (track_type == 0) { // Data
-                if (track_subtype == 0) { // MODE1/2352
+            if (m_track_metadata[i].track_type == 0) { // Data
+                if (m_track_metadata[i].track_subtype == 0) { // MODE1/2352
                     track_mode = "MODE1/2352";
                 } else { // MODE2/2352
                     track_mode = "MODE2/2352";
@@ -87,19 +83,14 @@ bool CChdFileDevice::Init()
             } else { // Audio
                 track_mode = "AUDIO";
             }
-            
-            u32 pregap = 0;
-            if (chd_get_metadata_value(m_chd, metadata_tag, CUE_METADATA_TRACK_PREGAP, buffer, sizeof(buffer)) == CHDERR_NONE)
-            {
-                sscanf((char*)buffer, "%d", &pregap);
-            }
 
             cue_ptr += sprintf(cue_ptr, "  TRACK %02d %s\n", i + 1, track_mode);
-            if (pregap > 0)
+            if (m_track_metadata[i].pregap > 0)
             {
-                cue_ptr += sprintf(cue_ptr, "    PREGAP %02d:%02d:%02d\n", pregap / 75 / 60, (pregap / 75) % 60, pregap % 75);
+                cue_ptr += sprintf(cue_ptr, "    PREGAP %02d:%02d:%02d\n", m_track_metadata[i].pregap / 75 / 60, (m_track_metadata[i].pregap / 75) % 60, m_track_metadata[i].pregap % 75);
             }
-            cue_ptr += sprintf(cue_ptr, "    INDEX 01 %02d:%02d:%02d\n", GetTrackStart(i) / 75 / 60, (GetTrackStart(i) / 75) % 60, GetTrackStart(i) % 75);
+            u32 track_start = GetTrackStart(i);
+            cue_ptr += sprintf(cue_ptr, "    INDEX 01 %02d:%02d:%02d\n", track_start / 75 / 60, (track_start / 75) % 60, track_start % 75);
         }
     }
 
@@ -182,40 +173,48 @@ u32 CChdFileDevice::GetTrackStart(int track) const
 {
     u32 frames = 0;
     for (int i = 0; i < track; i++) {
-        frames += GetTrackLength(i);
+        frames += m_track_metadata[i].track_frames;
     }
     return frames;
 }
 
 u32 CChdFileDevice::GetTrackLength(int track) const
 {
-    char metadata_tag[256];
-    snprintf(metadata_tag, sizeof(metadata_tag), CUE_METADATA_TRACK_FORMAT, track + 1);
-    
-    u8 buffer[256];
-    u32 track_frames = 0;
-
-    chd_get_metadata_value(m_chd, metadata_tag, CUE_METADATA_TRACK_FRAMES, buffer, sizeof(buffer));
-    sscanf((char*)buffer, "%d", &track_frames);
-
-    return track_frames;
+    return m_track_metadata[track].track_frames;
 }
 
 bool CChdFileDevice::IsAudioTrack(int track) const
 {
-    char metadata_tag[256];
-    snprintf(metadata_tag, sizeof(metadata_tag), CUE_METADATA_TRACK_FORMAT, track + 1);
-    
-    u8 buffer[256];
-    u32 track_type = 0;
-
-    chd_get_metadata_value(m_chd, metadata_tag, CUE_METADATA_TRACK_TYPE, buffer, sizeof(buffer));
-    sscanf((char*)buffer, "%d", &track_type);
-
-    return track_type != 0;
+    return m_track_metadata[track].track_type != 0;
 }
 
 const char* CChdFileDevice::GetCueSheet() const
 {
     return m_cue_sheet;
+}
+
+void CChdFileDevice::GetTrackMetadata(int track, chd_track_metadata* metadata) const
+{
+    char metadata_tag[256];
+    snprintf(metadata_tag, sizeof(metadata_tag), CUE_METADATA_TRACK_FORMAT, track + 1);
+
+    u8 buffer[256];
+
+    chd_get_metadata_value(m_chd, metadata_tag, CUE_METADATA_TRACK_TYPE, buffer, sizeof(buffer));
+    sscanf((char*)buffer, "%d", &metadata->track_type);
+
+    chd_get_metadata_value(m_chd, metadata_tag, CUE_METADATA_TRACK_SUBTYPE, buffer, sizeof(buffer));
+    sscanf((char*)buffer, "%d", &metadata->track_subtype);
+
+    chd_get_metadata_value(m_chd, metadata_tag, CUE_METADATA_TRACK_FRAMES, buffer, sizeof(buffer));
+    sscanf((char*)buffer, "%d", &metadata->track_frames);
+
+    if (chd_get_metadata_value(m_chd, metadata_tag, CUE_METADATA_TRACK_PREGAP, buffer, sizeof(buffer)) == CHDERR_NONE)
+    {
+        sscanf((char*)buffer, "%d", &metadata->pregap);
+    }
+    else
+    {
+        metadata->pregap = 0;
+    }
 }

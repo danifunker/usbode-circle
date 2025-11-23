@@ -18,6 +18,13 @@ extern "C" {
 #include <libchdr/chd.h>
 }
 
+typedef struct {
+    u32 track_type;
+    u32 track_subtype;
+    u32 track_frames;
+    u32 pregap;
+} chd_track_metadata;
+
 class CChdFileDevice : public IImageDevice {
 public:
     CChdFileDevice(const char* chd_filename);
@@ -42,11 +49,14 @@ public:
     const char* GetCueSheet() const override;
 
 private:
+    void GetTrackMetadata(int track, chd_track_metadata* metadata) const;
+
     FIL* m_pFile;
     chd_file* m_chd;
     char* m_cue_sheet;
     const char* m_chd_filename;
     u64 m_ullOffset;
+    chd_track_metadata* m_track_metadata;
 };
 
 #endif

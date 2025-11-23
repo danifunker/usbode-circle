@@ -166,7 +166,7 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
 // ============================================================================
 IImageDevice* loadCHDFileDevice(const char* imageName) {
     LOGNOTE("Loading CHD image: %s", imageName);
-    
+
     // Construct full path for CHD file
     char fullPath[255];
     snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
@@ -180,7 +180,7 @@ IImageDevice* loadCHDFileDevice(const char* imageName) {
     }
 
     LOGNOTE("Successfully loaded CHD device: %s", imageName);
-    
+
     return chdDevice;
 }
 
