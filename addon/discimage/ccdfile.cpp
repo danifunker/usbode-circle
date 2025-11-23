@@ -143,13 +143,9 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
 
     // Open the IMG file
     char img_path[255];
-    snprintf(img_path, sizeof(img_path), "%s", ccd_path);
-    char* ext = strrchr(img_path, '.');
-    if (ext != NULL) {
-        snprintf(ext, 5, ".img");
-    } else {
-        strncat(img_path, ".img", sizeof(img_path) - strlen(img_path) - 1);
-    }
+    const char* ext = strrchr(ccd_path, '.');
+    int base_len = ext ? (ext - ccd_path) : strlen(ccd_path);
+    snprintf(img_path, sizeof(img_path), "%.*s.img", base_len, ccd_path);
 
     m_imgFile = new FIL();
     res = f_open(m_imgFile, img_path, FA_READ);
@@ -168,13 +164,7 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
 
     // Open the SUB file
     char sub_path[255];
-    snprintf(sub_path, sizeof(sub_path), "%s", ccd_path);
-    ext = strrchr(sub_path, '.');
-    if (ext != NULL) {
-        snprintf(ext, 5, ".sub");
-    } else {
-        strncat(sub_path, ".sub", sizeof(sub_path) - strlen(sub_path) - 1);
-    }
+    snprintf(sub_path, sizeof(sub_path), "%.*s.sub", base_len, ccd_path);
 
     m_subFile = new FIL();
     res = f_open(m_subFile, sub_path, FA_READ);
@@ -196,13 +186,9 @@ void CCcdFileDevice::GenerateCueSheet() {
     int remaining = cue_size;
 
     char img_filename[255];
-    snprintf(img_filename, sizeof(img_filename), "%s", m_ccd_filename);
-    char* ext = strrchr(img_filename, '.');
-    if (ext != NULL) {
-        snprintf(ext, 5, ".img");
-    } else {
-        strncat(img_filename, ".img", sizeof(img_filename) - strlen(img_filename) - 1);
-    }
+    const char* ext = strrchr(m_ccd_filename, '.');
+    int base_len = ext ? (ext - m_ccd_filename) : strlen(m_ccd_filename);
+    snprintf(img_filename, sizeof(img_filename), "%.*s.img", base_len, m_ccd_filename);
 
     int len = snprintf(cue_ptr, remaining, "FILE \"%s\" BINARY\n", img_filename);
     cue_ptr += len;
