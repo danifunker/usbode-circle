@@ -22,9 +22,6 @@ static char* parseValue(const char* line, const char* key) {
     const char* p = strstr(line, key);
     if (!p) return nullptr;
 
-    // Check if the match is exact key word (e.g. "Point" shouldn't match "Points")
-    // but for CCD we mostly care about prefix
-
     p += strlen(key);
 
     // Handle spaces before '='
@@ -40,7 +37,7 @@ static char* parseValue(const char* line, const char* key) {
     char* value = new char[strlen(p) + 1];
     strcpy(value, p);
 
-    // Trim trailing whitespace/newline
+    // Trim trailing whitespace/newline/CR
     char* end = value + strlen(value) - 1;
     while (end >= value && (isspace(*end) || *end == '\r' || *end == '\n')) {
         *end = '\0';
@@ -53,7 +50,7 @@ static char* parseValue(const char* line, const char* key) {
 static int parseInt(const char* line, const char* key) {
     char* val = parseValue(line, key);
     if (!val) return 0;
-    int res = strtol(val, nullptr, 0); // handles hex (0x) and decimal
+    int res = strtol(val, nullptr, 0); 
     delete[] val;
     return res;
 }
@@ -87,7 +84,11 @@ CCcdFileDevice::~CCcdFileDevice() {
     if (m_ImgPath) delete[] m_ImgPath;
     if (m_SubPath) delete[] m_SubPath;
     if (m_CueSheet) delete[] m_CueSheet;
-    if (m_CcdContent) delete[] m_CcdContent;
+}
+
+// Helper: CloneCD standard is 75 frames/sec
+int CCcdFileDevice::MsfToLba(int m, int s, int f) const {
+    return ((m * 60) + s) * 75 + f;
 }
 
 bool CCcdFileDevice::Init() {
@@ -119,54 +120,53 @@ bool CCcdFileDevice::Init() {
 bool CCcdFileDevice::ParseCcd() {
     if (!m_CcdContent) return false;
 
-    // Make a copy to tokenize
     char* content = new char[strlen(m_CcdContent) + 1];
     strcpy(content, m_CcdContent);
 
+    // Safer tokenizer handling
     char* line = strtok(content, "\n");
     CcdEntry currentEntry = {0};
     bool inEntry = false;
 
     while (line) {
-        // Trim leading whitespace
         while (isspace(*line)) line++;
 
         if (beginsWith(line, "[Entry")) {
             if (inEntry) {
+                // Fixup: Calculate PLBA from MSF if PLBA is missing/zero
+                if (currentEntry.PLBA == 0 && (currentEntry.PMin != 0 || currentEntry.PSec != 0 || currentEntry.PFrame != 0)) {
+                     currentEntry.PLBA = MsfToLba(currentEntry.PMin, currentEntry.PSec, currentEntry.PFrame);
+                }
                 m_Entries.push_back(currentEntry);
             }
             memset(&currentEntry, 0, sizeof(CcdEntry));
             inEntry = true;
         } else if (inEntry) {
-            // Use simple key matching without '=' in the call, parseValue handles '='
             if (strstr(line, "Session")) currentEntry.Session = parseInt(line, "Session");
             else if (strstr(line, "Point")) currentEntry.Point = parseInt(line, "Point");
             else if (strstr(line, "ADR")) currentEntry.ADR = parseInt(line, "ADR");
             else if (strstr(line, "Control")) currentEntry.Control = parseInt(line, "Control");
             else if (strstr(line, "TrackNo")) currentEntry.TrackNo = parseInt(line, "TrackNo");
             else if (strstr(line, "PLBA")) currentEntry.PLBA = parseInt(line, "PLBA");
-            // Add other fields if needed
+            else if (strstr(line, "PMin")) currentEntry.PMin = parseInt(line, "PMin");
+            else if (strstr(line, "PSec")) currentEntry.PSec = parseInt(line, "PSec");
+            else if (strstr(line, "PFrame")) currentEntry.PFrame = parseInt(line, "PFrame");
         }
 
         line = strtok(nullptr, "\n");
     }
 
     if (inEntry) {
+        if (currentEntry.PLBA == 0 && (currentEntry.PMin != 0 || currentEntry.PSec != 0 || currentEntry.PFrame != 0)) {
+             currentEntry.PLBA = MsfToLba(currentEntry.PMin, currentEntry.PSec, currentEntry.PFrame);
+        }
         m_Entries.push_back(currentEntry);
     }
 
     delete[] content;
 
-    // Sort entries
     std::sort(m_Entries.begin(), m_Entries.end(), [](const CcdEntry& a, const CcdEntry& b) {
         if (a.Session != b.Session) return a.Session < b.Session;
-
-        // Special sorting order: 0xA0, 0xA1, 0xA2 should be handled carefully
-        // But for standard track listing, Point 1..99 are tracks.
-        // 0xA0 (first track), 0xA1 (last track), 0xA2 (leadout)
-
-        // Simple sort by Point is usually enough if we process them correctly later.
-        // Note: 0xA0=160, 0xA1=161, 0xA2=162.
         return a.Point < b.Point;
     });
 
@@ -174,10 +174,6 @@ bool CCcdFileDevice::ParseCcd() {
 }
 
 void CCcdFileDevice::GenerateCueSheet() {
-    // Calculate tracks from Entries
-    // We need entries with Session 1 (assume single session for now)
-    // Tracks have Point 1..99
-
     std::vector<CcdEntry> trackEntries;
     for (const auto& entry : m_Entries) {
         if (entry.Session == 1 && entry.Point >= 1 && entry.Point <= 99) {
@@ -185,7 +181,6 @@ void CCcdFileDevice::GenerateCueSheet() {
         }
     }
 
-    // Find Lead-out (0xA2) to calculate last track length
     int leadOutLba = 0;
     for (const auto& entry : m_Entries) {
         if (entry.Session == 1 && entry.Point == 0xA2) {
@@ -194,57 +189,58 @@ void CCcdFileDevice::GenerateCueSheet() {
         }
     }
 
-    // Construct Cue Sheet buffer
-    // Estimate size: 1024 header + 100 tracks * 100 bytes
+    // CloneCD images include the 150 frame pregap (2 seconds).
+    // We set an internal offset to skip it for seek operations,
+    // effectively normalizing the file to start at Logical LBA 0.
+    m_MainDataOffset = 150 * 2352;
+    m_SubDataOffset = 150 * 96;
+
     char* buffer = new char[16384];
     char* p = buffer;
 
-    // Assuming IMG is always available
-    // Strip path from img filename for CUE FILE entry
     const char* imgName = strrchr(m_ImgPath, '/');
     if (imgName) imgName++; else imgName = m_ImgPath;
 
     p += sprintf(p, "FILE \"%s\" BINARY\n", imgName);
 
-    // If we didn't find leadOutLba, try to use file size
-    if (leadOutLba == 0 && m_ImgFile) {
-        // This is called before file open in Init(), but we can check size if file is open?
-        // No, file is not open yet.
-        // We rely on CCD entries. If 0xA2 is missing, we might have issues with last track length.
-    }
-
-    // CloneCD images usually include the 150 frame pregap.
-    // We set an internal offset to skip it for reads.
-    m_MainDataOffset = 150 * 2352;
-    m_SubDataOffset = 150 * 96;
-
     for (size_t i = 0; i < trackEntries.size(); ++i) {
         const auto& entry = trackEntries[i];
-        int lba = entry.PLBA;
+        
+        // Normalize LBA to be 0-based for the Gadget.
+        // CloneCD uses Absolute LBA (150-based).
+        // By subtracting 150, Track 1 will start at 0.
+        int logicalLba = entry.PLBA - 150;
+        if (logicalLba < 0) logicalLba = 0; 
 
-        // Determine mode
         bool isData = (entry.Control & 0x04);
         const char* mode = isData ? "MODE1/2352" : "AUDIO";
-
+        
         p += sprintf(p, "  TRACK %02d %s\n", entry.Point, mode);
+        
+        // FIX: Use logicalLba here. 
+        // Previously used entry.PLBA (150), which caused CUE to say "00:02:00".
+        // The Gadget would then read that as LBA 150, and add another 150 for TOC,
+        // resulting in 00:04:00 (LBA 300).
+        // By using logicalLba (0), CUE says "00:00:00". Gadget sees LBA 0.
+        // Gadget adds 150 for TOC -> 00:02:00. Correct.
         p += sprintf(p, "    INDEX 01 %02d:%02d:%02d\n",
-                     lba / (75 * 60),
-                     (lba / 75) % 60,
-                     lba % 75);
+                     logicalLba / (75 * 60),
+                     (logicalLba / 75) % 60,
+                     logicalLba % 75);
 
         TrackInfo info;
         info.number = entry.Point;
-        info.start_lba = lba;
+        info.start_lba = logicalLba; 
         info.is_audio = !isData;
         info.pregap = 0;
 
-        if (i < trackEntries.size() - 1) {
-            info.length = trackEntries[i+1].PLBA - lba;
-        } else {
-            info.length = leadOutLba - lba;
-        }
+        int nextPlba = (i < trackEntries.size() - 1) ? trackEntries[i+1].PLBA : leadOutLba;
+        info.length = nextPlba - entry.PLBA;
 
         m_Tracks.push_back(info);
+        
+        LOGNOTE("Track %d: LBA %d (Abs %d), Len %d, Type %s", 
+            info.number, info.start_lba, entry.PLBA, info.length, isData ? "DATA" : "AUDIO");
     }
 
     m_CueSheet = buffer;
@@ -252,21 +248,21 @@ void CCcdFileDevice::GenerateCueSheet() {
 
 int CCcdFileDevice::Read(void* pBuffer, size_t nCount) {
     if (!m_ImgFile) return 0;
-
     UINT bytesRead;
     FRESULT fr = f_read(m_ImgFile, pBuffer, nCount, &bytesRead);
     if (fr != FR_OK) return 0;
-
     m_CurrentOffset += bytesRead;
     return bytesRead;
 }
 
 int CCcdFileDevice::Write(const void* pBuffer, size_t nCount) {
-    return 0; // Read-only
+    return 0; 
 }
 
 u64 CCcdFileDevice::Seek(u64 ullOffset) {
     if (!m_ImgFile) return 0;
+    // Offset passed here is Logical (relative to Track 1 start).
+    // We add m_MainDataOffset (150 blocks) to skip the physical pregap in the file.
     FRESULT fr = f_lseek(m_ImgFile, ullOffset + m_MainDataOffset);
     if (fr == FR_OK) {
         m_CurrentOffset = ullOffset;
@@ -276,7 +272,8 @@ u64 CCcdFileDevice::Seek(u64 ullOffset) {
 
 u64 CCcdFileDevice::GetSize(void) const {
     if (!m_ImgFile) return 0;
-    return f_size(m_ImgFile) - m_MainDataOffset;
+    u64 size = f_size(m_ImgFile);
+    return (size > m_MainDataOffset) ? size - m_MainDataOffset : 0;
 }
 
 u64 CCcdFileDevice::Tell() const {
@@ -304,32 +301,12 @@ bool CCcdFileDevice::IsAudioTrack(int track) const {
 
 int CCcdFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
     if (!m_SubFile) return -1;
+    
+    // LBA passed here is Logical.
+    // Map to physical file offset by adding m_SubDataOffset (150 blocks).
+    u64 offset = (u64)lba * 96 + m_SubDataOffset;
 
-    // Subchannel data is 96 bytes per sector
-    // If lba passed is logical (0-based) and file starts at -150, we need to offset.
-    // Assuming .sub file layout matches .img file layout (includes 150 frames pregap).
-    // If Gadget passes Absolute LBA (150 for Track 1 start), then 150 * 96 is correct.
-    // If Gadget passes Logical LBA (0), then we need (0 + 150) * 96.
-    // Currently assuming Logical LBA is passed if scsitbservice is high-level,
-    // BUT CUSBCDGadget is low-level SCSI handling. READ CD uses absolute LBA usually?
-    // Wait, standard behavior for IImageDevice::ReadSubchannel seems to be LBA relative to Disc Start?
-    // Or whatever Read uses. Read uses byte offset.
-    // If Read uses seek(150*2352) for LBA 0.
-    // Then ReadSubchannel(150) should map to 150*96.
-
-    // If the input lba is Absolute (150 for data start):
-    // Then lba * 96 = 150 * 96 = offset 14400. Correct for file with pregap.
-    // If input lba is Logical (0):
-    // Then lba * 96 = 0. Maps to start of file (start of pregap). Wrong for data start.
-
-    // Assuming CUSBCDGadget passes Absolute LBA (MSF converted).
-    // So lba * 96 is correct.
-    // We assume LBA 0 (start of data) should map to the subchannel data for LBA 0.
-    // If m_SubDataOffset skips the pregap subchannel data, then we add it here.
-    // The Gadget passes logical LBA (0 for start of data).
-    // So logical LBA 0 -> File LBA 150.
-
-    FRESULT fr = f_lseek(m_SubFile, (u64)lba * 96 + m_SubDataOffset);
+    FRESULT fr = f_lseek(m_SubFile, offset);
     if (fr != FR_OK) return -1;
 
     UINT bytesRead;

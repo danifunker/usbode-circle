@@ -22,13 +22,6 @@ struct CcdEntry {
     int PSec;
     int PFrame;
     int PLBA;
-
-    // Optional [Track X] info if available
-    // We might not need Track section parsing if Entry is sufficient.
-    // libmirage uses Entry to build tracks.
-    int Mode;
-    int Index0;
-    int Index1;
 };
 
 struct TrackInfo {
@@ -69,6 +62,9 @@ public:
 private:
     bool ParseCcd();
     void GenerateCueSheet();
+    
+    // Helper to convert MSF to LBA
+    int MsfToLba(int m, int s, int f) const;
 
     FIL* m_ImgFile;
     FIL* m_SubFile;
