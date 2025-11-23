@@ -29,7 +29,9 @@ static char* read_line(char** context) {
 
 CCcdFileDevice::CCcdFileDevice(const char* ccd_filename) :
     m_imgFile(nullptr),
+    m_subFile(nullptr),
     m_cueSheet(nullptr),
+    m_hasSubchannels(false),
     m_tracks(nullptr),
     m_numTracks(0)
 {
@@ -40,6 +42,10 @@ CCcdFileDevice::~CCcdFileDevice(void) {
     if (m_imgFile) {
         f_close(m_imgFile);
         delete m_imgFile;
+    }
+    if (m_subFile) {
+        f_close(m_subFile);
+        delete m_subFile;
     }
     delete[] m_cueSheet;
     delete[] m_tracks;
@@ -160,6 +166,25 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
         m_tracks[m_numTracks-1].length = (f_size(m_imgFile) / 2352) - m_tracks[m_numTracks-1].start_lba;
     }
 
+    // Open the SUB file
+    char sub_path[255];
+    snprintf(sub_path, sizeof(sub_path), "%s", ccd_path);
+    ext = strrchr(sub_path, '.');
+    if (ext != NULL) {
+        snprintf(ext, 5, ".sub");
+    } else {
+        strncat(sub_path, ".sub", sizeof(sub_path) - strlen(sub_path) - 1);
+    }
+
+    m_subFile = new FIL();
+    res = f_open(m_subFile, sub_path, FA_READ);
+    if (res == FR_OK) {
+        m_hasSubchannels = true;
+    } else {
+        delete m_subFile;
+        m_subFile = nullptr;
+    }
+
     delete[] ccd_buffer;
     return true;
 }
@@ -251,4 +276,26 @@ bool CCcdFileDevice::IsAudioTrack(int track) const {
 
 const char* CCcdFileDevice::GetCueSheet() const {
     return m_cueSheet;
+}
+
+bool CCcdFileDevice::HasSubchannelData() const {
+    return m_hasSubchannels;
+}
+
+int CCcdFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
+    if (!m_hasSubchannels || !m_subFile) {
+        return -1;
+    }
+
+    u64 offset = (u64)lba * 96;
+    if (f_lseek(m_subFile, offset) != FR_OK) {
+        return -1;
+    }
+
+    UINT bytes_read;
+    if (f_read(m_subFile, subchannel, 96, &bytes_read) != FR_OK || bytes_read != 96) {
+        return -1;
+    }
+
+    return bytes_read;
 }

@@ -28,13 +28,19 @@ public:
 
     const char* GetCueSheet() const override;
 
+    // Subchannel support
+    bool HasSubchannelData() const override;
+    int ReadSubchannel(u32 lba, u8* subchannel) override;
+
 private:
     bool ParseCcdFile(const char* ccd_path);
     void GenerateCueSheet();
 
     char m_ccd_filename[256];
     FIL* m_imgFile;
+    FIL* m_subFile;
     char* m_cueSheet;
+    bool m_hasSubchannels;
 
     struct TrackInfo {
         u32 start_lba;
