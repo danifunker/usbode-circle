@@ -210,6 +210,12 @@ void CCcdFileDevice::GenerateCueSheet() {
         cue_ptr += len;
         remaining -= len;
 
+        if (i == 0) {
+            len = snprintf(cue_ptr, remaining, "    PREGAP 00:02:00\n");
+            cue_ptr += len;
+            remaining -= len;
+        }
+
         u32 lba = m_tracks[i].start_lba;
         int minutes = lba / (75 * 60);
         int seconds = (lba / 75) % 60;
