@@ -71,7 +71,7 @@ const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
         1        // num configurations
 };
 
-// ISD Device Descriptor (add to usbcdgadget.cpp)
+// ISD Device Descriptor
 const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptorISD =
     {
         sizeof(TUSBDeviceDescriptor),
@@ -376,8 +376,8 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
                            IImageDevice *pDevice, bool bVendorSpecific)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_pDevice(pDevice),
-      m_pEP{nullptr, nullptr, nullptr},
-      m_bVendorSpecific(bVendorSpecific),
+    m_bVendorSpecific(bVendorSpecific),
+    m_pEP{nullptr, nullptr, nullptr},
       m_pISDProtocol(nullptr) // Initialize to nullptr
 {
     CString logMsg;
@@ -4372,8 +4372,7 @@ void CUSBCDGadget::Update()
             }
 
             CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-            bool isAudioTrack = (trackInfo.track_number != -1 &&
-                                 trackInfo.track_mode == CUETrack_AUDIO);
+            // Removed unused variable isAudioTrack
 
             // Single seek operation (no logging in hot path)
             offset = m_pDevice->Seek(block_size * m_nblock_address);
