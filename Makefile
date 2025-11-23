@@ -218,6 +218,7 @@ dist-files:
 	@echo "Platform Specific Builds Complete Successfully, copying general files to $(CURRENT_DIST_DIR)"
 	@mkdir -p $(CURRENT_DIST_DIR)
 	# Copy configuration files
+	cp LICENSE $(CURRENT_DIST_DIR)/
 	cp sdcard/wpa_supplicant.conf $(CURRENT_DIST_DIR)/
 	cp sdcard/cmdline.txt $(CURRENT_DIST_DIR)/
 	
