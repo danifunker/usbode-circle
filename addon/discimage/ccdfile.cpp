@@ -59,7 +59,7 @@ static int parseInt(const char* line, const char* key) {
 }
 
 CCcdFileDevice::CCcdFileDevice(const char* imgPath, const char* subPath, const char* ccdContent, MEDIA_TYPE mediaType)
-    : m_ImgPath(nullptr), m_SubPath(nullptr), m_CcdContent(ccdContent), m_CueSheet(nullptr), m_CurrentOffset(0), m_MediaType(mediaType) {
+    : m_ImgPath(nullptr), m_SubPath(nullptr), m_CcdContent(ccdContent), m_CueSheet(nullptr), m_CurrentOffset(0), m_MainDataOffset(0), m_SubDataOffset(0), m_MediaType(mediaType) {
 
     if (imgPath) {
         m_ImgPath = new char[strlen(imgPath) + 1];
@@ -213,23 +213,20 @@ void CCcdFileDevice::GenerateCueSheet() {
         // We rely on CCD entries. If 0xA2 is missing, we might have issues with last track length.
     }
 
+    // CloneCD images usually include the 150 frame pregap.
+    // We set an internal offset to skip it for reads.
+    m_MainDataOffset = 150 * 2352;
+    m_SubDataOffset = 150 * 96;
+
     for (size_t i = 0; i < trackEntries.size(); ++i) {
         const auto& entry = trackEntries[i];
-        // CCD PLBA is typically 0-based logical address (relative to end of pregap)
-        // But .img files typically contain the pregap.
-        // So we need to add 150 frames (2 seconds) to map LBA 0 to File Offset 150.
-        int lba = entry.PLBA + 150;
+        int lba = entry.PLBA;
 
         // Determine mode
         bool isData = (entry.Control & 0x04);
         const char* mode = isData ? "MODE1/2352" : "AUDIO";
 
         p += sprintf(p, "  TRACK %02d %s\n", entry.Point, mode);
-
-        // No PREGAP directive needed because we adjusted the INDEX time directly.
-        // PREGAP 00:02:00 + INDEX 01 00:00:00  maps Absolute 150 -> File 0. (Wrong if file has pregap)
-        // INDEX 01 00:02:00                    maps Absolute 150 -> File 150. (Correct if file has pregap)
-
         p += sprintf(p, "    INDEX 01 %02d:%02d:%02d\n",
                      lba / (75 * 60),
                      (lba / 75) % 60,
@@ -270,7 +267,7 @@ int CCcdFileDevice::Write(const void* pBuffer, size_t nCount) {
 
 u64 CCcdFileDevice::Seek(u64 ullOffset) {
     if (!m_ImgFile) return 0;
-    FRESULT fr = f_lseek(m_ImgFile, ullOffset);
+    FRESULT fr = f_lseek(m_ImgFile, ullOffset + m_MainDataOffset);
     if (fr == FR_OK) {
         m_CurrentOffset = ullOffset;
     }
@@ -279,7 +276,7 @@ u64 CCcdFileDevice::Seek(u64 ullOffset) {
 
 u64 CCcdFileDevice::GetSize(void) const {
     if (!m_ImgFile) return 0;
-    return f_size(m_ImgFile);
+    return f_size(m_ImgFile) - m_MainDataOffset;
 }
 
 u64 CCcdFileDevice::Tell() const {
@@ -327,8 +324,12 @@ int CCcdFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
 
     // Assuming CUSBCDGadget passes Absolute LBA (MSF converted).
     // So lba * 96 is correct.
+    // We assume LBA 0 (start of data) should map to the subchannel data for LBA 0.
+    // If m_SubDataOffset skips the pregap subchannel data, then we add it here.
+    // The Gadget passes logical LBA (0 for start of data).
+    // So logical LBA 0 -> File LBA 150.
 
-    FRESULT fr = f_lseek(m_SubFile, (u64)lba * 96);
+    FRESULT fr = f_lseek(m_SubFile, (u64)lba * 96 + m_SubDataOffset);
     if (fr != FR_OK) return -1;
 
     UINT bytesRead;

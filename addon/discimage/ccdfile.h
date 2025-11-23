@@ -81,6 +81,8 @@ private:
     std::vector<TrackInfo> m_Tracks;
 
     u64 m_CurrentOffset;
+    u64 m_MainDataOffset;
+    u64 m_SubDataOffset;
     MEDIA_TYPE m_MediaType;
 };
 
