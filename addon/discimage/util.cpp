@@ -160,38 +160,42 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imageName) {
     
     MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
     
-    // Construct full path
-    char fullPath[255];
-    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
+    char data_path[255];
+    snprintf(data_path, sizeof(data_path), "1:/%s", imageName);
 
     FIL* imageFile = new FIL();
     char* cue_str = nullptr;
 
-    // Handle BIN files - look for matching CUE
     if (hasExtension(imageName, ".bin")) {
         LOGNOTE("BIN file detected, looking for CUE file");
-        change_extension_to_cue(fullPath);
-    }
 
-    // Handle CUE files
-    if (hasExtension(imageName, ".cue")) {
-        LOGNOTE("Loading CUE sheet from: %s", fullPath);
-        if (!ReadFileToString(fullPath, &cue_str)) {
-            LOGERR("Failed to read CUE file: %s", fullPath);
+        char cue_path[255];
+        snprintf(cue_path, sizeof(cue_path), "1:/%s", imageName);
+        change_extension_to_cue(cue_path);
+
+        if (!ReadFileToString(cue_path, &cue_str)) {
+            LOGWARN("Could not find or read matching CUE file: %s", cue_path);
+        } else {
+            LOGNOTE("Loaded CUE sheet");
+        }
+    } else if (hasExtension(imageName, ".cue")) {
+        LOGNOTE("Loading CUE sheet from: %s", data_path);
+        if (!ReadFileToString(data_path, &cue_str)) {
+            LOGERR("Failed to read CUE file: %s", data_path);
             delete imageFile;
             return nullptr;
         }
         LOGNOTE("Loaded CUE sheet");
 
         // Switch to BIN file for data
-        change_extension_to_bin(fullPath);
+        change_extension_to_bin(data_path);
     }
 
     // Open the data file (BIN or ISO)
-    LOGNOTE("Opening data file: %s", fullPath);
-    FRESULT result = f_open(imageFile, fullPath, FA_READ);
+    LOGNOTE("Opening data file: %s", data_path);
+    FRESULT result = f_open(imageFile, data_path, FA_READ);
     if (result != FR_OK) {
-        LOGERR("Cannot open data file for reading: %s (error %d)", fullPath, result);
+        LOGERR("Cannot open data file for reading: %s (error %d)", data_path, result);
         delete imageFile;
         if (cue_str) delete[] cue_str;
         return nullptr;
@@ -201,13 +205,13 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imageName) {
     // Create device
     CCueBinFileDevice* device = new CCueBinFileDevice(imageFile, cue_str, mediaType);
 
-    // Cleanup - CCueBinFileDevice takes ownership of cue_str if provided
-    if (cue_str != nullptr)
+    // CCueBinFileDevice takes ownership of cue_str if provided
+    if (cue_str != nullptr) {
         delete[] cue_str;
+    }
 
     LOGNOTE("Successfully loaded CUE/BIN/ISO device: %s", imageName);
     
-    // Returns ICueDevice*, which is an IImageDevice*
     return device;
 }
 
@@ -225,7 +229,7 @@ IImageDevice* loadCHDFileDevice(const char* imageName) {
     if (!chdDevice->Init()) {
         LOGERR("Failed to initialize CHD device: %s", imageName);
         delete chdDevice;
-        return nullptr;  // This nullptr is causing the crash
+        return nullptr;
     }
     
     LOGNOTE("Successfully loaded CHD device: %s (has subchannels: %s)", 

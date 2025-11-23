@@ -86,15 +86,15 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
     int max_tracks = 0;
 
     // First pass: count tracks to allocate memory (non-destructive)
-    for (const char* p = ccd_buffer; *p; ++p) {
-        if (*p == '\n' && strncmp(p + 1, "[TRACK ", 7) == 0) {
+    char* temp_buffer = new char[size + 1];
+    memcpy(temp_buffer, ccd_buffer, size + 1);
+    char* temp_context = temp_buffer;
+    while ((line = read_line(&temp_context)) != NULL) {
+        if (strncmp(line, "[TRACK ", 7) == 0) {
             max_tracks++;
         }
     }
-    if (strncmp(ccd_buffer, "[TRACK ", 7) == 0) {
-        max_tracks++;
-    }
-
+    delete[] temp_buffer;
 
     if (max_tracks == 0) {
         LOGERR("No tracks found in CCD file");
@@ -122,10 +122,6 @@ bool CCcdFileDevice::ParseCcdFile(const char* ccd_path) {
                 current_track = -1;
                 continue;
             }
-            // Initialize track info
-            m_tracks[current_track].start_lba = 0;
-            m_tracks[current_track].length = 0;
-            m_tracks[current_track].is_audio = false;
         } else if (current_track != -1) {
             if (strncmp(line, "MODE=", 5) == 0) {
                  m_tracks[current_track].is_audio = (atoi(line + 5) == 0);
