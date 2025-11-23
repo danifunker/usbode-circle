@@ -24,6 +24,7 @@
 #include "cuebinfile.h"
 #include "mdsfile.h"
 #include "chdfile.h"
+#include "ccdfile.h"
 
 LOGMODULE("discimage-util");
 
@@ -33,62 +34,17 @@ char tolower(char c) {
     return c;
 }
 
-bool hasCueExtension(const char* imageName) {
+bool hasExtension(const char* imageName, const char* ext) {
     size_t len = strlen(imageName);
-    if (len >= 4) {
-        const char* ext = imageName + len - 4;
-        return tolower(ext[0]) == '.' &&
-               tolower(ext[1]) == 'c' &&
-               tolower(ext[2]) == 'u' &&
-               tolower(ext[3]) == 'e';
-    }
-    return false;
-}
-
-bool hasMdsExtension(const char* imageName) {
-    size_t len = strlen(imageName);
-    if (len >= 4) {
-        const char* ext = imageName + len - 4;
-        return tolower(ext[0]) == '.' &&
-               tolower(ext[1]) == 'm' &&
-               tolower(ext[2]) == 'd' &&
-               tolower(ext[3]) == 's';
-    }
-    return false;
-}
-
-bool hasBinExtension(const char* imageName) {
-    size_t len = strlen(imageName);
-    if (len >= 4) {
-        const char* ext = imageName + len - 4;
-        return tolower(ext[0]) == '.' &&
-               tolower(ext[1]) == 'b' &&
-               tolower(ext[2]) == 'i' &&
-               tolower(ext[3]) == 'n';
-    }
-    return false;
-}
-
-bool hasIsoExtension(const char* imageName) {
-    size_t len = strlen(imageName);
-    if (len >= 4) {
-        const char* ext = imageName + len - 4;
-        return tolower(ext[0]) == '.' &&
-               tolower(ext[1]) == 'i' &&
-               tolower(ext[2]) == 's' &&
-               tolower(ext[3]) == 'o';
-    }
-    return false;
-}
-
-bool hasChdExtension(const char* imageName) {
-    size_t len = strlen(imageName);
-    if (len >= 4) {
-        const char* ext = imageName + len - 4;
-        return tolower(ext[0]) == '.' &&
-               tolower(ext[1]) == 'c' &&
-               tolower(ext[2]) == 'h' &&
-               tolower(ext[3]) == 'd';
+    size_t extLen = strlen(ext);
+    if (len >= extLen) {
+        const char* p = imageName + len - extLen;
+        for (size_t i = 0; i < extLen; i++) {
+            if (tolower(p[i]) != tolower(ext[i])) {
+                return false;
+            }
+        }
+        return true;
     }
     return false;
 }
@@ -212,13 +168,13 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imageName) {
     char* cue_str = nullptr;
 
     // Handle BIN files - look for matching CUE
-    if (hasBinExtension(fullPath)) {
+    if (hasExtension(imageName, ".bin")) {
         LOGNOTE("BIN file detected, looking for CUE file");
         change_extension_to_cue(fullPath);
     }
 
     // Handle CUE files
-    if (hasCueExtension(fullPath)) {
+    if (hasExtension(imageName, ".cue")) {
         LOGNOTE("Loading CUE sheet from: %s", fullPath);
         if (!ReadFileToString(fullPath, &cue_str)) {
             LOGERR("Failed to read CUE file: %s", fullPath);
@@ -279,21 +235,36 @@ IImageDevice* loadCHDFileDevice(const char* imageName) {
     return chdDevice;
 }
 
-// ============================================================================
-// Main Entry Point - Plugin Selection
-// ============================================================================
+IImageDevice* loadCcdFileDevice(const char* imageName) {
+    LOGNOTE("Loading CCD image: %s", imageName);
+
+    CCcdFileDevice* ccdDevice = new CCcdFileDevice(imageName);
+    if (!ccdDevice->Init()) {
+        LOGERR("Failed to initialize CCD device: %s", imageName);
+        delete ccdDevice;
+        return nullptr;
+    }
+
+    LOGNOTE("Successfully loaded CCD device: %s", imageName);
+    return ccdDevice;
+}
+
 IImageDevice* loadImageDevice(const char* imageName) {
     LOGNOTE("loadImageDevice called for: %s", imageName);
     
-    if (hasMdsExtension(imageName)) {
+    if (hasExtension(imageName, ".mds")) {
         LOGNOTE("Detected MDS format - using MDS plugin");
         return loadMDSFileDevice(imageName);
-    } 
-    else if (hasChdExtension(imageName)) {
+    }
+    else if (hasExtension(imageName, ".chd")) {
         LOGNOTE("Detected CHD format - using CHD plugin");
         return loadCHDFileDevice(imageName);
     }
-    else if (hasCueExtension(imageName) || hasBinExtension(imageName) || hasIsoExtension(imageName)) {
+    else if (hasExtension(imageName, ".ccd")) {
+        LOGNOTE("Detected CCD format - using CCD plugin");
+        return loadCcdFileDevice(imageName);
+    }
+    else if (hasExtension(imageName, ".cue") || hasExtension(imageName, ".bin") || hasExtension(imageName, ".iso")) {
         LOGNOTE("Detected CUE/BIN/ISO format - using CUE plugin");
         return loadCueBinIsoFileDevice(imageName);
     }

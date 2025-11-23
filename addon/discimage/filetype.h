@@ -7,10 +7,10 @@ enum class FileType {
     CUEBIN,     // CUE/BIN pair
     MDS,        // MDS/MDF pair (Alcohol 120%)
     CHD,        // MAME Compressed Hunks of Data
-    // Future formats:
-    // NRG,     // Nero image
-    // CDI,     // DiscJuggler
-    // CCD,     // CloneCD
+    CCD,        // CloneCD
+    MDX,        // Daemon Tools Advanced Format
+    CDI,        // DiscJuggler
+    NRG,        // Nero
 };
 
 enum class MEDIA_TYPE {
