@@ -5,33 +5,53 @@ Thank you for your interest in contributing to USBODE! This guide will help you 
 ## Table of Contents
 
 1.  [Getting Started](#getting-started)
-2.  [Code Style](#code-style)
-3.  [Code Structure](#code-structure)
-4.  [Addons System](#addons-system)
+2.  [Core Environment & Circle Framework](#core-environment--circle-framework)
+3.  [Code Style](#code-style)
+4.  [Code Structure](#code-structure)
+5.  [Addons System](#addons-system)
     * [Directory Structure](#directory-structure)
     * [Creating a New Addon](#creating-a-new-addon)
     * [Registering the Addon](#registering-the-addon)
-5.  [Configuration Service](#configuration-service)
+6.  [Configuration Service](#configuration-service)
     * [Architecture](#architecture-config)
     * [Adding a New Setting](#adding-a-new-setting)
-6.  [Disc Image Plugins](#disc-image-plugins)
+7.  [Disc Image Plugins](#disc-image-plugins)
     * [Architecture](#architecture)
     * [Adding Support for a New Format](#adding-support-for-new-format)
     * [Subchannel Data](#subchannel-data)
-7.  [Web Interface](#web-interface)
+8.  [Web Interface](#web-interface)
     * [Architecture](#architecture-1)
     * [Templating System](#templating-system)
     * [Theming System](#theming-system)
     * [Adding a New Page](#adding-a-new-page)
-8.  [Display Service](#display-service)
+9.  [Display Service](#display-service)
     * [Architecture](#architecture-2)
     * [Adding Support for New Hardware](#adding-support-for-new-hardware)
     * [Creating a New UI Page](#creating-a-new-ui-page)
-9.  [Submitting Changes](#submitting-changes)
+10. [Submitting Changes](#submitting-changes)
 
 ## Getting Started
 
 To build the project, please refer to [BUILD.md](BUILD.md) for detailed instructions on setting up the toolchain and environment.
+
+## Core Environment & Circle Framework
+
+USBODE runs on **bare metal**. There is no Linux kernel, no standard operating system, and no preemptive multitasking. We rely heavily on the [Circle C++ Bare Metal Environment](https://github.com/rsta2/circle).
+
+**Documentation**:
+* **Circle API Docs**: [https://circle-rpi.readthedocs.io/en/latest/](https://circle-rpi.readthedocs.io/en/latest/)
+    * *Note: USBODE may not be using the absolute latest version of Circle. Check the `circle-stdlib` submodule version if you encounter API discrepancies.*
+
+### Cooperative Multitasking (The "No Threads" Rule)
+Unlike a standard OS where the kernel pauses threads to let others run, Circle uses **cooperative multitasking**.
+* **The Scheduler**: We use `CScheduler` and classes inheriting from `CTask`.
+* **The Rule**: A task must voluntarily yield control back to the scheduler.
+* **The Danger**: If you write code that blocks (e.g., `while(1) {}`, long `delay()`, or heavy computation loops), you freeze the entire system. This will break timing-sensitive components like USB communication and Audio playback.
+
+### Interrupts vs. Tasks
+* **Tasks (`Run()`)**: Run in the main loop. Safe for file I/O and standard logic.
+* **Interrupts**: Hardware events (timers, GPIO, DMA). These interrupt the tasks.
+    * **Critical**: Never perform File I/O or memory allocation (`new`/`malloc`) inside an interrupt handler. It will crash the system.
 
 ## Code Style
 
