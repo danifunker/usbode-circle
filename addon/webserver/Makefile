@@ -42,8 +42,7 @@ handlers/homepage.o: pages/index.h
 handlers/configpage.o: pages/config.h
 handlers/shutdownpage.o: pages/shutdown.h
 handlers/logpage.o: pages/log.h
-handlers/asset.o: assets/logo-text.h
-handlers/asset.o: assets/logo-text-white.h
+handlers/asset.o: assets/logo.h
 handlers/asset.o: assets/favicon.h
 handlers/asset.o: assets/style.h
 handlers/asset.o: assets/font-eot.h
