@@ -8,23 +8,26 @@ Thank you for your interest in contributing to USBODE! This guide will help you 
 2.  [Code Style](#code-style)
 3.  [Code Structure](#code-structure)
 4.  [Addons System](#addons-system)
-    *   [Directory Structure](#directory-structure)
-    *   [Creating a New Addon](#creating-a-new-addon)
-    *   [Registering the Addon](#registering-the-addon)
-5.  [Disc Image Plugins](#disc-image-plugins)
-    *   [Architecture](#architecture)
-    *   [Adding Support for a New Format](#adding-support-for-a-new-format)
-    *   [Subchannel Data](#subchannel-data)
-6.  [Web Interface](#web-interface)
-    *   [Architecture](#architecture-1)
-    *   [Templating System](#templating-system)
-    *   [Theming System](#theming-system)
-    *   [Adding a New Page](#adding-a-new-page)
-7.  [Display Service](#display-service)
-    *   [Architecture](#architecture-2)
-    *   [Adding Support for New Hardware](#adding-support-for-new-hardware)
-    *   [Creating a New UI Page](#creating-a-new-ui-page)
-8.  [Submitting Changes](#submitting-changes)
+    * [Directory Structure](#directory-structure)
+    * [Creating a New Addon](#creating-a-new-addon)
+    * [Registering the Addon](#registering-the-addon)
+5.  [Configuration Service](#configuration-service)
+    * [Architecture](#architecture-config)
+    * [Adding a New Setting](#adding-a-new-setting)
+6.  [Disc Image Plugins](#disc-image-plugins)
+    * [Architecture](#architecture)
+    * [Adding Support for a New Format](#adding-support-for-new-format)
+    * [Subchannel Data](#subchannel-data)
+7.  [Web Interface](#web-interface)
+    * [Architecture](#architecture-1)
+    * [Templating System](#templating-system)
+    * [Theming System](#theming-system)
+    * [Adding a New Page](#adding-a-new-page)
+8.  [Display Service](#display-service)
+    * [Architecture](#architecture-2)
+    * [Adding Support for New Hardware](#adding-support-for-new-hardware)
+    * [Creating a New UI Page](#creating-a-new-ui-page)
+9.  [Submitting Changes](#submitting-changes)
 
 ## Getting Started
 
@@ -89,6 +92,79 @@ To make the build system aware of your new addon, you must register it in two pl
     ```makefile
     LIBS = ... ../addon/myfeature/libmyfeature.a
     ```
+
+## Configuration Service
+
+The `ConfigService` is a centralized system for managing persistent settings. It runs as a background task that automatically saves changes to the SD card when settings are modified.
+
+### Architecture
+
+The service aggregates two distinct storage backends:
+
+1.  **`config.txt` (via `Config` class)**:
+    * **Format**: Standard INI file (Sections, Keys, Values) using the `simpleini` library.
+    * **Use Case**: General application settings (e.g., Default Volume, Timezone, Display parameters).
+    * **Location**: `0:/config.txt`
+
+2.  **`cmdline.txt` (via `CmdLine` class)**:
+    * **Format**: Space-separated `key=value` pairs on a single line.
+    * **Use Case**: System-level or Boot-level parameters (e.g., USB Speed, Log Level).
+    * **Location**: `0:/cmdline.txt`
+
+#### The Run Loop
+`ConfigService` inherits from `CTask`. Its `Run()` method wakes up periodically to check if any settings have been modified (`IsDirty()`). If changes are detected, it flushes the data to the SD card. 
+
+**Note**: Saving to the SD card is a blocking operation. We do not save immediately inside a Setter method because Setters might be called from an Interrupt context (where file I/O is unsafe). The `Run` loop ensures saving happens safely in the application thread.
+
+### Adding a New Setting
+
+While you can use the generic `GetProperty` / `SetProperty` methods for quick prototyping, the recommended way to add a setting is to create explicit accessors.
+
+#### 1. Update the Header (`addon/configservice/configservice.h`)
+Add your getter and setter method definitions.
+
+```cpp
+// Example: Adding a setting for default volume
+unsigned GetDefaultVolume(unsigned defaultValue=255);
+void SetDefaultVolume(unsigned value);
+```
+
+#### 2. Implement the Logic (`addon/configservice/configservice.cpp`)
+Decide if this is an application preference (`m_config`) or system flag (`m_cmdline`). For `m_cmdline` options, check with the circle startup options here `https://github.com/rsta2/circle/blob/master/doc/cmdline.txt` 
+
+For Application Preferences (Most common): Use `m_config` methods (`GetNumber`, `GetString`, `SetNumber`, `SetString`).
+
+```cpp
+unsigned ConfigService::GetDefaultVolume(unsigned defaultValue)
+{
+    return m_config->GetNumber("default_volume", defaultValue);
+}
+
+void ConfigService::SetDefaultVolume(unsigned value)
+{
+    m_config->SetNumber("default_volume", value);
+}
+```
+
+For system flags: use `m_cmdline` methods
+```cpp
+void ConfigService::SetUSBFullSpeed(bool value) {
+    // Updates cmdline.txt with "usbspeed=full" or "usbspeed=high"
+    m_cmdline->SetValue("usbspeed", value ? "full" : "high");
+}
+```
+
+#### 3. Usage in other Services/addons
+To use the setting in another addon (e.g., `DisplayService`), retrieve the `ConfigService` instance from the scheduler.
+```cpp
+#include <configservice/configservice.h>
+
+// In your service constructor or initialization
+ConfigService* config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+
+// Read the value
+unsigned vol = config->GetDefaultVolume();
+```
 
 ## Disc Image Plugins
 
