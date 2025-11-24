@@ -1,0 +1,55 @@
+diff --git a/include/circle/usb/gadget/dwusbgadget.h b/include/circle/usb/gadget/dwusbgadget.h
+index 1c9cbf43..d0a9c24b 100644
+--- a/include/circle/usb/gadget/dwusbgadget.h
++++ b/include/circle/usb/gadget/dwusbgadget.h
+@@ -74,6 +74,9 @@ public:
+ 	/// \return Number of bytes in pData to be sent, or < 0 on error (STALL the request)
+ 	/// \note By default host-to-device requests will be ignored and other requests will be STALLed
+ 	virtual int OnClassOrVendorRequest (const TSetupData *pSetupData, u8 *pData);
++	void SetUSBIds(u16 usVendorId, u16 usProductId);
++	u16 GetVendorId() const { return m_usVendorId; }
++	u16 GetProductId() const { return m_usProductId; }
+ 
+ private:
+ 	boolean PowerOn (void);
+@@ -104,10 +107,13 @@ private:
+ 	friend class CDWUSBGadgetEndpoint;
+ 	friend class CDWUSBGadgetEndpoint0;
+ 
++
+ private:
+ 	static const unsigned NumberOfEPs	= 7;	// without EP0
+ 	static const unsigned NumberOfInEPs	= 7;
+ 	static const unsigned NumberOfOutEPs	= 7;
++	u16 m_usVendorId;   // Runtime USB Vendor ID
++	u16 m_usProductId;  // Runtime USB Product ID
+ 
+ private:
+ 	CInterruptSystem *m_pInterruptSystem;
+diff --git a/lib/usb/gadget/dwusbgadget.cpp b/lib/usb/gadget/dwusbgadget.cpp
+index dc3f93cd..1e90ec88 100644
+--- a/lib/usb/gadget/dwusbgadget.cpp
++++ b/lib/usb/gadget/dwusbgadget.cpp
+@@ -41,6 +41,8 @@ LOGMODULE ("dwgadget");
+ 
+ CDWUSBGadget::CDWUSBGadget (CInterruptSystem *pInterruptSystem, TDeviceSpeed DeviceSpeed)
+ :	m_pInterruptSystem (pInterruptSystem),
++	m_usVendorId(USB_GADGET_VENDOR_ID),
++	m_usProductId(USB_GADGET_DEVICE_ID_BASE),
+ 	m_DeviceSpeed (DeviceSpeed),
+ 	m_State (StatePowered),
+ 	m_bPnPEvent {FALSE, FALSE}
+@@ -782,3 +784,13 @@ boolean CDWUSBGadget::SetConfiguration (u8 uchConfiguration)
+ 
+ 	return TRUE;
+ }
++
++/// \brief Set USB Vendor ID and Product ID at runtime
++/// \param usVendorId USB Vendor ID
++/// \param usProductId USB Product ID
++/// \note Must be called before Initialize()
++void CDWUSBGadget::SetUSBIds(u16 usVendorId, u16 usProductId)
++{
++    m_usVendorId = usVendorId;
++    m_usProductId = usProductId;
++}

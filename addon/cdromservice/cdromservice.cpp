@@ -33,10 +33,9 @@ LOGMODULE("cdrom");
 
 CDROMService *CDROMService::s_pThis = nullptr;
 
-CDROMService::CDROMService()
-: CTask (CDROM_STACK_SIZE)
+CDROMService::CDROMService(u16 vid, u16 pid)
+    : CTask(CDROM_STACK_SIZE), m_vid(vid), m_pid(pid)
 {
-      
     // I am the one and only!
     assert(s_pThis == nullptr);
     s_pThis = this;
@@ -72,7 +71,9 @@ boolean CDROMService::Initialize() {
     LOGNOTE("CDROM Initializing");
     CInterruptSystem* m_Interrupt = CInterruptSystem::Get();
     m_CDGadget = new CUSBCDGadget(m_Interrupt, CKernelOptions::Get()->GetUSBFullSpeed());
-    LOGNOTE("Started USB CD gadget");
+    // Configure VID/PID before initializing
+    m_CDGadget->ConfigureUSBIds(false, m_vid, m_pid);
+    LOGNOTE("Configured USB CD gadget VID: %04x PID: %04x", m_vid, m_pid);
     return true;
 }
 

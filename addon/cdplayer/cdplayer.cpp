@@ -43,10 +43,38 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
 }
 
 boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
-    LOGNOTE("CD Player setting device");
-    state = NONE;
+    LOGNOTE("CD Player setting device (old=%p, new=%p, state=%u, addr=%u, end=%u)", 
+            m_pBinFileDevice, pBinFileDevice, state, address, end_address);
+    
+    // CRITICAL: Stop any active playback before device swap
+    if (state == PLAYING || state == PAUSED || state == SEEKING_PLAYING || state == SEEKING) {
+        LOGWARN("Device swap during active playback (state=%u) - forcing stop", state);
+        state = STOPPED_OK;
+    } else {
+        state = NONE;
+    }
+    
+    // Reset ALL address pointers - critical for preventing reads to invalid LBAs
     address = 0;
+    end_address = 0;
+    
+    // Clear all buffer state
+    m_BufferBytesValid = 0;
+    m_BufferReadPos = 0;
+    m_BytesProcessedInSector = 0;
+    
+    // Zero out buffers to prevent stale data
+    if (m_ReadBuffer) {
+        memset(m_ReadBuffer, 0, AUDIO_BUFFER_SIZE);
+    }
+    if (m_WriteChunk) {
+        // WriteChunk size depends on total_frames, but we can at least clear what we know
+        memset(m_WriteChunk, 0, DAC_BUFFER_SIZE_BYTES);
+    }
+    
     m_pBinFileDevice = pBinFileDevice;
+    
+    LOGNOTE("CD Player device set complete: state=%u, device=%p", state, m_pBinFileDevice);
     return true;
 }
 
@@ -217,13 +245,7 @@ boolean CCDPlayer::SoundTest() {
 }
 
 boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
-    LOGNOTE("CD Player playing from %u for %u blocks", lba, num_blocks);
-
-    // Play is valid only if we're not already playing or paused
-    if (state == PLAYING || state == PAUSED) {
-        LOGNOTE("CD Player: Play requested while paused/playing (state=%u)", state);
-        return false;
-    }
+    LOGNOTE("CD Player playing from %u for %u blocks (previous state=%u)", lba, num_blocks, state);
 
     // Validate media presence
     if (m_pBinFileDevice == nullptr) {

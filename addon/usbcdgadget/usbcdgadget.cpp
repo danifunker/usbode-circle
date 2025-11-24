@@ -237,8 +237,13 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "DESCRIPTOR_DEVICE %02x", uchDescIndex);
         if (!uchDescIndex)
         {
-            *pLength = sizeof s_DeviceDescriptor;
-            return &s_DeviceDescriptor;
+            // Use runtime VID/PID from base class members
+            static TUSBDeviceDescriptor DeviceDesc = s_DeviceDescriptor;
+            DeviceDesc.idVendor = GetVendorId();
+            DeviceDesc.idProduct = GetProductId();
+
+            *pLength = sizeof DeviceDesc;
+            return &DeviceDesc;
         }
         break;
 
@@ -285,6 +290,38 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
     }
 
     return nullptr;
+}
+
+void CUSBCDGadget::ConfigureUSBIds(bool bClassicMacMode, u16 usUserVID, u16 usUserPID)
+{
+    u16 vendorId, productId;
+
+    if (usUserVID != 0 && usUserPID != 0)
+    {
+        // User-configured mode takes priority
+        vendorId = usUserVID;
+        productId = usUserPID;
+        MLOGNOTE("USBCDGadget", "Using user-configured USB IDs: VID=0x%04x PID=0x%04x",
+                 vendorId, productId);
+    }
+    else if (bClassicMacMode)
+    {
+        // Classic Mac OS mode - use Apple CD-ROM drive IDs
+        vendorId = 0x05AC;  // Apple Inc.
+        productId = 0x1500; // Generic Apple CD-ROM (adjust as needed)
+        MLOGNOTE("USBCDGadget", "Using Classic Mac OS mode USB IDs: VID=0x%04x PID=0x%04x",
+                 vendorId, productId);
+    }
+    else
+    {
+        // Default mode
+        vendorId = USB_GADGET_VENDOR_ID;
+        productId = USB_GADGET_DEVICE_ID_CD;
+        MLOGNOTE("USBCDGadget", "Using default USB IDs: VID=0x%04x PID=0x%04x",
+                 vendorId, productId);
+    }
+
+    SetUSBIds(vendorId, productId);
 }
 
 void CUSBCDGadget::AddEndpoints(void)
@@ -364,6 +401,8 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
 
     // Only set media ready if this is a disc swap
     // Initial load will be handled by OnActivate() when USB becomes active
+    // Only set media ready if this is a disc swap
+    // Initial load will be handled by OnActivate() when USB becomes active
     if (bDiscSwap)
     {
         m_CDReady = true;
@@ -373,7 +412,7 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
-
+        CTimer::Get()->MsDelay(100);
         MLOGNOTE("CUSBCDGadget::SetDevice",
                  "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
     }
@@ -383,6 +422,15 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         MLOGNOTE("CUSBCDGadget::SetDevice",
                  "Initial load: Deferring media ready state to OnActivate()");
     }
+
+    // Log disc boundaries for debugging
+    u32 max_lba = GetMaxLBA();
+    CUETrackInfo first_track = GetTrackInfoForLBA(0);
+    int first_track_blocksize = GetBlocksizeForTrack(first_track);
+
+    MLOGNOTE("CUSBCDGadget::SetDevice",
+             "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
+             max_lba, first_track.track_mode, first_track_blocksize);
 
     MLOGNOTE("CUSBCDGadget::SetDevice",
              "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
@@ -550,6 +598,13 @@ void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocatio
 
     // NO SPECIAL CASE FOR 0xAA - let it flow through normally
 
+    if (m_pDevice == nullptr)
+    {
+        MLOGDEBUG("TOC requested but no device present");
+        sendCheckCondition();
+        return;
+    }
+
     // Format track info
     uint8_t *trackdata = &m_InBuffer[4];
     int trackcount = 0;
@@ -697,6 +752,13 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
 {
     CDROM_DEBUG_LOG("DoReadFullTOC", "Entry: session=%d, allocLen=%d, BCD=%d",
                     session, allocationLength, useBCD);
+
+    if (m_pDevice == nullptr)
+    {
+        MLOGDEBUG("TOC requested but no device present");
+        sendCheckCondition();
+        return;
+    }
 
     if (session > 1)
     {
@@ -993,7 +1055,12 @@ int CUSBCDGadget::GetLastTrackNumber()
 void CUSBCDGadget::CreateDevice(void)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "entered");
-    assert(m_pDevice);
+
+    if (!m_pDevice)
+    {
+        MLOGDEBUG("CreateDevice called but m_pDevice is null - disc not ready");
+        return; // Just return early, don't crash
+    }
 }
 
 void CUSBCDGadget::OnSuspend(void)
@@ -1384,7 +1451,7 @@ void CUSBCDGadget::OnActivate()
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
-
+        CTimer::Get()->MsDelay(100);
         MLOGNOTE("CD OnActivate",
                  "Initial media ready: Set UNIT_ATTENTION, sense=06/28/00");
     }
@@ -1428,6 +1495,17 @@ u32 CUSBCDGadget::lba_to_msf(u32 lba, boolean relative)
     u8 reserved = 0;
 
     return (frames << 24) | (seconds << 16) | (minutes << 8) | reserved;
+}
+
+u32 CUSBCDGadget::GetMaxLBA()
+{
+    if (!m_pDevice || !m_CDReady)
+    {
+        return 0;
+    }
+
+    // Return the lead-out LBA, which is the maximum addressable LBA
+    return GetLeadoutLBA();
 }
 
 int CUSBCDGadget::GetSectorLengthFromMCS(uint8_t mainChannelSelection)
@@ -1588,6 +1666,7 @@ void CUSBCDGadget::HandleSCSICommand()
                      "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
             setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
             sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
             break;
         }
 
@@ -1853,39 +1932,75 @@ void CUSBCDGadget::HandleSCSICommand()
     {
         if (m_CDReady)
         {
-            // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Read (10)");
-            // will be updated if read fails on any block
-            m_CSW.bmCSWStatus = bmCSWStatus;
-
             // Where to start reading (LBA)
-            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
+                               (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 
             // Number of blocks to read (LBA)
             m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+
+            // Get disc boundaries
+            u32 max_lba = GetMaxLBA();
+
+            // CRITICAL: Validate LBA is within disc boundaries
+            if (m_nblock_address >= max_lba)
+            {
+                MLOGERR("READ(10)", "LBA %u beyond disc boundary (max=%u)",
+                        m_nblock_address, max_lba);
+
+                // SCSI error: ILLEGAL REQUEST / LOGICAL BLOCK ADDRESS OUT OF RANGE
+                setSenseData(0x05, 0x21, 0x00);
+                sendCheckCondition();
+                break;
+            }
+
+            // Check if read extends beyond disc boundary
+            if (m_nblock_address + m_nnumber_blocks > max_lba)
+            {
+                u32 original_blocks = m_nnumber_blocks;
+                m_nnumber_blocks = max_lba - m_nblock_address;
+
+                MLOGNOTE("READ(10)", "Read truncated: LBA=%u, requested=%u, max=%u, truncated to=%u",
+                         m_nblock_address, original_blocks, max_lba, m_nnumber_blocks);
+            }
+
+            // Validate we have blocks to read after boundary checks
+            if (m_nnumber_blocks == 0)
+            {
+                MLOGERR("READ(10)", "No blocks to read after boundary check");
+                setSenseData(0x05, 0x21, 0x00);
+                sendCheckCondition();
+                break;
+            }
+
+            CDROM_DEBUG_LOG("READ(10)", "LBA=%u, cnt=%u, max_lba=%u",
+                            m_nblock_address, m_nnumber_blocks, max_lba);
 
             // Transfer Block Size is the size of data to return to host
             // Block Size and Skip Bytes is worked out from cue sheet
             // For a CDROM, this is always 2048
             transfer_block_size = 2048;
             block_size = data_block_size; // set at SetDevice
-            skip_bytes = data_skip_bytes; // set at SetDevice;
+            skip_bytes = data_skip_bytes; // set at SetDevice
             mcs = 0;
-
             m_nbyteCount = m_CBW.dCBWDataTransferLength;
 
-            // What is this?
-            if (m_nnumber_blocks == 0)
+            // Recalculate byte count based on potentially truncated block count
+            u32 expected_byte_count = m_nnumber_blocks * transfer_block_size;
+            if (m_nbyteCount > expected_byte_count)
             {
-                m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
+                MLOGNOTE("READ(10)", "Host requested %u bytes but only %u available",
+                         m_nbyteCount, expected_byte_count);
+                m_nbyteCount = expected_byte_count;
             }
-            CDROM_DEBUG_LOG("READ(10)", "LBA=%u, cnt=%u", m_nblock_address, m_nnumber_blocks);
 
             m_CSW.bmCSWStatus = bmCSWStatus;
             m_nState = TCDState::DataInRead; // see Update() function
         }
         else
         {
-            CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s", m_CDReady ? "ready" : "not ready");
+            CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s",
+                            m_CDReady ? "ready" : "not ready");
             setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
             sendCheckCondition();
         }
@@ -3867,6 +3982,26 @@ void CUSBCDGadget::Update()
         int readCount = 0;
         if (m_CDReady)
         {
+            // SAFETY CHECK: Validate we're still within disc boundaries
+            u32 max_lba = GetMaxLBA();
+            if (m_nblock_address >= max_lba)
+            {
+                MLOGERR("UpdateRead", "Current LBA %u exceeds max %u - aborting transfer",
+                        m_nblock_address, max_lba);
+                setSenseData(0x05, 0x21, 0x00);
+                sendCheckCondition();
+                return;
+            }
+
+            // Ensure remaining blocks don't exceed boundary
+            if (m_nblock_address + m_nnumber_blocks > max_lba)
+            {
+                u32 old_count = m_nnumber_blocks;
+                m_nnumber_blocks = max_lba - m_nblock_address;
+                MLOGNOTE("UpdateRead", "Truncating remaining blocks from %u to %u",
+                         old_count, m_nnumber_blocks);
+            }
+
             CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
             bool isAudioTrack = (trackInfo.track_number != -1 &&
                                  trackInfo.track_mode == CUETrack_AUDIO);
@@ -3924,13 +4059,43 @@ void CUSBCDGadget::Update()
                 // Perform read (no logging unless debug enabled)
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
 
-                if (readCount < static_cast<int>(total_batch_size))
+                // Check for complete read failure (0 bytes or negative)
+                if (readCount <= 0)
                 {
-                    MLOGERR("UpdateRead", "Short read: %d/%u", readCount, total_batch_size);
-                    setSenseData(0x04, 0x11, 0x00);
+                    MLOGERR("UpdateRead", "Read failed: returned %d bytes (expected %u) at LBA %u",
+                            readCount, total_batch_size, m_nblock_address - blocks_to_read_in_batch);
+
+                    // This indicates a serious problem - likely reading beyond disc boundary
+                    // or device error
+                    if (readCount == 0)
+                    {
+                        // No data read - likely beyond disc boundary
+                        setSenseData(0x05, 0x21, 0x00); // ILLEGAL REQUEST / LBA OUT OF RANGE
+                    }
+                    else
+                    {
+                        // Negative return indicates device error
+                        setSenseData(0x03, 0x11, 0x00); // MEDIUM ERROR / UNRECOVERED READ ERROR
+                    }
+
                     sendCheckCondition();
                     return;
                 }
+
+                // Check for partial read
+                if (readCount < static_cast<int>(total_batch_size))
+                {
+                    MLOGERR("UpdateRead", "Partial read: %d/%u bytes at LBA %u",
+                            readCount, total_batch_size, m_nblock_address - blocks_to_read_in_batch);
+
+                    // Partial reads are problematic - we can't easily handle them in the middle
+                    // of a USB transfer, so treat as an error
+                    setSenseData(0x03, 0x11, 0x00); // MEDIUM ERROR / UNRECOVERED READ ERROR
+                    sendCheckCondition();
+                    return;
+                }
+
+                // Read was successful, continue with buffer processing
 
                 // Optimized buffer copy
                 u8 *dest_ptr = m_InBuffer;
