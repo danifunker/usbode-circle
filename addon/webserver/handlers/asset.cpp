@@ -8,8 +8,8 @@
 #include "util.h"
 
 // Include files for the assets
-#include "logo.h"
 #include "logo-text.h"
+#include "logo-text-white.h"
 #include "font-eot.h"
 #include "font-woff.h"
 #include "favicon.h"
@@ -25,12 +25,12 @@ struct StaticAsset {
 
 // route mappings for your assets
 static const std::map<std::string, StaticAsset> g_staticAssets = {
-//    { "/logo.jpg",      { assets_logo_jpg, assets_logo_jpg_len, "image/jpeg" } },
     { "/logo-text.png", { assets_logo_text_png, assets_logo_text_png_len, "image/png" } },
+    { "/logo-text-white.png", { assets_logo_text_white_png, assets_logo_text_white_png_len, "image/png" } },
     { "/favicon.ico",   { assets_favicon_ico, assets_favicon_ico_len, "image/x-icon" } },
     { "/style.css",     { (const uint8_t *)assets_style_css, assets_style_css_len, "text/css" } },
-    { "/font-eot.eot",      { assets_font_eot_eot, assets_font_eot_eot_len, "application/vnd.ms-fontobject" } },
-    { "/font-woff.woff",     { assets_font_woff_woff, assets_font_woff_woff_len, "application/font-woff" } },
+    { "/font-eot.eot",  { assets_font_eot_eot, assets_font_eot_eot_len, "application/vnd.ms-fontobject" } },
+    { "/font-woff.woff",{ assets_font_woff_woff, assets_font_woff_woff_len, "application/font-woff" } },
     // Add more assets here
 };
 

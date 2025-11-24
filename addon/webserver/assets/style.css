@@ -38,7 +38,7 @@ a:visited {
 	margin-right:10px; 
 	color: transparent; 
 	font-size: 0; 
-	background: url('/logo-white.png') 50% 50% no-repeat; 
+	background: url('/logo-text-white.png') 50% 50% no-repeat; 
 	background-size: 122px 80px;
 }
 .content {
@@ -63,6 +63,9 @@ p {
 	color: #FFFFFF; 
 	margin: 5px; 
 	display: inline-block;
+}
+.button:visited {
+	color: #FFFFFF;
 }
 .info-box {
 	background-color: #F5F5F5; 
