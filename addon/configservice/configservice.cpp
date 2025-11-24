@@ -61,6 +61,11 @@ const char* ConfigService::GetSoundDev(const char* defaultValue)
     return defaultValue;
 }
 
+const char* ConfigService::GetTheme(const char* defaultValue)
+{
+    return m_config->GetString("theme", defaultValue);
+}
+
 const char* ConfigService::GetCurrentImage(const char* defaultValue)
 {
     return m_config->GetString("current_image", defaultValue);

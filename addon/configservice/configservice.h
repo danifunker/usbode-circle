@@ -12,6 +12,9 @@ class ConfigService : public CTask
 public:
     ConfigService();
     ~ConfigService();
+
+    static ConfigService* Get() { return s_pThis; }
+
     const char* GetCurrentImage(const char *defaultValue="image.iso");
     unsigned GetDefaultVolume(unsigned defaultValue=255);
     const char* GetDisplayHat(const char *defaultValue="none");
@@ -25,6 +28,7 @@ public:
     unsigned GetST7789SleepBrightness(unsigned defaultValue=32);
     void SetSoundDev(const char* value);
     const char* GetSoundDev(const char* defaultValue="none");
+    const char* GetTheme(const char *defaultValue="default");
 
     void SetLogfile(const char* value);
     void SetCurrentImage(const char* value);
