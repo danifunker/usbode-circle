@@ -29,27 +29,24 @@
 // TODO reduce stack size of USBCDGadget
 #define CDROM_STACK_SIZE TASK_STACK_SIZE * 1.5
 
-#define DEFAULT_STANDARD_VID USB_GADGET_VENDOR_ID
-#define DEFAULT_STANDARD_PID USB_GADGET_DEVICE_ID_CD
-#define DEFAULT_ISD_VID 0x07E5 // Que! Drive (QPS Inc.)
-#define DEFAULT_ISD_PID 0x015C // Que! Drive 525
-
 LOGMODULE("cdrom");
 
 CDROMService *CDROMService::s_pThis = nullptr;
 
-CDROMService::CDROMService(u16 vid, u16 pid, USBMode mode)
-    : CTask(CDROM_STACK_SIZE), m_vid(vid), m_pid(pid), m_usbMode(mode)
+CDROMService::CDROMService(u16 vid, u16 pid, USBProtocol protocol)
+    : CTask(CDROM_STACK_SIZE), m_vid(vid), m_pid(pid), m_usbProtocol(protocol)
 {
     // I am the one and only!
     assert(s_pThis == nullptr);
     s_pThis = this;
 
-    LOGNOTE("CDROM starting");
+    LOGNOTE("CDROMService constructor: VID=0x%04x PID=0x%04x Protocol=%d", 
+            vid, pid, (int)protocol);
     SetName("cdromservice");
     boolean ok = Initialize();
     assert(ok == true);
 }
+
 
 void CDROMService::SetDevice(IImageDevice *pDevice)
 { // Changed from ICueDevice*
@@ -79,16 +76,19 @@ boolean CDROMService::Initialize()
 {
     LOGNOTE("CDROM Initializing");
     CInterruptSystem *m_Interrupt = CInterruptSystem::Get();
-    bool isVendorSpecific = (m_usbMode == USBMode::ISD);
-    CString logMsg;
-    logMsg.Format("CDROMService::Initialize: m_usbMode=%d, isVendorSpecific=%d (ISD=%d, STANDARD=%d)",
-                  (int)m_usbMode, (int)isVendorSpecific, 
-                  (int)USBMode::ISD, (int)USBMode::STANDARD);
-    CLogger::Get()->Write("cdrom", LogNotice, logMsg);    
-    m_CDGadget = new CUSBCDGadget(m_Interrupt, CKernelOptions::Get()->GetUSBFullSpeed(), nullptr, isVendorSpecific);
-    // Configure VID/PID before initializing
-    m_CDGadget->ConfigureUSBIds(isVendorSpecific, m_vid, m_pid);
-    LOGNOTE("Configured USB CD gadget VID: %04x PID: %04x", m_vid, m_pid);
+    bool isVendorSpecific = (m_usbProtocol == USBProtocol::ISD);
+    
+    LOGNOTE("Creating USB gadget (VendorSpecific=%d)", isVendorSpecific);    
+    // Create the gadget (but don't initialize yet)
+    m_CDGadget = new CUSBCDGadget(m_Interrupt, 
+                                  CKernelOptions::Get()->GetUSBFullSpeed(), 
+                                  nullptr, 
+                                  isVendorSpecific);
+    
+    // CRITICAL: Set USB IDs BEFORE initializing
+    m_CDGadget->SetUSBIds(m_vid, m_pid);
+    LOGNOTE("Set USB IDs: VID=0x%04x PID=0x%04x", m_vid, m_pid);
+    
     return true;
 }
 

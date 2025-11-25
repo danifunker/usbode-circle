@@ -549,37 +549,6 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
     }
     return nullptr;
 }
-void CUSBCDGadget::ConfigureUSBIds(bool bClassicMacMode, u16 usUserVID, u16 usUserPID)
-{
-    u16 vendorId, productId;
-
-    if (usUserVID != 0 && usUserPID != 0)
-    {
-        // User-configured mode takes priority
-        vendorId = usUserVID;
-        productId = usUserPID;
-        MLOGNOTE("USBCDGadget", "Using user-configured USB IDs: VID=0x%04x PID=0x%04x",
-                 vendorId, productId);
-    }
-    else if (bClassicMacMode)
-    {
-        // Classic Mac OS mode - use Apple CD-ROM drive IDs
-        vendorId = 0x05AC;  // Apple Inc.
-        productId = 0x1500; // Generic Apple CD-ROM (adjust as needed)
-        MLOGNOTE("USBCDGadget", "Using Classic Mac OS mode USB IDs: VID=0x%04x PID=0x%04x",
-                 vendorId, productId);
-    }
-    else
-    {
-        // Default mode
-        vendorId = USB_GADGET_VENDOR_ID;
-        productId = USB_GADGET_DEVICE_ID_CD;
-        MLOGNOTE("USBCDGadget", "Using default USB IDs: VID=0x%04x PID=0x%04x",
-                 vendorId, productId);
-    }
-
-    SetUSBIds(vendorId, productId);
-}
 
 void CUSBCDGadget::AddEndpoints(void)
 {

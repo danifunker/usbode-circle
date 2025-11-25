@@ -32,7 +32,7 @@
 #include <usbcdgadget/usbcdgadget.h>
 #include <discimage/imagedevice.h>
 
-enum class USBMode
+enum class USBProtocol
 {
     STANDARD, // Standard USB Mass Storage (default)
     ISD       // ISD/Que! Drive vendor-specific mode (Mac OS 9 CD Audio)
@@ -40,12 +40,12 @@ enum class USBMode
 class CDROMService : public CTask
 {
 public:
-    CDROMService(u16 vid, u16 pid, USBMode mode = USBMode::STANDARD);
+    CDROMService(u16 vid, u16 pid, USBProtocol mode = USBProtocol::STANDARD);
     ~CDROMService(void);
     boolean Initialize();
     void SetDevice(IImageDevice *pDevice);
     void Run(void);
-    USBMode GetUSBMode() const { return m_usbMode; }
+    USBProtocol GetUSBProtocol() const { return m_usbProtocol; }
 
 private:
     CUSBCDGadget *m_CDGadget = nullptr;
@@ -53,7 +53,7 @@ private:
     bool isInitialized = false;
     u16 m_vid = 0;
     u16 m_pid = 0;
-    USBMode m_usbMode = USBMode::STANDARD;
+    USBProtocol m_usbProtocol = USBProtocol::STANDARD;
 };
 
 #endif
