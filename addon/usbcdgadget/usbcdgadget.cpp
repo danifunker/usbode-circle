@@ -4297,19 +4297,35 @@ void CUSBCDGadget::HandleSCSICommand()
 void CUSBCDGadget::Update()
 {
     // MLOGDEBUG ("CUSBCDGadget::Update", "entered skip=%u, transfer=%u", skip_bytes, transfer_block_size);
-    if (m_bVendorSpecific && m_pISDProtocol &&
-        m_nState == TCDState::ReceiveCBW &&
-        m_pISDProtocol->HasPendingData())
+    if (m_bVendorSpecific && m_pISDProtocol)
     {
-        size_t actualLength = 0;
-        if (m_pISDProtocol->GetPendingResponseData(m_InBuffer, sizeof(m_InBuffer), &actualLength))
+        // Check if we have pending data to send
+        // This needs to happen in BOTH ReceiveCBW and DataIn states
+        if ((m_nState == TCDState::ReceiveCBW || m_nState == TCDState::DataIn) &&
+            m_pISDProtocol->HasPendingData())
         {
-            CDROM_DEBUG_LOG("ISD Bulk IN", "Sending %u bytes on bulk IN endpoint", (unsigned)actualLength);
-            m_nState = TCDState::DataIn;
-            m_nnumber_blocks = 0; // No more blocks after this
-            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       m_InBuffer, actualLength);
-            return; // Return immediately - don't process state machine
+            size_t actualLength = 0;
+            
+            // CRITICAL: Use USB max packet size, not buffer size!
+            // Full-Speed USB = 64 bytes max, High-Speed USB = 512 bytes max
+            size_t maxPacketSize = m_IsFullSpeed ? 64 : 512;
+            
+            if (m_pISDProtocol->GetPendingResponseData(m_InBuffer, maxPacketSize, &actualLength))
+            {
+                CDROM_DEBUG_LOG("ISD Bulk IN", "Sending %u bytes on bulk IN endpoint (max packet: %u)", 
+                               (unsigned)actualLength, (unsigned)maxPacketSize);
+                m_nState = TCDState::DataIn;
+                m_nnumber_blocks = 0;
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                          m_InBuffer, actualLength);
+                return;
+            }
+            else
+            {
+                // All data sent, return to ready state
+                CDROM_DEBUG_LOG("ISD Bulk IN", "All data sent, returning to ReceiveCBW");
+                m_nState = TCDState::ReceiveCBW;
+            }
         }
     }
     switch (m_nState)

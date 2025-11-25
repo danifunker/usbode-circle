@@ -77,13 +77,21 @@ bool ISDProtocol::HandleControlTransfer(u8 bmRequestType, u8 bRequest,
         return true;
     }
 
-    if (bmRequestType == 0x40 && bRequest == 0x06)
-    {
-        // Vendor command 0x06 - This is the main ISD command batch!
-        bool result = HandleCommandBatch(pData, wLength, pResponseLength);
-        SetStatus(result ? 0x5B : 0x48);  // Success or error
-        return result;
-    }
+if (bmRequestType == 0x40 && bRequest == 0x06)
+{
+    // Vendor command 0x06 - This is the main ISD command batch!
+    size_t responseLen = 0;
+    bool result = HandleCommandBatch(pData, wLength, &responseLen);
+    
+    // CRITICAL: Control OUT must ACK with zero length
+    // The actual response (136 bytes) is already buffered in m_ResponseBuffer
+    // and will be sent later via bulk IN endpoint 0x82
+    *pResponseLength = 0;  // ACK the control transfer with no data
+    
+    SetStatus(result ? 0x48 : 0x48);  // Set busy while processing
+    
+    return result;
+}
 
     CLogger::Get()->Write(LogName, LogWarning, "ISD: Unhandled control transfer");
     SetStatus(0x48);  // Error status
@@ -651,10 +659,20 @@ bool ISDProtocol::HandleCommand17(const u8 *pCmdData, size_t nCmdLength,
 
 bool ISDProtocol::GetPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t *pActualLength)
 {
-    if (m_nResponseDataOffset >= m_nResponseDataLength)
+    // Check if we have any data to send
+    if (m_nResponseDataLength == 0 || m_nResponseDataOffset >= m_nResponseDataLength)
     {
-        // No more data
         *pActualLength = 0;
+        
+        // If we just finished sending all data, notify completion
+        if (m_nResponseDataLength > 0 && m_nResponseDataOffset >= m_nResponseDataLength)
+        {
+            CLogger::Get()->Write(LogName, LogNotice, "ISD: Bulk IN transfer complete");
+            m_nResponseDataLength = 0;
+            m_nResponseDataOffset = 0;
+            NotifyTransferComplete();  // Set status to 0x5B (ready)
+        }
+        
         return false;
     }
     
@@ -666,8 +684,9 @@ bool ISDProtocol::GetPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t 
     // HEX DUMP THE ACTUAL DATA being sent
     CString logMsg;
     logMsg.Format("ISD: Bulk IN sending %u bytes (%u/%u total):", 
-                 (unsigned)toSend, (unsigned)(m_nResponseDataOffset + toSend), 
-                 (unsigned)m_nResponseDataLength);
+                  (unsigned)toSend, 
+                  (unsigned)(m_nResponseDataOffset + toSend), 
+                  (unsigned)m_nResponseDataLength);
     CLogger::Get()->Write(LogName, LogNotice, logMsg);
     
     // Dump hex + ASCII
@@ -684,7 +703,7 @@ bool ISDProtocol::GetPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t 
             
             // Build ASCII representation
             char c = (pBuffer[i + j] >= 32 && pBuffer[i + j] < 127) 
-                    ? pBuffer[i + j] : '.';
+                     ? pBuffer[i + j] : '.';
             CString charStr;
             charStr.Format("%c", c);
             asciiLine.Append(charStr);
@@ -692,9 +711,9 @@ bool ISDProtocol::GetPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t 
         
         CString line;
         line.Format("  %04x: %-48s %s", 
-                   (unsigned)(m_nResponseDataOffset + i), 
-                   (const char*)hexLine, 
-                   (const char*)asciiLine);
+                    (unsigned)(m_nResponseDataOffset + i), 
+                    (const char*)hexLine, 
+                    (const char*)asciiLine);
         CLogger::Get()->Write(LogName, LogNotice, line);
     }
     
