@@ -1,5 +1,5 @@
 body {
-	background-color: #EAEAEA; 
+	background-color: #3A7CA5; 
 	color: #333333; 
 	font-family: Arial, Helvetica, sans-serif;
 	margin: 0; 
@@ -7,6 +7,7 @@ body {
     font-size: 16px;
 }
 h1, h2, h3 {
+	margin-top: 0;
 	color: #1E4D8C;
 }
 a {
@@ -16,6 +17,7 @@ a:visited {
 	color: #0066CC;
 }
 .container {
+	background-color: #ffffff;
 	width: 100%; 
 	margin: 0; 
 	padding: 0;
@@ -28,8 +30,12 @@ a:visited {
 	color: #FFFFFF;
 }
 .header h1, .header h2 {
+	margin: 0;
 	color: #FFFFFF; 
-	margin: 5px 0;
+	padding-bottom: 5px;
+}
+.header h1 {
+	padding-top: 5px;
 }
 .header img {
 	width: 122px;
@@ -39,46 +45,61 @@ a:visited {
 	border: none;
 }
 .content {
-	padding: 10px; 
-	background-color: #FFFFFF; 
+	max-width: 1024px;
+	margin: 0 auto;
+	padding: 20px 10px; 
 	min-height: 300px;
 }
 .footer {
+	margin: 0;
 	background-color: #3A7CA5; 
 	padding: 10px; 
 	text-align: center; 
 	color: #FFFFFF;
 }
 p {
-	margin-bottom: 10px;
+	margin: 0;
 }
 .button {
     font-size: 16px;
 	background-color: #4CAF50; 
-	padding: 7px 15px; 
+	padding: 7px 10px; 
 	text-decoration: none; 
 	border: 1px solid #2E8B57; 
 	color: #FFFFFF; 
 	margin: 5px; 
 	display: inline-block;
+		* display: inline;
+		* zoom: 1; 
+		* width: auto;
+}
+.button:hover {
+	border: 1px solid #2Ecc57; 
+	background-color: #2E8B57; 
+}
+.button.danger:hover {
+	color: #fff;
+	background-color: #990000;
+	border-color: #ff0000;
+}
+a.button {
+	* height: 42px;
+	* padding-top: 10px;
+	* position: relative;
+	* top: 4px;
 }
 .button:visited {
 	color: #FFFFFF;
 }
 .info-box {
 	background-color: #F5F5F5; 
-	padding: 10px; 
-	margin: 10px 0;
+	padding: 20px; 
+	margin-top: 10px;
 }
-.message.warning {
-	background-color: #FFDDDD; 
+.files {
+	margin-top: 10px;
+	border: 1px solid #ccc; 
 	padding: 10px; 
-	margin: 10px 0; 
-	color: #990000;
-}
-.files, .form-group {
-	border:1px solid #ccc; 
-	padding:8px; 
 }
 .file {
 	padding: 8px; 
@@ -89,14 +110,17 @@ p {
 	overflow-wrap: break-word;
 }
 .file {
-	background-color: #E3F2FD;
+	background-color: #E8F5FF;
 }
 .file:nth-child(odd) {
-	background-color: #BBDEFB;
+	background-color: #F6F9FC;
 }
 .file.current {
+	background-color: #BBDEFB;
+	border:2px solid #4182C7;
+}
+.file.current a {
 	font-weight:bold; 
-	border:2px solid #4CAF50;
 }
 .header-bar {
 	background-color: #2C5F7C; 
@@ -104,10 +128,12 @@ p {
 	padding: 5px;
 }
 .usb-info {
+	margin: 0;
 	background-color: #E3F2FD; 
 	border-top: 1px solid #BBDEFB; 
 	padding: 5px; 
-	text-align: center; 
+	text-align: center;
+	padding: 20px;
 }
 .build-info {
 	text-align: center;
@@ -130,6 +156,10 @@ p {
 	border: 1px solid #BBDEFB; 
 	background-color: #E3F2FD;
 	display: inline-block;
+		* display: inline;
+		* zoom: 1; 
+		* width: auto;
+		* height: 28px;
 }
 .pagination .current {
 	background-color: #3A7CA5; 
@@ -157,12 +187,26 @@ p {
 	background-color:#f9f9f9;
 }
 .buttons {
+	padding-top: 10px;
 	text-align: center;
+	display: flex;
+	justify-content: center;
+	align-items: stretch;
 }
 .message {
 	background-color: #E3F2FD; 
 	padding: 10px; margin: 10px 0; 
 	border-left: 4px solid #2196F3;
+}
+.message.warning {
+	background-color: #FFDDDD; 
+	padding: 10px; 
+	margin: 10px 0; 
+	color: #990000;
+	border-color: #990000;
+}
+.current-value {
+	margin: 10px 0;
 }
 .unavailable {
 	color: #666; 
@@ -171,22 +215,21 @@ p {
 .navigation {
 	margin: 5px 0;
 }
+form {
+	margin-bottom: 20px;
+}
 .form-group {
 	margin-top: 10px;
+	margin-bottom: 10px;
+	border: 1px solid #ccc; 
+	padding: 10px; 
 }
 .form-group label {
 	font-weight: 600;
 }
 .form-group input, .form-group select {
+	padding: 5px;
 	margin: 5px 0;
-}
-
-/* IE5-6 inline-block hack */
-* html .button, 
-* html .pagination a, 
-* html .pagination span {
-	display: inline;
-    zoom: 1;
 }
 
 @media screen and (max-width: 490px) {
