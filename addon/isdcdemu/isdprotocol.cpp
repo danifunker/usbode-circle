@@ -663,17 +663,7 @@ bool ISDProtocol::GetPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t 
     if (m_nResponseDataLength == 0 || m_nResponseDataOffset >= m_nResponseDataLength)
     {
         *pActualLength = 0;
-        
-        // If we just finished sending all data, notify completion
-        if (m_nResponseDataLength > 0 && m_nResponseDataOffset >= m_nResponseDataLength)
-        {
-            CLogger::Get()->Write(LogName, LogNotice, "ISD: Bulk IN transfer complete");
-            m_nResponseDataLength = 0;
-            m_nResponseDataOffset = 0;
-            NotifyTransferComplete();  // Set status to 0x5B (ready)
-        }
-        
-        return false;
+        return false;  // No data to send
     }
     
     size_t remaining = m_nResponseDataLength - m_nResponseDataOffset;
@@ -701,7 +691,6 @@ bool ISDProtocol::GetPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t 
             byte.Format("%02x ", pBuffer[i + j]);
             hexLine.Append(byte);
             
-            // Build ASCII representation
             char c = (pBuffer[i + j] >= 32 && pBuffer[i + j] < 127) 
                      ? pBuffer[i + j] : '.';
             CString charStr;
@@ -719,6 +708,21 @@ bool ISDProtocol::GetPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t 
     
     m_nResponseDataOffset += toSend;
     *pActualLength = toSend;
+    
+    // CRITICAL: Only notify completion when ALL data has been sent
+    if (m_nResponseDataOffset >= m_nResponseDataLength)
+    {
+        CLogger::Get()->Write(LogName, LogNotice, "ISD: All bulk IN data sent, notifying completion");
+        m_nResponseDataLength = 0;
+        m_nResponseDataOffset = 0;
+        NotifyTransferComplete();  // NOW set status to 0x5B (ready)
+    }
+    else
+    {
+        logMsg.Format("ISD: More data pending (%u bytes remaining)", 
+                     (unsigned)(m_nResponseDataLength - m_nResponseDataOffset));
+        CLogger::Get()->Write(LogName, LogNotice, logMsg);
+    }
     
     return true;
 }
