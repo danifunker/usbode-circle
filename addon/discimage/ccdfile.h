@@ -62,6 +62,8 @@ public:
 private:
     bool ParseCcd();
     void GenerateCueSheet();
+    void ValidateSubchannelFormat();
+    void DumpSubchannelHex(u32 lba);
     
     // Helper to convert MSF to LBA
     int MsfToLba(int m, int s, int f) const;

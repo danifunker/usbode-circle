@@ -2036,9 +2036,22 @@ void CUSBCDGadget::HandleSCSICommand()
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
                             "READ CD: Subchannel requested but image has no subchannel data");
+            MLOGERR("READ_CD", "Subchannel requested but not available!");
+            MLOGERR("READ_CD", "  LBA=%u, subchan=0x%02x, image_type=%d",
+                m_nblock_address, subChannelSelection, 
+                (int)m_pDevice->GetFileType());                            
             setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
             sendCheckCondition();
             break;
+        }
+
+        CDROM_DEBUG_LOG("READ_CD", "Processing: LBA=%u, cnt=%u, MCS=0x%02x, subchan=0x%02x",
+                 m_nblock_address, m_nnumber_blocks, mcs, subChannelSelection);
+        
+        if (m_pDevice->HasSubchannelData()) {
+            CDROM_DEBUG_LOG("READ_CD", "  Subchannel available: YES");
+        } else {
+            CDROM_DEBUG_LOG("READ_CD", "  Subchannel available: NO");
         }
 
         // Get track info for validation
@@ -4002,11 +4015,7 @@ void CUSBCDGadget::Update()
                          old_count, m_nnumber_blocks);
             }
 
-            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-            bool isAudioTrack = (trackInfo.track_number != -1 &&
-                                 trackInfo.track_mode == CUETrack_AUDIO);
-
-            // Single seek operation (no logging in hot path)
+            // Seek operation
             offset = m_pDevice->Seek(block_size * m_nblock_address);
 
             if (offset != (u64)(-1))
@@ -4045,78 +4054,78 @@ void CUSBCDGadget::Update()
                     }
                 }
 
-                // Secondary safety check
-                if (total_batch_size > MaxInMessageSize)
-                {
-                    MLOGERR("UpdateRead", "BUFFER OVERFLOW: %u > %u",
-                            total_batch_size, (u32)MaxInMessageSize);
-                    blocks_to_read_in_batch = MaxInMessageSize / block_size;
-                    total_batch_size = blocks_to_read_in_batch * block_size;
-                    total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
-                    m_nnumber_blocks = 0;
-                }
-
-                // Perform read (no logging unless debug enabled)
+                // Perform read
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
 
-                // Check for complete read failure (0 bytes or negative)
+                // Check for read failure
                 if (readCount <= 0)
                 {
-                    MLOGERR("UpdateRead", "Read failed: returned %d bytes (expected %u) at LBA %u",
-                            readCount, total_batch_size, m_nblock_address - blocks_to_read_in_batch);
-
-                    // This indicates a serious problem - likely reading beyond disc boundary
-                    // or device error
-                    if (readCount == 0)
-                    {
-                        // No data read - likely beyond disc boundary
-                        setSenseData(0x05, 0x21, 0x00); // ILLEGAL REQUEST / LBA OUT OF RANGE
-                    }
-                    else
-                    {
-                        // Negative return indicates device error
-                        setSenseData(0x03, 0x11, 0x00); // MEDIUM ERROR / UNRECOVERED READ ERROR
-                    }
-
+                    MLOGERR("UpdateRead", "Read failed: returned %d bytes at LBA %u",
+                            readCount, m_nblock_address);
+                    setSenseData(0x03, 0x11, 0x00); // MEDIUM ERROR
                     sendCheckCondition();
                     return;
                 }
 
-                // Check for partial read
-                if (readCount < static_cast<int>(total_batch_size))
+                // =================================================================
+                // CACHE COHERENCY FIX
+                // The SD DMA writes to RAM, but the CPU cache might hold stale data.
+                // We must invalidate the cache for m_FileChunk so the CPU reads
+                // the fresh data from RAM.
+                // =================================================================
+                uintptr_t chunk_start = (uintptr_t)m_FileChunk;
+                uintptr_t chunk_end = chunk_start + readCount;
+
+                // Align to cache line size (64 bytes on AArch64)
+                chunk_start &= ~63UL;
+                chunk_end = (chunk_end + 63) & ~63UL;
+
+                for (uintptr_t addr = chunk_start; addr < chunk_end; addr += 64)
                 {
-                    MLOGERR("UpdateRead", "Partial read: %d/%u bytes at LBA %u",
-                            readCount, total_batch_size, m_nblock_address - blocks_to_read_in_batch);
+#if AARCH == 64
+                    asm volatile("dc ivac, %0" : : "r"(addr) : "memory");
+#else
+                    asm volatile("mcr p15, 0, %0, c7, c6, 1" : : "r"(addr) : "memory");
+#endif
+                }
+                DataSyncBarrier();
+                // =================================================================
 
-                    // Partial reads are problematic - we can't easily handle them in the middle
-                    // of a USB transfer, so treat as an error
-                    setSenseData(0x03, 0x11, 0x00); // MEDIUM ERROR / UNRECOVERED READ ERROR
-                    sendCheckCondition();
-                    return;
+                // Determine Subchannel Configuration
+                bool hasSubchannel = (mcs != 0) && m_pDevice->HasSubchannelData();
+                int subchannelSize = 0;
+
+                if (hasSubchannel)
+                {
+                    if ((mcs & 0x07) == 0x01)
+                        subchannelSize = 96;
+                    else if ((mcs & 0x07) == 0x02)
+                        subchannelSize = 16;
                 }
 
-                // Read was successful, continue with buffer processing
+                int mainDataSize = transfer_block_size - subchannelSize;
 
-                // Optimized buffer copy
+                // Optimized buffer processing
                 u8 *dest_ptr = m_InBuffer;
                 u32 total_copied = 0;
 
-                if (transfer_block_size == block_size && skip_bytes == 0)
+                // FAST PATH: No reconstruction, no subchannels
+                if (mainDataSize == block_size && skip_bytes == 0 && subchannelSize == 0)
                 {
-                    // FAST PATH: Direct copy when no reconstruction needed
                     memcpy(dest_ptr, m_FileChunk, total_transfer_size);
                     total_copied = total_transfer_size;
                 }
-                else if (transfer_block_size > block_size)
+                else
                 {
-                    // MCS sector reconstruction (optimized)
+                    // RECONSTRUCTION PATH
                     for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
                     {
                         u8 sector2352[2352] = {0};
+
                         int offset = 0;
 
-                        // SYNC (12 bytes) - single memset instead of 3
-                        if (mcs & 0x10)
+                        // --- 1. Reconstruct Main Data ---
+                        if (mcs & 0x10) // SYNC
                         {
                             sector2352[0] = 0x00;
                             memset(&sector2352[1], 0xFF, 10);
@@ -4124,43 +4133,56 @@ void CUSBCDGadget::Update()
                             offset = 12;
                         }
 
-                        // HEADER (4 bytes)
-                        if (mcs & 0x08)
+                        if (mcs & 0x08) // HEADER
                         {
                             u32 lba = m_nblock_address + i + 150;
-                            sector2352[offset++] = lba / (75 * 60); // minutes
-                            sector2352[offset++] = (lba / 75) % 60; // seconds
-                            sector2352[offset++] = lba % 75;        // frames
+                            sector2352[offset++] = lba / (75 * 60);
+                            sector2352[offset++] = (lba / 75) % 60;
+                            sector2352[offset++] = lba % 75;
                             sector2352[offset++] = 0x01;
                         }
 
-                        // USER DATA (2048 bytes) - single memcpy
-                        if (mcs & 0x04)
+                        if (mcs & 0x04) // USER DATA
                         {
                             memcpy(&sector2352[offset], m_FileChunk + (i * block_size), 2048);
                             offset += 2048;
                         }
 
-                        // EDC/ECC (288 bytes) - already zeroed by initialization
-                        if (mcs & 0x02)
+                        if (mcs & 0x02) // ECC
                         {
+                            memset(&sector2352[offset], 0, 288);
                             offset += 288;
                         }
 
-                        memcpy(dest_ptr, sector2352 + skip_bytes, transfer_block_size);
-                        dest_ptr += transfer_block_size;
-                        total_copied += transfer_block_size;
-                    }
-                }
-                else
-                {
-                    // SKIP PATH: Simple copy with skip_bytes offset
-                    for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
-                    {
-                        memcpy(dest_ptr, m_FileChunk + (i * block_size) + skip_bytes,
-                               transfer_block_size);
-                        dest_ptr += transfer_block_size;
-                        total_copied += transfer_block_size;
+                        // Copy Main Data to Buffer
+                        if (mainDataSize > 0)
+                        {
+                            if (block_size == 2352 && (mcs == 0 || (mcs & 0xE0) == 0))
+                            {
+                                memcpy(dest_ptr, m_FileChunk + (i * block_size) + skip_bytes, mainDataSize);
+                            }
+                            else
+                            {
+                                memcpy(dest_ptr, sector2352 + skip_bytes, mainDataSize);
+                            }
+                            dest_ptr += mainDataSize;
+                            total_copied += mainDataSize;
+                        }
+
+                        // --- 2. Append Subchannel Data (Interleaved) ---
+                        if (subchannelSize > 0)
+                        {
+                            u32 current_lba = m_nblock_address + i;
+                            int sc_result = m_pDevice->ReadSubchannel(current_lba, dest_ptr);
+
+                            if (sc_result != subchannelSize)
+                            {
+                                memset(dest_ptr, 0, subchannelSize);
+                            }
+
+                            dest_ptr += subchannelSize;
+                            total_copied += subchannelSize;
+                        }
                     }
                 }
 
@@ -4169,12 +4191,11 @@ void CUSBCDGadget::Update()
                 m_nbyteCount -= total_copied;
                 m_nState = TCDState::DataIn;
 
+                // Cache maintenance for Destination Buffer (USB DMA Read)
                 uintptr_t buffer_start = (uintptr_t)m_InBuffer;
                 uintptr_t buffer_end = buffer_start + total_copied;
-
-                // Align to cache line boundaries (64 bytes on ARM)
-                buffer_start &= ~63UL;                  // Round down to cache line
-                buffer_end = (buffer_end + 63) & ~63UL; // Round up
+                buffer_start &= ~63UL;
+                buffer_end = (buffer_end + 63) & ~63UL;
 
                 for (uintptr_t addr = buffer_start; addr < buffer_end; addr += 64)
                 {
@@ -4186,46 +4207,14 @@ void CUSBCDGadget::Update()
                 }
 
                 DataSyncBarrier();
-                // SINGLE LOG: Only log completion if debug enabled
-                CDROM_DEBUG_LOG("UpdateRead", "Transferred %u bytes, next_LBA=%u, remaining=%u",
-                                total_copied, m_nblock_address, m_nnumber_blocks);
-                // If subchannel data was requested via READ CD command, append it
-                if (mcs != 0 && m_pDevice->HasSubchannelData())
+
+                // Single Debug log
+                if (m_bDebugLogging)
                 {
-                    u8 subChannelSelection = mcs & 0x07; // Extract from saved mcs value
-
-                    if (subChannelSelection != 0)
-                    {
-                        CDROM_DEBUG_LOG("UpdateRead", "Appending subchannel data for %u blocks",
-                                        blocks_to_read_in_batch);
-
-                        // Append subchannel data for each sector we just read
-                        for (u32 i = 0; i < blocks_to_read_in_batch; i++)
-                        {
-                            u32 current_lba = m_nblock_address - blocks_to_read_in_batch + i;
-                            u8 subchannel_buf[96];
-
-                            int sc_result = m_pDevice->ReadSubchannel(current_lba, subchannel_buf);
-
-                            if (sc_result == 96)
-                            {
-                                // Copy subchannel data after this sector's main data
-                                u32 offset = total_copied + (i * 96);
-                                memcpy(m_InBuffer + offset, subchannel_buf, 96);
-                                total_copied += 96;
-                            }
-                            else
-                            {
-                                // If subchannel read fails, zero-fill
-                                CDROM_DEBUG_LOG("UpdateRead", "Subchannel read failed for LBA %u, zero-filling",
-                                                current_lba);
-                                u32 offset = total_copied + (i * 96);
-                                memset(m_InBuffer + offset, 0, 96);
-                                total_copied += 96;
-                            }
-                        }
-                    }
+                    MLOGNOTE("UpdateRead", "Transferred %u bytes (Main+Sub), next_LBA=%u",
+                             total_copied, m_nblock_address);
                 }
+
                 // Begin USB transfer
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                            m_InBuffer, total_copied);
@@ -4240,6 +4229,7 @@ void CUSBCDGadget::Update()
         }
         break;
     }
+
     case 0xBD: // MECHANISM STATUS
     {
         u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
