@@ -660,12 +660,15 @@ bool ISDProtocol::HandleCommand17(const u8 *pCmdData, size_t nCmdLength,
 bool ISDProtocol::GetPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t *pActualLength)
 {
     // Check if we have any data to send
-    if (m_nResponseDataLength == 0 || m_nResponseDataOffset >= m_nResponseDataLength)
+    if (m_nResponseDataOffset > 0)
     {
+        // Already sent first packet, don't send more
         *pActualLength = 0;
-        return false;  // No data to send
+        m_nResponseDataLength = 0;  // Clear everything
+        m_nResponseDataOffset = 0;
+        return false;
     }
-    
+        
     size_t remaining = m_nResponseDataLength - m_nResponseDataOffset;
     size_t toSend = (remaining < nMaxLength) ? remaining : nMaxLength;
     
@@ -733,4 +736,34 @@ bool ISDProtocol::HandleModeSense(const u8 *pCDB, u8 *pDataBuffer,
     // Not used in ISD mode - just return false
     *pResponseLength = 0;
     return false;
+}
+
+bool ISDProtocol::GetAllPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t *pActualLength)
+{
+    if (m_nResponseDataLength == 0)
+    {
+        *pActualLength = 0;
+        return false;
+    }
+    
+    if (m_nResponseDataLength > nMaxLength)
+    {
+        CLogger::Get()->Write(LogName, LogError, "Response data too large for buffer");
+        *pActualLength = 0;
+        return false;
+    }
+    
+    // Copy ALL response data at once
+    memcpy(pBuffer, m_ResponseBuffer, m_nResponseDataLength);
+    *pActualLength = m_nResponseDataLength;
+    
+    CString logMsg;
+    logMsg.Format("ISD: Sending ALL %u bytes in single transfer", (unsigned)m_nResponseDataLength);
+    CLogger::Get()->Write(LogName, LogNotice, logMsg);
+    
+    // Clear the response buffer
+    m_nResponseDataLength = 0;
+    m_nResponseDataOffset = 0;
+    
+    return true;
 }

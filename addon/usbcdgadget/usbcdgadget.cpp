@@ -166,203 +166,103 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0     // bInterval
         }};
 
-// Full-Speed ISD Configuration Descriptor (matches real Que! Drive exactly)
-const CUSBCDGadget::TUSBISDConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorFullSpeedISD =
+// Full-Speed ISD Configuration Descriptor (simplified - single alternate setting)
+const CUSBCDGadget::TUSBISDConfigurationDescriptorSimple CUSBCDGadget::s_ConfigurationDescriptorFullSpeedISD =
+{
+    // Configuration Descriptor (9 bytes)
     {
-        // Configuration Descriptor (9 bytes)
-        {
-            sizeof(TUSBConfigurationDescriptor),
-            DESCRIPTOR_CONFIGURATION,
-            sizeof(TUSBISDConfigurationDescriptor), // Total: 71 bytes
-            1,                                      // bNumInterfaces
-            1,                                      // bConfigurationValue
-            0,                                      // iConfiguration
-            0xC0,                                   // bmAttributes (self-powered)
-            0                                       // bMaxPower (0mA for self-powered)
-        },
+        sizeof(TUSBConfigurationDescriptor),
+        DESCRIPTOR_CONFIGURATION,
+        sizeof(TUSBISDConfigurationDescriptorSimple), // Total: 32 bytes
+        1,      // bNumInterfaces
+        1,      // bConfigurationValue
+        0,      // iConfiguration
+        0xC0,   // bmAttributes (self-powered)
+        0       // bMaxPower (0mA for self-powered)
+    },
 
-        // Interface 0, Alternate Setting 0 (9 bytes)
-        {
-            sizeof(TUSBInterfaceDescriptor),
-            DESCRIPTOR_INTERFACE,
-            0,    // bInterfaceNumber
-            0,    // bAlternateSetting = 0
-            1,    // bNumEndpoints = 1 (OUT only)
-            0xFF, // bInterfaceClass (Vendor Specific)
-            0x00, // bInterfaceSubClass
-            0xFF, // bInterfaceProtocol
-            0     // iInterface
-        },
-        // Endpoint 01 OUT (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x01, // bEndpointAddress (OUT, endpoint 1)
-            0x02, // bmAttributes (Bulk)
-            64,   // wMaxPacketSize
-            0     // bInterval
-        },
-
-        // Interface 0, Alternate Setting 1 (9 bytes)
-        {
-            sizeof(TUSBInterfaceDescriptor),
-            DESCRIPTOR_INTERFACE,
-            0,    // bInterfaceNumber
-            1,    // bAlternateSetting = 1
-            2,    // bNumEndpoints = 2 (OUT + IN)
-            0xFF, // bInterfaceClass (Vendor Specific)
-            0x00, // bInterfaceSubClass
-            0xFF, // bInterfaceProtocol
-            0     // iInterface
-        },
-        // Endpoint 01 OUT (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x01, // bEndpointAddress (OUT, endpoint 1)
-            0x02, // bmAttributes (Bulk)
-            64,   // wMaxPacketSize
-            0     // bInterval
-        },
-        // Endpoint 82 IN (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x82, // bEndpointAddress (IN, endpoint 2)
-            0x02, // bmAttributes (Bulk)
-            64,   // wMaxPacketSize
-            0     // bInterval
-        },
-
-        // Interface 0, Alternate Setting 2 (9 bytes)
-        {
-            sizeof(TUSBInterfaceDescriptor),
-            DESCRIPTOR_INTERFACE,
-            0,    // bInterfaceNumber
-            2,    // bAlternateSetting = 2
-            2,    // bNumEndpoints = 2 (OUT + IN)
-            0xFF, // bInterfaceClass (Vendor Specific)
-            0x00, // bInterfaceSubClass
-            0xFF, // bInterfaceProtocol
-            0     // iInterface
-        },
-        // Endpoint 01 OUT (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x01, // bEndpointAddress (OUT, endpoint 1)
-            0x02, // bmAttributes (Bulk)
-            64,   // wMaxPacketSize
-            0     // bInterval
-        },
-        // Endpoint 82 IN (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x82, // bEndpointAddress (IN, endpoint 2)
-            0x02, // bmAttributes (Bulk)
-            64,   // wMaxPacketSize
-            0     // bInterval
-        }};
-
-// High-Speed ISD Configuration Descriptor (same structure, different packet sizes)
-const CUSBCDGadget::TUSBISDConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorHighSpeedISD =
+    // Interface 0, Alternate Setting 0 (9 bytes)
     {
-        // Configuration Descriptor (9 bytes)
-        {
-            sizeof(TUSBConfigurationDescriptor),
-            DESCRIPTOR_CONFIGURATION,
-            sizeof(TUSBISDConfigurationDescriptor), // Total: 71 bytes
-            1,                                      // bNumInterfaces
-            1,                                      // bConfigurationValue
-            0,                                      // iConfiguration
-            0xC0,                                   // bmAttributes (self-powered)
-            0                                       // bMaxPower (0mA for self-powered)
-        },
+        sizeof(TUSBInterfaceDescriptor),
+        DESCRIPTOR_INTERFACE,
+        0,    // bInterfaceNumber
+        0,    // bAlternateSetting = 0 (only alternate setting)
+        2,    // bNumEndpoints = 2 (OUT + IN)
+        0xFF, // bInterfaceClass (Vendor Specific)
+        0x00, // bInterfaceSubClass
+        0xFF, // bInterfaceProtocol
+        0     // iInterface
+    },
+    
+    // Endpoint 01 OUT (7 bytes)
+    {
+        sizeof(TUSBEndpointDescriptor),
+        DESCRIPTOR_ENDPOINT,
+        0x01, // bEndpointAddress (OUT, endpoint 1)
+        0x02, // bmAttributes (Bulk)
+        64,   // wMaxPacketSize
+        0     // bInterval
+    },
+    
+    // Endpoint 82 IN (7 bytes)
+    {
+        sizeof(TUSBEndpointDescriptor),
+        DESCRIPTOR_ENDPOINT,
+        0x82, // bEndpointAddress (IN, endpoint 2)
+        0x02, // bmAttributes (Bulk)
+        64,   // wMaxPacketSize
+        0     // bInterval
+    }
+};
 
-        // Interface 0, Alternate Setting 0 (9 bytes)
-        {
-            sizeof(TUSBInterfaceDescriptor),
-            DESCRIPTOR_INTERFACE,
-            0,    // bInterfaceNumber
-            0,    // bAlternateSetting = 0
-            1,    // bNumEndpoints = 1 (OUT only)
-            0xFF, // bInterfaceClass (Vendor Specific)
-            0x00, // bInterfaceSubClass
-            0xFF, // bInterfaceProtocol
-            0     // iInterface
-        },
-        // Endpoint 01 OUT (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x01, // bEndpointAddress (OUT, endpoint 1)
-            0x02, // bmAttributes (Bulk)
-            512,  // wMaxPacketSize (high-speed)
-            0     // bInterval
-        },
+// High-Speed ISD Configuration Descriptor (simplified - single alternate setting)
+const CUSBCDGadget::TUSBISDConfigurationDescriptorSimple CUSBCDGadget::s_ConfigurationDescriptorHighSpeedISD =
+{
+    // Configuration Descriptor (9 bytes)
+    {
+        sizeof(TUSBConfigurationDescriptor),
+        DESCRIPTOR_CONFIGURATION,
+        sizeof(TUSBISDConfigurationDescriptorSimple), // Total: 32 bytes
+        1,      // bNumInterfaces
+        1,      // bConfigurationValue
+        0,      // iConfiguration
+        0xC0,   // bmAttributes (self-powered)
+        0       // bMaxPower (0mA for self-powered)
+    },
 
-        // Interface 0, Alternate Setting 1 (9 bytes)
-        {
-            sizeof(TUSBInterfaceDescriptor),
-            DESCRIPTOR_INTERFACE,
-            0,    // bInterfaceNumber
-            1,    // bAlternateSetting = 1
-            2,    // bNumEndpoints = 2 (OUT + IN)
-            0xFF, // bInterfaceClass (Vendor Specific)
-            0x00, // bInterfaceSubClass
-            0xFF, // bInterfaceProtocol
-            0     // iInterface
-        },
-        // Endpoint 01 OUT (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x01, // bEndpointAddress (OUT, endpoint 1)
-            0x02, // bmAttributes (Bulk)
-            512,  // wMaxPacketSize (high-speed)
-            0     // bInterval
-        },
-        // Endpoint 82 IN (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x82, // bEndpointAddress (IN, endpoint 2)
-            0x02, // bmAttributes (Bulk)
-            512,  // wMaxPacketSize (high-speed)
-            0     // bInterval
-        },
-
-        // Interface 0, Alternate Setting 2 (9 bytes)
-        {
-            sizeof(TUSBInterfaceDescriptor),
-            DESCRIPTOR_INTERFACE,
-            0,    // bInterfaceNumber
-            2,    // bAlternateSetting = 2
-            2,    // bNumEndpoints = 2 (OUT + IN)
-            0xFF, // bInterfaceClass (Vendor Specific)
-            0x00, // bInterfaceSubClass
-            0xFF, // bInterfaceProtocol
-            0     // iInterface
-        },
-        // Endpoint 01 OUT (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x01, // bEndpointAddress (OUT, endpoint 1)
-            0x02, // bmAttributes (Bulk)
-            512,  // wMaxPacketSize (high-speed)
-            0     // bInterval
-        },
-        // Endpoint 82 IN (7 bytes)
-        {
-            sizeof(TUSBEndpointDescriptor),
-            DESCRIPTOR_ENDPOINT,
-            0x82, // bEndpointAddress (IN, endpoint 2)
-            0x02, // bmAttributes (Bulk)
-            512,  // wMaxPacketSize (high-speed)
-            0     // bInterval
-        }};
+    // Interface 0, Alternate Setting 0 (9 bytes)
+    {
+        sizeof(TUSBInterfaceDescriptor),
+        DESCRIPTOR_INTERFACE,
+        0,    // bInterfaceNumber
+        0,    // bAlternateSetting = 0 (only alternate setting)
+        2,    // bNumEndpoints = 2 (OUT + IN)
+        0xFF, // bInterfaceClass (Vendor Specific)
+        0x00, // bInterfaceSubClass
+        0xFF, // bInterfaceProtocol
+        0     // iInterface
+    },
+    
+    // Endpoint 01 OUT (7 bytes)
+    {
+        sizeof(TUSBEndpointDescriptor),
+        DESCRIPTOR_ENDPOINT,
+        0x01, // bEndpointAddress (OUT, endpoint 1)
+        0x02, // bmAttributes (Bulk)
+        512,  // wMaxPacketSize (high-speed)
+        0     // bInterval
+    },
+    
+    // Endpoint 82 IN (7 bytes)
+    {
+        sizeof(TUSBEndpointDescriptor),
+        DESCRIPTOR_ENDPOINT,
+        0x82, // bEndpointAddress (IN, endpoint 2)
+        0x02, // bmAttributes (Bulk)
+        512,  // wMaxPacketSize (high-speed)
+        0     // bInterval
+    }
+};
 
 const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
     {
@@ -490,7 +390,7 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         {
             if (m_bVendorSpecific)
             {
-                *pLength = sizeof(TUSBISDConfigurationDescriptor); // CHANGED - use ISD struct
+                *pLength = sizeof(TUSBISDConfigurationDescriptorSimple); // CHANGED - use ISD struct
 
                 CString logMsg;
                 logMsg.Format("CONFIG descriptor size: %u bytes", (unsigned)*pLength);
@@ -552,41 +452,45 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
 
 void CUSBCDGadget::AddEndpoints(void)
 {
-    CDROM_DEBUG_LOG("CUSBCDGadget::AddEndpoints", "entered");
-
+    MLOGNOTE("CUSBCDGadget::AddEndpoints", "entered - VendorSpecific=%d", m_bVendorSpecific);
+    
     assert(!m_pEP[EPOut]);
     if (m_IsFullSpeed)
     {
         const TUSBEndpointDescriptor *pOutDesc = m_bVendorSpecific
-                                                     ? &s_ConfigurationDescriptorFullSpeedISD.EndpointAlt1Out // Changed
-                                                     : &s_ConfigurationDescriptorFullSpeed.EndpointOut;
+            ? &s_ConfigurationDescriptorFullSpeedISD.EndpointOut  // Simplified!
+            : &s_ConfigurationDescriptorFullSpeed.EndpointOut;
         m_pEP[EPOut] = new CUSBCDGadgetEndpoint(pOutDesc, this);
     }
     else
     {
         const TUSBEndpointDescriptor *pOutDesc = m_bVendorSpecific
-                                                     ? &s_ConfigurationDescriptorHighSpeedISD.EndpointAlt1Out // Changed
-                                                     : &s_ConfigurationDescriptorHighSpeed.EndpointOut;
+            ? &s_ConfigurationDescriptorHighSpeedISD.EndpointOut  // Simplified!
+            : &s_ConfigurationDescriptorHighSpeed.EndpointOut;
         m_pEP[EPOut] = new CUSBCDGadgetEndpoint(pOutDesc, this);
     }
     assert(m_pEP[EPOut]);
+    
+    MLOGNOTE("CUSBCDGadget::AddEndpoints", "OUT endpoint created");
 
     assert(!m_pEP[EPIn]);
     if (m_IsFullSpeed)
     {
         const TUSBEndpointDescriptor *pInDesc = m_bVendorSpecific
-                                                    ? &s_ConfigurationDescriptorFullSpeedISD.EndpointAlt1In // Changed
-                                                    : &s_ConfigurationDescriptorFullSpeed.EndpointIn;
+            ? &s_ConfigurationDescriptorFullSpeedISD.EndpointIn   // Simplified!
+            : &s_ConfigurationDescriptorFullSpeed.EndpointIn;
         m_pEP[EPIn] = new CUSBCDGadgetEndpoint(pInDesc, this);
     }
     else
     {
         const TUSBEndpointDescriptor *pInDesc = m_bVendorSpecific
-                                                    ? &s_ConfigurationDescriptorHighSpeedISD.EndpointAlt1In // Changed
-                                                    : &s_ConfigurationDescriptorHighSpeed.EndpointIn;
+            ? &s_ConfigurationDescriptorHighSpeedISD.EndpointIn   // Simplified!
+            : &s_ConfigurationDescriptorHighSpeed.EndpointIn;
         m_pEP[EPIn] = new CUSBCDGadgetEndpoint(pInDesc, this);
     }
     assert(m_pEP[EPIn]);
+    
+    MLOGNOTE("CUSBCDGadget::AddEndpoints", "IN endpoint created");
 
     m_nState = TCDState::Init;
 }
@@ -1338,19 +1242,49 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData
 {
     assert(pSetupData != nullptr);
     assert(pData != nullptr);
-
+    
     // LOG ALL CONTROL TRANSFERS
     CString logMsg;
     logMsg.Format("OnClassOrVendorRequest: bmRequestType=0x%02x bRequest=0x%02x wValue=0x%04x wIndex=0x%04x wLength=%d",
                   pSetupData->bmRequestType, pSetupData->bRequest,
                   pSetupData->wValue, pSetupData->wIndex, pSetupData->wLength);
     CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
-
+    
+    // CRITICAL: Handle SET_INTERFACE (bRequest = 11, bmRequestType = 0x01)
+    if (pSetupData->bmRequestType == 0x01 && pSetupData->bRequest == 11)
+    {
+        u8 interface = pSetupData->wIndex & 0xFF;
+        u8 alternateSetting = pSetupData->wValue & 0xFF;
+        
+        logMsg.Format("SET_INTERFACE: interface=%u alternateSetting=%u", interface, alternateSetting);
+        CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
+        
+        if (m_bVendorSpecific && interface == 0)
+        {
+            // Handle ISD alternate settings
+            if (alternateSetting == 0)
+            {
+                CLogger::Get()->Write("ISD", LogNotice, "Switched to Alt 0 (OUT only)");
+            }
+            else if (alternateSetting == 1)
+            {
+                CLogger::Get()->Write("ISD", LogNotice, "Switched to Alt 1 (OUT + IN)");
+            }
+            else if (alternateSetting == 2)
+            {
+                CLogger::Get()->Write("ISD", LogNotice, "Switched to Alt 2 (OUT + IN)");
+            }
+            
+            // ACK the SET_INTERFACE request with zero-length packet
+            CLogger::Get()->Write("CUSBCDGadget", LogNotice, "SET_INTERFACE: Returning 0 bytes (ZLP)");
+            return 0;
+        }
+    }
+    
     // Let ISD protocol handle vendor-specific requests
     if (m_bVendorSpecific && m_pISDProtocol)
     {
         size_t responseLength = 0;
-
         if (m_pISDProtocol->HandleControlTransfer(
                 pSetupData->bmRequestType,
                 pSetupData->bRequest,
@@ -1363,18 +1297,15 @@ int CUSBCDGadget::OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData
             // LOG THE RETURN VALUE
             logMsg.Format("OnClassOrVendorRequest: Returning %d bytes", (int)responseLength);
             CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
-
             return (int)responseLength;
         }
-
         // If ISD didn't handle it, log that too
         CLogger::Get()->Write("CUSBCDGadget", LogWarning, "OnClassOrVendorRequest: ISD handler returned false");
     }
-
+    
     // Fall back to base class for standard handling
     logMsg.Format("OnClassOrVendorRequest: Falling back to base class");
     CLogger::Get()->Write("CUSBCDGadget", LogNotice, logMsg);
-
     return CDWUSBGadget::OnClassOrVendorRequest(pSetupData, pData);
 }
 
@@ -1543,31 +1474,20 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 
         case TCDState::DataIn:
         {
-    if (m_bVendorSpecific && m_pISDProtocol)
-    {
-        // Previous transfer completed - check if more data pending
-        if (m_pISDProtocol->HasPendingData())
-        {
-            // More data to send - send next chunk
-            size_t actualLength = 0;
-            size_t maxPacketSize = m_IsFullSpeed ? 64 : 512;
-            
-            if (m_pISDProtocol->GetPendingResponseData(m_InBuffer, maxPacketSize, &actualLength))
+                MLOGNOTE("OnXferComplete", "DataIn case - bIn=%d, nLength=%u", bIn, (unsigned)nLength);
+            if (m_bVendorSpecific && m_pISDProtocol)
             {
-                CDROM_DEBUG_LOG("ISD Bulk IN", "Sending next chunk: %u bytes", (unsigned)actualLength);
-                // Stay in DataIn state
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                          m_InBuffer, actualLength);
-                return;
+                // With single-transfer approach, we're done after one transfer
+                MLOGNOTE("ISD Bulk IN", "Single transfer complete, returning to ReceiveCBW");
+                m_nState = TCDState::ReceiveCBW;
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, SIZE_CBW);
+                
+                // Notify ISD protocol that transfer is complete
+                m_pISDProtocol->NotifyTransferComplete();
+                break;
             }
-        }
-        
-        // All done - return to receiving commands
-        m_nState = TCDState::ReceiveCBW;
-        m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                   m_OutBuffer, SIZE_CBW);
-        break;
-    }
+
             // EXISTING CODE continues unchanged:
             if (m_nnumber_blocks > 0)
             {
@@ -1715,13 +1635,27 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
 void CUSBCDGadget::OnActivate()
 {
     MLOGNOTE("CD OnActivate",
-             "=== ENTRY === state=%d, USB=%s, m_CDReady=%d, mediaState=%d",
+             "=== ENTRY === state=%d, USB=%s, m_CDReady=%d, mediaState=%d, VendorSpecific=%d",
              (int)m_nState,
              m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
-             m_CDReady, (int)m_mediaState);
-
+             m_CDReady, (int)m_mediaState, m_bVendorSpecific);
+    
+    // DIAGNOSTIC: Check endpoints
+    MLOGNOTE("CD OnActivate", "Checking endpoints:");
+    if (m_pEP[EPOut]) {
+        MLOGNOTE("CD OnActivate", "  EPOut (0x01): EXISTS");
+    } else {
+        MLOGERR("CD OnActivate", "  EPOut (0x01): NULL!");
+    }
+    
+    if (m_pEP[EPIn]) {
+        MLOGNOTE("CD OnActivate", "  EPIn (0x82): EXISTS");
+    } else {
+        MLOGERR("CD OnActivate", "  EPIn (0x82): NULL!");
+    }
+    
     CTimer::Get()->MsDelay(10);
-
+    
     // Set media ready NOW - USB endpoints are active
     if (m_pDevice && !m_CDReady)
     {
@@ -1736,10 +1670,21 @@ void CUSBCDGadget::OnActivate()
         MLOGNOTE("CD OnActivate",
                  "Initial media ready: Set UNIT_ATTENTION, sense=06/28/00");
     }
-
+    
     m_nState = TCDState::ReceiveCBW;
+    
+    MLOGNOTE("CD OnActivate", "About to start EPOut transfer for CBW");
+    
+    // CRITICAL: Verify EPOut exists before using it
+    if (!m_pEP[EPOut]) {
+        MLOGERR("CD OnActivate", "FATAL: EPOut is NULL, cannot start transfer!");
+        return;
+    }
+    
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
-
+    
+    MLOGNOTE("CD OnActivate", "EPOut BeginTransfer() returned - waiting for CBW");
+    
     MLOGNOTE("CD OnActivate",
              "=== EXIT === Waiting for CBW, m_CDReady=%d, mediaState=%d",
              m_CDReady, (int)m_mediaState);
@@ -1867,8 +1812,8 @@ void FillModePage2A(ModePage0x2AData &codepage)
 
     // Capability bits (6 bytes) - dynamic based on media type
     // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
-    codepage.capabilityBits[0] = 0x00; // Support all media types for DVD, else CD only
-    codepage.capabilityBits[1] = 0x00; // All writable types
+    codepage.capabilityBits[0] = 0x07; // Support all media types for DVD, else CD only
+    codepage.capabilityBits[1] = 0x03; // All writable types
     codepage.capabilityBits[2] = 0x01; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
     codepage.capabilityBits[3] = 0x03; // CD-DA Commands Supported, CD-DA Stream is accurate
     codepage.capabilityBits[4] = 0x28; // Tray loading mechanism, eject supported, lock supported
@@ -4315,38 +4260,62 @@ void CUSBCDGadget::HandleSCSICommand()
 //(IO must not be attempted in functions called from IRQ)
 void CUSBCDGadget::Update()
 {
-    // MLOGDEBUG ("CUSBCDGadget::Update", "entered skip=%u, transfer=%u", skip_bytes, transfer_block_size);
-    if (m_bVendorSpecific && m_pISDProtocol)
+    if (m_bVendorSpecific && m_pISDProtocol &&
+        m_nState == TCDState::ReceiveCBW &&
+        m_pISDProtocol->HasPendingData())
     {
-        // Check if we have pending data to send
-        // This needs to happen in BOTH ReceiveCBW and DataIn states
-        if ((m_nState == TCDState::ReceiveCBW || m_nState == TCDState::DataIn) &&
-            m_pISDProtocol->HasPendingData())
+        size_t actualLength = 0;
+        
+        // Get ALL data in one shot (up to 512 bytes for high-speed, 64 for full-speed)
+        size_t maxTransfer = m_IsFullSpeed ? 512 : 8192;  // Try larger buffer
+        
+        memset(m_InBuffer, 0, maxTransfer);
+
+        if (m_pISDProtocol->GetAllPendingResponseData(m_InBuffer, maxTransfer, &actualLength))
         {
-            size_t actualLength = 0;
-
-            // CRITICAL: Use USB max packet size, not buffer size!
-            // Full-Speed USB = 64 bytes max, High-Speed USB = 512 bytes max
-            size_t maxPacketSize = m_IsFullSpeed ? 64 : 512;
-
-            if (m_pISDProtocol->GetPendingResponseData(m_InBuffer, maxPacketSize, &actualLength))
+            MLOGNOTE("ISD Bulk IN", "Sending SINGLE transfer: %u bytes", (unsigned)actualLength);
+            
+            MLOGNOTE("ISD Buffer", "First 16: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                     m_InBuffer[0], m_InBuffer[1], m_InBuffer[2], m_InBuffer[3],
+                     m_InBuffer[4], m_InBuffer[5], m_InBuffer[6], m_InBuffer[7],
+                     m_InBuffer[8], m_InBuffer[9], m_InBuffer[10], m_InBuffer[11],
+                     m_InBuffer[12], m_InBuffer[13], m_InBuffer[14], m_InBuffer[15]);
+            
+            MLOGNOTE("ISD Buffer", "Last 16: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                     m_InBuffer[actualLength-16], m_InBuffer[actualLength-15], m_InBuffer[actualLength-14], m_InBuffer[actualLength-13],
+                     m_InBuffer[actualLength-12], m_InBuffer[actualLength-11], m_InBuffer[actualLength-10], m_InBuffer[actualLength-9],
+                     m_InBuffer[actualLength-8], m_InBuffer[actualLength-7], m_InBuffer[actualLength-6], m_InBuffer[actualLength-5],
+                     m_InBuffer[actualLength-4], m_InBuffer[actualLength-3], m_InBuffer[actualLength-2], m_InBuffer[actualLength-1]);
+            
+            // Flush cache
+            uintptr_t buffer_start = (uintptr_t)m_InBuffer;
+            uintptr_t buffer_end = buffer_start + actualLength;
+            buffer_start &= ~63UL;
+            buffer_end = (buffer_end + 63) & ~63UL;
+            
+            for (uintptr_t addr = buffer_start; addr < buffer_end; addr += 64)
             {
-                CDROM_DEBUG_LOG("ISD Bulk IN", "Sending %u bytes on bulk IN endpoint (max packet: %u)",
-                                (unsigned)actualLength, (unsigned)maxPacketSize);
-                m_nState = TCDState::DataIn;
-                m_nnumber_blocks = 0;
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                           m_InBuffer, actualLength);
-                return;
+#if AARCH == 64
+                asm volatile("dc cvac, %0" : : "r"(addr) : "memory");
+#else
+                asm volatile("mcr p15, 0, %0, c7, c10, 1" : : "r"(addr) : "memory");
+#endif
             }
-            else
-            {
-                // All data sent, return to ready state
-                CDROM_DEBUG_LOG("ISD Bulk IN", "All data sent, returning to ReceiveCBW");
-                m_nState = TCDState::ReceiveCBW;
-            }
+            DataSyncBarrier();
+            
+            MLOGNOTE("ISD", "Cache flushed for %u bytes", (unsigned)actualLength);
+            
+            // Send entire transfer at once - let USB hardware handle packet boundaries
+            m_nState = TCDState::DataIn;
+            m_nnumber_blocks = 0;
+            m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                       m_InBuffer, actualLength);
+            MLOGNOTE("ISD Bulk IN", "BeginTransfer returned");
+            return;
         }
     }
+
+
     switch (m_nState)
     {
     case TCDState::DataInRead:

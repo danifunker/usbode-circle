@@ -879,8 +879,17 @@ struct TUSBISDConfigurationDescriptor
     TUSBEndpointDescriptor EndpointAlt2In;
 } PACKED;
 
-    static const TUSBISDConfigurationDescriptor s_ConfigurationDescriptorFullSpeedISD;
-    static const TUSBISDConfigurationDescriptor s_ConfigurationDescriptorHighSpeedISD;
+
+struct TUSBISDConfigurationDescriptorSimple
+{
+    TUSBConfigurationDescriptor Configuration;
+    TUSBInterfaceDescriptor Interface;
+    TUSBEndpointDescriptor EndpointOut;
+    TUSBEndpointDescriptor EndpointIn;
+} PACKED;
+
+    static const TUSBISDConfigurationDescriptorSimple s_ConfigurationDescriptorFullSpeedISD;
+    static const TUSBISDConfigurationDescriptorSimple s_ConfigurationDescriptorHighSpeedISD;
 
 
     // ========================================================================

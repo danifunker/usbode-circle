@@ -38,6 +38,7 @@ public:
     bool HasPendingData() const { return m_nResponseDataLength > 0; }    
     void SetStatus(u8 nStatus);
     void NotifyTransferComplete(); // Ready
+    bool GetAllPendingResponseData(u8 *pBuffer, size_t nMaxLength, size_t *pActualLength);
 
 private:
     // Parse aa-delimited vendor command batch
