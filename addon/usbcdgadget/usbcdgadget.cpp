@@ -563,12 +563,23 @@ void CUSBCDGadget::FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool
 }
 
 // Helper function for Raw TOC entry formatting
+// Helper function for Raw TOC entry formatting
 void CUSBCDGadget::FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD)
 {
-    uint8_t control_adr = 0x14; // Digital track
+    uint8_t control_adr = 0x14; // Digital track (default)
 
-    if (track->track_mode == CUETrack_AUDIO)
+    // For non-leadout tracks, query the device for accurate track type
+    if (track->track_number != 0xAA && m_pDevice != nullptr)
     {
+        // Use device's IsAudioTrack() method for accurate detection
+        if (m_pDevice->IsAudioTrack(track->track_number))
+        {
+            control_adr = 0x10; // Audio track
+        }
+    }
+    else if (track->track_mode == CUETrack_AUDIO)
+    {
+        // Fallback to CUE parser for leadout or when device unavailable
         control_adr = 0x10; // Audio track
     }
 
@@ -4003,8 +4014,6 @@ void CUSBCDGadget::Update()
             }
 
             CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-            bool isAudioTrack = (trackInfo.track_number != -1 &&
-                                 trackInfo.track_mode == CUETrack_AUDIO);
 
             // Single seek operation (no logging in hot path)
             offset = m_pDevice->Seek(block_size * m_nblock_address);
