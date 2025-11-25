@@ -318,8 +318,8 @@ if (strcmp(usbProtocolStr, "isd") == 0) {
 } else {
     usbProtocol = USBProtocol::STANDARD;
     // STANDARD mode: pid.codes defaults
-    vendorId = config->GetUSBCDRomVendorId(USB_GADGET_VENDOR_ID);   // pid.codes
-    productId = config->GetUSBCDRomProductId(USB_GADGET_DEVICE_ID_CD); // Generic
+    vendorId = config->GetUSBCDRomVendorId(0x04da);
+    productId = config->GetUSBCDRomProductId(0x0d01);
     LOGNOTE("USB Protocol: STANDARD - VID:0x%04x PID:0x%04x", vendorId, productId);
 }
 
