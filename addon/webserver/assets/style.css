@@ -176,6 +176,7 @@ a.button {
 	color: #666;
 }
 #log {
+	margin-top: 10px;
 	width:80%; 
 	height:600px; 
 	border:1px solid #ccc; 
