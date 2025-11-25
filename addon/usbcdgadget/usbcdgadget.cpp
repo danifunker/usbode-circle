@@ -376,8 +376,8 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
                            IImageDevice *pDevice, bool bVendorSpecific)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_pDevice(pDevice),
-    m_bVendorSpecific(bVendorSpecific),
-    m_pEP{nullptr, nullptr, nullptr},
+      m_bVendorSpecific(bVendorSpecific),
+      m_pEP{nullptr, nullptr, nullptr},
       m_pISDProtocol(nullptr) // Initialize to nullptr
 {
     CString logMsg;
@@ -1543,12 +1543,31 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 
         case TCDState::DataIn:
         {
-            // NEW: Notify ISD protocol that bulk transfer completed
-            if (m_bVendorSpecific && m_pISDProtocol)
+    if (m_bVendorSpecific && m_pISDProtocol)
+    {
+        // Previous transfer completed - check if more data pending
+        if (m_pISDProtocol->HasPendingData())
+        {
+            // More data to send - send next chunk
+            size_t actualLength = 0;
+            size_t maxPacketSize = m_IsFullSpeed ? 64 : 512;
+            
+            if (m_pISDProtocol->GetPendingResponseData(m_InBuffer, maxPacketSize, &actualLength))
             {
-                m_pISDProtocol->NotifyTransferComplete();
+                CDROM_DEBUG_LOG("ISD Bulk IN", "Sending next chunk: %u bytes", (unsigned)actualLength);
+                // Stay in DataIn state
+                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                          m_InBuffer, actualLength);
+                return;
             }
-
+        }
+        
+        // All done - return to receiving commands
+        m_nState = TCDState::ReceiveCBW;
+        m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                   m_OutBuffer, SIZE_CBW);
+        break;
+    }
             // EXISTING CODE continues unchanged:
             if (m_nnumber_blocks > 0)
             {
@@ -4305,19 +4324,19 @@ void CUSBCDGadget::Update()
             m_pISDProtocol->HasPendingData())
         {
             size_t actualLength = 0;
-            
+
             // CRITICAL: Use USB max packet size, not buffer size!
             // Full-Speed USB = 64 bytes max, High-Speed USB = 512 bytes max
             size_t maxPacketSize = m_IsFullSpeed ? 64 : 512;
-            
+
             if (m_pISDProtocol->GetPendingResponseData(m_InBuffer, maxPacketSize, &actualLength))
             {
-                CDROM_DEBUG_LOG("ISD Bulk IN", "Sending %u bytes on bulk IN endpoint (max packet: %u)", 
-                               (unsigned)actualLength, (unsigned)maxPacketSize);
+                CDROM_DEBUG_LOG("ISD Bulk IN", "Sending %u bytes on bulk IN endpoint (max packet: %u)",
+                                (unsigned)actualLength, (unsigned)maxPacketSize);
                 m_nState = TCDState::DataIn;
                 m_nnumber_blocks = 0;
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                          m_InBuffer, actualLength);
+                                           m_InBuffer, actualLength);
                 return;
             }
             else
