@@ -23,7 +23,7 @@ a:visited {
 .header {
 	background-color: #3A7CA5; 
 	padding: 10px; 
-	height: 80px; 
+	height: 80px;
 	text-align: center; 
 	color: #FFFFFF;
 }
@@ -31,16 +31,12 @@ a:visited {
 	color: #FFFFFF; 
 	margin: 5px 0;
 }
-.header a { 
-	display: block; 
-	float: left; 
-	width: 122px; 
-	height: 80px; 
-	margin-right:10px; 
-	color: transparent; 
-	font-size: 0; 
-	background: url('/logo.jpg') 50% 50% no-repeat; 
-	background-size: 122px 80px;
+.header img {
+	width: 122px;
+	height: auto;
+	float: left;
+	margin-right: 10px;
+
 }
 .content {
 	padding: 10px; 
@@ -125,7 +121,6 @@ p {
 	margin: 15px 0; 
 	background-color: #F5F5F5; 
 	padding: 8px; 
-	border-radius: 3px;
 }
 .pagination a, .pagination span {
 	margin: 0 3px; 
@@ -134,6 +129,7 @@ p {
 	color: #0066CC; 
 	border: 1px solid #BBDEFB; 
 	background-color: #E3F2FD;
+	display: inline-block;
 }
 .pagination .current {
 	background-color: #3A7CA5; 
@@ -183,4 +179,21 @@ p {
 }
 .form-group input, .form-group select {
 	margin: 5px 0;
+}
+
+/* IE5-6 inline-block hack */
+* html .button, 
+* html .pagination a, 
+* html .pagination span {
+	display: inline;
+    zoom: 1;
+}
+
+@media screen and (max-width: 490px) {
+	.header h1 {
+		margin-top: 10px;
+	}
+	.header h2 {
+		font-size: 12px;
+	}
 }
