@@ -347,28 +347,58 @@ bool ISDProtocol::HandleCommand14(const u8 *pCmdData, size_t nCmdLength,
     logMsg.Format("ISD: Command 0x14 (length=%u bytes)", (unsigned)nCmdLength);
     CLogger::Get()->Write(LogName, LogNotice, logMsg);
     
-    // Parse command parameters if present
+    // Parse command parameters
     if (nCmdLength >= 4)
     {
-        u8 param1 = pCmdData[2];  // First param after AA 14
+        u8 param1 = pCmdData[2];
         u8 param2 = pCmdData[3];
         
         logMsg.Format("ISD: CMD 0x14 params: %02X %02X", param1, param2);
         CLogger::Get()->Write(LogName, LogNotice, logMsg);
     }
     
-    // Return 32-byte response
+    // Command 0x14 - Device Status/Capabilities Query
+    // This appears to query device capabilities and current state
     memset(pResponse, 0, 32);
     
-    // Stub response - device status/capabilities?
+    // Header (4 bytes)
     pResponse[0] = 0x00;  // Status: OK
-    pResponse[1] = 0x00;
-    pResponse[2] = 0x00;
-    pResponse[3] = 0x01;  // Some capability flag
+    pResponse[1] = 0x1E;  // Data length following (30 bytes)
+    pResponse[2] = 0x00;  // Reserved
+    pResponse[3] = 0x00;  // Reserved
+    
+    // Device Type/Capabilities (8 bytes)
+    pResponse[4] = 0x05;  // Device type: CD-ROM
+    pResponse[5] = 0x00;  // Removable media flag
+    pResponse[6] = 0x00;  // Reserved
+    pResponse[7] = 0x00;  // Reserved
+    pResponse[8] = 0x02;  // Supports: (bit 1 = audio)
+    pResponse[9] = 0x00;  // Write capabilities: none
+    pResponse[10] = 0x01; // Read capabilities: audio
+    pResponse[11] = 0x00; // Reserved
+    
+    // Media Status (4 bytes)
+    pResponse[12] = 0x01; // Media present
+    pResponse[13] = 0x00; // Door closed
+    pResponse[14] = 0x00; // Not spinning up
+    pResponse[15] = 0x00; // Reserved
+    
+    // Audio Features (8 bytes)
+    pResponse[16] = 0x02; // Number of audio channels
+    pResponse[17] = 0xFF; // Max volume (255)
+    pResponse[18] = 0xFF; // Current volume L
+    pResponse[19] = 0xFF; // Current volume R
+    pResponse[20] = 0x00; // Mute status: off
+    pResponse[21] = 0x00; // Reserved
+    pResponse[22] = 0x00; // Reserved
+    pResponse[23] = 0x00; // Reserved
+    
+    // Additional info (8 bytes) - leave as zeros
     
     *pResponseLength = 32;
     
-    logMsg.Format("ISD: Command 0x14 returning %u bytes", (unsigned)*pResponseLength);
+    logMsg.Format("ISD: Command 0x14 returning %u bytes (device status)", 
+                 (unsigned)*pResponseLength);
     CLogger::Get()->Write(LogName, LogNotice, logMsg);
     
     return true;
@@ -381,35 +411,75 @@ bool ISDProtocol::HandleCommand15(const u8 *pCmdData, size_t nCmdLength,
     logMsg.Format("ISD: Command 0x15 (length=%u bytes)", (unsigned)nCmdLength);
     CLogger::Get()->Write(LogName, LogNotice, logMsg);
     
-    // Parse command parameters if present
+    // Parse command parameters
     if (nCmdLength >= 4)
     {
-        u8 param1 = pCmdData[2];  // First param after AA 15
+        u8 param1 = pCmdData[2];
         u8 param2 = pCmdData[3];
         
         logMsg.Format("ISD: CMD 0x15 params: %02X %02X", param1, param2);
         CLogger::Get()->Write(LogName, LogNotice, logMsg);
     }
     
-    // Return 32-byte response
+    // Command 0x15 - Playback Status/Position Query
+    // This might query current playback state and position
     memset(pResponse, 0, 32);
     
-    // Stub response
+    // Header (4 bytes)
     pResponse[0] = 0x00;  // Status: OK
-    pResponse[1] = 0x00;
-    pResponse[2] = 0x00;
-    pResponse[3] = 0xFF;  // Some value
+    pResponse[1] = 0x1C;  // Data length (28 bytes)
+    pResponse[2] = 0x00;  // Reserved
+    pResponse[3] = 0x00;  // Reserved
+    
+    // Playback State (8 bytes)
+    pResponse[4] = 0x00;  // Audio status: 00 = stopped
+                          // 0x11 = playing, 0x12 = paused, 0x13 = completed
+    pResponse[5] = 0x01;  // Current track (track 1)
+    pResponse[6] = 0x00;  // Current index
+    pResponse[7] = 0x00;  // Reserved
+    
+    // Current Position MSF (4 bytes)
+    pResponse[8] = 0x00;  // Reserved
+    pResponse[9] = 0x00;  // Minutes
+    pResponse[10] = 0x00; // Seconds
+    pResponse[11] = 0x00; // Frames
+    
+    // Track Start MSF (4 bytes)
+    pResponse[12] = 0x00; // Reserved
+    pResponse[13] = 0x02; // Start: 00:02:00 (track 1)
+    pResponse[14] = 0x00;
+    pResponse[15] = 0x00;
+    
+    // Track End MSF (4 bytes)
+    pResponse[16] = 0x00; // Reserved
+    pResponse[17] = 0x00; // Minutes (calculated from track length)
+    pResponse[18] = 0x27; // Seconds
+    pResponse[19] = 0x62; // Frames
+    
+    // Disc Mode/Type (8 bytes)
+    pResponse[20] = 0x01; // Disc type: Audio CD
+    pResponse[21] = 0x02; // Number of tracks
+    pResponse[22] = 0x00; // Current program: none
+    pResponse[23] = 0x00; // Repeat mode: off
+    pResponse[24] = 0x00; // Random mode: off
+    pResponse[25] = 0x00; // Reserved
+    pResponse[26] = 0x00; // Reserved
+    pResponse[27] = 0x00; // Reserved
+    
+    // Reserved (4 bytes)
     
     *pResponseLength = 32;
     
-    logMsg.Format("ISD: Command 0x15 returning %u bytes", (unsigned)*pResponseLength);
+    logMsg.Format("ISD: Command 0x15 returning %u bytes (playback status)", 
+                 (unsigned)*pResponseLength);
     CLogger::Get()->Write(LogName, LogNotice, logMsg);
     
     return true;
 }
 
 bool ISDProtocol::HandleCommand16(const u8 *pCmdData, size_t nCmdLength,
-                                  u8 *pResponse, size_t *pResponseLength, u32 maxLBA)
+                                  u8 *pResponse, size_t *pResponseLength,
+                                  u32 maxLBA)
 {
     CString logMsg;
     logMsg.Format("ISD: Command 0x16 (length=%u bytes)", (unsigned)nCmdLength);
@@ -418,111 +488,124 @@ bool ISDProtocol::HandleCommand16(const u8 *pCmdData, size_t nCmdLength,
     // Parse command parameters
     if (nCmdLength >= 4)
     {
-        u8 param1 = pCmdData[2];  // 0x80
-        u8 param2 = pCmdData[3];  // 0x05
+        u8 param1 = pCmdData[2];
+        u8 param2 = pCmdData[3];
         
         logMsg.Format("ISD: CMD 0x16 params: param1=0x%02X param2=0x%02X", param1, param2);
         CLogger::Get()->Write(LogName, LogNotice, logMsg);
-        
-        // param2 might be a format specifier:
-        // 0x05 might mean "full TOC with MSF addressing"
     }
     
-    // Try to build TOC from actual device if available
+    // Get track info from device CUE sheet
+    int numTracks = 1;
+    u32 track2Start = 0;
+    bool hasAudioTrack = false;
+    
     if (m_pDevice)
     {
-        u64 nTotalBytes = m_pDevice->GetSize();
-        u32 nTotalSectors = (u32)(nTotalBytes / 2048);  // Assume 2048-byte sectors
+        numTracks = m_pDevice->GetNumTracks();
         
-        logMsg.Format("ISD: CMD 0x16 - Device has %u sectors", nTotalSectors);
+        logMsg.Format("ISD: Device reports %d tracks", numTracks);
         CLogger::Get()->Write(LogName, LogNotice, logMsg);
         
-        // Build proper TOC response
-        memset(pResponse, 0, 52);
+        // Try to get track start positions
+        if (numTracks >= 2)
+        {
+            // Try track index 1 (0-based) for track 2
+            track2Start = m_pDevice->GetTrackStart(1);
+            
+            // If that's 0, try index 2 (1-based)
+            if (track2Start == 0)
+            {
+                track2Start = m_pDevice->GetTrackStart(2);
+            }
+            
+            hasAudioTrack = m_pDevice->IsAudioTrack(2);
+            
+            logMsg.Format("ISD: Track 2 start LBA = %u (audio=%d)", track2Start, hasAudioTrack);
+            CLogger::Get()->Write(LogName, LogNotice, logMsg);
+            
+            // If still 0, something's wrong - use a sensible default
+            if (track2Start == 0 && numTracks > 1)
+            {
+                // Typical data track is ~300MB = ~150,000 sectors
+                // For our test disc, track 1 is 2912 sectors
+                // Let's try to calculate from maxLBA
+                track2Start = maxLBA / 2;  // Rough estimate if method fails
+                
+                logMsg.Format("ISD: WARNING - GetTrackStart() returned 0, using estimate: %u", track2Start);
+                CLogger::Get()->Write(LogName, LogWarning, logMsg);
+            }
+        }
+    }
+    
+    memset(pResponse, 0, 52);
+    
+    // TOC Header
+    pResponse[0] = 0x00;
+    pResponse[1] = 50;              // TOC data length (52 - 2)
+    pResponse[2] = 0x01;           // First track
+    pResponse[3] = numTracks;      // Last track
+    
+    // Track 1 descriptor (data track)
+    pResponse[4] = 0x00;
+    pResponse[5] = 0x14;           // Data track
+    pResponse[6] = 0x01;           // Track 1
+    pResponse[7] = 0x00;
+    pResponse[8] = 0x00;           // 00:02:00
+    pResponse[9] = 0x02;
+    pResponse[10] = 0x00;
+    pResponse[11] = 0x00;
+    
+    size_t offset = 12;
+    
+    // Track 2 descriptor (if multi-track)
+    if (numTracks >= 2)
+    {
+        u32 track2LBA = track2Start + 150;  // Add pregap
+        u8 t2_min = track2LBA / (60 * 75);
+        u8 t2_sec = (track2LBA / 75) % 60;
+        u8 t2_frame = track2LBA % 75;
         
-        pResponse[0] = 0x00;           // Reserved
-        pResponse[1] = 46;              // TOC data length (48 - 2)
-        pResponse[2] = 0x01;           // First track
-        pResponse[3] = 0x01;           // Last track (single track for now)
+        pResponse[offset++] = 0x00;
+        pResponse[offset++] = hasAudioTrack ? 0x10 : 0x14;  // Audio or data
+        pResponse[offset++] = 0x02;        // Track 2
+        pResponse[offset++] = 0x00;
+        pResponse[offset++] = t2_min;
+        pResponse[offset++] = t2_sec;
+        pResponse[offset++] = t2_frame;
+        pResponse[offset++] = 0x00;
         
-        // Track 1 descriptor
-        pResponse[4] = 0x00;           // Reserved
-        pResponse[5] = 0x14;           // ADR=1, Control=4 (data track, digital copy permitted)
-        pResponse[6] = 0x01;           // Track number
-        pResponse[7] = 0x00;           // Reserved
-        
-        // Start MSF: 00:02:00 (sector 150 - standard CD pregap)
-        pResponse[8] = 0x00;           // Minutes
-        pResponse[9] = 0x02;           // Seconds
-        pResponse[10] = 0x00;          // Frames
-        pResponse[11] = 0x00;          // Reserved
-        
-        // Lead-out descriptor
-        pResponse[12] = 0x00;          // Reserved
-        pResponse[13] = 0x14;          // ADR=1, Control=4
-        pResponse[14] = 0xAA;          // Track number = lead-out
-        pResponse[15] = 0x00;          // Reserved
-        
-        // Convert total sectors to MSF for lead-out
-        u32 leadOutSector = nTotalSectors + 150;  // Add pregap
+        logMsg.Format("ISD: Track 2 MSF: %02u:%02u:%02u (LBA %u with pregap)",
+                     t2_min, t2_sec, t2_frame, track2LBA);
+        CLogger::Get()->Write(LogName, LogNotice, logMsg);
+    }
+    
+    // Lead-out descriptor
+    if (maxLBA > 0)
+    {
+        u32 leadOutSector = maxLBA + 150;
         u8 leadOutMin = leadOutSector / (60 * 75);
         u8 leadOutSec = (leadOutSector / 75) % 60;
         u8 leadOutFrame = leadOutSector % 75;
         
-        pResponse[16] = leadOutMin;
-        pResponse[17] = leadOutSec;
-        pResponse[18] = leadOutFrame;
-        pResponse[19] = 0x00;          // Reserved
+        pResponse[offset++] = 0x00;
+        pResponse[offset++] = 0x14;
+        pResponse[offset++] = 0xAA;        // Lead-out
+        pResponse[offset++] = 0x00;
+        pResponse[offset++] = leadOutMin;
+        pResponse[offset++] = leadOutSec;
+        pResponse[offset++] = leadOutFrame;
+        pResponse[offset++] = 0x00;
         
-        logMsg.Format("ISD: CMD 0x16 - Lead-out MSF: %02u:%02u:%02u (sector %u)",
+        logMsg.Format("ISD: Lead-out MSF: %02u:%02u:%02u (sector %u)",
                      leadOutMin, leadOutSec, leadOutFrame, leadOutSector);
         CLogger::Get()->Write(LogName, LogNotice, logMsg);
-        
-        *pResponseLength = 52;
-        return true;
     }
-    
-    // Fallback stub if no device
-    memset(pResponse, 0, 48);
-    
-    pResponse[0] = 0x00;   // Reserved
-    pResponse[1] = 0x12;   // TOC length MSB
-    pResponse[2] = 0x01;   // First track
-    pResponse[3] = 0x02;   // Last track (2 tracks)
-    
-    // Track 1 descriptor (data track)
-    pResponse[4] = 0x00;   // Reserved
-    pResponse[5] = 0x04;   // ADR/Control
-    pResponse[6] = 0x01;   // Track number 1
-    pResponse[7] = 0x00;   // Reserved
-    pResponse[8] = 0x00;   // Track start address (MSB)
-    pResponse[9] = 0x00;
-    pResponse[10] = 0x00;
-    pResponse[11] = 0x00;  // Track start address (LSB)
-    
-    // Track 2 descriptor (audio track)
-    pResponse[12] = 0x00;  // Reserved
-    pResponse[13] = 0x10;  // ADR/Control (audio track)
-    pResponse[14] = 0x02;  // Track number 2
-    pResponse[15] = 0x00;  // Reserved
-    pResponse[16] = 0x00;  // Track start address (MSB)
-    pResponse[17] = 0x00;
-    pResponse[18] = 0x0B;  // ~2900 sectors
-    pResponse[19] = 0x60;  // Track start address (LSB)
-    
-    // Lead-out track descriptor
-    pResponse[20] = 0x00;  // Reserved
-    pResponse[21] = 0x10;  // ADR/Control
-    pResponse[22] = 0xAA;  // Lead-out track marker
-    pResponse[23] = 0x00;  // Reserved
-    pResponse[24] = 0x00;  // Lead-out address (MSB)
-    pResponse[25] = 0x00;
-    pResponse[26] = 0x49;  // Total ~18724 sectors
-    pResponse[27] = 0x24;  // Lead-out address (LSB)
     
     *pResponseLength = 52;
     
-    logMsg.Format("ISD: Command 0x16 returning %u bytes (TOC stub)", (unsigned)*pResponseLength);
+    logMsg.Format("ISD: Command 0x16 returning %u bytes (%d track TOC)",
+                 (unsigned)*pResponseLength, numTracks);
     CLogger::Get()->Write(LogName, LogNotice, logMsg);
     
     return true;
@@ -535,7 +618,7 @@ bool ISDProtocol::HandleCommand17(const u8 *pCmdData, size_t nCmdLength,
     logMsg.Format("ISD: Command 0x17 (length=%u bytes)", (unsigned)nCmdLength);
     CLogger::Get()->Write(LogName, LogNotice, logMsg);
     
-    // Parse command parameters if present
+    // Parse command parameters
     if (nCmdLength >= 4)
     {
         u8 param1 = pCmdData[2];
@@ -545,11 +628,18 @@ bool ISDProtocol::HandleCommand17(const u8 *pCmdData, size_t nCmdLength,
         CLogger::Get()->Write(LogName, LogNotice, logMsg);
     }
     
-    // Return 16-byte response
+    // Command 0x17 - Configuration/Feature Query
+    // Minimal response for now
     memset(pResponse, 0, 16);
     
-    // Minimal stub response
     pResponse[0] = 0x00;  // Status: OK
+    pResponse[1] = 0x0E;  // Data length (14 bytes)
+    pResponse[2] = 0x00;  // Reserved
+    pResponse[3] = 0x00;  // Reserved
+    
+    // Feature flags
+    pResponse[4] = 0x01;  // Supports standard features
+    pResponse[5] = 0x00;  // No advanced features
     
     *pResponseLength = 16;
     

@@ -408,23 +408,31 @@ int CCHDFileDevice::GetNumTracks() const
 
 u32 CCHDFileDevice::GetTrackStart(int track) const
 {
-    if (track < 0 || track >= m_numTracks)
+    // Track numbers are 1-based
+    if (track < 1 || track > m_numTracks)
         return 0;
-    return m_tracks[track].startLBA;
+    int index = track - 1;
+    return m_tracks[index].startLBA;
 }
 
 u32 CCHDFileDevice::GetTrackLength(int track) const
 {
-    if (track < 0 || track >= m_numTracks)
+    // Track numbers are 1-based
+    if (track < 1 || track > m_numTracks)
         return 0;
-    return m_tracks[track].frames;
+    int index = track - 1;
+    return m_tracks[index].frames;
 }
 
 bool CCHDFileDevice::IsAudioTrack(int track) const
 {
-    if (track < 0 || track >= m_numTracks)
+    // Track numbers are 1-based (Track 1, Track 2, etc.)
+    // Convert to 0-based array index
+    if (track < 1 || track > m_numTracks)
         return false;
-    return m_tracks[track].trackType == CD_TRACK_AUDIO;
+    
+    int index = track - 1;  // Convert 1-based track to 0-based index
+    return m_tracks[index].trackType == CD_TRACK_AUDIO;
 }
 
 int CCHDFileDevice::ReadSubchannel(u32 lba, u8 *subchannel)
