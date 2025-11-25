@@ -36,11 +36,20 @@ To build the project, please refer to [BUILD.md](BUILD.md) for detailed instruct
 
 ## Core Environment & Circle Framework
 
-USBODE runs on **bare metal**. There is no Linux kernel, no standard operating system, and no preemptive multitasking. We rely heavily on the [Circle C++ Bare Metal Environment](https://github.com/rsta2/circle).
+USBODE runs on **bare metal**. There is no Linux kernel, no standard operating system, and no preemptive multitasking. We rely on two key external components:
+
+1.  **[Circle](https://github.com/rsta2/circle)**: The core framework that provides the scheduler, USB stack, and hardware drivers.
+2.  **[circle-stdlib](https://github.com/probonopd/circle-stdlib)**: An abstraction layer that provides standard C++ libraries (e.g., `std::string`, `std::vector`) which are not natively available in the bare-metal environment.
 
 **Documentation**:
 * **Circle API Docs**: [https://circle-rpi.readthedocs.io/en/latest/](https://circle-rpi.readthedocs.io/en/latest/)
-    * *Note: USBODE may not be using the absolute latest version of Circle. Check the `circle-stdlib` submodule version if you encounter API discrepancies.*
+
+### Version Compatibility
+We may not be using the absolute latest version of the core Circle framework. To see exactly what has changed between our version and the latest Circle release, run this command in your terminal to generate a comparison link:
+
+```bash
+# Checks the nested 'circle' submodule hash against the official upstream master
+git submodule status --recursive | grep "/circle" | head -n 1 | awk '{print $1}' | sed 's/^[+-]//' | xargs -I {} echo "Check this link to compare this version with the latest Circle Framework repo: https://github.com/rsta2/circle/compare/{}...master"
 
 ### Cooperative Multitasking (The "No Threads" Rule)
 Unlike a standard OS where the kernel pauses threads to let others run, Circle uses **cooperative multitasking**.
