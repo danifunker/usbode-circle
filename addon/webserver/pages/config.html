@@ -48,7 +48,7 @@
             <div class="current-value">Range: 0-1024 (0 is off, 32 is default)</div>
         </div>
     </div>
-
+    
     <div class="form-section">
         <h3>Audio Configuration</h3>
         <div class="form-group">
@@ -78,6 +78,17 @@
                 <option value="full" {{#usbspeed_full}}selected{{/usbspeed_full}}>Full Speed (USB 1.1)</option>
             </select>
             <div class="current-value">Use Full Speed for better compatibility with retro computers</div>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>User Interface Configuration</h3>
+        <div class="form-group">
+            <label for="theme">Web User Interface Theme:</label>
+            <div class="current-value">Current: {{current_theme}}</div>
+            <select name="theme" id="theme">
+                <option value="default">default</option>
+            </select>
         </div>
     </div>
 

@@ -148,6 +148,11 @@ void ConfigService::SetDisplayHat(const char* value)
     m_config->SetString("displayhat", value);
 }
 
+void ConfigService::SetTheme(const char* value)
+{
+    m_config->SetString("theme", value);
+}
+
 void ConfigService::SetTimezone(const char* value)
 {
     m_config->SetString("timezone", value);

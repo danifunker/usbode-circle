@@ -94,6 +94,11 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             if (form_params.count("displayhat")) {
                 config->SetDisplayHat(form_params["displayhat"].c_str());
             }
+
+            // Theme configuration
+            if (form_params.count("theme")) {
+                config->SetTheme(form_params["theme"].c_str());
+            }
             
             // Screen timeout
             if (form_params.count("screen_timeout")) {
@@ -172,6 +177,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string current_loglevel = std::to_string(config->GetLogLevel());
     std::string current_usbspeed = config->GetUSBFullSpeed() ? "full" : "high";
     std::string current_logfile = config->GetLogfile();
+    std::string current_theme = config->GetTheme();
     
     // Remove 0:/ prefix from logfile for display
     if (current_logfile.find("0:/") == 0) {
@@ -188,6 +194,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["current_sounddev"] = current_sounddev;
     context["current_loglevel"] = current_loglevel;
     context["current_usbspeed"] = current_usbspeed;
+    context["current_theme"] = current_theme;
+
 
     // Set form values
     context["screen_timeout"] = current_screen_timeout;

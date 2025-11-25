@@ -41,6 +41,8 @@ public:
     void SetUSBFullSpeed(bool value);
     void SetST7789Brightness(unsigned value);
     void SetST7789SleepBrightness(unsigned value);
+    void SetTheme(const char* value);
+
 
     const char* GetProperty(const char* property, const char* defaultValue, const char* section="usbode");
     unsigned GetProperty(const char* property, unsigned defaultValue, const char* section="usbode");
