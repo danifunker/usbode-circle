@@ -12,7 +12,7 @@
         <div class="container">
             
 			<div class="header">
-                <a href="/"><img src="/logo.jpg" alt="Logo"></a>
+                <a href="/" class="home"><img src="/logo.jpg" alt="USBODE"/></a>
                 <h1>USBODE</h1>
                 <h2>USB Optical Drive Emulator</h2>
             </div>
@@ -23,15 +23,17 @@
 				{{>content}}
 			{{/cdrom}}
 			{{^cdrom}}
-				<p>Device is in USB Mass Storage Mode</p>
+				<div class="info-box">
+					<p>Device is in USB Mass Storage Mode</p>
+				</div>
 			{{/cdrom}}
 
 			</div>
 
             <div class="usb-info">
                 <p>USB Mode: {{ usb_mode }}</p>
-                <div class="center">
-                    <a href="/shutdown" class="button">Shutdown</a>
+                <div class="buttons">
+                    <a href="/shutdown" class="button danger">Shutdown</a>
                     <a href="/reboot" class="button">Reboot</a>
                     <a href="/config" class="button">Configuration</a>
                     <a href="/log" class="button">Log Viewer</a>
