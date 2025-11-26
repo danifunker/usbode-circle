@@ -820,8 +820,12 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
     // Update A0, A1, A2 descriptors
     m_InBuffer[12] = firsttrack;
     m_InBuffer[23] = lasttrack.track_number;
+    // Update the header with the first and last track numbers
+    m_InBuffer[2] = firsttrack;
+    m_InBuffer[3] = lasttrack.track_number;
 
-    CDROM_DEBUG_LOG("DoReadFullTOC", "A0: First=%d, A1: Last=%d", firsttrack, lasttrack.track_number);
+    CDROM_DEBUG_LOG("DoReadFullTOC", "Header: First=%d, Last=%d. A0: First=%d, A1: Last=%d",
+                    firsttrack, lasttrack.track_number, firsttrack, lasttrack.track_number);
 
     if (lasttrack.track_mode == CUETrack_AUDIO)
     {
