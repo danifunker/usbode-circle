@@ -719,7 +719,7 @@ private:
 
     bool m_readSubchannels = false;
     u8 m_subchannelMode = 0;
-
+    CString m_USBTargetOS;
     // ========================================================================
     // CUE Sheet and Track Management
     // ========================================================================

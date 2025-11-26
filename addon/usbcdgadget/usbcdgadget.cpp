@@ -187,7 +187,6 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
     m_StringDescriptor[2] = s_StringDescriptorTemplate[2]; // Product
     m_StringDescriptor[3] = m_HardwareSerialNumber;        // Hardware-based serial number
 
-    // Read debug logging flag from config.txt
     ConfigService *configService = (ConfigService *)CScheduler::Get()->GetTask("configservice");
     if (configService)
     {
@@ -196,10 +195,14 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget", "CD-ROM debug logging enabled");
         }
+        
+        // Get target OS for platform-specific handling
+        m_USBTargetOS = configService->GetProperty("usbtargetos", "");
     }
     else
     {
         m_bDebugLogging = false; // Default to disabled if config service not available
+        m_USBTargetOS = "doswin"; // Default target OS
     }
 
     if (pDevice)
@@ -447,23 +450,29 @@ int CUSBCDGadget::GetBlocksize()
 
 int CUSBCDGadget::GetBlocksizeForTrack(CUETrackInfo trackInfo)
 {
+    // FORCE RAW MODE for compatibility with .bin files that include headers when targeting macOS
+    if (m_USBTargetOS == "apple" && trackInfo.track_mode == CUETrack_MODE1_2048)
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetBlocksizeForTrack", "FORCE RAW MODE (2352) for Apple target OS");
+        return 2352;
+    }
+
     switch (trackInfo.track_mode)
     {
-    case CUETrack_MODE1_2048:
-        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE1_2048");
-        return 2048;
     case CUETrack_MODE1_2352:
-        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE1_2352");
         return 2352;
+    case CUETrack_MODE2_2336:
+        return 2336;
     case CUETrack_MODE2_2352:
-        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE2_2352");
+        return 2352;
+    case CUETrack_CDI_2336:
+        return 2336;
+    case CUETrack_CDI_2352:
         return 2352;
     case CUETrack_AUDIO:
-        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_AUDIO");
         return 2352;
     default:
-        MLOGERR("CUSBCDGadget::GetBlocksizeForTrack", "Track mode %d not handled", trackInfo.track_mode);
-        return 0;
+        return 2048;
     }
 }
 
@@ -476,22 +485,27 @@ int CUSBCDGadget::GetSkipbytes()
 
 int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
 {
+    if (m_USBTargetOS == "apple" && trackInfo.track_mode == CUETrack_MODE1_2048)
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "FORCE RAW MODE for Apple target OS");
+        return 16;
+    }
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
-        MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2048");
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2048");
         return 0;
     case CUETrack_MODE1_2352:
-        MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2352");
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE1_2352");
         return 16;
     case CUETrack_MODE2_2352:
-        MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE2_2352");
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_MODE2_2352");
         return 24;
     case CUETrack_AUDIO:
-        MLOGDEBUG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_AUDIO");
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "CUETrack_AUDIO");
         return 0;
     default:
-        MLOGERR("CUSBCDGadget::GetSkipbytesForTrack", "Track mode %d not handled", trackInfo.track_mode);
+        CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "Track mode %d not handled", trackInfo.track_mode);
         return 0;
     }
 }
