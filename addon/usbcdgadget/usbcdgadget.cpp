@@ -750,46 +750,178 @@ void CUSBCDGadget::DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocatio
 void CUSBCDGadget::DoReadSessionInfo(bool msf, uint16_t allocationLength)
 {
     CDROM_DEBUG_LOG("DoReadSessionInfo", "Entry: msf=%d, allocLen=%d", msf, allocationLength);
-
-    uint8_t sessionTOC[12] = {
-        0x00, 0x0A, 0x01, 0x01, 0x00, 0x14, 0x01, 0x00,
-        0x00, 0x00, 0x00, 0x00};
-
+    
+    // Get track information first
     cueParser.restart();
-    const CUETrackInfo *trackinfo = cueParser.next_track();
-    if (trackinfo)
+    const CUETrackInfo *firstTrack = cueParser.next_track();
+    if (!firstTrack)
     {
-        CDROM_DEBUG_LOG("DoReadSessionInfo", "First track: num=%d, start=%u",
-                        trackinfo->track_number, trackinfo->data_start);
-
-        if (msf)
-        {
-            sessionTOC[8] = 0;
-            LBA2MSF(trackinfo->data_start, &sessionTOC[9], false);
-            CDROM_DEBUG_LOG("DoReadSessionInfo", "MSF: %02x:%02x:%02x",
-                            sessionTOC[9], sessionTOC[10], sessionTOC[11]);
-        }
-        else
-        {
-            sessionTOC[8] = (trackinfo->data_start >> 24) & 0xFF;
-            sessionTOC[9] = (trackinfo->data_start >> 16) & 0xFF;
-            sessionTOC[10] = (trackinfo->data_start >> 8) & 0xFF;
-            sessionTOC[11] = (trackinfo->data_start >> 0) & 0xFF;
-            CDROM_DEBUG_LOG("DoReadSessionInfo", "LBA bytes: %02x %02x %02x %02x",
-                            sessionTOC[8], sessionTOC[9], sessionTOC[10], sessionTOC[11]);
+        setSenseData(0x02, 0x04, 0x00);
+        sendCheckCondition();
+        return;
+    }
+    
+    int lastTrackNum = GetLastTrackNumber();
+    int trackCount = lastTrackNum; // All tracks 1-27
+    
+    // Calculate response size: header (4) + track descriptors (8 each) + leadout (8)
+    int responseSize = 4 + (trackCount * 8) + 8;
+    int dataLength = responseSize - 2;
+    
+    // Build response in m_InBuffer
+    uint8_t *response = m_InBuffer;
+    int offset = 0;
+    
+    // Header - KEEP THE WORKING VERSION
+    response[offset++] = (dataLength >> 8) & 0xFF;
+    response[offset++] = dataLength & 0xFF;           
+    response[offset++] = 1;                          // First Track = 1
+    response[offset++] = lastTrackNum;               // Last Track = 27
+    
+    // Add descriptors for ALL tracks (this worked before!)
+    cueParser.restart();
+    const CUETrackInfo *trackinfo;
+    while ((trackinfo = cueParser.next_track()) != nullptr)
+    {
+        uint8_t control = (trackinfo->track_mode == CUETrack_AUDIO) ? 0x00 : 0x04;
+        
+        response[offset++] = 0x00;
+        response[offset++] = (0x01 << 4) | control;
+        response[offset++] = trackinfo->track_number;
+        response[offset++] = 0x00;
+        
+        uint32_t trackStart = trackinfo->data_start + 150;
+        
+        if (msf) {
+            response[offset++] = 0x00;
+            LBA2MSF(trackStart, &response[offset], false);
+            offset += 3;
+        } else {
+            response[offset++] = (trackStart >> 24) & 0xFF;
+            response[offset++] = (trackStart >> 16) & 0xFF;
+            response[offset++] = (trackStart >> 8) & 0xFF;
+            response[offset++] = trackStart & 0xFF;
         }
     }
-
-    int len = sizeof(sessionTOC);
+    
+    // Add lead-out track descriptor
+    uint32_t leadoutLBA = GetLeadoutLBA() + 150;
+    response[offset++] = 0x00;
+    response[offset++] = 0x14;
+    response[offset++] = 0xAA;
+    response[offset++] = 0x00;
+    
+    if (msf) {
+        response[offset++] = 0x00;
+        LBA2MSF(leadoutLBA, &response[offset], false);
+        offset += 3;
+    } else {
+        response[offset++] = (leadoutLBA >> 24) & 0xFF;
+        response[offset++] = (leadoutLBA >> 16) & 0xFF;
+        response[offset++] = (leadoutLBA >> 8) & 0xFF;
+        response[offset++] = leadoutLBA & 0xFF;
+    }
+    
+    int len = offset;
     if (len > allocationLength)
         len = allocationLength;
-
-    CDROM_DEBUG_LOG("DoReadSessionInfo", "Sending %d bytes", len);
-    memcpy(m_InBuffer, sessionTOC, len);
+        
+    CDROM_DEBUG_LOG("DoReadSessionInfo", "Sending %d bytes with all tracks", len);
+    
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, len);
     m_nState = TCDState::DataIn;
     m_nnumber_blocks = 0;
     m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+}
+
+int CUSBCDGadget::AnalyzeSessions(SessionInfo sessions[], int maxSessions)
+{
+    int sessionCount = 0;
+    
+    cueParser.restart();
+    const CUETrackInfo *trackInfo;
+    
+    int currentSession = 1;
+    int sessionFirstTrack = 1;
+    int lastMode = -1; // Use int instead, -1 = unknown
+    boolean sessionHasData = FALSE;
+    boolean sessionHasAudio = FALSE;
+    
+    while ((trackInfo = cueParser.next_track()) != nullptr && sessionCount < maxSessions)
+    {
+        boolean isAudio = (trackInfo->track_mode == CUETrack_AUDIO);
+        boolean isData = !isAudio;
+        
+        // Check if we need to start a new session
+        boolean newSessionNeeded = FALSE;
+        
+        if (lastMode != -1) {
+            // Start new session if switching from data to audio or vice versa
+            if ((lastMode == CUETrack_AUDIO && isData) || 
+                (lastMode != CUETrack_AUDIO && isAudio)) {
+                newSessionNeeded = TRUE;
+            }
+        }
+        
+        if (newSessionNeeded && sessionCount < maxSessions) {
+            // Close current session
+            sessions[sessionCount].sessionNumber = currentSession;
+            sessions[sessionCount].firstTrack = sessionFirstTrack;
+            sessions[sessionCount].lastTrack = trackInfo->track_number - 1;
+            
+            // Determine session type
+            if (sessionHasData && sessionHasAudio) {
+                sessions[sessionCount].discType = 0x20; // Mixed mode
+            } else if (sessionHasData) {
+                sessions[sessionCount].discType = 0x10; // Data
+            } else {
+                sessions[sessionCount].discType = 0x00; // Audio
+            }
+            
+            sessionCount++;
+            
+            // Start new session
+            currentSession++;
+            sessionFirstTrack = trackInfo->track_number;
+            sessionHasData = FALSE;
+            sessionHasAudio = FALSE;
+        }
+        
+        // Track what types this session contains
+        if (isAudio) {
+            sessionHasAudio = TRUE;
+        } else {
+            sessionHasData = TRUE;
+        }
+        
+        lastMode = trackInfo->track_mode;
+    }
+    
+    // Close final session
+    if (sessionFirstTrack <= GetLastTrackNumber() && sessionCount < maxSessions) {
+        sessions[sessionCount].sessionNumber = currentSession;
+        sessions[sessionCount].firstTrack = sessionFirstTrack;
+        sessions[sessionCount].lastTrack = GetLastTrackNumber();
+        
+        if (sessionHasData && sessionHasAudio) {
+            sessions[sessionCount].discType = 0x20; // Mixed mode
+        } else if (sessionHasData) {
+            sessions[sessionCount].discType = 0x10; // Data
+        } else {
+            sessions[sessionCount].discType = 0x00; // Audio
+        }
+        
+        sessionCount++;
+    }
+    
+    CDROM_DEBUG_LOG("AnalyzeSessions", "Found %d sessions", sessionCount);
+    for (int i = 0; i < sessionCount; i++) {
+        CDROM_DEBUG_LOG("AnalyzeSessions", "Session %d: tracks %d-%d, type=0x%02x", 
+                        sessions[i].sessionNumber, sessions[i].firstTrack, 
+                        sessions[i].lastTrack, sessions[i].discType);
+    }
+    
+    return sessionCount;
 }
 
 void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, bool useBCD)
@@ -3133,45 +3265,55 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-    case 0x51: // READ DISC INFORMATION CMD
-    {
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read Disc Information");
-
-        // Update disc information with current media state (MacOS-compatible)
-        m_DiscInfoReply.disc_status = 0x0E; // Complete disc, finalized (bits 1-0=10b), last session complete (bit 3)
-        m_DiscInfoReply.first_track_number = 0x01;
-        m_DiscInfoReply.number_of_sessions = 0x01; // Single session
+case 0x51: // READ DISC INFORMATION CMD
+{
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read Disc Information");
+    
+    // Analyze disc structure to determine sessions
+    SessionInfo sessions[MAX_SESSIONS];
+    int sessionCount = AnalyzeSessions(sessions, MAX_SESSIONS);
+    
+    // Update disc information with dynamic session analysis
+    m_DiscInfoReply.disc_status = 0x0E; // Complete disc, finalized
+    m_DiscInfoReply.first_track_number = 0x01;
+    m_DiscInfoReply.number_of_sessions = sessionCount;
+    
+    if (sessionCount > 0) {
+        // Last session info
+        const SessionInfo& lastSession = sessions[sessionCount - 1];
+        m_DiscInfoReply.first_track_last_session = lastSession.firstTrack;
+        m_DiscInfoReply.last_track_last_session = lastSession.lastTrack;
+        
+        // Overall disc type based on first session (Mac OS compatibility)
+        m_DiscInfoReply.disc_type = sessions[0].discType;
+        
+        CDROM_DEBUG_LOG("HandleSCSI", "Disc: %d sessions, last session tracks %d-%d, type=0x%02x",
+                        sessionCount, lastSession.firstTrack, lastSession.lastTrack, 
+                        sessions[0].discType);
+    } else {
+        // Fallback for empty disc
         m_DiscInfoReply.first_track_last_session = 0x01;
         m_DiscInfoReply.last_track_last_session = GetLastTrackNumber();
-
-        // Set disc type based on track 1 mode (MacOS uses this)
-        CUETrackInfo trackInfo = GetTrackInfoForTrack(1);
-        if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
-        {
-            m_DiscInfoReply.disc_type = 0x00; // CD-DA (audio)
-        }
-        else
-        {
-            m_DiscInfoReply.disc_type = 0x10; // CD-ROM (data)
-        }
-
-        u32 leadoutLBA = GetLeadoutLBA();
-        m_DiscInfoReply.last_lead_in_start_time = htonl(leadoutLBA);
-        m_DiscInfoReply.last_possible_lead_out = htonl(leadoutLBA);
-
-        // Set response length
-        u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-        int length = sizeof(TUSBDiscInfoReply);
-        if (allocationLength < length)
-            length = allocationLength;
-
-        memcpy(m_InBuffer, &m_DiscInfoReply, length);
-        m_nnumber_blocks = 0; // nothing more after this send
-        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
-        m_nState = TCDState::DataIn;
-        m_CSW.bmCSWStatus = bmCSWStatus;
-        break;
+        m_DiscInfoReply.disc_type = 0x10; // Default to data
     }
+    
+    u32 leadoutLBA = GetLeadoutLBA();
+    m_DiscInfoReply.last_lead_in_start_time = htonl(leadoutLBA);
+    m_DiscInfoReply.last_possible_lead_out = htonl(leadoutLBA);
+    
+    // Set response length
+    u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
+    int length = sizeof(TUSBDiscInfoReply);
+    if (allocationLength < length)
+        length = allocationLength;
+        
+    memcpy(m_InBuffer, &m_DiscInfoReply, length);
+    m_nnumber_blocks = 0;
+    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+    m_nState = TCDState::DataIn;
+    m_CSW.bmCSWStatus = bmCSWStatus;
+    break;
+}
 
     case 0x44: // READ HEADER
     {

@@ -822,6 +822,15 @@ private:
     static const TUSBDeviceDescriptor s_DeviceDescriptor;
     static const char *const s_StringDescriptorTemplate[];
 
+struct SessionInfo {
+    int sessionNumber;
+    int firstTrack;
+    int lastTrack;
+    uint8_t discType; // 0x00=audio, 0x10=data, 0x20=mixed
+};
+    static const int MAX_SESSIONS = 8; // Should be plenty for any CD
+    int AnalyzeSessions(SessionInfo sessions[], int maxSessions);
+    
     /// \brief USB configuration descriptor with interface and endpoints
     struct TUSBMSTGadgetConfigurationDescriptor
     {
