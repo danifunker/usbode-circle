@@ -188,10 +188,10 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
     m_StringDescriptor[3] = m_HardwareSerialNumber;        // Hardware-based serial number
 
     // Read debug logging flag from config.txt
-    ConfigService *configService = (ConfigService *)CScheduler::Get()->GetTask("configservice");
-    if (configService)
+    m_pConfigService = (ConfigService *)CScheduler::Get()->GetTask("configservice");
+    if (m_pConfigService)
     {
-        m_bDebugLogging = configService->GetProperty("debug_cdrom", 0U) != 0;
+        m_bDebugLogging = m_pConfigService->GetProperty("debug_cdrom", 0U) != 0;
         if (m_bDebugLogging)
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget", "CD-ROM debug logging enabled");
@@ -447,6 +447,16 @@ int CUSBCDGadget::GetBlocksize()
 
 int CUSBCDGadget::GetBlocksizeForTrack(CUETrackInfo trackInfo)
 {
+    if (m_pConfigService)
+    {
+        const char* targetOS = m_pConfigService->GetUSBTargetOS("doswin");
+        if (strcmp(targetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
+        {
+	    // FORCE RAW MODE for compatibility with .bin files that include headers
+            return 2352;
+        }
+    }
+
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
@@ -476,6 +486,16 @@ int CUSBCDGadget::GetSkipbytes()
 
 int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
 {
+    if (m_pConfigService)
+    {
+        const char* targetOS = m_pConfigService->GetUSBTargetOS("doswin");
+        if (strcmp(targetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
+        {
+	    // FORCE SKIP HEADER for compatibility
+            return 16;
+        }
+    }
+
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
