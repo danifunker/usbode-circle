@@ -821,7 +821,12 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
     m_InBuffer[12] = firsttrack;
     m_InBuffer[23] = lasttrack.track_number;
 
-    CDROM_DEBUG_LOG("DoReadFullTOC", "A0: First=%d, A1: Last=%d", firsttrack, lasttrack.track_number);
+    // FIX: Update main header for Mac OS 9 compatibility
+    m_InBuffer[2] = firsttrack;
+    m_InBuffer[3] = lasttrack.track_number;
+
+    CDROM_DEBUG_LOG("DoReadFullTOC", "Header: First=%d, Last=%d. A0: First=%d, A1: Last=%d",
+                    firsttrack, lasttrack.track_number, firsttrack, lasttrack.track_number);
 
     if (lasttrack.track_mode == CUETrack_AUDIO)
     {
