@@ -34,6 +34,9 @@
 #include <cueparser/cueparser.h>
 #include <discimage/imagedevice.h>
 
+// Forward declaration
+class ConfigService;
+
 #ifndef USB_GADGET_DEVICE_ID_CD
 #define USB_GADGET_DEVICE_ID_CD 0x1d6b
 #endif
@@ -864,6 +867,7 @@ private:
     boolean m_IsFullSpeed = 0;   // USB 1.1 full-speed vs USB 2.0 high-speed
     boolean discChanged = false; // Media change flag
     bool m_bDebugLogging;        // Debug flag to enable verbose CD-ROM logging
+    bool m_bIsAppleTargetOS;     // Flag for Apple-specific workarounds
     // ========================================================================
     // Instance Variables - USB Protocol Buffers
     // ========================================================================
