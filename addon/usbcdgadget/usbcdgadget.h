@@ -34,6 +34,9 @@
 #include <cueparser/cueparser.h>
 #include <discimage/imagedevice.h>
 
+// Forward declaration
+class ConfigService;
+
 #ifndef USB_GADGET_DEVICE_ID_CD
 #define USB_GADGET_DEVICE_ID_CD 0x1d6b
 #endif
@@ -1135,6 +1138,8 @@ private:
     char m_HardwareSerialNumber[20];               // Hardware serial number (e.g., "USBODE-XXXXXXXX")
     static const char *const s_StringDescriptor[]; // USB string descriptors
     u8 m_StringDescriptorBuffer[80];               // Buffer for string descriptor conversion
+
+    ConfigService *m_pConfigService;
 };
 
 #endif
