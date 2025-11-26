@@ -195,16 +195,17 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget", "CD-ROM debug logging enabled");
         }
-        
         // Get target OS for platform-specific handling
-        m_USBTargetOS = configService->GetProperty("usbtargetos", "");
+        CString targetOS = configService->GetProperty("usbtargetos", "");
+        strncpy(m_USBTargetOS, (const char *)targetOS, sizeof(m_USBTargetOS) - 1);
+        m_USBTargetOS[sizeof(m_USBTargetOS) - 1] = '\0'; // Ensure null termination
     }
     else
     {
         m_bDebugLogging = false; // Default to disabled if config service not available
-        m_USBTargetOS = "doswin"; // Default target OS
+        strncpy(m_USBTargetOS, "doswin", sizeof(m_USBTargetOS) - 1);
+        m_USBTargetOS[sizeof(m_USBTargetOS) - 1] = '\0';
     }
-
     if (pDevice)
     {
         MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
@@ -451,7 +452,7 @@ int CUSBCDGadget::GetBlocksize()
 int CUSBCDGadget::GetBlocksizeForTrack(CUETrackInfo trackInfo)
 {
     // FORCE RAW MODE for compatibility with .bin files that include headers when targeting macOS
-    if (m_USBTargetOS == "apple" && trackInfo.track_mode == CUETrack_MODE1_2048)
+    if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
     {
         CDROM_DEBUG_LOG("CUSBCDGadget::GetBlocksizeForTrack", "FORCE RAW MODE (2352) for Apple target OS");
         return 2352;
@@ -485,7 +486,7 @@ int CUSBCDGadget::GetSkipbytes()
 
 int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
 {
-    if (m_USBTargetOS == "apple" && trackInfo.track_mode == CUETrack_MODE1_2048)
+    if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
     {
         CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "FORCE RAW MODE for Apple target OS");
         return 16;

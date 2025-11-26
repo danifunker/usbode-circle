@@ -701,7 +701,7 @@ private:
     void clearSenseData();
     void sendCheckCondition();
     void sendGoodStatus();
-
+    char m_USBTargetOS[16];
     // ========================================================================
     // CD-ROM Specific Command Handlers (BlueSCSI-inspired)
     // ========================================================================
@@ -719,7 +719,7 @@ private:
 
     bool m_readSubchannels = false;
     u8 m_subchannelMode = 0;
-    CString m_USBTargetOS;
+
     // ========================================================================
     // CUE Sheet and Track Management
     // ========================================================================
