@@ -122,22 +122,14 @@ const char *CCueBinFileDevice::GetCueSheet() const {
     return m_cue_str;
 }
 
+// Add to cuebinfile.cpp
+
 void CCueBinFileDevice::ParseCueSheet() const {
     if (m_tracksParsed) return;
     
-    // Use CUE parser to extract track information
-    CUEParser parser(m_cue_str);
-    const CUETrackInfo *trackInfo;
-    
-    m_numTracks = 0;
-    while ((trackInfo = parser.next_track()) != nullptr && m_numTracks < MAX_TRACKS) {
-        m_tracks[m_numTracks].track_number = trackInfo->track_number;
-        m_tracks[m_numTracks].track_start = trackInfo->data_start;
-        m_tracks[m_numTracks].track_mode = trackInfo->track_mode;
-        m_tracks[m_numTracks].sector_length = trackInfo->sector_length;
-        m_numTracks++;
-    }
-    
+    // TODO: Implement proper CUE sheet parser
+    // For now, simple default implementation
+    m_numTracks = 1;
     m_tracksParsed = true;
 }
 
@@ -148,34 +140,17 @@ int CCueBinFileDevice::GetNumTracks() const {
 
 u32 CCueBinFileDevice::GetTrackStart(int track) const {
     ParseCueSheet();
-    if (track < 1 || track > m_numTracks) return 0;
-    return m_tracks[track - 1].track_start;
+    if (track == 0) return 0;
+    return 0; // TODO: Parse from CUE
 }
 
 u32 CCueBinFileDevice::GetTrackLength(int track) const {
     ParseCueSheet();
-    if (track < 1 || track > m_numTracks) return 0;
-    
-    // Calculate length as difference between this track start and next track start
-    // or file end for last track
-    u32 start = m_tracks[track - 1].track_start;
-    u32 end;
-    
-    if (track < m_numTracks) {
-        // Not last track - use next track's start
-        end = m_tracks[track].track_start;
-    } else {
-        // Last track - calculate from file size
-        u64 fileSize = GetSize();
-        u32 sectorSize = m_tracks[track - 1].sector_length;
-        end = start + (fileSize - (start * sectorSize)) / sectorSize;
-    }
-    
-    return end - start;
+    // Simple calculation for single data track
+    return GetSize() / 2048;
 }
 
 bool CCueBinFileDevice::IsAudioTrack(int track) const {
     ParseCueSheet();
-    if (track < 1 || track > m_numTracks) return false;
-    return m_tracks[track - 1].track_mode == CUETrack_AUDIO;
+    return false; // TODO: Parse from CUE
 }
