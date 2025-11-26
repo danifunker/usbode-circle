@@ -304,7 +304,6 @@ TShutdownMode CKernel::Run(void)
 
     // Read VID/PID from config (with defaults)
 const char* usbProtocolStr = config->GetUSBTargetOS("doswin");
-USBTargetOS usbTargetOS = USBTargetOS::DOSWIN;
 
 u16 vendorId;
 u16 productId;

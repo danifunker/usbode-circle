@@ -23,6 +23,7 @@
 #include <circle/util.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../cueparser/cueparser.h"
 
 LOGMODULE("CCueBinFileDevice");
 
@@ -122,35 +123,77 @@ const char *CCueBinFileDevice::GetCueSheet() const {
     return m_cue_str;
 }
 
-// Add to cuebinfile.cpp
-
-void CCueBinFileDevice::ParseCueSheet() const {
-    if (m_tracksParsed) return;
-    
-    // TODO: Implement proper CUE sheet parser
-    // For now, simple default implementation
-    m_numTracks = 1;
-    m_tracksParsed = true;
-}
-
 int CCueBinFileDevice::GetNumTracks() const {
-    ParseCueSheet();
-    return m_numTracks;
+    if (!m_cue_str) return 0;
+    
+    CUEParser parser(m_cue_str);
+    const CUETrackInfo *trackInfo;
+    int count = 0;
+    
+    while ((trackInfo = parser.next_track()) != nullptr) {
+        count++;
+    }
+    
+    return count;
 }
 
 u32 CCueBinFileDevice::GetTrackStart(int track) const {
-    ParseCueSheet();
-    if (track == 0) return 0;
-    return 0; // TODO: Parse from CUE
+    if (!m_cue_str || track < 1) return 0;
+    
+    CUEParser parser(m_cue_str);
+    const CUETrackInfo *trackInfo;
+    
+    while ((trackInfo = parser.next_track()) != nullptr) {
+        if (trackInfo->track_number == track) {
+            return trackInfo->data_start;
+        }
+    }
+    
+    return 0;
 }
 
 u32 CCueBinFileDevice::GetTrackLength(int track) const {
-    ParseCueSheet();
-    // Simple calculation for single data track
-    return GetSize() / 2048;
+    if (!m_cue_str || track < 1) return 0;
+    
+    CUEParser parser(m_cue_str);
+    const CUETrackInfo *trackInfo;
+    u32 thisStart = 0;
+    u32 nextStart = 0;
+    bool foundThis = false;
+    
+    while ((trackInfo = parser.next_track()) != nullptr) {
+        if (trackInfo->track_number == track) {
+            thisStart = trackInfo->data_start;
+            foundThis = true;
+        } else if (foundThis) {
+            nextStart = trackInfo->data_start;
+            break;
+        }
+    }
+    
+    if (!foundThis) return 0;
+    
+    if (nextStart > 0) {
+        return nextStart - thisStart;
+    } else {
+        // Last track - calculate from file size
+        u64 fileSize = GetSize();
+        u32 sectorSize = 2352;
+        return (fileSize - (thisStart * sectorSize)) / sectorSize;
+    }
 }
 
 bool CCueBinFileDevice::IsAudioTrack(int track) const {
-    ParseCueSheet();
-    return false; // TODO: Parse from CUE
+    if (!m_cue_str || track < 1) return false;
+    
+    CUEParser parser(m_cue_str);
+    const CUETrackInfo *trackInfo;
+    
+    while ((trackInfo = parser.next_track()) != nullptr) {
+        if (trackInfo->track_number == track) {
+            return (trackInfo->track_mode == CUETrack_AUDIO);
+        }
+    }
+    
+    return false;
 }

@@ -15,7 +15,11 @@
 #include "cuedevice.h"  // Now extends IImageDevice
 
 #define DEFAULT_IMAGE_FILENAME "image.iso"
-
+#define MAX_TRACKS 99
+struct CueBinTrackInfo {
+    int track_number;
+    int track_mode;  // Store as int to match CUETrackMode enum
+};
 /// Implementation of CUE/BIN and ISO image support
 class CCueBinFileDevice : public ICueDevice {
    public:

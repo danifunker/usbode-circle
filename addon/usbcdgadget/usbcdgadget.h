@@ -716,10 +716,12 @@ private:
     // TOC formatting helpers
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
-
+    // GET CONFIGURATION handler
+    void HandleGetConfiguration();
+    bool IsGetConfigurationCommand();    
     bool m_readSubchannels = false;
     u8 m_subchannelMode = 0;
-
+    const char* m_usbTargetOS;
     // ========================================================================
     // CUE Sheet and Track Management
     // ========================================================================
