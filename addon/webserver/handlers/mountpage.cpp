@@ -14,7 +14,7 @@
 #include <discimage/util.h>
 #include <discimage/cuebinfile.h>
 #include "mountpage.h"
-#include "util.h"
+#include "../util.h"
 
 using namespace kainjow;
 

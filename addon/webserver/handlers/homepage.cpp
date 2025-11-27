@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <gitinfo/gitinfo.h>
 #include "homepage.h"
-#include "util.h"
+#include "../util.h"
 
 using namespace kainjow;
 
@@ -115,7 +115,6 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
         if (current_image_page > 0) {
             page = current_image_page;
         }
-        return HTTPOK;
     }
 
     // Get subset of links for current page

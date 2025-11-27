@@ -6,7 +6,7 @@
 #include <map>
 #include <fstream>
 #include "asset.h"
-#include "util.h"
+#include "../util.h"
 #include <configservice/configservice.h>
 
 // Include files for the assets

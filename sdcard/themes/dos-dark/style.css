@@ -9,8 +9,8 @@
 }
 body {
 	font-family: 'modern_dos_9x16regular', sans-serif; 
-    background-color: #111111; 
-    color: #ccc; 
+    background-color: #181818;
+    color: #ccc;
     margin: 0; 
     padding: 0;
     font-size: 16px;
@@ -42,8 +42,8 @@ a:hover {
 	padding: 0 9px;
 	margin-bottom: 16px;
 	height: 16px;
-	* padding: 0;
 	margin-right: 9px;
+	* padding: 0;
 }
 .button:hover, button.hover {
     color: #000;
@@ -53,7 +53,6 @@ a:hover {
     color: #fff;
     background-color: #a00;
 }
-
 .button {
 	* display: inline;
 	* zoom: 1; 
@@ -64,7 +63,6 @@ a.button {
 	* position: relative;
 	* top: 4px;
 }
-
 h1 {
 	font-size: 32px;
 	line-height: 32px;
@@ -138,7 +136,6 @@ p {
 	margin: 16px;
 	font-size: 0;
 }
-
 .usb-info {
 	margin: 16px 0;
 	margin-top: 32px;
@@ -174,7 +171,6 @@ p {
 .file.current a {
 	color: #000;
 }
-
 .form-group {
 	margin-bottom: 16px;
 	padding: 16px 27px;
@@ -222,7 +218,6 @@ select::after {
 	top: 50%;
 	margin-top: -4px;
 }
-
 #log {
     margin: 16px 0;
     padding: 16px 18px;
@@ -232,7 +227,9 @@ select::after {
     height: 640px;
     overflow: scroll;
 }
-
+.no-oldie {
+	* display: none;
+}
 @media screen and (max-width: 480px) {
 	.header {
 		margin: 16px 18px;

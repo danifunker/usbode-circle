@@ -7,7 +7,7 @@
 #include <cstring>
 #include <map>
 #include "listapi.h"
-#include "util.h"
+#include "../util.h"
 
 LOGMODULE("listapi");
 

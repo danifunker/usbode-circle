@@ -9,7 +9,7 @@
 #include <string>
 #include <algorithm>
 #include <gitinfo/gitinfo.h>
-#include "util.h"
+#include "../util.h"
 #include "pagehandlerbase.h"
 #include "../webglobals.h"
 #include <configservice/configservice.h>

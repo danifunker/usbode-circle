@@ -7,7 +7,7 @@
 #include <cstring>
 #include <map>
 #include "mountapi.h"
-#include "util.h"
+#include "../util.h"
 
 LOGMODULE("mountapi");
 

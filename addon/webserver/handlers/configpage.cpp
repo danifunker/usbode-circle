@@ -13,7 +13,7 @@
 #include <fstream>
 #include <shutdown/shutdown.h>
 #include "configpage.h"
-#include "util.h"
+#include "../util.h"
 #include <configservice/configservice.h>
 #include <cdplayer/cdplayer.h>
 #include "../webglobals.h"

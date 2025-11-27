@@ -13,7 +13,7 @@
 #include <fstream>
 #include <shutdown/shutdown.h>
 #include "shutdownpage.h"
-#include "util.h"
+#include "../util.h"
 
 using namespace kainjow;
 
