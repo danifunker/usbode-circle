@@ -13,6 +13,7 @@
 
 #include "filetype.h"
 #include "cuedevice.h"  // Now extends IImageDevice
+#include "../cueparser/cueparser.h"   // For parsing CUE sheets
 
 #define DEFAULT_IMAGE_FILENAME "image.iso"
 
@@ -63,7 +64,18 @@ class CCueBinFileDevice : public ICueDevice {
     // Track parsing state (lazy initialization)
     mutable bool m_tracksParsed = false;
     mutable int m_numTracks = 0;
-    // TODO: Add track structure storage
+    
+    // Track information parsed from CUE sheet
+    static constexpr int MAX_TRACKS = 99;
+    struct TrackInfo {
+        int track_number;
+        u32 track_start;      // LBA
+        u32 track_length;     // in sectors
+        u32 sector_length;    // bytes per sector
+        CUETrackMode track_mode;
+        u64 file_offset;      // byte offset in file
+    };
+    mutable TrackInfo m_tracks[MAX_TRACKS];
     
     void ParseCueSheet() const;
     

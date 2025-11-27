@@ -1,7 +1,7 @@
 //
 // A CDevice for cue/bin files
 //
-// Copyright (C) 2025 Ian Cass
+// Copyright (C) 2025 Ian Cass, Dani Sarfati
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -127,9 +127,47 @@ const char *CCueBinFileDevice::GetCueSheet() const {
 void CCueBinFileDevice::ParseCueSheet() const {
     if (m_tracksParsed) return;
     
-    // TODO: Implement proper CUE sheet parser
-    // For now, simple default implementation
-    m_numTracks = 1;
+    if (!m_cue_str) {
+        // No CUE sheet - assume single data track
+        m_numTracks = 1;
+        m_tracks[0].track_number = 1;
+        m_tracks[0].track_start = 0;
+        m_tracks[0].sector_length = 2048;
+        m_tracks[0].track_mode = CUETrack_MODE1_2048;
+        m_tracks[0].file_offset = 0;
+        m_tracks[0].track_length = GetSize() / 2048;
+        m_tracksParsed = true;
+        return;
+    }
+    
+    // Use CUEParser to parse the sheet
+    CUEParser parser(m_cue_str);
+    const CUETrackInfo* trackInfo;
+    
+    m_numTracks = 0;
+    while ((trackInfo = parser.next_track()) != nullptr && m_numTracks < MAX_TRACKS) {
+        m_tracks[m_numTracks].track_number = trackInfo->track_number;
+        m_tracks[m_numTracks].track_start = trackInfo->data_start;
+        m_tracks[m_numTracks].sector_length = trackInfo->sector_length;
+        m_tracks[m_numTracks].track_mode = trackInfo->track_mode;
+        m_tracks[m_numTracks].file_offset = trackInfo->file_offset;
+        m_numTracks++;
+    }
+    
+    // Calculate track lengths (distance to next track or end of file)
+    u64 fileSize = GetSize();
+    for (int i = 0; i < m_numTracks; i++) {
+        if (i < m_numTracks - 1) {
+            // Length is distance to next track
+            u32 sectorsToNext = m_tracks[i + 1].track_start - m_tracks[i].track_start;
+            m_tracks[i].track_length = sectorsToNext;
+        } else {
+            // Last track - calculate from file size
+            u64 remainingBytes = fileSize - m_tracks[i].file_offset;
+            m_tracks[i].track_length = remainingBytes / m_tracks[i].sector_length;
+        }
+    }
+    
     m_tracksParsed = true;
 }
 
@@ -140,17 +178,18 @@ int CCueBinFileDevice::GetNumTracks() const {
 
 u32 CCueBinFileDevice::GetTrackStart(int track) const {
     ParseCueSheet();
-    if (track == 0) return 0;
-    return 0; // TODO: Parse from CUE
+    if (track < 1 || track > m_numTracks) return 0;
+    return m_tracks[track - 1].track_start;
 }
 
 u32 CCueBinFileDevice::GetTrackLength(int track) const {
     ParseCueSheet();
-    // Simple calculation for single data track
-    return GetSize() / 2048;
+    if (track < 1 || track > m_numTracks) return 0;
+    return m_tracks[track - 1].track_length;
 }
 
 bool CCueBinFileDevice::IsAudioTrack(int track) const {
     ParseCueSheet();
-    return false; // TODO: Parse from CUE
+    if (track < 1 || track > m_numTracks) return false;
+    return m_tracks[track - 1].track_mode == CUETrack_AUDIO;
 }
