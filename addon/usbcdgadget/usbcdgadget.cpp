@@ -199,6 +199,11 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
         CString targetOS = configService->GetProperty("usbtargetos", "");
         strncpy(m_USBTargetOS, (const char *)targetOS, sizeof(m_USBTargetOS) - 1);
         m_USBTargetOS[sizeof(m_USBTargetOS) - 1] = '\0'; // Ensure null termination
+
+        if (m_bDebugLogging)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget", "Target OS set to: %s", m_USBTargetOS);
+        }
     }
     else
     {
@@ -206,6 +211,7 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
         strncpy(m_USBTargetOS, "doswin", sizeof(m_USBTargetOS) - 1);
         m_USBTargetOS[sizeof(m_USBTargetOS) - 1] = '\0';
     }
+
     if (pDevice)
     {
         MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
@@ -451,6 +457,7 @@ int CUSBCDGadget::GetBlocksize()
 
 int CUSBCDGadget::GetBlocksizeForTrack(CUETrackInfo trackInfo)
 {
+    CDROM_DEBUG_LOG("CUSBCDGadget::GetBlocksizeForTrack", "Called with mode=%d, target=%s", trackInfo.track_mode, m_USBTargetOS);
     // FORCE RAW MODE for compatibility with .bin files that include headers when targeting macOS
     if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
     {
@@ -486,6 +493,8 @@ int CUSBCDGadget::GetSkipbytes()
 
 int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
 {
+    CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "Called with mode=%d, target=%s", trackInfo.track_mode, m_USBTargetOS);
+
     if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
     {
         CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "FORCE RAW MODE for Apple target OS");
@@ -4087,6 +4096,20 @@ void CUSBCDGadget::Update()
                 // Perform read (no logging unless debug enabled)
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
 
+                if (m_bDebugLogging && (m_nblock_address - blocks_to_read_in_batch) == 1)
+                {
+                    CDROM_DEBUG_LOG("UpdateRead", "=== RAW FILE DATA for LBA 1 (first 64 bytes from file) ===");
+                    for (int i = 0; i < 64 && i < readCount; i += 16)
+                    {
+                        CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                                        i,
+                                        m_FileChunk[i], m_FileChunk[i + 1], m_FileChunk[i + 2], m_FileChunk[i + 3],
+                                        m_FileChunk[i + 4], m_FileChunk[i + 5], m_FileChunk[i + 6], m_FileChunk[i + 7],
+                                        m_FileChunk[i + 8], m_FileChunk[i + 9], m_FileChunk[i + 10], m_FileChunk[i + 11],
+                                        m_FileChunk[i + 12], m_FileChunk[i + 13], m_FileChunk[i + 14], m_FileChunk[i + 15]);
+                    }
+                }
+
                 // Check for complete read failure (0 bytes or negative)
                 if (readCount <= 0)
                 {
@@ -4196,6 +4219,25 @@ void CUSBCDGadget::Update()
                 m_nblock_address += blocks_to_read_in_batch;
                 m_nbyteCount -= total_copied;
                 m_nState = TCDState::DataIn;
+
+                // DIAGNOSTIC: Dump LBA 0 and 1 data to verify partition map
+                if (m_bDebugLogging)
+                {
+                    u32 start_lba = m_nblock_address - blocks_to_read_in_batch;
+                    if (start_lba == 0 || start_lba == 1)
+                    {
+                        CDROM_DEBUG_LOG("UpdateRead", "=== LBA %u DATA DUMP (first 128 bytes) ===", start_lba);
+                        for (int i = 0; i < 128 && i < (int)total_copied; i += 16)
+                        {
+                            CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                                            i,
+                                            m_InBuffer[i], m_InBuffer[i + 1], m_InBuffer[i + 2], m_InBuffer[i + 3],
+                                            m_InBuffer[i + 4], m_InBuffer[i + 5], m_InBuffer[i + 6], m_InBuffer[i + 7],
+                                            m_InBuffer[i + 8], m_InBuffer[i + 9], m_InBuffer[i + 10], m_InBuffer[i + 11],
+                                            m_InBuffer[i + 12], m_InBuffer[i + 13], m_InBuffer[i + 14], m_InBuffer[i + 15]);
+                        }
+                    }
+                }
 
                 uintptr_t buffer_start = (uintptr_t)m_InBuffer;
                 uintptr_t buffer_end = buffer_start + total_copied;
