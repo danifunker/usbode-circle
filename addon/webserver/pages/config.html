@@ -14,7 +14,7 @@
 </div>
 {{/success_message}}
 
-<form method="POST" action="/config">
+<form method="POST" action="/config" autocomplete="off">
     <div class="form-section">
         <h3>Display Configuration</h3>
         <div class="form-group">
@@ -88,6 +88,7 @@
             <div class="current-value">Current: {{current_theme}}</div>
             <select name="theme" id="theme">
                 <option value="default">default</option>
+                {{{theme_options}}}
             </select>
         </div>
     </div>

@@ -11,6 +11,7 @@
 #include <gitinfo/gitinfo.h>
 #include "util.h"
 #include "pagehandlerbase.h"
+#include "../webglobals.h"
 #include <configservice/configservice.h>
 
 using namespace kainjow;
@@ -28,7 +29,10 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 		   unsigned *pLength,
 		   const char **ppContentType)
 {
-	// Set up Mustache Template Engine
+        //Initialize the webglobals
+        CWebGlobals::Get()->Initialize();
+
+        // Set up Mustache Template Engine
         mustache::mustache tmpl{s_Template};
 	if (!tmpl.is_valid())
 		return HTTPInternalServerError;
@@ -65,6 +69,9 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
 
 	// Get the current mode
         context.set("cdrom", !config->GetMode());
+
+        //Get bootID for cache busting
+        context.set("boot_id", std::to_string(CWebGlobals::Get()->GetBootID()));
 
         // Get the current theme
         context.set("theme", config->GetTheme());
