@@ -12,6 +12,9 @@ class ConfigService : public CTask
 public:
     ConfigService();
     ~ConfigService();
+
+    static ConfigService* Get() { return s_pThis; }
+
     const char* GetCurrentImage(const char *defaultValue="image.iso");
     unsigned GetDefaultVolume(unsigned defaultValue=255);
     const char* GetDisplayHat(const char *defaultValue="none");
@@ -27,6 +30,7 @@ public:
     u16 GetUSBCDRomProductId(u16);
     void SetSoundDev(const char* value);
     const char* GetSoundDev(const char* defaultValue="none");
+    const char* GetTheme(const char *defaultValue="default");
 
     void SetLogfile(const char* value);
     void SetCurrentImage(const char* value);
@@ -39,6 +43,8 @@ public:
     void SetUSBFullSpeed(bool value);
     void SetST7789Brightness(unsigned value);
     void SetST7789SleepBrightness(unsigned value);
+    void SetTheme(const char* value);
+
     void SetUSBCDRomVendorId(u16 value);
     void SetUSBCDRomProductId(u16 value);
     void SetUSBTargetOS(const char* value="doswin");

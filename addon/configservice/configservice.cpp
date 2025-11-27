@@ -71,6 +71,11 @@ const char* ConfigService::GetSoundDev(const char* defaultValue)
     return defaultValue;
 }
 
+const char* ConfigService::GetTheme(const char* defaultValue)
+{
+    return m_config->GetString("theme", defaultValue);
+}
+
 const char* ConfigService::GetCurrentImage(const char* defaultValue)
 {
     return m_config->GetString("current_image", defaultValue);
@@ -169,6 +174,11 @@ void ConfigService::SetDefaultVolume(unsigned value)
 void ConfigService::SetDisplayHat(const char* value)
 {
     m_config->SetString("displayhat", value);
+}
+
+void ConfigService::SetTheme(const char* value)
+{
+    m_config->SetString("theme", value);
 }
 
 void ConfigService::SetTimezone(const char* value)

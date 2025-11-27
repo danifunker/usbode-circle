@@ -14,7 +14,7 @@
 #include <discimage/util.h>
 #include <discimage/cuebinfile.h>
 #include "mountpage.h"
-#include "util.h"
+#include "../util.h"
 
 using namespace kainjow;
 
@@ -46,10 +46,11 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 
 	LOGDBG("Got filename %s from parameter", file_name.c_str());
 
-        SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
-        if (!svc) {
+	SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+
+	if (!svc) {
 	    LOGERR("Couldn't fetch SCSITB Service");
-            return HTTPInternalServerError;
+        return HTTPInternalServerError;
 	}
 
 	if (svc->SetNextCDByName(file_name.c_str())) {

@@ -232,6 +232,9 @@ form {
 	padding: 5px;
 	margin: 5px 0;
 }
+.no-oldie {
+	* display: none;
+}
 
 @media screen and (max-width: 490px) {
 	.header h1 {

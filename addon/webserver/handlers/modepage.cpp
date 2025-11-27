@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <shutdown/shutdown.h>
 #include "modepage.h"
-#include "util.h"
+#include "../util.h"
 #include <configservice/configservice.h>
 
 using namespace kainjow;
