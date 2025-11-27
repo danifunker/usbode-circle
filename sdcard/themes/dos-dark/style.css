@@ -15,6 +15,7 @@ body {
     padding: 0;
     font-size: 16px;
     line-height: 1em;
+	word-break: break-word;
 }
 body * {
 	font-family: 'modern_dos_9x16regular', sans-serif; 
@@ -31,12 +32,18 @@ a:hover {
 	text-decoration: underline;
 }
 .button, button {
+	font-size: 16px;
+	display: inline-block;
 	-webkit-appearance: none;
 	border: none;
     color: #111111;
     background-color: #ddd;
     text-decoration: none !important;
 	padding: 0 9px;
+	margin-bottom: 16px;
+	height: 16px;
+	* padding: 0;
+	margin-right: 9px;
 }
 .button:hover, button.hover {
     color: #000;
@@ -46,13 +53,18 @@ a:hover {
     color: #fff;
     background-color: #a00;
 }
-.header {
-	position: relative;
-    margin: 32px 36px;
-    padding: 16px 27px;
-	padding-right: 108px;
-    border: 2px solid #ddd;
+
+.button {
+	* display: inline;
+	* zoom: 1; 
+	* width: auto;
 }
+a.button {
+	* padding: 0 9px;
+	* position: relative;
+	* top: 4px;
+}
+
 h1 {
 	font-size: 32px;
 	line-height: 32px;
@@ -65,21 +77,33 @@ h1, h2, h3 {
 p {
 	margin: 0;
 }
+.header {
+	position: relative;
+    margin: 32px 27px;
+	padding: 15px;
+	padding-left: 27px;
+    border: 2px solid #ddd;
+}
 .header img {
-	position: absolute;
-	top: 50%;
-	right: 15px;
     display: block;
-	margin-top: -35px;
+	float: right;
     width: 107px;
     height: 70px;
+	margin-left: 18px;
+	border: 0;
+}
+.header h1 {
+	padding-top: 4px;
+	* padding-top: 19px;
 }
 .header h2 {
+	line-height: 16px;
 	margin-bottom: 0;
+	padding-bottom: 2px;
 }
 .content {
 	position: relative;
-    margin: 16px 36px;
+    margin: 16px 27px;
     padding: 16px 27px;
 	padding-top: 32px;
     border: 2px solid #ddd;
@@ -112,6 +136,7 @@ p {
 .buttons {
 	text-align: center;
 	margin: 16px;
+	font-size: 0;
 }
 
 .usb-info {
@@ -127,8 +152,11 @@ p {
 }
 .build-info {
 	padding: 16px 18px;
+	color: #666;
 }
-
+.unavailable {
+	color: #666;
+}
 .files {
     padding: 16px 18px;
     border: 2px solid #ddd;
@@ -160,21 +188,28 @@ p {
 }
 .form-group button {
 	margin-top: 16px;
+	margin-bottom: 0;
 }
 input {
 	appearance: none;
 	-webkit-appearance: none;
 }
 input, select {
-	padding: 0 9px;
+	padding: 0;
+	padding-left: 9px;
 	margin-top: 16px;
 	border: 0;
 	border-radius: 0;
-	font-family: 'modern_dos_9x16regular', sans-serif; 
+	font-family: 'modern_dos_9x16regular', sans-serif;
+	width: 300px;
+	max-width: 100%;
 }
 select {
 	position: relative;
 	padding-right: 18px;
+}
+select option {
+	font-size: 14px;
 }
 select::after {
 	content: '';
@@ -196,4 +231,34 @@ select::after {
     white-space: pre;
     height: 640px;
     overflow: scroll;
+}
+
+@media screen and (max-width: 480px) {
+	.header {
+		margin: 16px 18px;
+		padding-left: 18px;
+	}
+	.header h1 {
+		margin-bottom: 0;
+	}
+	.header h2 {
+		display: none;
+	}
+	.header img {
+		width: auto;
+		height: 32px;
+	}
+	.content {
+		margin: 16px 18px;
+		padding: 16px 18px;
+	}
+	.files {
+		padding: 16px 9px;
+	}
+	.form-group {
+		padding: 16px 18px;
+	}
+	input {
+		max-width: calc(100% - 9px);
+	}
 }
