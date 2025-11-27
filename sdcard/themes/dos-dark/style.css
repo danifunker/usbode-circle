@@ -223,9 +223,11 @@ select::after {
     padding: 16px 18px;
 	padding-top: 0;
     border: 2px solid #ddd;
-    white-space: pre;
     height: 640px;
-    overflow: scroll;
+	overflow-y: scroll; 
+	overflow-x: auto; 
+	white-space: pre; 
+	word-break: normal;
 }
 .no-oldie {
 	* display: none;
