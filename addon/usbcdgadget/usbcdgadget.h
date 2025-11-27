@@ -768,6 +768,7 @@ private:
 
     /// \brief Convert MSF to LBA
     u32 msf_to_lba(u8 minutes, u8 seconds, u8 frames);
+    void DetectLogicalBlockSize();
 
     // ========================================================================
     // Device Initialization
@@ -1125,7 +1126,8 @@ private:
     int file_mode = 1;              // File/track mode
     int numTracks = 0;              // Number of tracks on disc
     uint8_t mcs = 0;
-
+    u32 m_logical_block_size = 2048;      // Block size reported to host
+    bool m_use_512byte_blocks = false;    // True if DDR specifies 512-byte blocks
     // ========================================================================
     // Instance Variables - CUE Parsing and Device Identification
     // ========================================================================

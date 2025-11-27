@@ -442,6 +442,8 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
              "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
              max_lba, first_track.track_mode, first_track_blocksize);
 
+    DetectLogicalBlockSize();
+
     MLOGNOTE("CUSBCDGadget::SetDevice",
              "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
              m_CDReady, (int)m_mediaState,
@@ -459,11 +461,11 @@ int CUSBCDGadget::GetBlocksizeForTrack(CUETrackInfo trackInfo)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::GetBlocksizeForTrack", "Called with mode=%d, target=%s", trackInfo.track_mode, m_USBTargetOS);
     // FORCE RAW MODE for compatibility with .bin files that include headers when targeting macOS
-    if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
-    {
-        CDROM_DEBUG_LOG("CUSBCDGadget::GetBlocksizeForTrack", "FORCE RAW MODE (2352) for Apple target OS");
-        return 2352;
-    }
+    // if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
+    // {
+    //     CDROM_DEBUG_LOG("CUSBCDGadget::GetBlocksizeForTrack", "FORCE RAW MODE (2352) for Apple target OS");
+    //     return 2352;
+    // }
 
     switch (trackInfo.track_mode)
     {
@@ -495,11 +497,11 @@ int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "Called with mode=%d, target=%s", trackInfo.track_mode, m_USBTargetOS);
 
-    if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
-    {
-        CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "FORCE RAW MODE for Apple target OS");
-        return 16;
-    }
+    // if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
+    // {
+    //     CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "FORCE RAW MODE for Apple target OS");
+    //     return 16;
+    // }
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
@@ -517,6 +519,114 @@ int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
     default:
         CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "Track mode %d not handled", trackInfo.track_mode);
         return 0;
+    }
+}
+
+
+void CUSBCDGadget::DetectLogicalBlockSize()
+{
+    // Default to standard 2048-byte blocks
+    m_logical_block_size = 2048;
+    m_use_512byte_blocks = false;
+    
+    // Only check data discs (not audio CDs)
+    if (m_mediaType != MEDIA_TYPE::CD)
+    {
+        MLOGNOTE("DetectLogicalBlockSize", "Not a CD, using 2048-byte blocks");
+        return;
+    }
+    
+    // Check if track 1 is a data track
+    CUETrackInfo first_track = GetTrackInfoForLBA(0);
+    if (first_track.track_mode == CUETrack_AUDIO)
+    {
+        MLOGNOTE("DetectLogicalBlockSize", "Audio CD, using 2048-byte blocks");
+        return;
+    }
+    
+    if (!m_pDevice)
+    {
+        MLOGERR("DetectLogicalBlockSize", "No device");
+        return;
+    }
+    
+    // Read LBA 0 to check for Driver Descriptor Record
+    u8 sector_buffer[2352] = {0};
+    
+    // Seek to disc start
+    u64 offset = m_pDevice->Seek(0);
+    if (offset == (u64)(-1))
+    {
+        MLOGERR("DetectLogicalBlockSize", "Failed to seek to LBA 0");
+        return;
+    }
+    
+    // Read first sector (using physical block size from CUE)
+    int physical_size = data_block_size;  // Set by SetDevice()
+    int bytes_read = m_pDevice->Read(sector_buffer, physical_size);
+    if (bytes_read != physical_size)
+    {
+        MLOGERR("DetectLogicalBlockSize", "Failed to read LBA 0: got %d bytes", bytes_read);
+        return;
+    }
+    
+    // Calculate offset to user data based on sector format
+    int user_data_offset = 0;
+    if (physical_size == 2352)
+    {
+        // MODE1/2352: skip 16-byte sync+header
+        user_data_offset = 16;
+    }
+    // MODE1/2048: user data starts at offset 0
+    
+    // Check for Driver Descriptor Record signature "ER" (0x4552)
+    u16 ddr_signature = (sector_buffer[user_data_offset + 0] << 8) | 
+                        sector_buffer[user_data_offset + 1];
+    
+    if (ddr_signature != 0x4552)
+    {
+        MLOGNOTE("DetectLogicalBlockSize", 
+                "No DDR signature (got 0x%04x) - using 2048-byte blocks", 
+                ddr_signature);
+        return;
+    }
+    
+    // Read block size from DDR at offset 0x02 (big-endian u16)
+    u16 ddr_block_size = (sector_buffer[user_data_offset + 2] << 8) | 
+                         sector_buffer[user_data_offset + 3];
+    
+    // Read block count for logging
+    u32 ddr_block_count = (sector_buffer[user_data_offset + 4] << 24) |
+                          (sector_buffer[user_data_offset + 5] << 16) |
+                          (sector_buffer[user_data_offset + 6] << 8) |
+                          sector_buffer[user_data_offset + 7];
+    
+    MLOGNOTE("DetectLogicalBlockSize", 
+            "DDR found: blockSize=%u, blockCount=%u", 
+            ddr_block_size, ddr_block_count);
+    
+    // Validate and set block size
+    if (ddr_block_size == 512)
+    {
+        m_logical_block_size = 512;
+        m_use_512byte_blocks = true;
+        
+        MLOGNOTE("DetectLogicalBlockSize", 
+                "✓ Enabling 512-byte block translation (Mac CD-ROM format)");
+    }
+    else if (ddr_block_size == 2048)
+    {
+        m_logical_block_size = 2048;
+        m_use_512byte_blocks = false;
+        
+        MLOGNOTE("DetectLogicalBlockSize", 
+                "Using standard 2048-byte blocks");
+    }
+    else if (ddr_block_size != 0)
+    {
+        MLOGERR("DetectLogicalBlockSize", 
+                "Unsupported block size: %u - defaulting to 2048", 
+                ddr_block_size);
     }
 }
 
@@ -1955,11 +2065,45 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-    case 0x25: // Read Capacity (10))
+    case 0x25: // Read Capacity (10)
     {
-        m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1); // this value is the Start address of last recorded lead-out minus 1
-        memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
-        m_nnumber_blocks = 0; // nothing more after this send
+        u32 physical_lba = GetLeadoutLBA() - 1;
+        u32 logical_lba = physical_lba;
+        u32 block_size_to_report = m_logical_block_size;
+        
+        // If using 512-byte blocks, convert physical LBA to logical LBA
+        // Physical sectors: 2048 bytes
+        // Logical blocks: 512 bytes
+        // Ratio: 2048/512 = 4 logical blocks per physical sector
+        if (m_use_512byte_blocks)
+        {
+            // Each physical 2048-byte sector contains 4 logical 512-byte blocks
+            // Last logical block is: (last_physical_sector * 4) + 3
+            logical_lba = (physical_lba * 4) + 3;
+            
+            MLOGNOTE("READ_CAPACITY", 
+                    "512-byte mode: physical_LBA=%u → logical_LBA=%u (×4)",
+                    physical_lba, logical_lba);
+        }
+        
+        // Build response (8 bytes total)
+        // Bytes 0-3: Last logical block address (big-endian)
+        m_InBuffer[0] = (logical_lba >> 24) & 0xFF;
+        m_InBuffer[1] = (logical_lba >> 16) & 0xFF;
+        m_InBuffer[2] = (logical_lba >> 8) & 0xFF;
+        m_InBuffer[3] = logical_lba & 0xFF;
+        
+        // Bytes 4-7: Block size in bytes (big-endian)
+        m_InBuffer[4] = (block_size_to_report >> 24) & 0xFF;
+        m_InBuffer[5] = (block_size_to_report >> 16) & 0xFF;
+        m_InBuffer[6] = (block_size_to_report >> 8) & 0xFF;
+        m_InBuffer[7] = block_size_to_report & 0xFF;
+        
+        MLOGNOTE("READ_CAPACITY", 
+                "Reporting: LastLBA=%u, BlockSize=%u bytes",
+                logical_lba, block_size_to_report);
+        
+        m_nnumber_blocks = 0;
         m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                    m_InBuffer, SIZE_READCAPREP);
         m_nState = TCDState::DataIn;
@@ -1971,38 +2115,123 @@ void CUSBCDGadget::HandleSCSICommand()
     {
         if (m_CDReady)
         {
-            // Where to start reading (LBA)
-            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
-                               (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
-            // Number of blocks to read (LBA)
-            m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
-
-            // Get disc boundaries
+            // Extract logical LBA and block count from command (what the host requested)
+            u32 host_lba = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
+                           (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+            u32 host_block_count = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+            
+            // CRITICAL BUG FIX: In 512-byte mode, if host_block_count is 0 or doesn't match
+            // the actual transfer length, calculate it from dCBWDataTransferLength
+            if (m_use_512byte_blocks)
+            {
+                u32 transfer_length = m_CBW.dCBWDataTransferLength;
+                u32 calculated_block_count = transfer_length / 512;
+                
+                if (host_block_count == 0 || (host_block_count * 512) != transfer_length)
+                {
+                    MLOGNOTE("READ(10)", 
+                            "512-byte mode: Correcting block count from CBW[7:8]=%u to transfer_len/512=%u",
+                            host_block_count, calculated_block_count);
+                    host_block_count = calculated_block_count;
+                }
+            }
+            
+            // These will be set based on whether we're in 512-byte mode or not
+            u32 physical_lba;
+            u32 physical_block_count;
+            u32 actual_transfer_size;
+            u32 actual_skip_bytes;
+            
+            if (m_use_512byte_blocks)
+            {
+                // HOST IS USING 512-BYTE LOGICAL BLOCKS
+                // We need to translate to 2048-byte physical sectors
+                
+                // Each physical 2048-byte sector contains 4 logical 512-byte blocks
+                // Example: logical LBA 0-3 are all in physical sector 0
+                //          logical LBA 4-7 are all in physical sector 1
+                
+                // Which physical sector contains the first logical block?
+                physical_lba = host_lba / 4;
+                
+                // Offset within that physical sector (0, 512, 1024, or 1536 bytes)
+                u32 offset_within_first_sector = (host_lba % 4) * 512;
+                
+                // Total bytes the host wants
+                u32 total_bytes_requested = host_block_count * 512;
+                
+                // How many bytes are available in the first physical sector after the offset?
+                u32 bytes_available_in_first = 2048 - offset_within_first_sector;
+                
+                // Calculate how many physical sectors we need to read
+                if (total_bytes_requested <= bytes_available_in_first)
+                {
+                    // All data fits in the first physical sector
+                    physical_block_count = 1;
+                }
+                else
+                {
+                    // Need multiple physical sectors
+                    u32 bytes_after_first = total_bytes_requested - bytes_available_in_first;
+                    u32 additional_sectors = (bytes_after_first + 2047) / 2048; // Round up
+                    physical_block_count = 1 + additional_sectors;
+                }
+                
+                MLOGNOTE("READ(10)", 
+                        "512-byte mode: logical[LBA=%u, cnt=%u, bytes=%u] → physical[LBA=%u, cnt=%u, offset=%u]",
+                        host_lba, host_block_count, total_bytes_requested,
+                        physical_lba, physical_block_count, offset_within_first_sector);
+                
+                // Set parameters for the firmware to use
+                m_nblock_address = physical_lba;
+                m_nnumber_blocks = physical_block_count;
+                actual_transfer_size = 512;
+                
+                // CRITICAL: Add the intra-sector offset to skip_bytes
+                // data_skip_bytes is the MODE1/2352 header skip (typically 16)
+                // We add the offset within the 2048-byte user data
+                actual_skip_bytes = data_skip_bytes + offset_within_first_sector;
+            }
+            else
+            {
+                // STANDARD 2048-BYTE MODE (no translation needed)
+                physical_lba = host_lba;
+                physical_block_count = host_block_count;
+                actual_transfer_size = 2048;
+                actual_skip_bytes = data_skip_bytes;
+                
+                m_nblock_address = physical_lba;
+                m_nnumber_blocks = physical_block_count;
+                
+                CDROM_DEBUG_LOG("READ(10)", "2048-byte mode: LBA=%u, cnt=%u",
+                               host_lba, host_block_count);
+            }
+            
+            // Get disc boundaries (in PHYSICAL LBAs)
             u32 max_lba = GetMaxLBA();
-
-            // CRITICAL: Validate LBA is within disc boundaries
+            
+            // CRITICAL: Validate PHYSICAL LBA is within disc boundaries
             if (m_nblock_address >= max_lba)
             {
-                MLOGERR("READ(10)", "LBA %u beyond disc boundary (max=%u)",
+                MLOGERR("READ(10)", "Physical LBA %u beyond disc boundary (max=%u)",
                         m_nblock_address, max_lba);
-
+                
                 // SCSI error: ILLEGAL REQUEST / LOGICAL BLOCK ADDRESS OUT OF RANGE
                 setSenseData(0x05, 0x21, 0x00);
                 sendCheckCondition();
                 break;
             }
-
+            
             // Check if read extends beyond disc boundary
             if (m_nblock_address + m_nnumber_blocks > max_lba)
             {
                 u32 original_blocks = m_nnumber_blocks;
                 m_nnumber_blocks = max_lba - m_nblock_address;
-
+                
                 MLOGNOTE("READ(10)", "Read truncated: LBA=%u, requested=%u, max=%u, truncated to=%u",
                          m_nblock_address, original_blocks, max_lba, m_nnumber_blocks);
             }
-
+            
             // Validate we have blocks to read after boundary checks
             if (m_nnumber_blocks == 0)
             {
@@ -2011,28 +2240,32 @@ void CUSBCDGadget::HandleSCSICommand()
                 sendCheckCondition();
                 break;
             }
-
-            CDROM_DEBUG_LOG("READ(10)", "LBA=%u, cnt=%u, max_lba=%u",
+            
+            CDROM_DEBUG_LOG("READ(10)", "Final: physical_LBA=%u, cnt=%u, max_lba=%u",
                             m_nblock_address, m_nnumber_blocks, max_lba);
-
-            // Transfer Block Size is the size of data to return to host
-            // Block Size and Skip Bytes is worked out from cue sheet
-            // For a CDROM, this is always 2048
-            transfer_block_size = 2048;
-            block_size = data_block_size; // set at SetDevice
-            skip_bytes = data_skip_bytes; // set at SetDevice
+            
+            // Set transfer parameters for UpdateRead() to use
+            transfer_block_size = actual_transfer_size;  // 512 or 2048
+            block_size = data_block_size;                // Physical sector size (e.g., 2352)
+            skip_bytes = actual_skip_bytes;              // Includes offset for 512-byte mode
             mcs = 0;
+            
             m_nbyteCount = m_CBW.dCBWDataTransferLength;
-
-            // Recalculate byte count based on potentially truncated block count
-            u32 expected_byte_count = m_nnumber_blocks * transfer_block_size;
-            if (m_nbyteCount > expected_byte_count)
+            
+            // DON'T recalculate byte count in 512-byte mode - trust the transfer length!
+            // The host is telling us exactly how many bytes it wants
+            if (!m_use_512byte_blocks)
             {
-                MLOGNOTE("READ(10)", "Host requested %u bytes but only %u available",
-                         m_nbyteCount, expected_byte_count);
-                m_nbyteCount = expected_byte_count;
+                // Only adjust for standard 2048-byte mode
+                u32 expected_byte_count = m_nnumber_blocks * transfer_block_size;
+                if (m_nbyteCount > expected_byte_count)
+                {
+                    MLOGNOTE("READ(10)", "Host requested %u bytes but only %u available",
+                             m_nbyteCount, expected_byte_count);
+                    m_nbyteCount = expected_byte_count;
+                }
             }
-
+            
             m_CSW.bmCSWStatus = bmCSWStatus;
             m_nState = TCDState::DataInRead; // see Update() function
         }
@@ -4041,10 +4274,40 @@ void CUSBCDGadget::Update()
                          old_count, m_nnumber_blocks);
             }
 
-            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+            // ===== CRITICAL: Save the LBA we're ABOUT to read BEFORE any modifications =====
+            u32 current_reading_lba = m_nblock_address;
 
-            // Single seek operation (no logging in hot path)
-            offset = m_pDevice->Seek(block_size * m_nblock_address);
+            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+            
+            // DIAGNOSTIC: Log what we're about to read
+            if (m_bDebugLogging && current_reading_lba <= 2)
+            {
+                CDROM_DEBUG_LOG("UpdateRead", "=== ABOUT TO READ LBA %u ===", current_reading_lba);
+                CDROM_DEBUG_LOG("UpdateRead", "  block_size=%u, skip_bytes=%u, transfer_block_size=%u",
+                               block_size, skip_bytes, transfer_block_size);
+                CDROM_DEBUG_LOG("UpdateRead", "  Track: num=%u, mode=%u, start=%u, file_offset=%llu",
+                               trackInfo.track_number, trackInfo.track_mode, 
+                               trackInfo.track_start, trackInfo.file_offset);
+                CDROM_DEBUG_LOG("UpdateRead", "  m_nnumber_blocks=%u remaining", m_nnumber_blocks);
+            }
+
+            // Calculate file offset
+            u64 calculated_offset = (u64)block_size * (u64)m_nblock_address;
+            
+            if (m_bDebugLogging && current_reading_lba <= 2)
+            {
+                CDROM_DEBUG_LOG("UpdateRead", "  Calculated file offset: %llu bytes (block_size=%u * LBA=%u)",
+                               calculated_offset, block_size, m_nblock_address);
+            }
+
+            // Single seek operation
+            offset = m_pDevice->Seek(calculated_offset);
+            
+            if (m_bDebugLogging && current_reading_lba <= 2)
+            {
+                CDROM_DEBUG_LOG("UpdateRead", "  Seek returned: %llu (success=%s)",
+                               offset, (offset == calculated_offset) ? "YES" : "NO");
+            }
 
             if (offset != (u64)(-1))
             {
@@ -4068,6 +4331,12 @@ void CUSBCDGadget::Update()
                 u32 total_batch_size = blocks_to_read_in_batch * block_size;
                 u32 total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
 
+                if (m_bDebugLogging && current_reading_lba <= 2)
+                {
+                    CDROM_DEBUG_LOG("UpdateRead", "  Batch: blocks=%u, raw_size=%u bytes, transfer_size=%u bytes",
+                                   blocks_to_read_in_batch, total_batch_size, total_transfer_size);
+                }
+
                 // Validate against buffer limits
                 if (total_transfer_size > maxBufferSize)
                 {
@@ -4079,6 +4348,11 @@ void CUSBCDGadget::Update()
                     if (m_nnumber_blocks > 0)
                     {
                         m_nnumber_blocks += (maxBlocks - blocks_to_read_in_batch);
+                    }
+                    
+                    if (m_bDebugLogging && current_reading_lba <= 2)
+                    {
+                        CDROM_DEBUG_LOG("UpdateRead", "  ADJUSTED for buffer limit: blocks=%u", blocks_to_read_in_batch);
                     }
                 }
 
@@ -4093,12 +4367,28 @@ void CUSBCDGadget::Update()
                     m_nnumber_blocks = 0;
                 }
 
-                // Perform read (no logging unless debug enabled)
-                readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
-
-                if (m_bDebugLogging && (m_nblock_address - blocks_to_read_in_batch) == 1)
+                // ===== PERFORM THE ACTUAL FILE READ =====
+                if (m_bDebugLogging && current_reading_lba <= 2)
                 {
-                    CDROM_DEBUG_LOG("UpdateRead", "=== RAW FILE DATA for LBA 1 (first 64 bytes from file) ===");
+                    CDROM_DEBUG_LOG("UpdateRead", "  About to call Read(%u bytes) at file position %llu",
+                                   total_batch_size, offset);
+                }
+                
+                readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
+                
+                // ===== CRITICAL LOGGING: Did the read succeed? =====
+                if (m_bDebugLogging && current_reading_lba <= 2)
+                {
+                    CDROM_DEBUG_LOG("UpdateRead", "  Read returned: %d bytes (requested=%u, success=%s)",
+                                   readCount, total_batch_size, 
+                                   (readCount == (int)total_batch_size) ? "YES" : "NO");
+                }
+
+                // Log raw file data IMMEDIATELY after read
+                if (m_bDebugLogging && current_reading_lba <= 2)
+                {
+                    CDROM_DEBUG_LOG("UpdateRead", "=== RAW FILE DATA for LBA %u (first 64 bytes from file) ===", 
+                                   current_reading_lba);
                     for (int i = 0; i < 64 && i < readCount; i += 16)
                     {
                         CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
@@ -4113,8 +4403,8 @@ void CUSBCDGadget::Update()
                 // Check for complete read failure (0 bytes or negative)
                 if (readCount <= 0)
                 {
-                    MLOGERR("UpdateRead", "Read failed: returned %d bytes (expected %u) at LBA %u",
-                            readCount, total_batch_size, m_nblock_address - blocks_to_read_in_batch);
+                    MLOGERR("UpdateRead", "Read FAILED at LBA %u: returned %d bytes (expected %u), offset=%llu",
+                            current_reading_lba, readCount, total_batch_size, offset);
 
                     // This indicates a serious problem - likely reading beyond disc boundary
                     // or device error
@@ -4136,8 +4426,8 @@ void CUSBCDGadget::Update()
                 // Check for partial read
                 if (readCount < static_cast<int>(total_batch_size))
                 {
-                    MLOGERR("UpdateRead", "Partial read: %d/%u bytes at LBA %u",
-                            readCount, total_batch_size, m_nblock_address - blocks_to_read_in_batch);
+                    MLOGERR("UpdateRead", "PARTIAL read at LBA %u: %d/%u bytes, offset=%llu",
+                            current_reading_lba, readCount, total_batch_size, offset);
 
                     // Partial reads are problematic - we can't easily handle them in the middle
                     // of a USB transfer, so treat as an error
@@ -4157,14 +4447,24 @@ void CUSBCDGadget::Update()
                     // FAST PATH: Direct copy when no reconstruction needed
                     memcpy(dest_ptr, m_FileChunk, total_transfer_size);
                     total_copied = total_transfer_size;
+                    
+                    if (m_bDebugLogging && current_reading_lba <= 2)
+                    {
+                        CDROM_DEBUG_LOG("UpdateRead", "  Using FAST PATH (direct copy)");
+                    }
                 }
                 else if (transfer_block_size > block_size)
                 {
+                    if (m_bDebugLogging && current_reading_lba <= 2)
+                    {
+                        CDROM_DEBUG_LOG("UpdateRead", "  Using MCS RECONSTRUCTION PATH");
+                    }
+                    
                     // MCS sector reconstruction (optimized)
                     for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
                     {
                         u8 sector2352[2352] = {0};
-                        int offset = 0;
+                        int offset_in_sector = 0;
 
                         // SYNC (12 bytes) - single memset instead of 3
                         if (mcs & 0x10)
@@ -4172,30 +4472,30 @@ void CUSBCDGadget::Update()
                             sector2352[0] = 0x00;
                             memset(&sector2352[1], 0xFF, 10);
                             sector2352[11] = 0x00;
-                            offset = 12;
+                            offset_in_sector = 12;
                         }
 
                         // HEADER (4 bytes)
                         if (mcs & 0x08)
                         {
-                            u32 lba = m_nblock_address + i + 150;
-                            sector2352[offset++] = lba / (75 * 60); // minutes
-                            sector2352[offset++] = (lba / 75) % 60; // seconds
-                            sector2352[offset++] = lba % 75;        // frames
-                            sector2352[offset++] = 0x01;
+                            u32 lba = current_reading_lba + i + 150;
+                            sector2352[offset_in_sector++] = lba / (75 * 60); // minutes
+                            sector2352[offset_in_sector++] = (lba / 75) % 60; // seconds
+                            sector2352[offset_in_sector++] = lba % 75;        // frames
+                            sector2352[offset_in_sector++] = 0x01;
                         }
 
                         // USER DATA (2048 bytes) - single memcpy
                         if (mcs & 0x04)
                         {
-                            memcpy(&sector2352[offset], m_FileChunk + (i * block_size), 2048);
-                            offset += 2048;
+                            memcpy(&sector2352[offset_in_sector], m_FileChunk + (i * block_size), 2048);
+                            offset_in_sector += 2048;
                         }
 
                         // EDC/ECC (288 bytes) - already zeroed by initialization
                         if (mcs & 0x02)
                         {
-                            offset += 288;
+                            offset_in_sector += 288;
                         }
 
                         memcpy(dest_ptr, sector2352 + skip_bytes, transfer_block_size);
@@ -4206,12 +4506,85 @@ void CUSBCDGadget::Update()
                 else
                 {
                     // SKIP PATH: Simple copy with skip_bytes offset
-                    for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
+                    if (m_use_512byte_blocks && transfer_block_size == 512)
                     {
-                        memcpy(dest_ptr, m_FileChunk + (i * block_size) + skip_bytes,
-                               transfer_block_size);
-                        dest_ptr += transfer_block_size;
-                        total_copied += transfer_block_size;
+                        // 512-BYTE MODE: Extract 512-byte chunks from 2048-byte sectors
+                        // This must handle reads that span multiple physical sectors
+                        
+                        // How many total bytes does the host want?
+                        u32 bytes_to_extract = m_nbyteCount;
+                        
+                        // We've read 'blocks_to_read_in_batch' physical sectors
+                        // Each is 'block_size' bytes (e.g., 2352)
+                        // We need to extract 512-byte chunks from the 2048-byte user data
+                        
+                        u32 current_skip = skip_bytes; // First sector has offset
+                        u32 bytes_extracted = 0;
+                        
+                        if (m_bDebugLogging && current_reading_lba <= 2)
+                        {
+                            CDROM_DEBUG_LOG("UpdateRead", 
+                                          "  512-byte mode: extracting %u bytes from %u physical sectors",
+                                          bytes_to_extract, blocks_to_read_in_batch);
+                            CDROM_DEBUG_LOG("UpdateRead",
+                                          "  Initial skip_bytes=%u (includes MODE1 header + offset)",
+                                          current_skip);
+                        }
+                        
+                        for (u32 i = 0; i < blocks_to_read_in_batch && bytes_extracted < bytes_to_extract; ++i)
+                        {
+                            // Offset to start of this physical sector in m_FileChunk
+                            u32 sector_start = i * block_size;
+                            
+                            // For first sector: skip MODE1 header + intra-sector offset
+                            // For subsequent sectors: skip only MODE1 header
+                            u32 skip_for_this_sector = (i == 0) ? current_skip : data_skip_bytes;
+                            
+                            // How much user data is available in this sector?
+                            u32 user_data_available = 2048 - (skip_for_this_sector - data_skip_bytes);
+                            
+                            // How much do we still need?
+                            u32 bytes_remaining = bytes_to_extract - bytes_extracted;
+                            
+                            // Copy the lesser of what's available and what we need
+                            u32 bytes_to_copy = (user_data_available < bytes_remaining) 
+                                                ? user_data_available 
+                                                : bytes_remaining;
+                            
+                            if (m_bDebugLogging && current_reading_lba <= 2)
+                            {
+                                CDROM_DEBUG_LOG("UpdateRead",
+                                              "    Sector %u: skip=%u, available=%u, copying=%u",
+                                              i, skip_for_this_sector, user_data_available, bytes_to_copy);
+                            }
+                            
+                            memcpy(dest_ptr, 
+                                   m_FileChunk + sector_start + skip_for_this_sector,
+                                   bytes_to_copy);
+                            
+                            dest_ptr += bytes_to_copy;
+                            bytes_extracted += bytes_to_copy;
+                        }
+                        
+                        total_copied = bytes_extracted;
+                        
+                        if (m_bDebugLogging && current_reading_lba <= 2)
+                        {
+                            CDROM_DEBUG_LOG("UpdateRead", 
+                                          "  512-byte mode: extracted total %u bytes", 
+                                          total_copied);
+                        }
+                    }
+                    else
+                    {
+                        // STANDARD PATH: Direct copy with skip_bytes
+                        for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
+                        {
+                            memcpy(dest_ptr, m_FileChunk + (i * block_size) + skip_bytes,
+                                   transfer_block_size);
+                            dest_ptr += transfer_block_size;
+                            total_copied += transfer_block_size;
+                        }
                     }
                 }
 
@@ -4220,23 +4593,23 @@ void CUSBCDGadget::Update()
                 m_nbyteCount -= total_copied;
                 m_nState = TCDState::DataIn;
 
-                // DIAGNOSTIC: Dump LBA 0 and 1 data to verify partition map
-                if (m_bDebugLogging)
+                // DIAGNOSTIC: Dump processed output buffer
+                if (m_bDebugLogging && current_reading_lba <= 2)
                 {
-                    u32 start_lba = m_nblock_address - blocks_to_read_in_batch;
-                    if (start_lba == 0 || start_lba == 1)
+                    CDROM_DEBUG_LOG("UpdateRead", "=== PROCESSED OUTPUT for LBA %u (first 128 bytes to host) ===", 
+                                   current_reading_lba);
+                    for (int i = 0; i < 128 && i < (int)total_copied; i += 16)
                     {
-                        CDROM_DEBUG_LOG("UpdateRead", "=== LBA %u DATA DUMP (first 128 bytes) ===", start_lba);
-                        for (int i = 0; i < 128 && i < (int)total_copied; i += 16)
-                        {
-                            CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                                            i,
-                                            m_InBuffer[i], m_InBuffer[i + 1], m_InBuffer[i + 2], m_InBuffer[i + 3],
-                                            m_InBuffer[i + 4], m_InBuffer[i + 5], m_InBuffer[i + 6], m_InBuffer[i + 7],
-                                            m_InBuffer[i + 8], m_InBuffer[i + 9], m_InBuffer[i + 10], m_InBuffer[i + 11],
-                                            m_InBuffer[i + 12], m_InBuffer[i + 13], m_InBuffer[i + 14], m_InBuffer[i + 15]);
-                        }
+                        CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                                        i,
+                                        m_InBuffer[i], m_InBuffer[i + 1], m_InBuffer[i + 2], m_InBuffer[i + 3],
+                                        m_InBuffer[i + 4], m_InBuffer[i + 5], m_InBuffer[i + 6], m_InBuffer[i + 7],
+                                        m_InBuffer[i + 8], m_InBuffer[i + 9], m_InBuffer[i + 10], m_InBuffer[i + 11],
+                                        m_InBuffer[i + 12], m_InBuffer[i + 13], m_InBuffer[i + 14], m_InBuffer[i + 15]);
                     }
+                    CDROM_DEBUG_LOG("UpdateRead", "  Total processed: %u bytes for host", total_copied);
+                    CDROM_DEBUG_LOG("UpdateRead", "  Next LBA: %u, remaining blocks: %u", 
+                                   m_nblock_address, m_nnumber_blocks);
                 }
 
                 uintptr_t buffer_start = (uintptr_t)m_InBuffer;
@@ -4256,9 +4629,7 @@ void CUSBCDGadget::Update()
                 }
 
                 DataSyncBarrier();
-                // SINGLE LOG: Only log completion if debug enabled
-                CDROM_DEBUG_LOG("UpdateRead", "Transferred %u bytes, next_LBA=%u, remaining=%u",
-                                total_copied, m_nblock_address, m_nnumber_blocks);
+                
                 // If subchannel data was requested via READ CD command, append it
                 if (mcs != 0 && m_pDevice->HasSubchannelData())
                 {
@@ -4272,30 +4643,31 @@ void CUSBCDGadget::Update()
                         // Append subchannel data for each sector we just read
                         for (u32 i = 0; i < blocks_to_read_in_batch; i++)
                         {
-                            u32 current_lba = m_nblock_address - blocks_to_read_in_batch + i;
+                            u32 lba_for_subchan = current_reading_lba + i;
                             u8 subchannel_buf[96];
 
-                            int sc_result = m_pDevice->ReadSubchannel(current_lba, subchannel_buf);
+                            int sc_result = m_pDevice->ReadSubchannel(lba_for_subchan, subchannel_buf);
 
                             if (sc_result == 96)
                             {
                                 // Copy subchannel data after this sector's main data
-                                u32 offset = total_copied + (i * 96);
-                                memcpy(m_InBuffer + offset, subchannel_buf, 96);
+                                u32 offset_in_buffer = total_copied + (i * 96);
+                                memcpy(m_InBuffer + offset_in_buffer, subchannel_buf, 96);
                                 total_copied += 96;
                             }
                             else
                             {
                                 // If subchannel read fails, zero-fill
                                 CDROM_DEBUG_LOG("UpdateRead", "Subchannel read failed for LBA %u, zero-filling",
-                                                current_lba);
-                                u32 offset = total_copied + (i * 96);
-                                memset(m_InBuffer + offset, 0, 96);
+                                                lba_for_subchan);
+                                u32 offset_in_buffer = total_copied + (i * 96);
+                                memset(m_InBuffer + offset_in_buffer, 0, 96);
                                 total_copied += 96;
                             }
                         }
                     }
                 }
+                
                 // Begin USB transfer
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                            m_InBuffer, total_copied);
@@ -4347,64 +4719,6 @@ void CUSBCDGadget::Update()
         m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
         break;
     }
-
-        /*
-                case TCDState::DataOutWrite:
-                        {
-                                //process block from host
-                                assert(m_nnumber_blocks>0);
-                                u64 offset=0;
-                                int writeCount=0;
-                                if(m_CDReady)
-                                {
-                                        offset=m_pDevice->Seek(BLOCK_SIZE*m_nblock_address);
-                                        if(offset!=(u64)(-1))
-                                        {
-                                                writeCount=m_pDevice->Write(m_OutBuffer,BLOCK_SIZE);
-                                        }
-                                        if(writeCount>0)
-                                        {
-                                                if(writeCount<BLOCK_SIZE)
-                                                {
-                                                        MLOGERR("UpdateWrite","writeCount = %u ",writeCount);
-                                                        m_CSW.bmCSWStatus=CD_CSW_STATUS_FAIL;
-                                                        m_ReqSenseReply.bSenseKey = 0x2;
-                                                        m_ReqSenseReply.bAddlSenseCode = 0x1;
-                                                        SendCSW();
-                                                        break;
-                                                }
-                                                m_nnumber_blocks--;
-                                                m_nblock_address++;
-                                                if(m_nnumber_blocks==0)  //done receiving data from host
-                                                {
-                                                        SendCSW();
-                                                        break;
-                                                }
-                                        }
-                                }
-                                if(!m_CDReady || offset==(u64)(-1) || writeCount<=0)
-                                {
-                                        MLOGERR("UpdateWrite","failed, %s, offset=%i, writeCount=%i",
-                                                m_CDReady?"ready":"not ready",offset,writeCount);
-                                        m_CSW.bmCSWStatus=CD_CSW_STATUS_FAIL;
-                                        m_ReqSenseReply.bSenseKey = 2;
-                                        m_ReqSenseReply.bAddlSenseCode = 1;
-                                        SendCSW();
-                                        break;
-                                }
-                                else
-                                {
-                                        if(m_nnumber_blocks>0)  //get next block
-                                        {
-                                                m_pEP[EPOut]->BeginTransfer(
-                                                        CUSBCDGadgetEndpoint::TransferDataOut,
-                                                        m_OutBuffer,512);
-                                                m_nState=TCDState::DataOut;
-                                        }
-                                }
-                                break;
-                        }
-        */
 
     default:
         break;
