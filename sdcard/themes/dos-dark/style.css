@@ -110,7 +110,32 @@ p {
 	margin-bottom: 16px;
 }
 .pagination {
-	margin: 16px 0px;
+	margin-top: 16px;
+}
+.pagination a, .pagination span {
+	background-color: #333;
+	font-size: 16px;
+	display: inline-block;
+	border: none;
+	padding: 0 9px;
+	margin-bottom: 16px;
+	height: 16px;
+	margin-right: 9px;
+}
+.pagination a {
+    color: #111111;
+    background-color: #ddd;
+    text-decoration: none !important;
+}
+.pagination a, .pagination span {
+	* display: inline;
+	* zoom: 1; 
+	* width: auto;
+}
+.pagination a:hover {
+	* display: inline;
+	* zoom: 1; 
+	* width: auto;
 }
 .message, .info-box {
 	padding: 16px 18px;
@@ -159,6 +184,7 @@ p {
     border: 2px solid #ddd;
 }
 .file {
+	padding: 5px 9px;
 	background-color: #222;
 }
 .file:nth-child(even){
