@@ -459,11 +459,11 @@ int CUSBCDGadget::GetBlocksizeForTrack(CUETrackInfo trackInfo)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::GetBlocksizeForTrack", "Called with mode=%d, target=%s", trackInfo.track_mode, m_USBTargetOS);
     // FORCE RAW MODE for compatibility with .bin files that include headers when targeting macOS
-    if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
-    {
-        CDROM_DEBUG_LOG("CUSBCDGadget::GetBlocksizeForTrack", "FORCE RAW MODE (2352) for Apple target OS");
-        return 2352;
-    }
+    // if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
+    // {
+    //     CDROM_DEBUG_LOG("CUSBCDGadget::GetBlocksizeForTrack", "FORCE RAW MODE (2352) for Apple target OS");
+    //     return 2352;
+    // }
 
     switch (trackInfo.track_mode)
     {
@@ -495,11 +495,11 @@ int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "Called with mode=%d, target=%s", trackInfo.track_mode, m_USBTargetOS);
 
-    if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
-    {
-        CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "FORCE RAW MODE for Apple target OS");
-        return 16;
-    }
+    // if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
+    // {
+    //     CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "FORCE RAW MODE for Apple target OS");
+    //     return 16;
+    // }
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
