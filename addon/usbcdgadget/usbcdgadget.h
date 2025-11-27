@@ -701,7 +701,7 @@ private:
     void clearSenseData();
     void sendCheckCondition();
     void sendGoodStatus();
-
+    char m_USBTargetOS[16];
     // ========================================================================
     // CD-ROM Specific Command Handlers (BlueSCSI-inspired)
     // ========================================================================

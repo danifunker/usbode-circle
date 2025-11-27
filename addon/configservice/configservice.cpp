@@ -53,6 +53,16 @@ void ConfigService::SetSoundDev(const char* value)
     m_cmdline->SetValue("sounddev", value);
 }
 
+const char* ConfigService::GetUSBTargetOS(const char* defaultValue)
+{
+    return m_config->GetString("usbtargetos", defaultValue);
+}
+
+void ConfigService::SetUSBTargetOS(const char* value)
+{
+    m_config->SetString("usbtargetos", value);
+}
+
 const char* ConfigService::GetSoundDev(const char* defaultValue)
 {
     const char* val = m_cmdline->GetValue("sounddev");
@@ -71,7 +81,25 @@ const char* ConfigService::GetCurrentImage(const char* defaultValue)
     return m_config->GetString("current_image", defaultValue);
 }
 
+u16 ConfigService::GetUSBCDRomVendorId(u16 defaultValue)
+{
+    return (u16)m_config->GetNumber("usbcdrom_vid", defaultValue);
+}
 
+u16 ConfigService::GetUSBCDRomProductId(u16 defaultValue)
+{
+    return (u16)m_config->GetNumber("usbcdrom_pid", defaultValue);
+}
+
+void ConfigService::SetUSBCDRomVendorId(u16 value)
+{
+    m_config->SetNumber("usbcdrom_vid", value);
+}
+
+void ConfigService::SetUSBCDRomProductId(u16 value)
+{
+    m_config->SetNumber("usbcdrom_pid", value);
+}
 
 unsigned ConfigService::GetDefaultVolume(unsigned defaultValue)
 {
