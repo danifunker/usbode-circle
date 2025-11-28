@@ -92,6 +92,7 @@ class CUEParser {
     // Initialize the class to parse data from string.
     // The string must remain valid for the lifetime of this object.
     CUEParser(const char *cue_sheet);
+    const CUETrackInfo* get_track_for_lba(uint32_t lba);
 
     // Restart parsing from beginning of file
     void restart();

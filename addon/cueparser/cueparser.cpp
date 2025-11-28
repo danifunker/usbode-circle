@@ -58,6 +58,54 @@ const CUETrackInfo *CUEParser::next_track() {
     return next_track(0);
 }
 
+const CUETrackInfo* CUEParser::get_track_for_lba(uint32_t lba) {
+    restart();
+    
+    const CUETrackInfo* current = nullptr;
+    const CUETrackInfo* best_match = nullptr;
+
+    // Iterate through ALL tracks
+    while ((current = next_track()) != nullptr)
+    {
+        // If the track starts before or at the requested LBA, it's a candidate
+        if (lba >= current->data_start)
+        {
+            // Since tracks are sequential, the LATEST candidate is the correct one.
+            // We can't save the pointer 'current' because next_track() overwrites it.
+            // We must save the INDEX.
+        }
+        else 
+        {
+            // We went past the LBA. The *previous* track was the one.
+            break;
+        }
+    }
+    
+    restart();
+    int target_idx = -1;
+    int idx = 0;
+    
+    while ((current = next_track()) != nullptr) {
+        if (lba >= current->data_start) {
+            target_idx = idx;
+        } else {
+            break;
+        }
+        idx++;
+    }
+
+    if (target_idx == -1) return nullptr; // Before first track
+
+    // Now fast forward to that index to get the pointer
+    restart();
+    const CUETrackInfo* result = nullptr;
+    for(int i=0; i<=target_idx; i++) {
+        result = next_track();
+    }
+    
+    return result;
+}
+
 const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
     // Previous track info is needed to track file offset
     uint32_t prev_track_start = m_track_info.track_start;
