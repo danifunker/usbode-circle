@@ -52,7 +52,7 @@
 
 #define DEFAULT_BLOCKS 16000
 
-const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
+TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
     {
         sizeof(TUSBDeviceDescriptor),
         DESCRIPTOR_DEVICE,
@@ -156,14 +156,17 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "USBODE00001"                // Template Serial Number (index 3) - will be replaced with hardware serial
 };
 
-CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice) : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
+CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, 
+                           IImageDevice *pDevice, u16 usVendorId, u16 usProductId) 
+                           : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
                                                                                                              m_pDevice(pDevice),
                                                                                                              m_pEP{nullptr, nullptr, nullptr}
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
              "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
-
+    s_DeviceDescriptor.idVendor = usVendorId;
+    s_DeviceDescriptor.idProduct = usProductId;
     // Fetch hardware serial number for unique USB device identification
     CBcmPropertyTags Tags;
     TPropertyTagSerial Serial;
@@ -249,9 +252,6 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         {
             // Use runtime VID/PID from base class members
             static TUSBDeviceDescriptor DeviceDesc = s_DeviceDescriptor;
-            DeviceDesc.idVendor = GetVendorId();
-            DeviceDesc.idProduct = GetProductId();
-
             *pLength = sizeof DeviceDesc;
             return &DeviceDesc;
         }
@@ -275,7 +275,7 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         }
         else if (uchDescIndex < 4)
         { // We have 4 string descriptors (0-3)
-            const char *desc_name = "";
+            
             switch (uchDescIndex)
             {
             case 1:
@@ -300,38 +300,6 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
     }
 
     return nullptr;
-}
-
-void CUSBCDGadget::ConfigureUSBIds(bool bClassicMacMode, u16 usUserVID, u16 usUserPID)
-{
-    u16 vendorId, productId;
-
-    if (usUserVID != 0 && usUserPID != 0)
-    {
-        // User-configured mode takes priority
-        vendorId = usUserVID;
-        productId = usUserPID;
-        MLOGNOTE("USBCDGadget", "Using user-configured USB IDs: VID=0x%04x PID=0x%04x",
-                 vendorId, productId);
-    }
-    else if (bClassicMacMode)
-    {
-        // Classic Mac OS mode - use Apple CD-ROM drive IDs
-        vendorId = 0x05AC;  // Apple Inc.
-        productId = 0x1500; // Generic Apple CD-ROM (adjust as needed)
-        MLOGNOTE("USBCDGadget", "Using Classic Mac OS mode USB IDs: VID=0x%04x PID=0x%04x",
-                 vendorId, productId);
-    }
-    else
-    {
-        // Default mode
-        vendorId = USB_GADGET_VENDOR_ID;
-        productId = USB_GADGET_DEVICE_ID_CD;
-        MLOGNOTE("USBCDGadget", "Using default USB IDs: VID=0x%04x PID=0x%04x",
-                 vendorId, productId);
-    }
-
-    SetUSBIds(vendorId, productId);
 }
 
 void CUSBCDGadget::AddEndpoints(void)
@@ -467,20 +435,21 @@ int CUSBCDGadget::GetBlocksizeForTrack(CUETrackInfo trackInfo)
 
     switch (trackInfo.track_mode)
     {
+    case CUETrack_MODE1_2048:
+        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE1_2048");
+        return 2048;
     case CUETrack_MODE1_2352:
+        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE1_2352");
         return 2352;
-    case CUETrack_MODE2_2336:
-        return 2336;
     case CUETrack_MODE2_2352:
-        return 2352;
-    case CUETrack_CDI_2336:
-        return 2336;
-    case CUETrack_CDI_2352:
+        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE2_2352");
         return 2352;
     case CUETrack_AUDIO:
+        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_AUDIO");
         return 2352;
     default:
-        return 2048;
+        MLOGERR("CUSBCDGadget::GetBlocksizeForTrack", "Track mode %d not handled", trackInfo.track_mode);
+        return 0;
     }
 }
 
@@ -493,13 +462,6 @@ int CUSBCDGadget::GetSkipbytes()
 
 int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
 {
-    CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "Called with mode=%d, target=%s", trackInfo.track_mode, m_USBTargetOS);
-
-    // if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
-    // {
-    //     CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "FORCE RAW MODE for Apple target OS");
-    //     return 16;
-    // }
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
@@ -590,20 +552,10 @@ void CUSBCDGadget::FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool
 // Helper function for Raw TOC entry formatting
 void CUSBCDGadget::FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD)
 {
-    uint8_t control_adr = 0x14; // Digital track (default)
+    uint8_t control_adr = 0x14; // Digital track
 
-    // For non-leadout tracks, query the device for accurate track type
-    if (track->track_number != 0xAA && m_pDevice != nullptr)
+    if (track->track_mode == CUETrack_AUDIO)
     {
-        // Use device's IsAudioTrack() method for accurate detection
-        if (m_pDevice->IsAudioTrack(track->track_number))
-        {
-            control_adr = 0x10; // Audio track
-        }
-    }
-    else if (track->track_mode == CUETrack_AUDIO)
-    {
-        // Fallback to CUE parser for leadout or when device unavailable
         control_adr = 0x10; // Audio track
     }
 
@@ -844,9 +796,6 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
     // Update A0, A1, A2 descriptors
     m_InBuffer[12] = firsttrack;
     m_InBuffer[23] = lasttrack.track_number;
-    // Update the header with the first and last track numbers
-    m_InBuffer[2] = firsttrack;
-    m_InBuffer[3] = lasttrack.track_number;
 
     CDROM_DEBUG_LOG("DoReadFullTOC", "Header: First=%d, Last=%d. A0: First=%d, A1: Last=%d",
                     firsttrack, lasttrack.track_number, firsttrack, lasttrack.track_number);
@@ -1967,7 +1916,7 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-    case 0x28: // Read (10)
+case 0x28: // Read (10)
     {
         if (m_CDReady)
         {
@@ -3885,6 +3834,44 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
+    case 0xBD: // MECHANISM STATUS
+    {
+        u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+
+        struct MechanismStatus
+        {
+            u8 fault : 1;           // bit 0
+            u8 changer_state : 2;   // bits 2-1
+            u8 current_slot : 5;    // bits 7-3
+            u8 mechanism_state : 5; // bits 4-0 of byte 1
+            u8 door_open : 1;       // bit 4 of byte 1
+            u8 reserved1 : 2;       // bits 7-6
+            u8 current_lba[3];      // bytes 2-4 (24-bit LBA)
+            u8 num_slots;           // byte 5
+            u16 slot_table_length;  // bytes 6-7
+        } PACKED;
+
+        MechanismStatus status = {0};
+        status.fault = 0;
+        status.changer_state = 0;      // No changer
+        status.current_slot = 0;       // Slot 0
+        status.mechanism_state = 0x00; // Idle
+        status.door_open = 0;          // Door closed (tray loaded)
+        status.num_slots = 1;          // Single slot device
+        status.slot_table_length = 0;  // No slot table
+
+        int length = sizeof(MechanismStatus);
+        if (allocationLength < length)
+            length = allocationLength;
+
+        memcpy(m_InBuffer, &status, length);
+        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                                   m_InBuffer, length);
+        m_nState = TCDState::DataIn;
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+        break;
+    }    
+
         // SCSI TOOLBOX
     case 0xD9: // LIST DEVICES
     {
@@ -4040,8 +4027,6 @@ void CUSBCDGadget::Update()
                 CDROM_DEBUG_LOG("UpdateRead", "Truncating remaining blocks from %u to %u",
                          old_count, m_nnumber_blocks);
             }
-
-            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
 
             // Single seek operation (no logging in hot path)
             offset = m_pDevice->Seek(block_size * m_nblock_address);
@@ -4310,44 +4295,6 @@ void CUSBCDGadget::Update()
         }
         break;
     }
-    case 0xBD: // MECHANISM STATUS
-    {
-        u16 allocationLength = (m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
-
-        struct MechanismStatus
-        {
-            u8 fault : 1;           // bit 0
-            u8 changer_state : 2;   // bits 2-1
-            u8 current_slot : 5;    // bits 7-3
-            u8 mechanism_state : 5; // bits 4-0 of byte 1
-            u8 door_open : 1;       // bit 4 of byte 1
-            u8 reserved1 : 2;       // bits 7-6
-            u8 current_lba[3];      // bytes 2-4 (24-bit LBA)
-            u8 num_slots;           // byte 5
-            u16 slot_table_length;  // bytes 6-7
-        } PACKED;
-
-        MechanismStatus status = {0};
-        status.fault = 0;
-        status.changer_state = 0;      // No changer
-        status.current_slot = 0;       // Slot 0
-        status.mechanism_state = 0x00; // Idle
-        status.door_open = 0;          // Door closed (tray loaded)
-        status.num_slots = 1;          // Single slot device
-        status.slot_table_length = 0;  // No slot table
-
-        int length = sizeof(MechanismStatus);
-        if (allocationLength < length)
-            length = allocationLength;
-
-        memcpy(m_InBuffer, &status, length);
-        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                   m_InBuffer, length);
-        m_nState = TCDState::DataIn;
-        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-        break;
-    }
-
         /*
                 case TCDState::DataOutWrite:
                         {

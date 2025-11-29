@@ -640,10 +640,16 @@ class CUSBCDGadget : public CDWUSBGadget
 {
 public:
     /// \param pInterruptSystem Pointer to the interrupt system object
+    /// \param isFullSpeed True for USB 1.1 Full Speed, false for USB 2.0 High Speed
     /// \param pDevice Pointer to the block device, to be controlled by this gadget
+    /// \param usVendorId USB Vendor ID (defaults to USB_GADGET_VENDOR_ID)
+    /// \param usProductId USB Product ID (defaults to USB_GADGET_DEVICE_ID_CD)
     /// \note pDevice must be initialized yet, when it is specified here.
     /// \note SetDevice() has to be called later, when pDevice is not specified here.
-    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, IImageDevice *pDevice = nullptr);
+    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, 
+                 IImageDevice *pDevice = nullptr,
+                 u16 usVendorId = USB_GADGET_VENDOR_ID,
+                 u16 usProductId = USB_GADGET_DEVICE_ID_CD);
 
     ~CUSBCDGadget(void);
 
@@ -659,7 +665,6 @@ public:
     // void SetDeviceBlocks(u64 nBlocks);
     /// \return Capacity of the block device in number of blocks (a 512 bytes)
     // u64 GetBlocks (void) const;
-    void ConfigureUSBIds(bool bClassicMacMode, u16 usUserVID = 0, u16 usUserPID = 0);
 
 protected:
     // ========================================================================
@@ -817,7 +822,7 @@ private:
     // Static Configuration Data
     // ========================================================================
 
-    static const TUSBDeviceDescriptor s_DeviceDescriptor;
+    static TUSBDeviceDescriptor s_DeviceDescriptor;
     static const char *const s_StringDescriptorTemplate[];
 
     /// \brief USB configuration descriptor with interface and endpoints
@@ -1112,7 +1117,7 @@ private:
     u32 m_nblock_address;
     u32 m_nnumber_blocks;
     u32 m_nbyteCount;
-
+    const char *desc_name = "";
     u8 bmCSWStatus = 0;
     SenseParameters m_SenseParams; // Current sense data
 

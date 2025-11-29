@@ -74,10 +74,17 @@ boolean CDROMService::Initialize()
 {
     LOGNOTE("CDROM Initializing");
     CInterruptSystem *m_Interrupt = CInterruptSystem::Get();
-    m_CDGadget = new CUSBCDGadget(m_Interrupt, CKernelOptions::Get()->GetUSBFullSpeed());
-    // Configure VID/PID before initializing
-    m_CDGadget->ConfigureUSBIds(false, m_vid, m_pid);
-    LOGNOTE("Configured USB CD gadget VID: %04x PID: %04x", m_vid, m_pid);
+    
+    // Pass VID/PID directly to constructor - no separate config step needed
+    m_CDGadget = new CUSBCDGadget(
+        m_Interrupt, 
+        CKernelOptions::Get()->GetUSBFullSpeed(),
+        nullptr,  // pDevice - will be set later via SetDevice()
+        m_vid,    // USB Vendor ID
+        m_pid     // USB Product ID
+    );
+    
+    LOGNOTE("Created USB CD gadget with VID: 0x%04x PID: 0x%04x", m_vid, m_pid);
     return true;
 }
 
