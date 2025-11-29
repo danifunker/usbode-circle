@@ -11,8 +11,8 @@
 LOGMODULE("CMDSFileDevice");
 
 CMDSFileDevice::CMDSFileDevice(const char* mds_filename, char *mds_str, MEDIA_TYPE mediaType) :
-    m_mds_filename(mds_filename),
     m_mds_str(mds_str),
+    m_mds_filename(mds_filename),
     m_mediaType(mediaType)
 {
 }

@@ -628,7 +628,6 @@ void CUSBMMSDGadget::Update()
 	case TMMSDState::DataInRead:
 		{
 			u64 offset=0;
-			int readCount=0;
 
 			if (m_MMSDReady) {
 				// TODO: Try to avoid seek
