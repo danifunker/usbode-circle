@@ -437,20 +437,21 @@ int CUSBCDGadget::GetBlocksizeForTrack(CUETrackInfo trackInfo)
 
     switch (trackInfo.track_mode)
     {
+    case CUETrack_MODE1_2048:
+        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE1_2048");
+        return 2048;
     case CUETrack_MODE1_2352:
+        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE1_2352");
         return 2352;
-    case CUETrack_MODE2_2336:
-        return 2336;
     case CUETrack_MODE2_2352:
-        return 2352;
-    case CUETrack_CDI_2336:
-        return 2336;
-    case CUETrack_CDI_2352:
+        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_MODE2_2352");
         return 2352;
     case CUETrack_AUDIO:
+        MLOGNOTE("CUSBCDGadget::GetBlocksizeForTrack", "CUETrack_AUDIO");
         return 2352;
     default:
-        return 2048;
+        MLOGERR("CUSBCDGadget::GetBlocksizeForTrack", "Track mode %d not handled", trackInfo.track_mode);
+        return 0;
     }
 }
 
@@ -463,13 +464,6 @@ int CUSBCDGadget::GetSkipbytes()
 
 int CUSBCDGadget::GetSkipbytesForTrack(CUETrackInfo trackInfo)
 {
-    CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "Called with mode=%d, target=%s", trackInfo.track_mode, m_USBTargetOS);
-
-    // if (strcmp(m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
-    // {
-    //     CDROM_DEBUG_LOG("CUSBCDGadget::GetSkipbytesForTrack", "FORCE RAW MODE for Apple target OS");
-    //     return 16;
-    // }
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
@@ -560,20 +554,10 @@ void CUSBCDGadget::FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool
 // Helper function for Raw TOC entry formatting
 void CUSBCDGadget::FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD)
 {
-    uint8_t control_adr = 0x14; // Digital track (default)
+    uint8_t control_adr = 0x14; // Digital track
 
-    // For non-leadout tracks, query the device for accurate track type
-    if (track->track_number != 0xAA && m_pDevice != nullptr)
+    if (track->track_mode == CUETrack_AUDIO)
     {
-        // Use device's IsAudioTrack() method for accurate detection
-        if (m_pDevice->IsAudioTrack(track->track_number))
-        {
-            control_adr = 0x10; // Audio track
-        }
-    }
-    else if (track->track_mode == CUETrack_AUDIO)
-    {
-        // Fallback to CUE parser for leadout or when device unavailable
         control_adr = 0x10; // Audio track
     }
 
@@ -814,9 +798,6 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
     // Update A0, A1, A2 descriptors
     m_InBuffer[12] = firsttrack;
     m_InBuffer[23] = lasttrack.track_number;
-    // Update the header with the first and last track numbers
-    m_InBuffer[2] = firsttrack;
-    m_InBuffer[3] = lasttrack.track_number;
 
     CDROM_DEBUG_LOG("DoReadFullTOC", "Header: First=%d, Last=%d. A0: First=%d, A1: Last=%d",
                     firsttrack, lasttrack.track_number, firsttrack, lasttrack.track_number);
@@ -1937,7 +1918,7 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-    case 0x28: // Read (10)
+case 0x28: // Read (10)
     {
         if (m_CDReady)
         {
@@ -4048,6 +4029,10 @@ void CUSBCDGadget::Update()
                 CDROM_DEBUG_LOG("UpdateRead", "Truncating remaining blocks from %u to %u",
                          old_count, m_nnumber_blocks);
             }
+
+            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+            bool isAudioTrack = (trackInfo.track_number != -1 &&
+                                 trackInfo.track_mode == CUETrack_AUDIO);
 
             // Single seek operation (no logging in hot path)
             offset = m_pDevice->Seek(block_size * m_nblock_address);
