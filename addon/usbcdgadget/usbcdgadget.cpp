@@ -3212,14 +3212,26 @@ case 0x47: // PLAY AUDIO MSF
         u32 start_lba = msf_to_lba(SM, SS, SF);
         u32 end_lba = msf_to_lba(EM, ES, EF);
         int num_blocks = end_lba - start_lba;
+        
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO MSF. Start MSF %d:%d:%d, End MSF: %d:%d:%d, start LBA %u, end LBA %u", SM, SS, SF, EM, ES, EF, start_lba, end_lba);
+
+        // Check boundaries
+        if (start_lba >= GetMaxLBA()) {
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "LBA out of range");
+            m_SenseParams.bSenseKey = 0x05;
+            m_SenseParams.bAddlSenseCode = 0x21; // LOGICAL BLOCK ADDRESS OUT OF RANGE
+            m_SenseParams.bAddlSenseCodeQual = 0x00;
+            bmCSWStatus = CD_CSW_STATUS_FAIL;
+            m_CSW.bmCSWStatus = bmCSWStatus;
+            SendCSW();
+            break;
+        }
 
         CUETrackInfo trackInfo = GetTrackInfoForLBA(start_lba);
         
-        // 1. Normal Audio Playback
+        // 1. Normal Audio Playback Request
         if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
         {
-            // Play the audio
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "CD Player found, sending command");
             CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
             if (cdplayer)
@@ -3240,18 +3252,21 @@ case 0x47: // PLAY AUDIO MSF
                     cdplayer->Play(start_lba, num_blocks);
                 }
             }
+            bmCSWStatus = CD_CSW_STATUS_OK;
         }
         // 2. MacOS Data Probe Fix: Fake success if Apple tries to play Data
+        // This prevents the drive from entering a "Busy" state or playing static.
         else if (m_USBTargetOS && strcmp(m_USBTargetOS, "apple") == 0)
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "MacOS Data Play Probe (LBA %u) - Faking Success", start_lba);
+            // Return Good Status, but DO NOT call cdplayer->Play().
             bmCSWStatus = CD_CSW_STATUS_OK;
         }
-        // 3. Invalid Request (Not Audio, Not Apple)
+        // 3. Invalid Request (Not Audio, and Not Apple Data Probe)
         else
         {
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO MSF: Not an audio track");
-            bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
+            bmCSWStatus = CD_CSW_STATUS_FAIL;
             m_SenseParams.bSenseKey = 0x05;
             m_SenseParams.bAddlSenseCode = 0x64; // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
             m_SenseParams.bAddlSenseCodeQual = 0x00;
@@ -4070,14 +4085,11 @@ void CUSBCDGadget::Update()
 {
     switch (m_nState)
     {
-    case TCDState::DataInRead:
+case TCDState::DataInRead:
     {
-        u64 offset = 0;
-        int readCount = 0;
-        
         if (m_CDReady)
         {
-            // 1. Boundary Checks
+            // 1. Boundary Check
             u32 max_lba = GetMaxLBA();
             if (m_nblock_address >= max_lba) {
                 setSenseData(0x05, 0x21, 0x00);
@@ -4085,45 +4097,51 @@ void CUSBCDGadget::Update()
                 return;
             }
 
-            if (m_nblock_address + m_nnumber_blocks > max_lba)
-                m_nnumber_blocks = max_lba - m_nblock_address;
-
-            // 2. SECTOR & STRIDE CALCULATION (The CHD Fix)
-            u32 physical_sector_size = 2048; 
-            u32 file_stride = 2048; // How many bytes to advance per LBA in the file
+            // 2. STRIDE DETECTION (The Critical Fix)
+            // We need to know if the file advances by 2352 (BIN) or 2448 (CHD) bytes per LBA.
+            // We determine this by checking LBA 0 for the Sync Pattern.
+            u32 file_stride = 2352; // Default to BIN
             u32 skip_header = 0;
             
-            const CUETrackInfo* pTrack = cueParser.get_track_for_lba(m_nblock_address);
+            // Check LBA 0 to determine file geometry (Cached logic would be better, but this is safe)
+            unsigned char syncBuf[12];
             
-            if (pTrack && pTrack->sector_length > 0) {
-                physical_sector_size = pTrack->sector_length;
-            } else if (this->block_size > 0) {
-                physical_sector_size = this->block_size; 
-            }
-
-            // --- STRIDE LOGIC ---
-            // Standard BIN: Stride = 2352.
-            // Raw CHD: Stride = 2448 (2352 Data + 96 Subcode).
-            // We detect CHD Stride if 'data_block_size' (set at load) is 2448.
-            if (physical_sector_size == 2352)
-            {
-                if (this->data_block_size == 2448) {
-                    file_stride = 2448; // CHD Raw
+            // Test for 2448 (CHD)
+            // Note: We check LBA 0 because it is GUARANTEED to be Data Mode 1 with a Sync pattern.
+            m_pDevice->Seek(0); 
+            m_pDevice->Read(syncBuf, 12);
+            
+            // Sync Pattern: 00 FF FF FF FF FF FF FF FF FF FF 00
+            bool hasSyncAt0 = (syncBuf[0] == 0x00 && syncBuf[1] == 0xFF && syncBuf[10] == 0xFF && syncBuf[11] == 0x00);
+            
+            if (hasSyncAt0) {
+                // If LBA 0 starts with Sync, we need to check LBA 1 to distinguish 2352 vs 2448
+                m_pDevice->Seek(2448); 
+                m_pDevice->Read(syncBuf, 12);
+                bool hasSyncAt2448 = (syncBuf[0] == 0x00 && syncBuf[1] == 0xFF && syncBuf[10] == 0xFF && syncBuf[11] == 0x00);
+                
+                if (hasSyncAt2448) {
+                    file_stride = 2448; // CHD / Raw+Subcode
                 } else {
                     file_stride = 2352; // Standard BIN
                 }
-                
-                // If sending Cooked Data (2048) from Raw (2352), skip 16-byte header
-                if (this->transfer_block_size == 2048) skip_header = 16;
+            } else {
+                // No Sync at 0? Likely ISO (2048) or weird format. 
+                // Default to 2048 if our transfer size is 2048
+                if (this->transfer_block_size == 2048) file_stride = 2048;
             }
-            else {
-                // ISO / Cooked
-                file_stride = 2048;
+
+            // 3. DETERMINE SKIP
+            // If physical file is Raw (2352 or 2448) but we are sending Data (2048), skip header.
+            if ((file_stride == 2352 || file_stride == 2448) && this->transfer_block_size == 2048) {
+                skip_header = 16;
+            } else {
                 skip_header = 0;
             }
 
-            // 3. SEEK
-            offset = m_pDevice->Seek((u64)file_stride * m_nblock_address);
+            // 4. PERFORM ACTUAL SEEK
+            // Now seek to the target LBA using the detected stride
+            u64 offset = m_pDevice->Seek((u64)file_stride * m_nblock_address);
 
             if (offset != (u64)(-1))
             {
@@ -4149,8 +4167,8 @@ void CUSBCDGadget::Update()
                     bytes_to_send = blocks_batch * this->transfer_block_size;
                 }
 
-                // 4. READ
-                readCount = m_pDevice->Read(m_FileChunk, bytes_to_read);
+                // 5. READ
+                int readCount = m_pDevice->Read(m_FileChunk, bytes_to_read);
 
                 if (readCount <= 0) {
                     setSenseData(0x03, 0x11, 0x00);
@@ -4158,7 +4176,7 @@ void CUSBCDGadget::Update()
                     return;
                 }
 
-                // 5. COPY / TRANSFORM
+                // 6. COPY / TRANSFORM
                 u8 *dest = m_InBuffer;
                 u32 copied = 0;
 
@@ -4174,12 +4192,12 @@ void CUSBCDGadget::Update()
                     copied += this->transfer_block_size;
                 }
 
-                // Update LBA
+                // Update State
                 m_nblock_address += blocks_batch;
                 m_nbyteCount -= copied;
                 m_nState = TCDState::DataIn;
 
-                // 6. CACHE FLUSH
+                // 7. CACHE FLUSH
                 uintptr_t start = (uintptr_t)m_InBuffer;
                 uintptr_t end = start + copied;
                 start &= ~63UL;
@@ -4193,18 +4211,17 @@ void CUSBCDGadget::Update()
                 }
                 DataSyncBarrier();
 
-                // 7. SEND
+                // 8. SEND
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, copied);
             }
-        }
-        
-        if (!m_CDReady || offset == (u64)(-1)) {
-            setSenseData(0x02, 0x04, 0x00);
-            sendCheckCondition();
+            else {
+                 setSenseData(0x02, 0x04, 0x00);
+                 sendCheckCondition();
+            }
         }
         break;
     }
-    // ... (Keep existing cases) ...
-    default: break;
+    default: 
+        break;
     }
 }

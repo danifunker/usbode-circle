@@ -702,6 +702,7 @@ private:
     void sendCheckCondition();
     void sendGoodStatus();
     char m_USBTargetOS[16];
+    u32 GetSectorStride();
     // ========================================================================
     // CD-ROM Specific Command Handlers (BlueSCSI-inspired)
     // ========================================================================
