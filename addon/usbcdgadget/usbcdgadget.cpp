@@ -52,7 +52,7 @@
 
 #define DEFAULT_BLOCKS 16000
 
-const TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
+TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
     {
         sizeof(TUSBDeviceDescriptor),
         DESCRIPTOR_DEVICE,
@@ -158,14 +158,15 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
 
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, 
                            IImageDevice *pDevice, u16 usVendorId, u16 usProductId) 
-                           : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed, usVendorId, usProductId),
+                           : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
                                                                                                              m_pDevice(pDevice),
                                                                                                              m_pEP{nullptr, nullptr, nullptr}
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
              "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
-
+    s_DeviceDescriptor.idVendor = usVendorId;
+    s_DeviceDescriptor.idProduct = usProductId;
     // Fetch hardware serial number for unique USB device identification
     CBcmPropertyTags Tags;
     TPropertyTagSerial Serial;
@@ -251,9 +252,6 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         {
             // Use runtime VID/PID from base class members
             static TUSBDeviceDescriptor DeviceDesc = s_DeviceDescriptor;
-            DeviceDesc.idVendor = GetVendorId();
-            DeviceDesc.idProduct = GetProductId();
-
             *pLength = sizeof DeviceDesc;
             return &DeviceDesc;
         }
@@ -4029,10 +4027,6 @@ void CUSBCDGadget::Update()
                 CDROM_DEBUG_LOG("UpdateRead", "Truncating remaining blocks from %u to %u",
                          old_count, m_nnumber_blocks);
             }
-
-            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-            bool isAudioTrack = (trackInfo.track_number != -1 &&
-                                 trackInfo.track_mode == CUETrack_AUDIO);
 
             // Single seek operation (no logging in hot path)
             offset = m_pDevice->Seek(block_size * m_nblock_address);

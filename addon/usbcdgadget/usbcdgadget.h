@@ -822,7 +822,7 @@ private:
     // Static Configuration Data
     // ========================================================================
 
-    static const TUSBDeviceDescriptor s_DeviceDescriptor;
+    static TUSBDeviceDescriptor s_DeviceDescriptor;
     static const char *const s_StringDescriptorTemplate[];
 
     /// \brief USB configuration descriptor with interface and endpoints
