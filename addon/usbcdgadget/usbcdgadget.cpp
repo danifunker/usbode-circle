@@ -3479,8 +3479,8 @@ case 0x28: // Read (10)
                 // Copy the header & Code Page
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
-
-                break;
+                if (page != 0x3f)
+                    break;
             }
 
             case 0x1c:
@@ -3497,11 +3497,24 @@ case 0x28: // Read (10)
 
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
-
                 if (page != 0x3f)
                     break;
             }
+            case 0x30:
+            {
+                    CDROM_DEBUG_LOG("HandleSCSI", "Mode Sense (10) 0x30 (Apple Vendor)");
+                    ModePage0x30Data codepage;
+                    memset(&codepage, 0, sizeof(codepage));
+                    codepage.pageCodeAndPS = 0x30;
+                    codepage.pageLength = 0x16; // 22 bytes
+                    // String must be exactly "APPLE COMPUTER, INC " (padded to 20 bytes)
+                    memcpy(codepage.appleID, "APPLE COMPUTER, INC ", 20); 
 
+                    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                    length += sizeof(codepage);
+                    
+                    if (page != 0x3f) break;
+            }
             case 0x31:
             {
                 // Page 0x31 - Apple vendor-specific page
@@ -3740,13 +3753,28 @@ case 0x28: // Read (10)
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
 
-                break;
+                if (page != 0x3f) break;
+            }
+            case 0x30:
+            {
+                    CDROM_DEBUG_LOG("HandleSCSI", "Mode Sense (10) 0x30 (Apple Vendor)");
+                    ModePage0x30Data codepage;
+                    memset(&codepage, 0, sizeof(codepage));
+                    codepage.pageCodeAndPS = 0x30;
+                    codepage.pageLength = 0x1C; // 28 bytes
+                    // String must be exactly "APPLE COMPUTER, INC " (padded to 20 bytes)
+                    memcpy(codepage.appleID, "APPLE COMPUTER, INC ", 20); 
+
+                    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                    length += sizeof(codepage);
+                    
+                    if (page != 0x3f) break;
             }
 
             case 0x31:
             {
                 // Page 0x31 - Apple vendor-specific page
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x31 (Apple vendor page)");
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x31 (Apple vendor page)");
 
                 // Return minimal vendor page structure
                 struct VendorPage
@@ -4081,20 +4109,41 @@ void CUSBCDGadget::Update()
                 // Perform read (no logging unless debug enabled)
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
 
-                if (m_bDebugLogging && (m_nblock_address - blocks_to_read_in_batch) == 1)
+                if (m_bDebugLogging)
                 {
-                    CDROM_DEBUG_LOG("UpdateRead", "=== RAW FILE DATA for LBA 1 (first 64 bytes from file) ===");
-                    for (int i = 0; i < 64 && i < readCount; i += 16)
+                    // --- CORRECTION START ---
+                    // Since we haven't incremented m_nblock_address yet, it points to the START of this batch.
+                    u32 start_lba = m_nblock_address;
+                    u32 end_lba = m_nblock_address + blocks_to_read_in_batch;
+                    // ------------------------
+
+                    u32 target_lbas[] = {0, 1, 16};
+
+                    for (u32 target : target_lbas)
                     {
-                        CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                                        i,
-                                        m_FileChunk[i], m_FileChunk[i + 1], m_FileChunk[i + 2], m_FileChunk[i + 3],
-                                        m_FileChunk[i + 4], m_FileChunk[i + 5], m_FileChunk[i + 6], m_FileChunk[i + 7],
-                                        m_FileChunk[i + 8], m_FileChunk[i + 9], m_FileChunk[i + 10], m_FileChunk[i + 11],
-                                        m_FileChunk[i + 12], m_FileChunk[i + 13], m_FileChunk[i + 14], m_FileChunk[i + 15]);
+                        if (target >= start_lba && target < end_lba)
+                        {
+                            u32 relative_lba_index = target - start_lba;
+                            u32 sector_start_offset = relative_lba_index * block_size;
+                            u32 user_data_offset = sector_start_offset + skip_bytes; // Skip 16-byte header
+
+                            if (user_data_offset + 64 <= (u32)readCount)
+                            {
+                                CDROM_DEBUG_LOG("UpdateRead", "=== RAW USER DATA for LBA %u (first 64 bytes) ===", target);
+                                for (int i = 0; i < 64; i += 16)
+                                {
+                                    u8 *p = m_FileChunk + user_data_offset;
+                                    CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                                                    i,
+                                                    p[i + 0], p[i + 1], p[i + 2], p[i + 3],
+                                                    p[i + 4], p[i + 5], p[i + 6], p[i + 7],
+                                                    p[i + 8], p[i + 9], p[i + 10], p[i + 11],
+                                                    p[i + 12], p[i + 13], p[i + 14], p[i + 15]);
+                                }
+                            }
+                        }
                     }
                 }
-
                 // Check for complete read failure (0 bytes or negative)
                 if (readCount <= 0)
                 {
