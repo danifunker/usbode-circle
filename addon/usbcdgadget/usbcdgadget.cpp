@@ -156,11 +156,11 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
         "USBODE00001"                // Template Serial Number (index 3) - will be replaced with hardware serial
 };
 
-CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, 
-                           IImageDevice *pDevice, u16 usVendorId, u16 usProductId) 
-                           : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
-                                                                                                             m_pDevice(pDevice),
-                                                                                                             m_pEP{nullptr, nullptr, nullptr}
+CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed,
+                           IImageDevice *pDevice, u16 usVendorId, u16 usProductId)
+    : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
+      m_pDevice(pDevice),
+      m_pEP{nullptr, nullptr, nullptr}
 {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
              "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
@@ -218,18 +218,18 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
     if (pDevice)
     {
         CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget",
-                 "Constructor calling SetDevice()...");
+                        "Constructor calling SetDevice()...");
 
         SetDevice(pDevice);
     }
     else
     {
         CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget",
-                 "Constructor: No initial device provided");
+                        "Constructor: No initial device provided");
     }
     CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget",
-             "=== CONSTRUCTOR EXIT === m_CDReady=%d, mediaState=%d",
-             m_CDReady, (int)m_mediaState);
+                    "=== CONSTRUCTOR EXIT === m_CDReady=%d, mediaState=%d",
+                    m_CDReady, (int)m_mediaState);
 }
 
 CUSBCDGadget::~CUSBCDGadget(void)
@@ -275,7 +275,7 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         }
         else if (uchDescIndex < 4)
         { // We have 4 string descriptors (0-3)
-            
+
             switch (uchDescIndex)
             {
             case 1:
@@ -392,13 +392,13 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         discChanged = true;
         CTimer::Get()->MsDelay(100);
         CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
-                 "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
+                        "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
     }
     else
     {
         // Initial load - leave NOT READY, OnActivate will handle it
         CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
-                 "Initial load: Deferring media ready state to OnActivate()");
+                        "Initial load: Deferring media ready state to OnActivate()");
     }
 
     // Log disc boundaries for debugging
@@ -407,13 +407,13 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     int first_track_blocksize = GetBlocksizeForTrack(first_track);
 
     CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
-             "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
-             max_lba, first_track.track_mode, first_track_blocksize);
+                    "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
+                    max_lba, first_track.track_mode, first_track_blocksize);
 
     CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
-             "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
-             m_CDReady, (int)m_mediaState,
-             m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+                    "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
+                    m_CDReady, (int)m_mediaState,
+                    m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 }
 
 int CUSBCDGadget::GetBlocksize()
@@ -755,15 +755,26 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
         return;
     }
 
-    // Base full TOC structure with A0/A1/A2 descriptors
-    uint8_t fullTOCBase[37] = {
-        0x00, 0x2E, 0x01, 0x01,
-        0x01, 0x14, 0x00, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-        0x01, 0x14, 0x00, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-        0x01, 0x14, 0x00, 0xA2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    bool isApple = (strcmp(m_USBTargetOS, "apple") == 0);
 
-    uint32_t len = sizeof(fullTOCBase);
+    // Base full TOC structure with A0/A1/A2 (and optional B0 for Apple)
+    // A0-A2 are standard. B0 is "Start of Next Session", required by Mac OS 9.
+    uint8_t fullTOCBase[48] = {
+        0x00, 0x2E, 0x01, 0x01,                                           // Header
+        0x01, 0x14, 0x00, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, // A0
+        0x01, 0x14, 0x00, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, // A1
+        0x01, 0x14, 0x00, 0xA2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // A2
+        0x01, 0x14, 0x00, 0xB0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // B0 (Optional)
+    };
+
+    // Set base length: 37 bytes (Standard) or 48 bytes (Apple/B0 included)
+    uint32_t len = isApple ? 48 : 37;
     memcpy(m_InBuffer, fullTOCBase, len);
+
+    if (isApple)
+    {
+        CDROM_DEBUG_LOG("DoReadFullTOC", "Apple Mode: Including B0 descriptor");
+    }
 
     // Find first and last tracks
     int firsttrack = -1;
@@ -793,7 +804,7 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
         len += 11;
     }
 
-    // Update A0, A1, A2 descriptors
+    // Update A0, A1 descriptors
     m_InBuffer[12] = firsttrack;
     m_InBuffer[23] = lasttrack.track_number;
 
@@ -804,21 +815,34 @@ void CUSBCDGadget::DoReadFullTOC(uint8_t session, uint16_t allocationLength, boo
     {
         m_InBuffer[16] = 0x10; // A1 control
         m_InBuffer[27] = 0x10; // A2 control
+        if (isApple)
+        {
+            m_InBuffer[38] = 0x10; // B0 control (matches A2/Last Track)
+        }
     }
 
     // A2: Leadout position
     u32 leadoutLBA = GetLeadoutLBA();
     CDROM_DEBUG_LOG("DoReadFullTOC", "A2: Lead-out LBA=%u", leadoutLBA);
 
+    // Populate A2 (and B0 if Apple)
     if (useBCD)
     {
-        LBA2MSFBCD(leadoutLBA, &m_InBuffer[34], false);
+        LBA2MSFBCD(leadoutLBA, &m_InBuffer[34], false); // A2 Time
+        if (isApple)
+        {
+            LBA2MSFBCD(leadoutLBA, &m_InBuffer[45], false); // B0 Time
+        }
         CDROM_DEBUG_LOG("DoReadFullTOC", "A2 MSF (BCD): %02x:%02x:%02x",
                         m_InBuffer[34], m_InBuffer[35], m_InBuffer[36]);
     }
     else
     {
-        LBA2MSF(leadoutLBA, &m_InBuffer[34], false);
+        LBA2MSF(leadoutLBA, &m_InBuffer[34], false); // A2 Time
+        if (isApple)
+        {
+            LBA2MSF(leadoutLBA, &m_InBuffer[45], false); // B0 Time
+        }
         CDROM_DEBUG_LOG("DoReadFullTOC", "A2 MSF: %02x:%02x:%02x",
                         m_InBuffer[34], m_InBuffer[35], m_InBuffer[36]);
     }
@@ -1422,10 +1446,10 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
 void CUSBCDGadget::OnActivate()
 {
     CDROM_DEBUG_LOG("CD OnActivate",
-             "=== ENTRY === state=%d, USB=%s, m_CDReady=%d, mediaState=%d",
-             (int)m_nState,
-             m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
-             m_CDReady, (int)m_mediaState);
+                    "=== ENTRY === state=%d, USB=%s, m_CDReady=%d, mediaState=%d",
+                    (int)m_nState,
+                    m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
+                    m_CDReady, (int)m_mediaState);
 
     CTimer::Get()->MsDelay(10);
 
@@ -1441,15 +1465,15 @@ void CUSBCDGadget::OnActivate()
         discChanged = true;
         CTimer::Get()->MsDelay(100);
         CDROM_DEBUG_LOG("CD OnActivate",
-                 "Initial media ready: Set UNIT_ATTENTION, sense=06/28/00");
+                        "Initial media ready: Set UNIT_ATTENTION, sense=06/28/00");
     }
 
     m_nState = TCDState::ReceiveCBW;
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
 
     CDROM_DEBUG_LOG("CD OnActivate",
-             "=== EXIT === Waiting for CBW, m_CDReady=%d, mediaState=%d",
-             m_CDReady, (int)m_mediaState);
+                    "=== EXIT === Waiting for CBW, m_CDReady=%d, mediaState=%d",
+                    m_CDReady, (int)m_mediaState);
 }
 
 void CUSBCDGadget::SendCSW()
@@ -1635,9 +1659,9 @@ void CUSBCDGadget::HandleSCSICommand()
     case 0x00: // Test unit ready
     {
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                 "TEST UNIT READY: m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
-                 m_CDReady, (int)m_mediaState,
-                 m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+                        "TEST UNIT READY: m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
+                        m_CDReady, (int)m_mediaState,
+                        m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 
         if (!m_CDReady)
         {
@@ -1651,7 +1675,7 @@ void CUSBCDGadget::HandleSCSICommand()
         if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                     "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+                            "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
             setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
             sendCheckCondition();
             CTimer::Get()->MsDelay(100);
@@ -1659,7 +1683,7 @@ void CUSBCDGadget::HandleSCSICommand()
         }
 
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                 "TEST UNIT READY -> GOOD STATUS");
+                        "TEST UNIT READY -> GOOD STATUS");
 
         // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
         sendGoodStatus();
@@ -1671,9 +1695,9 @@ void CUSBCDGadget::HandleSCSICommand()
         u8 blocks = (u8)(m_CBW.CBWCB[4]);
 
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                 "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x -> reporting to host",
-                 (int)m_mediaState,
-                 m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+                        "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x -> reporting to host",
+                        (int)m_mediaState,
+                        m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 
         u8 length = sizeof(TUSBCDRequestSenseReply);
         if (blocks < length)
@@ -1694,7 +1718,7 @@ void CUSBCDGadget::HandleSCSICommand()
 
         // CRITICAL FIX: Clear sense data AFTER reporting it (SCSI autoclearing behavior)
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                 "REQUEST SENSE: Clearing sense data after reporting");
+                        "REQUEST SENSE: Clearing sense data after reporting");
         clearSenseData();
 
         // Update media state machine: transition from UNIT_ATTENTION to READY
@@ -1703,7 +1727,7 @@ void CUSBCDGadget::HandleSCSICommand()
             m_mediaState = MediaState::MEDIUM_PRESENT_READY;
             bmCSWStatus = CD_CSW_STATUS_OK; // Clear global CHECK CONDITION flag
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                     "REQUEST SENSE: State transition UNIT_ATTENTION -> READY");
+                            "REQUEST SENSE: State transition UNIT_ATTENTION -> READY");
         }
 
         break;
@@ -1916,7 +1940,7 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-case 0x28: // Read (10)
+    case 0x28: // Read (10)
     {
         if (m_CDReady)
         {
@@ -2759,7 +2783,7 @@ case 0x28: // Read (10)
         }
         else
         {
-            m_DiscInfoReply.disc_type = 0x10; // CD-ROM (data)
+            m_DiscInfoReply.disc_type = 0x00; // CD-ROM (data)
         }
 
         u32 leadoutLBA = GetLeadoutLBA();
@@ -3314,38 +3338,58 @@ case 0x28: // Read (10)
         break;
     }
 
-    // We only need this because MacOS is a problem child
+        // We only need this because MacOS is a problem child
     case 0x1a: // Mode Sense (6)
     {
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6)");
-        // int DBD = (m_CBW.CBWCB[1] >> 3) & 0x01; // We don't implement block descriptors
+
+        // 1. Calculate DBD (Disable Block Descriptors) - correct bit shift
+        int DBD = (m_CBW.CBWCB[1] >> 3) & 0x01;
         int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
         int page = m_CBW.CBWCB[2] & 0x3f;
-        // int sub_page_code = m_CBW.CBWCB[3];
         int allocationLength = m_CBW.CBWCB[4];
-        // int control = m_CBW.CBWCB[5];  // unused
 
         int length = 0;
 
-        // We don't support saved values
         if (page_control == 0x03)
         {
-            bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
-            m_SenseParams.bSenseKey = 0x05;      // Illegal Request
-            m_SenseParams.bAddlSenseCode = 0x39; // Saving parameters not supported
-            m_SenseParams.bAddlSenseCodeQual = 0x00;
+            bmCSWStatus = CD_CSW_STATUS_FAIL;
+            setSenseData(0x05, 0x39, 0x00);
         }
         else
         {
-
             // Define our response
             ModeSense6Header reply_header;
             memset(&reply_header, 0, sizeof(reply_header));
             reply_header.mediumType = GetMediumType();
+            reply_header.blockDescriptorLength = 0; // Explicitly default to 0
+
+            // Advance length past the header (4 bytes)
+            length += sizeof(reply_header);
+
+            // 2. Logic to append Block Descriptor
+            // Send if requested (DBD=0) OR forced by Apple quirk
+            if (strcmp(m_USBTargetOS, "apple") == 0)
+            {
+                // Mode Sense 6 Block Descriptor is same structure (8 bytes)
+                u8 block_descriptor[8] = {
+                    0x00,             // Density Code
+                    0x00, 0x00, 0x00, // Number of Blocks
+                    0x00,             // Reserved
+                    0x00, 0x08, 0x00  // Block Length (2048)
+                };
+
+                memcpy(m_InBuffer + length, block_descriptor, 8);
+
+                // NO htons for Mode Sense 6 blockDescriptorLength (it's a u8)
+                reply_header.blockDescriptorLength = 8;
+                length += 8;
+
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6): Appended Block Descriptor");
+            }
 
             switch (page)
             {
-
             case 0x3f: // This required all mode pages
                 CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x3f: All Mode Pages");
             // Fall through...
@@ -3369,7 +3413,7 @@ case 0x28: // Read (10)
             case 0x0D:
             { // CD Device Parameters
                 CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                                "MODE SENSE(10) Page 0x0D (CD Device Parameters)");
+                                "MODE SENSE(6) Page 0x0D (CD Device Parameters)");
 
                 struct CDDeviceParametersPage
                 {
@@ -3387,8 +3431,6 @@ case 0x28: // Read (10)
                 codePage.inactivityTimer = 0x00;    // No auto-standby
                 codePage.secondsPerMSF = htons(60); // 60 S units per second
                 codePage.framesPerMSF = htons(75);  // 75 F units per second
-
-                // memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
 
                 memcpy(m_InBuffer + length, &codePage, sizeof(codePage));
                 length += sizeof(codePage);
@@ -3537,11 +3579,11 @@ case 0x28: // Read (10)
             }
             }
 
-            reply_header.modeDataLength = htons(length - 1);
+            // Finalize Header Length (1 byte for Mode Sense 6, excluding self)
+            reply_header.modeDataLength = (length - 1);
             memcpy(m_InBuffer, &reply_header, sizeof(reply_header));
         }
 
-        // Trim the reply length according to what the host requested
         if (allocationLength < length)
             length = allocationLength;
 
@@ -3559,7 +3601,7 @@ case 0x28: // Read (10)
         // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
 
         int LLBAA = (m_CBW.CBWCB[1] >> 7) & 0x01; // We don't support this
-        int DBD = (m_CBW.CBWCB[1] >> 6) & 0x01;   // TODO: Implement this!
+        int DBD = (m_CBW.CBWCB[1] >> 3) & 0x01;
         int page = m_CBW.CBWCB[2] & 0x3F;
         int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
         u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
@@ -3582,7 +3624,28 @@ case 0x28: // Read (10)
             ModeSense10Header reply_header;
             memset(&reply_header, 0, sizeof(reply_header));
             reply_header.mediumType = GetMediumType();
+            reply_header.blockDescriptorLength = 0;
             length += sizeof(reply_header);
+
+            if (strcmp(m_USBTargetOS, "apple") == 0)
+            {
+                // Mode Sense 10 Block Descriptor is 8 bytes
+                u8 block_descriptor[8] = {
+                    0x00,             // Density Code
+                    0x00, 0x00, 0x00, // Number of Blocks (0 = all remaining)
+                    0x00,             // Reserved
+                    0x00, 0x08, 0x00  // Block Length (2048 bytes in Big Endian)
+                };
+
+                // Copy BD to buffer immediately after header
+                memcpy(m_InBuffer + length, block_descriptor, 8);
+
+                // Update lengths
+                reply_header.blockDescriptorLength = htons(8);
+                length += 8;
+
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10): Appended Block Descriptor");
+            }
 
             switch (page)
             {
@@ -3870,7 +3933,7 @@ case 0x28: // Read (10)
         m_nState = TCDState::DataIn;
         m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
         break;
-    }    
+    }
 
         // SCSI TOOLBOX
     case 0xD9: // LIST DEVICES
@@ -4025,7 +4088,7 @@ void CUSBCDGadget::Update()
                 u32 old_count = m_nnumber_blocks;
                 m_nnumber_blocks = max_lba - m_nblock_address;
                 CDROM_DEBUG_LOG("UpdateRead", "Truncating remaining blocks from %u to %u",
-                         old_count, m_nnumber_blocks);
+                                old_count, m_nnumber_blocks);
             }
 
             // Single seek operation (no logging in hot path)
@@ -4081,20 +4144,41 @@ void CUSBCDGadget::Update()
                 // Perform read (no logging unless debug enabled)
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
 
-                if (m_bDebugLogging && (m_nblock_address - blocks_to_read_in_batch) == 1)
+                if (m_bDebugLogging)
                 {
-                    CDROM_DEBUG_LOG("UpdateRead", "=== RAW FILE DATA for LBA 1 (first 64 bytes from file) ===");
-                    for (int i = 0; i < 64 && i < readCount; i += 16)
+                    // --- CORRECTION START ---
+                    // Since we haven't incremented m_nblock_address yet, it points to the START of this batch.
+                    u32 start_lba = m_nblock_address;
+                    u32 end_lba = m_nblock_address + blocks_to_read_in_batch;
+                    // ------------------------
+
+                    u32 target_lbas[] = {0, 1, 16};
+
+                    for (u32 target : target_lbas)
                     {
-                        CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                                        i,
-                                        m_FileChunk[i], m_FileChunk[i + 1], m_FileChunk[i + 2], m_FileChunk[i + 3],
-                                        m_FileChunk[i + 4], m_FileChunk[i + 5], m_FileChunk[i + 6], m_FileChunk[i + 7],
-                                        m_FileChunk[i + 8], m_FileChunk[i + 9], m_FileChunk[i + 10], m_FileChunk[i + 11],
-                                        m_FileChunk[i + 12], m_FileChunk[i + 13], m_FileChunk[i + 14], m_FileChunk[i + 15]);
+                        if (target >= start_lba && target < end_lba)
+                        {
+                            u32 relative_lba_index = target - start_lba;
+                            u32 sector_start_offset = relative_lba_index * block_size;
+                            u32 user_data_offset = sector_start_offset + skip_bytes; // Skip 16-byte header
+
+                            if (user_data_offset + 64 <= (u32)readCount)
+                            {
+                                CDROM_DEBUG_LOG("UpdateRead", "=== RAW USER DATA for LBA %u (first 64 bytes) ===", target);
+                                for (int i = 0; i < 64; i += 16)
+                                {
+                                    u8 *p = m_FileChunk + user_data_offset;
+                                    CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                                                    i,
+                                                    p[i + 0], p[i + 1], p[i + 2], p[i + 3],
+                                                    p[i + 4], p[i + 5], p[i + 6], p[i + 7],
+                                                    p[i + 8], p[i + 9], p[i + 10], p[i + 11],
+                                                    p[i + 12], p[i + 13], p[i + 14], p[i + 15]);
+                                }
+                            }
+                        }
                     }
                 }
-
                 // Check for complete read failure (0 bytes or negative)
                 if (readCount <= 0)
                 {
