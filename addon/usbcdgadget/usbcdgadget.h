@@ -292,6 +292,14 @@ struct ModePage0x2AData
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X2A 20
 
+struct ModePage0x30Data
+{
+    u8 pageCodeAndPS;      // 0x30
+    u8 pageLength;         // 0x16 (22 bytes)
+    u8 appleID[22];        // "APPLE COMPUTER, INC   " (Padded with spaces)
+} PACKED;
+#define SIZE_MODE_SENSE10_PAGE_0X30 30
+
 // reply to SCSI Read Capacity 0x25
 struct TUSBCDReadCapacityReply // 8 bytes
 {

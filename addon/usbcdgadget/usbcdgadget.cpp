@@ -1598,11 +1598,11 @@ void FillModePage2A(ModePage0x2AData &codepage)
 
     // Capability bits (6 bytes) - dynamic based on media type
     // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
-    codepage.capabilityBits[0] = 0x00; // Support all media types for DVD, else CD only
+    codepage.capabilityBits[0] = 0x18; // Support all media types for DVD, else CD only
     codepage.capabilityBits[1] = 0x00; // All writable types
-    codepage.capabilityBits[2] = 0x01; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
-    codepage.capabilityBits[3] = 0x03; // CD-DA Commands Supported, CD-DA Stream is accurate
-    codepage.capabilityBits[4] = 0x28; // Tray loading mechanism, eject supported, lock supported
+    codepage.capabilityBits[2] = 0x39; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
+    codepage.capabilityBits[3] = 0x61; // CD-DA Commands Supported, CD-DA Stream is accurate
+    codepage.capabilityBits[4] = 0x60; // Tray loading mechanism, eject supported, lock supported
     codepage.capabilityBits[5] = 0x03; // No separate channel volume, no separate channel mute
 
     // Speed and buffer info
@@ -1776,7 +1776,7 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-    case 0x12: // Inquiry
+case 0x12: // Inquiry
     {
         int allocationLength = (m_CBW.CBWCB[3] << 8) | m_CBW.CBWCB[4];
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Inquiry %0x, allocation length %d", m_CBW.CBWCB[1], allocationLength);
@@ -1784,6 +1784,28 @@ void CUSBCDGadget::HandleSCSICommand()
         if ((m_CBW.CBWCB[1] & 0x01) == 0)
         { // EVPD bit is 0: Standard Inquiry
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Inquiry (Standard Enquiry)");
+
+            // [MODIFIED] Apple Compatibility: Masquerade as Sony CDU-55S
+            if (strcmp(m_USBTargetOS, "apple") == 0)
+            {
+                // BlueSCSI Logic: Mimic Sony CDU-55S
+                // Vendor: "SONY    " (8 bytes)
+                // Product: "CD-ROM CDU-55S  " (16 bytes)
+                // Rev: "1.9a"
+                // Version: 0x02 (SCSI-2)
+                memcpy(m_InqReply.bVendorID, "SONY    ", 8);
+                memcpy(m_InqReply.bProdID, "CD-ROM CDU-55S  ", 16);
+                memcpy(m_InqReply.bProdRev, "1.9a", 4);
+                m_InqReply.bVersion = 0x02; 
+            }
+            else
+            {
+                // Revert to default if not apple (ensures clean state on OS switch)
+                memcpy(m_InqReply.bVendorID, "USBODE  ", 8);
+                memcpy(m_InqReply.bProdID, "CDROM EMULATOR  ", 16);
+                memcpy(m_InqReply.bProdRev, "0001", 4);
+                m_InqReply.bVersion = 0x00; 
+            }
 
             // Set response length
             int datalen = SIZE_INQR;
@@ -1903,7 +1925,6 @@ void CUSBCDGadget::HandleSCSICommand()
         }
         break;
     }
-
     case 0x1B: // Start/stop unit
     {
         int start = m_CBW.CBWCB[4] & 1;
@@ -3521,8 +3542,8 @@ void CUSBCDGadget::HandleSCSICommand()
                 // Copy the header & Code Page
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
-
-                break;
+                if (page != 0x3f)
+                    break;
             }
 
             case 0x1c:
@@ -3543,7 +3564,21 @@ void CUSBCDGadget::HandleSCSICommand()
                 if (page != 0x3f)
                     break;
             }
+            case 0x30:
+            {
+                    CDROM_DEBUG_LOG("HandleSCSI", "Mode Sense (10) 0x30 (Apple Vendor)");
+                    ModePage0x30Data codepage;
+                    memset(&codepage, 0, sizeof(codepage));
+                    codepage.pageCodeAndPS = 0x30;
+                    codepage.pageLength = 0x16; // 22 bytes
+                    // String must be exactly "APPLE COMPUTER, INC " (padded to 20 bytes)
+                    memcpy(codepage.appleID, "APPLE COMPUTER, INC ", 20); 
 
+                    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                    length += sizeof(codepage);
+                    
+                    if (page != 0x3f) break;
+            }
             case 0x31:
             {
                 // Page 0x31 - Apple vendor-specific page
@@ -3803,7 +3838,22 @@ void CUSBCDGadget::HandleSCSICommand()
                 memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                 length += sizeof(codepage);
 
-                break;
+                if (page != 0x3f) break;
+            }
+            case 0x30:
+            {
+                    CDROM_DEBUG_LOG("HandleSCSI", "Mode Sense (10) 0x30 (Apple Vendor)");
+                    ModePage0x30Data codepage;
+                    memset(&codepage, 0, sizeof(codepage));
+                    codepage.pageCodeAndPS = 0x30;
+                    codepage.pageLength = 0x1C; // 28 bytes
+                    // String must be exactly "APPLE COMPUTER, INC " (padded to 20 bytes)
+                    memcpy(codepage.appleID, "APPLE COMPUTER, INC ", 20); 
+
+                    memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
+                    length += sizeof(codepage);
+                    
+                    if (page != 0x3f) break;
             }
 
             case 0x31:
