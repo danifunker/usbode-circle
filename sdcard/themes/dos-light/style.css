@@ -9,8 +9,8 @@
 }
 body {
 	font-family: 'modern_dos_9x16regular', sans-serif; 
-    background-color: #181818;
-    color: #ccc;
+    background-color: #d0d0d0;
+    color: #444;
     margin: 0; 
     padding: 0;
     font-size: 16px;
@@ -23,7 +23,7 @@ body * {
     font-size: 16px;
 }
 strong, a, .form-group label {
-    color: #fff;
+    color: #000;
 }
 a {
 	text-decoration: none;
@@ -36,8 +36,8 @@ a:hover {
 	display: inline-block;
 	-webkit-appearance: none;
 	border: none;
-    color: #111111;
-    background-color: #ddd;
+    color: #111;
+    background-color: #eee;
     text-decoration: none !important;
 	padding: 0 9px;
 	margin-bottom: 16px;
@@ -68,7 +68,7 @@ h1 {
 	line-height: 32px;
 }
 h1, h2, h3 {
-    color: #fff;
+    color: #222;
 	margin-top: 0;
 	margin-bottom: 16px;
 }
@@ -80,7 +80,7 @@ p {
     margin: 32px 27px;
 	padding: 15px;
 	padding-left: 27px;
-    border: 2px solid #ddd;
+    border: 2px solid #bbb;
 }
 .header img {
     display: block;
@@ -104,7 +104,7 @@ p {
     margin: 16px 27px;
     padding: 16px 27px;
 	padding-top: 32px;
-    border: 2px solid #ddd;
+    border: 2px solid #bbb;
 }
 .navigation {
 	margin-bottom: 16px;
@@ -113,7 +113,7 @@ p {
 	margin-top: 16px;
 }
 .pagination a, .pagination span {
-	background-color: #333;
+	background-color: #c0c0c0;
 	font-size: 16px;
 	display: inline-block;
 	border: none;
@@ -123,8 +123,8 @@ p {
 	margin-right: 9px;
 }
 .pagination a {
-    color: #111111;
-    background-color: #ddd;
+    color: #111;
+    background-color: #eee;
     text-decoration: none !important;
 }
 .pagination a, .pagination span {
@@ -133,16 +133,18 @@ p {
 	* width: auto;
 }
 .pagination a:hover {
+	background-color: #fff;
+	color: #000;
 	* display: inline;
 	* zoom: 1; 
 	* width: auto;
 }
 .message, .info-box {
 	padding: 16px 18px;
-	background-color: #ddd;
+	background-color: #f0f0f0;
 	color: #111111;
 	margin-bottom: 32px;
-	box-shadow: 9px 16px 0 #000;
+	box-shadow: 9px 16px 0 #c0c0c0;
 }
 .message strong, .info-box strong {
 	color: #000;
@@ -164,7 +166,7 @@ p {
 .usb-info {
 	margin: 16px 0;
 	margin-top: 32px;
-	border-top: 2px solid #ddd;
+	border-top: 2px solid #bbb;
 	padding: 0 18px;
 	padding-top: 16px;
 	text-align: center;
@@ -174,21 +176,21 @@ p {
 }
 .build-info {
 	padding: 16px 18px;
-	color: #666;
+	color: #999;
 }
 .unavailable {
-	color: #666;
+	color: #444;
 }
 .files {
     padding: 16px 18px;
-    border: 2px solid #ddd;
+    border: 2px solid #bbb;
 }
 .file {
 	padding: 5px 9px;
-	background-color: #222;
+	background-color: #c8c8c8;
 }
 .file:nth-child(even){
-	background-color: #333;
+	background-color: #bfbfbf;
 }
 .file.current {
 	background-color: #fff;
@@ -200,7 +202,7 @@ p {
 .form-group {
 	margin-bottom: 16px;
 	padding: 16px 27px;
-    border: 2px solid #ddd;
+    border: 2px solid #bbb;
 }
 .form-group label {
 	margin-bottom: 16px;
@@ -249,7 +251,7 @@ select::after {
     margin: 16px 0;
     padding: 16px 18px;
 	padding-top: 0;
-    border: 2px solid #ddd;
+    border: 2px solid #bbb;
     height: 640px;
 	overflow-y: scroll; 
 	overflow-x: auto; 
