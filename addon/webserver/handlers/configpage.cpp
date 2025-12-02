@@ -152,6 +152,11 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
                 }
             }
             
+            // USB Target OS configuration
+            if (form_params.count("usbtargetos")) {
+                config->SetUSBTargetOS(form_params["usbtargetos"].c_str());
+            }
+            
             // Check for action parameter to determine what to do after saving
             std::string action = form_params.count("action") ? form_params["action"] : "save";
             
@@ -180,6 +185,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string current_usbspeed = config->GetUSBFullSpeed() ? "full" : "high";
     std::string current_logfile = config->GetLogfile();
     std::string current_theme = config->GetTheme();
+    std::string current_usbtargetos = config->GetUSBTargetOS("doswin");
     
     // Remove 0:/ prefix from logfile for display
     if (current_logfile.find("0:/") == 0) {
@@ -238,6 +244,11 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     // Set USB speed options
     context["usbspeed_high"] = (current_usbspeed == "high");
     context["usbspeed_full"] = (current_usbspeed == "full");
+    
+    // Set USB Target OS options
+    context["current_usbtargetos"] = current_usbtargetos;
+    context["usbtargetos_doswin"] = (current_usbtargetos == "doswin");
+    context["usbtargetos_apple"] = (current_usbtargetos == "apple");
     
     // Set log level options
     context["loglevel_0"] = (current_loglevel == "0");

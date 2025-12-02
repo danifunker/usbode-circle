@@ -387,8 +387,6 @@ bool UpgradeStatus::performUpgrade() {
     strcat(crcPath, ".crc");
     
     LOGNOTE("Applying upgrade for %s-bit architecture", archtype);
-    m_statusMessage = ("Applying upgrade for %s-bit architecture", archtype);
-    CScheduler::Get()->Yield();
     LOGNOTE("Upgrade files: %s and %s", tarPath, crcPath);
 
     // Read expected CRC
