@@ -187,25 +187,29 @@ bool SCSITBService::RefreshCache() {
     if (m_FileCount > 1)
         qsort(m_FileEntries, m_FileCount, sizeof(m_FileEntries[0]), compareFileEntries);
 
+    bool found = false;
     // Find the index of current_image in m_FileEntries
     for (size_t i = 0; i < m_FileCount; ++i) {
-	//LOGNOTE("i is %u, m_FileCount is %u, current_image is %s, m_FileEntries is %s", i, m_FileCount, current_image, m_FileEntries[i].name);
+        //LOGNOTE("i is %u, m_FileCount is %u, current_image is %s, m_FileEntries is %s", i, m_FileCount, current_image, m_FileEntries[i].name);
         if (strcmp(m_FileEntries[i].name, current_image) == 0) {
-	    
-	    // If we don't yet have a current_cd e.g. we've 
-	    // just booted, then mount it
-	    if (current_cd < 0)  {
-		next_cd = i;
-	    } else {
-            	current_cd = i;
-	    }
-		    
+
+            // If we don't yet have a current_cd e.g. we've
+            // just booted, then mount it
+            if (current_cd < 0)  {
+                next_cd = i;
+            } else {
+                current_cd = i;
+            }
+            found = true;
             break;
         }
     }
 
-    //TODO handle case where we can't find the CD in the list, fall back to 
-    //the default image
+    // If the current image is not found, fallback to the first available image
+    if (!found && m_FileCount > 0) {
+        LOGNOTE("SCSITBService::RefreshCache() Current image '%s' not found. Fallback to '%s'", current_image, m_FileEntries[0].name);
+        next_cd = 0;
+    }
 
     LOGNOTE("SCSITBService::RefreshCache() Found %d images (.ISO and BIN total)", m_FileCount);
 
