@@ -207,6 +207,26 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget", "Target OS set to: %s", m_USBTargetOS);
         }
+
+        if (strcmp(m_USBTargetOS, "apple") == 0)
+        {
+            // data taken from the ROM of an AppleCD 150
+            memcpy(m_InqReply.bVendorID, "SONY    ", 8);
+            memcpy(m_InqReply.bProdID, "CD-ROM CDU-8002 ", 16);
+            memcpy(m_InqReply.bProdRev, "1.8g", 4);
+
+            m_InqReply.bVendorSpecific[3] = 0xd0;
+            m_InqReply.bVendorSpecific[4] = 0x90;
+            m_InqReply.bVendorSpecific[5] = 0x27;
+            m_InqReply.bVendorSpecific[6] = 0x3e;
+            m_InqReply.bVendorSpecific[7] = 0x01;
+            m_InqReply.bVendorSpecific[8] = 0x04;
+            m_InqReply.bVendorSpecific[9] = 0x91;
+            m_InqReply.bVendorSpecific[11] = 0x18;
+            m_InqReply.bVendorSpecific[12] = 0x06;
+            m_InqReply.bVendorSpecific[13] = 0xf0;
+            m_InqReply.bVendorSpecific[14] = 0xfe;
+        }
     }
     else
     {
@@ -1642,7 +1662,14 @@ void CUSBCDGadget::HandleSCSICommand()
         if (!m_CDReady)
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
-            setSenseData(0x02, 0x3A, 0x00); // NOT READY, MEDIUM NOT PRESENT
+            if (strcmp(m_USBTargetOS, "apple") == 0)
+            {
+                setSenseData(0x02, 0xB0, 0x00); // NOT READY, Vendor Specific (required by Apple II SCSI Card)
+            }
+            else
+            {
+                setSenseData(0x02, 0x3A, 0x00); // NOT READY, MEDIUM NOT PRESENT
+            }
             m_mediaState = MediaState::NO_MEDIUM;
             sendCheckCondition();
             break;
@@ -3502,18 +3529,31 @@ case 0x28: // Read (10)
             }
             case 0x30:
             {
-                    CDROM_DEBUG_LOG("HandleSCSI", "Mode Sense (10) 0x30 (Apple Vendor)");
+                CDROM_DEBUG_LOG("HandleSCSI", "Mode Sense (10) 0x30 (Apple Vendor)");
+                if (strcmp(m_USBTargetOS, "apple") == 0)
+                {
+                    static const u8 apple_magic[23] = {
+                        0x00, 0x41, 0x50, 0x50, 0x4C, 0x45, 0x20, 0x43, 0x4F, 0x4D, 0x50, 0x55,
+                        0x54, 0x45, 0x52, 0x2C, 0x20, 0x49, 0x4E, 0x43, 0x20, 0x20, 0x20};
+                    m_InBuffer[length++] = 0x30; // PS, page id
+                    memcpy(m_InBuffer + length, apple_magic, 23);
+                    length += 23;
+                }
+                else
+                {
                     ModePage0x30Data codepage;
                     memset(&codepage, 0, sizeof(codepage));
                     codepage.pageCodeAndPS = 0x30;
                     codepage.pageLength = 0x16; // 22 bytes
                     // String must be exactly "APPLE COMPUTER, INC " (padded to 20 bytes)
-                    memcpy(codepage.appleID, "APPLE COMPUTER, INC ", 20); 
+                    memcpy(codepage.appleID, "APPLE COMPUTER, INC ", 20);
 
                     memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
                     length += sizeof(codepage);
-                    
-                    if (page != 0x3f) break;
+                }
+
+                if (page != 0x3f)
+                    break;
             }
             case 0x31:
             {
@@ -4010,6 +4050,236 @@ case 0x28: // Read (10)
         break;
     }
 
+    case APPLE_READ_TOC:
+        DoAppleReadTOC((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+        break;
+
+    case APPLE_EJECT:
+        CDROM_DEBUG_LOG("HandleSCSICommand", "APPLE_EJECT");
+        // Behaves like standard START/STOP UNIT with LoEj=1, Start=0
+        m_CDReady = false;
+        m_mediaState = MediaState::NO_MEDIUM;
+        setSenseData(0x02, 0x3A, 0x00); // MEDIUM NOT PRESENT
+        sendGoodStatus();
+        break;
+
+    case APPLE_READ_HEADER:
+    {
+        // Cmd[1]: MSF bit (0x02), Cmd[2-5]: LBA, Cmd[7-8]: AllocLen
+        bool MSF = (m_CBW.CBWCB[1] & 0x02);
+        uint32_t lba = (m_CBW.CBWCB[2] << 24) | (m_CBW.CBWCB[3] << 16) |
+                       (m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+        uint16_t allocationLength = (m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8];
+        DoReadHeader(MSF, lba, allocationLength);
+        break;
+    }
+
+    case APPLE_AUDIO_STATUS:
+    {
+        if (!m_pDevice)
+        {
+            setSenseData(0x02, 0xB0, 0x00);
+            sendCheckCondition();
+            break;
+        }
+
+        CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+        if (!cdplayer)
+        {
+            setSenseData(0x04, 0x00, 0x00); // HARDWARE ERROR
+            sendCheckCondition();
+            break;
+        }
+
+        u32 cur_lba = cdplayer->GetCurrentAddress();
+        CUETrackInfo trackInfo = GetTrackInfoForLBA(cur_lba);
+
+        // Byte 0: Status
+        // PLAYING=0, PAUSED=1, PLAYING_MUTED=2, REACHED_END=3, ERROR=4, VOID=5
+        u8 status = 5; // VOID
+        if (m_AppleStopped)
+        {
+            status = 5;
+        }
+        else
+        {
+            unsigned int pstate = cdplayer->GetState();
+            if (pstate == CCDPlayer::PLAYING) status = 0;
+            else if (pstate == CCDPlayer::PAUSED) status = 1;
+            else if (pstate == CCDPlayer::STOPPED_OK) status = 3;
+        }
+        m_InBuffer[0] = status;
+        m_InBuffer[1] = 0; // Reserved
+
+        // Byte 2: Control/ADR
+        u8 adr_control = 0x14; // Default data
+        if (trackInfo.track_number != -1)
+        {
+             // ADR=1 (Current position), Control=0 (Audio) or 4 (Data)
+             u8 control = (trackInfo.track_mode == CUETrack_AUDIO) ? 0x00 : 0x04;
+             adr_control = (0x01 << 4) | control;
+        }
+        m_InBuffer[2] = adr_control;
+
+        // Byte 3-5: MSF
+        LBA2MSFBCD(cur_lba, &m_InBuffer[3], false);
+
+        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, 6);
+        m_nState = TCDState::DataIn;
+        m_nnumber_blocks = 0;
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+        break;
+    }
+
+    case APPLE_AUDIO_STOP:
+    {
+        // Cmd[9] bits 6&7: 00=LBA, 01=MSF, 10=Track
+        u8 addrMode = m_CBW.CBWCB[9] & 0xC0;
+        if (addrMode == 0x00) // LBA
+        {
+            m_AppleStopPosition = (m_CBW.CBWCB[2] << 24) | (m_CBW.CBWCB[3] << 16) | (m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+        }
+        else if (addrMode == 0x40) // MSF
+        {
+            u32 msf = (BCD2DEC(m_CBW.CBWCB[5]) << 16) | (BCD2DEC(m_CBW.CBWCB[6]) << 8) | BCD2DEC(m_CBW.CBWCB[7]);
+            m_AppleStopPosition = msf_to_lba(BCD2DEC(m_CBW.CBWCB[5]), BCD2DEC(m_CBW.CBWCB[6]), BCD2DEC(m_CBW.CBWCB[7]));
+        }
+        else if (addrMode == 0x80) // Track
+        {
+            u8 track = BCD2DEC(m_CBW.CBWCB[5]);
+            CUETrackInfo ti = GetTrackInfoForTrack(track + 1); // Get end of this track? No, start of next?
+            // MAME says: start of track + 1?
+            // MAME: m_stop_position = image->get_track_start(start_track + 1); m_stop_position--;
+            if (track >= GetLastTrackNumber()) {
+                m_AppleStopPosition = GetLeadoutLBA();
+            } else {
+                ti = GetTrackInfoForTrack(track + 1);
+                m_AppleStopPosition = ti.data_start - 1;
+            }
+        }
+
+        CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+        if (cdplayer && !m_AppleStopped && cdplayer->GetCurrentAddress() >= m_AppleStopPosition) {
+            cdplayer->Pause(); // Stop
+            m_AppleStopped = true;
+        }
+
+        sendGoodStatus();
+        break;
+    }
+
+    case APPLE_AUDIO_PAUSE:
+    {
+        bool pause = (m_CBW.CBWCB[1] == 0x10);
+        CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+        if (cdplayer)
+        {
+            if (pause && cdplayer->GetState() == CCDPlayer::PLAYING)
+                cdplayer->Pause();
+            else if (!pause && cdplayer->GetState() == CCDPlayer::PAUSED)
+                cdplayer->Resume();
+        }
+        sendGoodStatus();
+        break;
+    }
+
+    case APPLE_AUDIO_PLAY:
+    {
+        // Cmd[9] bits 6&7: 00=LBA, 01=MSF, 10=Track
+        u8 addrMode = m_CBW.CBWCB[9] & 0xC0;
+        u32 address = 0;
+
+        if (addrMode == 0x80) // Track
+        {
+            u8 track = BCD2DEC(m_CBW.CBWCB[5]);
+            if (track == 0) { // Stop
+                CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+                if (cdplayer) cdplayer->Pause();
+                m_AppleStopped = true;
+                sendGoodStatus();
+                break;
+            }
+            CUETrackInfo ti = GetTrackInfoForTrack(track);
+            address = ti.data_start;
+        }
+        else if (addrMode == 0x40) // MSF
+        {
+            address = msf_to_lba(BCD2DEC(m_CBW.CBWCB[3]), BCD2DEC(m_CBW.CBWCB[4]), BCD2DEC(m_CBW.CBWCB[5]));
+        }
+        else // LBA
+        {
+            address = (m_CBW.CBWCB[2] << 24) | (m_CBW.CBWCB[3] << 16) | (m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+        }
+
+        CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+        if (cdplayer)
+        {
+            if (m_CBW.CBWCB[1] & 0x10) // address is Stop address
+            {
+                u32 start = cdplayer->GetCurrentAddress();
+                cdplayer->Play(start, address - start);
+            }
+            else // address is Start address
+            {
+                cdplayer->Play(address, m_AppleStopPosition - address);
+                m_AppleStopped = false;
+            }
+        }
+        sendGoodStatus();
+        break;
+    }
+
+    case APPLE_AUDIO_TRK_SEARCH:
+    {
+        // Similar to Play but Paused?
+        // Cmd[9] bits 6&7: Address mode
+        u8 addrMode = m_CBW.CBWCB[9] & 0xC0;
+        u32 address = 0;
+
+        if (addrMode == 0x80) // Track
+        {
+            u8 track = BCD2DEC(m_CBW.CBWCB[5]);
+            if (track == 0) {
+                CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+                if (cdplayer) cdplayer->Pause();
+                sendGoodStatus();
+                break;
+            }
+            CUETrackInfo ti = GetTrackInfoForTrack(track);
+            address = ti.data_start;
+            // Update stop pos? MAME does: m_stop_position = image->get_track_start(start_track);
+            // Wait, MAME says: "does this actually update the stop position?"
+            // We'll leave m_AppleStopPosition alone or set it? MAME sets it.
+            m_AppleStopPosition = ti.data_start; // This seems weird if it's start.
+        }
+        else if (addrMode == 0x40) // MSF
+        {
+            address = msf_to_lba(BCD2DEC(m_CBW.CBWCB[5]), BCD2DEC(m_CBW.CBWCB[6]), BCD2DEC(m_CBW.CBWCB[7]));
+        }
+        else // LBA
+        {
+            address = (m_CBW.CBWCB[2] << 24) | (m_CBW.CBWCB[3] << 16) | (m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+        }
+
+        CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+        if (cdplayer)
+        {
+            cdplayer->Seek(address);
+            if ((m_CBW.CBWCB[1] & 0x10) == 0x10) // Play immediately
+            {
+                 // Length?
+                 cdplayer->Play(address, m_AppleStopPosition - address);
+            }
+            else
+            {
+                 cdplayer->Pause(); // Just Seek
+            }
+            m_AppleStopped = false;
+        }
+        sendGoodStatus();
+        break;
+    }
+
     default:
     {
         MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Unknown SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
@@ -4404,5 +4674,102 @@ void CUSBCDGadget::Update()
 
     default:
         break;
+    }
+}
+
+u8 CUSBCDGadget::BCD2DEC(u8 bcd)
+{
+    return ((bcd >> 4) * 10) + (bcd & 0x0f);
+}
+
+u8 CUSBCDGadget::DEC2BCD(u8 dec)
+{
+    return ((dec / 10) << 4) | (dec % 10);
+}
+
+void CUSBCDGadget::DoAppleReadTOC(u16 allocationLength)
+{
+    if (!m_pDevice)
+    {
+        setSenseData(0x02, 0xB0, 0x00);
+        sendCheckCondition();
+        return;
+    }
+
+    // Cmd[9] bits 6 & 7 determine operation:
+    // 00 = first and last track # in BCD
+    // 01 = starting address of the lead-out in M/S/F
+    // 10 = starting address of a range of tracks from a starting track
+    // 11 = reserved
+
+    uint8_t operation = m_CBW.CBWCB[9] & 0xC0;
+
+    if (operation == 0x00) // First and last track #
+    {
+        m_InBuffer[0] = 1;
+        m_InBuffer[1] = DEC2BCD(GetLastTrackNumber());
+        m_InBuffer[2] = 0;
+        m_InBuffer[3] = 0;
+
+        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, 4);
+        m_nState = TCDState::DataIn;
+        m_nnumber_blocks = 0;
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+    }
+    else if (operation == 0x40) // Lead-out address
+    {
+        u32 leadout = GetLeadoutLBA();
+        u8 msf[3];
+        LBA2MSFBCD(leadout, msf, false);
+        m_InBuffer[0] = msf[0];
+        m_InBuffer[1] = msf[1];
+        m_InBuffer[2] = msf[2];
+        m_InBuffer[3] = 0;
+
+        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, 4);
+        m_nState = TCDState::DataIn;
+        m_nnumber_blocks = 0;
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+    }
+    else if (operation == 0x80) // Range of tracks
+    {
+        u8 start_track_bcd = m_CBW.CBWCB[5];
+        u8 start_track = BCD2DEC(start_track_bcd);
+        if (start_track == 0) start_track = 1; // Sanity check
+
+        int num_trks = allocationLength / 4;
+        int pos = 0;
+        int last_track = GetLastTrackNumber();
+
+        for (int i = 0; i < num_trks; i++)
+        {
+            if (pos + 4 > MaxInMessageSize) break;
+
+            int current_track_num = start_track + i;
+            // Cap at last track
+            if (current_track_num > last_track) current_track_num = last_track;
+
+            CUETrackInfo ti = GetTrackInfoForTrack(current_track_num);
+
+            // ADR/Control
+            u8 control = (ti.track_mode == CUETrack_AUDIO) ? 0x00 : 0x04;
+            m_InBuffer[pos++] = (0x01 << 4) | control; // ADR=1
+
+            u8 msf[3];
+            LBA2MSFBCD(ti.data_start, msf, false);
+            m_InBuffer[pos++] = msf[0];
+            m_InBuffer[pos++] = msf[1];
+            m_InBuffer[pos++] = msf[2];
+        }
+
+        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, pos);
+        m_nState = TCDState::DataIn;
+        m_nnumber_blocks = 0;
+        m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+    }
+    else
+    {
+        setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+        sendCheckCondition();
     }
 }

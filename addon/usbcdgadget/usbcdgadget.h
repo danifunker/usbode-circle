@@ -68,6 +68,21 @@ static inline u16 htons(u16 x)
 #define PROFILE_CDROM 0x0008
 #define PROFILE_DVD_ROM 0x0010
 
+// Apple CDSC commands, from "Apple CD-ROM SCSI Command Set", version 1.4
+enum apple_scsi_command_e : uint8_t {
+        APPLE_EJECT            = 0xc0,      // EJECT DISC
+        APPLE_READ_TOC         = 0xc1,      // READ TOC
+        APPLE_READ_Q_SUBCODE   = 0xc2,      // READ Q SUBCODE
+        APPLE_READ_HEADER      = 0xc3,      // READ HEADER
+        APPLE_AUDIO_TRK_SEARCH = 0xc8,      // AUDIO TRACK SEARCH
+        APPLE_AUDIO_PLAY       = 0xc9,      // AUDIO PLAY
+        APPLE_AUDIO_PAUSE      = 0xca,      // AUDIO PAUSE
+        APPLE_AUDIO_STOP       = 0xcb,      // AUDIO STOP
+        APPLE_AUDIO_STATUS     = 0xcc,      // AUDIO STATUS
+        APPLE_AUDIO_SCAN       = 0xcd,      // AUDIO SCAN
+        APPLE_AUDIO_CONTROL    = 0xce
+};
+
 // ============================================================================
 // USB Bulk-Only Transport (BOT) Structures
 // ============================================================================
@@ -721,6 +736,7 @@ private:
 
     // TOC and session management
     void DoReadTOC(bool msf, uint8_t startingTrack, uint16_t allocationLength);
+    void DoAppleReadTOC(u16 allocationLength);
     void DoReadSessionInfo(bool msf, uint16_t allocationLength);
     void DoReadFullTOC(uint8_t session, uint16_t allocationLength, bool useBCD);
     void DoReadHeader(bool MSF, uint32_t lba, uint16_t allocationLength);
@@ -730,8 +746,16 @@ private:
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
 
+    // Apple Helpers
+    u8 DEC2BCD(u8 dec);
+    u8 BCD2DEC(u8 bcd);
+
     bool m_readSubchannels = false;
     u8 m_subchannelMode = 0;
+
+    // Apple State
+    u32 m_AppleStopPosition = 0;
+    bool m_AppleStopped = true;
 
     // ========================================================================
     // CUE Sheet and Track Management
