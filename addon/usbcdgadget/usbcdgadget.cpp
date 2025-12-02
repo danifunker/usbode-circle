@@ -1906,6 +1906,16 @@ void CUSBCDGadget::HandleSCSICommand()
 
     case 0x25: // Read Capacity (10))
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ CAPACITY (10) -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         m_ReadCapReply.nLastBlockAddr = htonl(GetLeadoutLBA() - 1); // this value is the Start address of last recorded lead-out minus 1
         memcpy(&m_InBuffer, &m_ReadCapReply, SIZE_READCAPREP);
         m_nnumber_blocks = 0; // nothing more after this send
@@ -1916,8 +1926,18 @@ void CUSBCDGadget::HandleSCSICommand()
         break;
     }
 
-case 0x28: // Read (10)
+    case 0x28: // Read (10)
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ (10) -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         if (m_CDReady)
         {
             // Where to start reading (LBA)
@@ -1997,6 +2017,16 @@ case 0x28: // Read (10)
 
     case 0xBE: // READ CD -- bluescsi inspired
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ CD -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         if (!m_CDReady)
         {
             setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
@@ -2186,6 +2216,16 @@ case 0x28: // Read (10)
 
     case 0x43: // READ TOC/PMA/ATIP -- bluescsi inspired
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ TOC -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         if (!m_CDReady)
         {
             MLOGNOTE("READ TOC", "FAILED - CD not ready");
@@ -2249,6 +2289,16 @@ case 0x28: // Read (10)
 
     case 0x42: // READ SUB-CHANNEL CMD
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ SUB-CHANNEL -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         unsigned int msf = (m_CBW.CBWCB[1] >> 1) & 0x01;
         // unsigned int subq = (m_CBW.CBWCB[2] >> 6) & 0x01; //TODO We're ignoring subq for now
         unsigned int parameter_list = m_CBW.CBWCB[3];
@@ -2365,6 +2415,16 @@ case 0x28: // Read (10)
 
     case 0x52: // READ TRACK INFORMATION -- bluescsi inspired
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ TRACK INFORMATION -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         u8 addressType = m_CBW.CBWCB[1] & 0x03;
         u32 address = (m_CBW.CBWCB[2] << 24) | (m_CBW.CBWCB[3] << 16) |
                       (m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
@@ -2473,6 +2533,16 @@ case 0x28: // Read (10)
 
     case 0xAD: // READ DISC STRUCTURE (formerly READ DVD STRUCTURE)
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ DISC STRUCTURE -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         u8 mediaType = m_CBW.CBWCB[1] & 0x0f; // Media type (0=DVD, 1=BD)
         u32 address = ((u32)m_CBW.CBWCB[2] << 24) | ((u32)m_CBW.CBWCB[3] << 16) |
                       ((u32)m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
@@ -2742,6 +2812,16 @@ case 0x28: // Read (10)
 
     case 0x51: // READ DISC INFORMATION CMD
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ DISC INFORMATION -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Read Disc Information");
 
         // Update disc information with current media state (MacOS-compatible)
@@ -2782,6 +2862,16 @@ case 0x28: // Read (10)
 
     case 0x44: // READ HEADER
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "READ HEADER -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         bool MSF = (m_CBW.CBWCB[1] & 0x02);
         uint32_t lba = (m_CBW.CBWCB[2] << 24) | (m_CBW.CBWCB[3] << 16) |
                        (m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
@@ -2803,6 +2893,16 @@ case 0x28: // Read (10)
 
     case 0x46: // Get Configuration
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "GET CONFIGURATION -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         int rt = m_CBW.CBWCB[1] & 0x03;
         int feature = (m_CBW.CBWCB[2] << 8) | m_CBW.CBWCB[3];
         u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
@@ -3119,6 +3219,15 @@ case 0x28: // Read (10)
 
     case 0x2B: // SEEK
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "SEEK -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
 
         // Where to start reading (LBA)
         m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
@@ -3138,6 +3247,16 @@ case 0x28: // Read (10)
 
     case 0x47: // PLAY AUDIO MSF
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "PLAY AUDIO MSF -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         // Start MSF
         u8 SM = m_CBW.CBWCB[3];
         u8 SS = m_CBW.CBWCB[4];
@@ -3210,6 +3329,16 @@ case 0x28: // Read (10)
 
     case 0x45: // PLAY AUDIO (10)
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "PLAY AUDIO (10) -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10)");
 
         // Where to start reading (LBA)
@@ -3257,6 +3386,16 @@ case 0x28: // Read (10)
 
     case 0xA5: // PLAY AUDIO (12)
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "PLAY AUDIO (12) -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12)");
 
         // Where to start reading (LBA)
@@ -3299,6 +3438,16 @@ case 0x28: // Read (10)
 
     case 0x55: // Mode Select (10)
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "MODE SELECT (10) -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         u16 transferLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), transferLength is %u", transferLength);
 
@@ -3317,6 +3466,16 @@ case 0x28: // Read (10)
     // We only need this because MacOS is a problem child
     case 0x1a: // Mode Sense (6)
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "MODE SENSE (6) -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6)");
         // int DBD = (m_CBW.CBWCB[1] >> 3) & 0x01; // We don't implement block descriptors
         int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
@@ -3569,6 +3728,16 @@ case 0x28: // Read (10)
 
     case 0x5a: // Mode Sense (10)
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "MODE SENSE (10) -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
 
         int LLBAA = (m_CBW.CBWCB[1] >> 7) & 0x01; // We don't support this
@@ -3825,6 +3994,16 @@ case 0x28: // Read (10)
 
     case 0xAC: // GET PERFORMANCE
     {
+        if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "GET PERFORMANCE -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            break;
+        }
+
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "GET PERFORMANCE (0xAC)");
 
         u8 getPerformanceStub[20] = {
