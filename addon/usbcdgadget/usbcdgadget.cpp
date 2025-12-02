@@ -1630,6 +1630,31 @@ void FillModePage2A(ModePage0x2AData &codepage)
 void CUSBCDGadget::HandleSCSICommand()
 {
     // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+
+    // Centralized Unit Attention Check
+    // Some commands (like INQUIRY) must work even if Unit Attention is pending.
+    // Others (like READ) must fail so the host knows the media changed.
+    if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
+    {
+        u8 cmd = m_CBW.CBWCB[0];
+        bool allowed = false;
+
+        if (cmd == 0x03) allowed = true;      // REQUEST SENSE
+        else if (cmd == 0x12) allowed = true; // INQUIRY
+        else if (cmd == 0x4A) allowed = true; // GET EVENT STATUS NOTIFICATION
+        else if ((cmd & 0xF0) == 0xD0) allowed = true; // SCSI Toolbox Commands (0xD0-0xDF)
+
+        if (!allowed)
+        {
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
+                            "Command 0x%02x -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)", cmd);
+            setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+            sendCheckCondition();
+            CTimer::Get()->MsDelay(100);
+            return;
+        }
+    }
+
     switch (m_CBW.CBWCB[0])
     {
     case 0x00: // Test unit ready
