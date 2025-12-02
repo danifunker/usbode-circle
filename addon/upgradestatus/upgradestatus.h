@@ -39,9 +39,8 @@ private:
     volatile bool m_upgradeInProgress = false;
     volatile bool m_upgradeComplete = false;
     volatile int m_currentProgress = 1;
-    volatile int m_totalProgress = 5;
+    volatile int m_totalProgress = 3;
     const char*  m_statusMessage;
-    const char* tarpath = "0:/sysupgrade.tar";
 
     uint8_t* m_pTransferBuffer;
     static const size_t BUFFER_SIZE = 32768;
