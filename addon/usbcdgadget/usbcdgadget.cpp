@@ -1643,6 +1643,9 @@ void CUSBCDGadget::HandleSCSICommand()
         else if (cmd == 0x12) allowed = true; // INQUIRY
         else if (cmd == 0x4A) allowed = true; // GET EVENT STATUS NOTIFICATION
         else if ((cmd & 0xF0) == 0xD0) allowed = true; // SCSI Toolbox Commands (0xD0-0xDF)
+        else if (cmd == 0x1A) allowed = true; // MODE SENSE (6)
+        else if (cmd == 0x5A) allowed = true; // MODE SENSE (10)
+        else if (cmd == 0x43) allowed = true; // READ TOC/PMA/ATIP
 
         if (!allowed)
         {
