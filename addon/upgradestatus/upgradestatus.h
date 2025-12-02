@@ -26,7 +26,7 @@ public:
 
 private:
     UpgradeStatus();
-    ~UpgradeStatus() = default;
+    ~UpgradeStatus();
     UpgradeStatus(const UpgradeStatus&) = delete;
     UpgradeStatus& operator=(const UpgradeStatus&) = delete;
 
@@ -42,6 +42,9 @@ private:
     volatile int m_totalProgress = 5;
     const char*  m_statusMessage;
     const char* tarpath = "0:/sysupgrade.tar";
+
+    uint8_t* m_pTransferBuffer;
+    static const size_t BUFFER_SIZE = 32768;
 
     // crc32
     uint32_t crc32_table[256];
