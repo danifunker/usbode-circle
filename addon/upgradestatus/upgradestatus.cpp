@@ -506,7 +506,7 @@ bool UpgradeStatus::performUpgrade() {
     m_statusMessage = "Finished, rebooting";
     CScheduler::Get()->Yield();
 
-    new CShutdown(ShutdownReboot, 2000);
+    new CShutdown(ShutdownReboot, 100);
 
     return true;
 }
