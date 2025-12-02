@@ -165,6 +165,12 @@ boolean CKernel::Initialize(void)
             m_bNetworkAvailable = TRUE;
         }
     }
+    UpgradeStatus *upgradeCheck = UpgradeStatus::Get();
+    if (upgradeCheck->isUpgradeRequired())
+    {
+        LOGNOTE("Upgrade required - skipping network initialization");
+        m_bNetworkAvailable = FALSE;
+    }
 
     if (bOK && m_bNetworkAvailable)
     {
