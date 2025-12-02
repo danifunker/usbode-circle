@@ -151,10 +151,12 @@ boolean CKernel::Initialize(void)
             }
         }
     }
-
     if (bOK)
     {
-        if (!m_WLAN.Initialize())
+    // Don't start network if we're doing an upgrade, since this will cause a
+    UpgradeStatus *upgradeCheck = UpgradeStatus::Get();
+    
+        if (!m_WLAN.Initialize() || upgradeCheck->isUpgradeRequired())
         {
             LOGWARN("WLAN not available - continuing without network");
             m_bNetworkAvailable = FALSE;
