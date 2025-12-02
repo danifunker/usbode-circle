@@ -26,7 +26,7 @@
 #include <circle/util.h>
 #include <circle/logger.h>
 
-//TODO reduce stack size of USBCDGadget
+// TODO reduce stack size of USBCDGadget
 #define CDROM_STACK_SIZE TASK_STACK_SIZE * 1.5
 
 LOGMODULE("cdrom");
@@ -40,54 +40,67 @@ CDROMService::CDROMService(u16 vid, u16 pid)
     assert(s_pThis == nullptr);
     s_pThis = this;
 
-    LOGNOTE("CDROM starting");
+    LOGNOTE("CDROMService constructor: VID=0x%04x PID=0x%04x Protocol=%d", vid, pid);
     SetName("cdromservice");
     boolean ok = Initialize();
     assert(ok == true);
 }
 
-void CDROMService::SetDevice(IImageDevice* pDevice) {  // Changed from ICueDevice*
+void CDROMService::SetDevice(IImageDevice *pDevice)
+{ // Changed from ICueDevice*
     LOGNOTE("CDROM setting device (type: %d)", (int)pDevice->GetFileType());
-    
+
     // Log if this device has subchannel support
-    if (pDevice->HasSubchannelData()) {
-        LOGNOTE("Device has subchannel data - copy protection support enabled");
+    if (pDevice->HasSubchannelData())
+    {
+        LOGNOTE("Device has subchannel data");
     }
-    
+
     // We defer initialization of the CD Gadget until the first CD image is loaded
-    if (!isInitialized) {
+    if (!isInitialized)
+    {
         bool ok = m_CDGadget->Initialize();
         assert(ok && "Failed to initialize CD Gadget");
         LOGNOTE("Initialized USB CD gadget");
         isInitialized = true;
-        
+
         CScheduler::Get()->MsSleep(100);
     }
-    
+
     m_CDGadget->SetDevice(pDevice);
 }
 
-boolean CDROMService::Initialize() {
+boolean CDROMService::Initialize()
+{
     LOGNOTE("CDROM Initializing");
-    CInterruptSystem* m_Interrupt = CInterruptSystem::Get();
-    m_CDGadget = new CUSBCDGadget(m_Interrupt, CKernelOptions::Get()->GetUSBFullSpeed());
-    // Configure VID/PID before initializing
-    m_CDGadget->ConfigureUSBIds(false, m_vid, m_pid);
-    LOGNOTE("Configured USB CD gadget VID: %04x PID: %04x", m_vid, m_pid);
+    CInterruptSystem *m_Interrupt = CInterruptSystem::Get();
+    
+    // Pass VID/PID directly to constructor - no separate config step needed
+    m_CDGadget = new CUSBCDGadget(
+        m_Interrupt, 
+        CKernelOptions::Get()->GetUSBFullSpeed(),
+        nullptr,  // pDevice - will be set later via SetDevice()
+        m_vid,    // USB Vendor ID
+        m_pid     // USB Product ID
+    );
+    
+    LOGNOTE("Created USB CD gadget with VID: 0x%04x PID: 0x%04x", m_vid, m_pid);
     return true;
 }
 
-CDROMService::~CDROMService(void) {
+CDROMService::~CDROMService(void)
+{
     s_pThis = nullptr;
 }
 
-void CDROMService::Run(void) {
+void CDROMService::Run(void)
+{
     LOGNOTE("CDROM Run Loop entered");
 
-    while (true) {
-	    m_CDGadget->UpdatePlugAndPlay();
-            m_CDGadget->Update();
-	    CScheduler::Get()->Yield();
+    while (true)
+    {
+        m_CDGadget->UpdatePlugAndPlay();
+        m_CDGadget->Update();
+        CScheduler::Get()->Yield();
     }
-
 }

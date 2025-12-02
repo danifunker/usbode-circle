@@ -26,6 +26,8 @@ public:
     bool GetUSBFullSpeed();
     unsigned GetST7789Brightness(unsigned defaultValue=1024);
     unsigned GetST7789SleepBrightness(unsigned defaultValue=32);
+    u16 GetUSBCDRomVendorId(u16);
+    u16 GetUSBCDRomProductId(u16);
     void SetSoundDev(const char* value);
     const char* GetSoundDev(const char* defaultValue="none");
     const char* GetTheme(const char *defaultValue="default");
@@ -41,6 +43,12 @@ public:
     void SetUSBFullSpeed(bool value);
     void SetST7789Brightness(unsigned value);
     void SetST7789SleepBrightness(unsigned value);
+    void SetTheme(const char* value);
+
+    void SetUSBCDRomVendorId(u16 value);
+    void SetUSBCDRomProductId(u16 value);
+    void SetUSBTargetOS(const char* value="doswin");
+    const char* GetUSBTargetOS(const char* value="doswin");
 
     const char* GetProperty(const char* property, const char* defaultValue, const char* section="usbode");
     unsigned GetProperty(const char* property, unsigned defaultValue, const char* section="usbode");

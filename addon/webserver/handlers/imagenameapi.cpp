@@ -7,7 +7,7 @@
 #include <cstring>
 #include <map>
 #include "imagenameapi.h"
-#include "util.h"
+#include "../util.h"
 
 LOGMODULE("imagenameapi");
 

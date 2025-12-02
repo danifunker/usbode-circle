@@ -8,6 +8,7 @@ NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
 OBJS    = webserver.o \
+	webglobals.o \
 	util.o \
 	pagehandlerregistry.o \
 	handlers/pagehandlerbase.o \

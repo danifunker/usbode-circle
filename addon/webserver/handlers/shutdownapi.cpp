@@ -7,7 +7,7 @@
 #include <cstring>
 #include <map>
 #include "shutdownapi.h"
-#include "util.h"
+#include "../util.h"
 
 LOGMODULE("shutdownapi");
 

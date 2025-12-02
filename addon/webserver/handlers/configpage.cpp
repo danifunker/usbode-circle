@@ -13,9 +13,11 @@
 #include <fstream>
 #include <shutdown/shutdown.h>
 #include "configpage.h"
-#include "util.h"
+#include "../util.h"
 #include <configservice/configservice.h>
 #include <cdplayer/cdplayer.h>
+#include "../webglobals.h"
+
 
 using namespace kainjow;
 
@@ -93,6 +95,11 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             // Display HAT configuration
             if (form_params.count("displayhat")) {
                 config->SetDisplayHat(form_params["displayhat"].c_str());
+            }
+
+            // Theme configuration
+            if (form_params.count("theme")) {
+                config->SetTheme(form_params["theme"].c_str());
             }
             
             // Screen timeout
@@ -172,11 +179,30 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string current_loglevel = std::to_string(config->GetLogLevel());
     std::string current_usbspeed = config->GetUSBFullSpeed() ? "full" : "high";
     std::string current_logfile = config->GetLogfile();
+    std::string current_theme = config->GetTheme();
     
     // Remove 0:/ prefix from logfile for display
     if (current_logfile.find("0:/") == 0) {
         current_logfile = current_logfile.substr(3);
     }
+
+    // Create options html for available themes
+    std::string themeOptionsHtml;
+    const auto& themes = CWebGlobals::Get()->GetThemes();
+    for (const auto& themeName : themes)
+    {
+        themeOptionsHtml += "\n<option value=\"";
+        themeOptionsHtml += themeName;
+        themeOptionsHtml += "\"";
+        if (themeName == current_theme)
+        {
+            themeOptionsHtml += " selected";
+        }
+        themeOptionsHtml += ">";
+        themeOptionsHtml += themeName;
+        themeOptionsHtml += "</option>";
+    }
+    context["theme_options"] = themeOptionsHtml.c_str();
     
     // Set context variables
     context["current_displayhat"] = current_displayhat;
@@ -188,6 +214,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["current_sounddev"] = current_sounddev;
     context["current_loglevel"] = current_loglevel;
     context["current_usbspeed"] = current_usbspeed;
+    context["current_theme"] = current_theme;
 
     // Set form values
     context["screen_timeout"] = current_screen_timeout;

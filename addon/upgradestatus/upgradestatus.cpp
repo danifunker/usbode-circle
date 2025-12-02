@@ -4,6 +4,8 @@
 #include <circle/timer.h>
 #include <circle/util.h>
 #include <gitinfo/gitinfo.h>
+#include <shutdown/shutdown.h>
+#include <devicestate/devicestate.h>
 
 LOGMODULE("upgradestatus");
 
@@ -17,6 +19,7 @@ UpgradeStatus::UpgradeStatus()
       m_totalProgress(0),
       m_statusMessage("Upgrade starting...")
 {
+    m_pTransferBuffer = new uint8_t[BUFFER_SIZE];
     
     LOGNOTE("UpgradeStatus service initialized");
     
@@ -24,6 +27,11 @@ UpgradeStatus::UpgradeStatus()
     if (checkUpgradeExists()) {
         m_upgradeRequired = true;
     }
+}
+
+UpgradeStatus::~UpgradeStatus() {
+    delete[] m_pTransferBuffer;
+    m_pTransferBuffer = nullptr;
 }
 
 UpgradeStatus* UpgradeStatus::Get() {
@@ -57,12 +65,19 @@ int UpgradeStatus::getTotalProgress() const {
 }
 
 bool UpgradeStatus::checkUpgradeExists() {
+    const char* archtype = CGitInfo::Get()->GetArchBits();
+    
+    char tarPath[32];
+    strcpy(tarPath, "0:/sysupgrade");
+    strcat(tarPath, archtype);
+    strcat(tarPath, ".tar");
+    
     FILINFO fno;
-    if (f_stat(tarpath, &fno) != FR_OK) {
-        LOGNOTE("Upgrade not found");
+    if (f_stat(tarPath, &fno) != FR_OK) {
+        LOGNOTE("Upgrade not found: %s", tarPath);
         return false;
     }
-    LOGNOTE("Upgrade found");
+    LOGNOTE("Upgrade found: %s", tarPath);
     return true;
 }
 
@@ -156,30 +171,38 @@ bool UpgradeStatus::extractFileFromTar(const char *tarPath, const char *wantedNa
 
             // Copy file contents
             size_t remaining = filesize;
-            uint8_t buf[32768];
+            size_t totalWritten = 0;
+            
             while (remaining > 0) {
-
-        	// Let the web interface update
-	        CScheduler::Get()->Yield();
-
                 LOGNOTE("Extracting, remaining is %u", remaining);
-                size_t chunk = (remaining > sizeof(buf)) ? sizeof(buf) : remaining;
-                if (f_read(&tarFile, buf, chunk, &br) != FR_OK || br != chunk) {
+                size_t chunk = (remaining > BUFFER_SIZE) ? BUFFER_SIZE : remaining;
+                
+                if (f_read(&tarFile, m_pTransferBuffer, chunk, &br) != FR_OK || br != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
                     LOGNOTE("Error reading tar file");
                     return false;
                 }
 
-	        CScheduler::Get()->Yield();
-                if (f_write(&outFile, buf, chunk, &bw) != FR_OK || bw != chunk) {
+                if (f_write(&outFile, m_pTransferBuffer, chunk, &bw) != FR_OK || bw != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
                     LOGNOTE("Error writing tar file");
                     return false;
                 }
+                
+                totalWritten += chunk;
                 remaining -= chunk;
+                
+                // Sync every 256KB and give display time to update
+                if (totalWritten % (256 * 1024) == 0) {
+                    f_sync(&outFile);
+                    CScheduler::Get()->MsSleep(50);
+                }
             }
+            
+            // Final sync before close - critical to prevent hang
+            f_sync(&outFile);
             f_close(&outFile);
             f_close(&tarFile);
             LOGNOTE("Extracted %s", wantedName);
@@ -263,25 +286,36 @@ bool UpgradeStatus::extractAllFromTar(const char *tarPath, const char *destDir) 
             }
 
             size_t remaining = filesize;
-            uint8_t buf[32768];
+            size_t totalWritten = 0;
+            
             while (remaining > 0) {
-                CScheduler::Get()->Yield();
-                size_t chunk = (remaining > sizeof(buf)) ? sizeof(buf) : remaining;
-                if (f_read(&tarFile, buf, chunk, &br) != FR_OK || br != chunk) {
+                size_t chunk = (remaining > BUFFER_SIZE) ? BUFFER_SIZE : remaining;
+                
+                if (f_read(&tarFile, m_pTransferBuffer, chunk, &br) != FR_OK || br != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
 		    LOGNOTE("Can't read tar file");
                     return false;
                 }
-                CScheduler::Get()->Yield();
-                if (f_write(&outFile, buf, chunk, &bw) != FR_OK || bw != chunk) {
+                
+                if (f_write(&outFile, m_pTransferBuffer, chunk, &bw) != FR_OK || bw != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
 		    LOGNOTE("Can't write output file");
                     return false;
                 }
+                
+                totalWritten += chunk;
                 remaining -= chunk;
+                
+                // Sync every 256KB and give display time to update
+                if (totalWritten % (256 * 1024) == 0) {
+                    f_sync(&outFile);
+                    CScheduler::Get()->MsSleep(50);
+                }
             }
+            
+            f_sync(&outFile);
             f_close(&outFile);
 
             // Skip padding to 512-byte boundary
@@ -339,98 +373,85 @@ bool UpgradeStatus::performUpgrade() {
     m_upgradeInProgress = true;
 
     const char* archtype = CGitInfo::Get()->GetArchBits();
-
-    char tarballName[32];
-    char crcName[32];
-    char extractedTar[32] = "0:/upgrade.tar";
-    char extractedCrc[32] = "0:/upgrade.crc";
-
-    // Build filenames like "upgrade32.tar", "upgrade64.crc"
-    strcpy(tarballName, "upgrade");
-    strcat(tarballName, archtype);
-    strcat(tarballName, ".tar");
-
-    strcpy(crcName, "upgrade");
-    strcat(crcName, archtype);
-    strcat(crcName, ".crc");
-
-    LOGNOTE("Extracting upgrade");
-    m_statusMessage = "Extracting upgrade";
-    m_currentProgress = 1;
+    
+    char tarPath[32];
+    char crcPath[32];
+    
+    // Build architecture-specific filenames
+    strcpy(tarPath, "0:/sysupgrade");
+    strcat(tarPath, archtype);
+    strcat(tarPath, ".tar");
+    
+    strcpy(crcPath, "0:/sysupgrade");
+    strcat(crcPath, archtype);
+    strcat(crcPath, ".crc");
+    
+    LOGNOTE("Applying upgrade for %s-bit architecture", archtype);
+    m_statusMessage = ("Applying upgrade for %s-bit architecture", archtype);
     CScheduler::Get()->Yield();
-    if (!extractFileFromTar("0:/sysupgrade.tar", tarballName, extractedTar))  {
-        LOGERR("Can't find %s within sysupgrade.tar, aborting", tarballName);
-        f_unlink("0:/sysupgrade.tar");
-        return false;
-    }
-    LOGNOTE("Extracted upgrade file %s", tarballName);
-
-    LOGNOTE("Extracting crc");
-    m_statusMessage = "Extracting checksum";
-    m_currentProgress = 2;
-    CScheduler::Get()->Yield();
-    if (!extractFileFromTar("0:/sysupgrade.tar", crcName, extractedCrc)) {
-        LOGERR("Can't find %s within sysupgrade.tar, aborting", crcName);
-        f_unlink(extractedTar);
-        f_unlink("0:/sysupgrade.tar");
-        return false;
-    }
-    LOGNOTE("Extracted crc file %s", crcName);
+    LOGNOTE("Upgrade files: %s and %s", tarPath, crcPath);
 
     // Read expected CRC
+    m_statusMessage = "Reading checksum";
+    m_currentProgress = 1;
+    m_totalProgress = 3;
+    CScheduler::Get()->Yield();
+    
     FIL crcFile;
     UINT br;
     char buf[16];
-    if (f_open(&crcFile, extractedCrc, FA_READ) != FR_OK) {
-        f_unlink(extractedTar);
-        f_unlink(extractedCrc);
-        f_unlink("0:/sysupgrade.tar");
-        LOGERR("Can't open the crc file that we've just extracted");
+    if (f_open(&crcFile, crcPath, FA_READ) != FR_OK) {
+        m_statusMessage = "Checksum file not found";
+        LOGERR("Can't open %s", crcPath);
+        CScheduler::Get()->Yield();
+        f_unlink(tarPath);
+        f_unlink(crcPath);
         return false;
     }
 
-    if (f_read(&crcFile, buf, sizeof(buf)-1, &br) != FR_OK) { 
-        LOGERR("Can't read the crc file that we've just extracted");
+    if (f_read(&crcFile, buf, sizeof(buf)-1, &br) != FR_OK) {
+        m_statusMessage = "Can't read checksum file";
+        LOGERR("Can't read %s", crcPath);
+        CScheduler::Get()->Yield();
         f_close(&crcFile); 
-        f_unlink(extractedTar);
-        f_unlink(extractedCrc);
-        f_unlink("0:/sysupgrade.tar");
+        f_unlink(tarPath);
+        f_unlink(crcPath);
         return false; 
     }
     f_close(&crcFile);
 
     buf[br] = 0;
     uint32_t expectedCrc = (uint32_t)strtoul(buf, 0, 16); // assumes CRC is stored as hex string
-    LOGNOTE("Expected crc is %d", expectedCrc);
+    LOGNOTE("Expected crc is %u", expectedCrc);
 
-    // Compute CRC of extracted tarball
+    // Compute CRC of tarball
     m_statusMessage = "Validating checksum";
-    m_currentProgress = 3;
+    m_currentProgress = 2;
     CScheduler::Get()->Yield();
+    
     FIL tarFile;
-    if (f_open(&tarFile, extractedTar, FA_READ) != FR_OK) {
-        LOGERR("Can't open the tarball that we've just extracted");
-        f_unlink(extractedTar);
-        f_unlink(extractedCrc);
-        f_unlink("0:/sysupgrade.tar");
+    if (f_open(&tarFile, tarPath, FA_READ) != FR_OK) {
+        m_statusMessage = "Upgrade file not found";
+        LOGERR("Can't open %s", tarPath);
+        CScheduler::Get()->Yield();
+        f_unlink(tarPath);
+        f_unlink(crcPath);
         return false;
     }
 
-    uint8_t readBuf[32768];
     uint32_t crc = crc32_init();
     init_crc32_table();
 
     while (1) {
-
         // Let the web interface update
         CScheduler::Get()->Yield();
 
-        if (f_read(&tarFile, readBuf, sizeof(readBuf), &br) != FR_OK) { 
-            LOGERR("Can't read the tarball that we've just extracted");
+        if (f_read(&tarFile, m_pTransferBuffer, BUFFER_SIZE, &br) != FR_OK) {
+            m_statusMessage = "Error reading upgrade file";
+            LOGERR("Can't read %s", tarPath);
             f_close(&tarFile); 
-            f_unlink(extractedTar);
-            f_unlink(extractedCrc);
-            f_unlink("0:/sysupgrade.tar");
+            f_unlink(tarPath);
+            f_unlink(crcPath);
             return false; 
         }
 
@@ -438,43 +459,54 @@ bool UpgradeStatus::performUpgrade() {
         if (br == 0) 
             break;
 
-        crc = crc32_update(crc, readBuf, br);
+        crc = crc32_update(crc, m_pTransferBuffer, br);
     }
     crc = crc32_final(crc);
     f_close(&tarFile);
-    LOGNOTE("Calculated crc %d", crc);
+    LOGNOTE("Calculated crc %u", crc);
 
     if (crc != expectedCrc) {
         // CRC mismatch!
-        LOGERR("CRC %d is not as expected %d", crc, expectedCrc);
-        f_unlink(extractedTar);
-        f_unlink(extractedCrc);
-        f_unlink("0:/sysupgrade.tar");
+        m_statusMessage = "Checksum validation failed";
+        LOGERR("CRC %u does not match expected %u", crc, expectedCrc);
+        f_unlink(tarPath);
+        f_unlink(crcPath);
         return false;
     }
 
-    // Now extract the chosen upgrade tar to "0:/"
+    // Extract the upgrade tar directly to "0:/"
     m_statusMessage = "Unpacking files";
-    m_currentProgress = 4;
+    m_currentProgress = 3;
     CScheduler::Get()->Yield();
-    if (!extractAllFromTar(extractedTar, "0:/")) {
-        LOGERR("Could not extract all files from %s", extractedTar);
-        f_unlink(extractedTar);
-        f_unlink(extractedCrc);
-        f_unlink("0:/sysupgrade.tar");
+    
+    if (!extractAllFromTar(tarPath, "0:/")) {
+        m_statusMessage = "Extraction failed";
+        LOGERR("Could not extract all files from %s", tarPath);
+        CScheduler::Get()->Yield();
+        f_unlink(tarPath);
+        f_unlink(crcPath);
         return false;
     }
 
-    // Final cleanup
-    f_unlink(extractedTar);
-    f_unlink(extractedCrc);
-    f_unlink("0:/sysupgrade.tar");
+    // Final cleanup - remove all upgrade files (both architectures)
+    m_statusMessage = "Cleaning up upgrade files";
+    LOGNOTE("Cleaning up upgrade files");
+    CScheduler::Get()->Yield();
+    f_unlink(tarPath);
+    f_unlink(crcPath);
+    
+    // Also clean up the other architecture's files if they exist
+    f_unlink("0:/sysupgrade32.tar");
+    f_unlink("0:/sysupgrade32.crc");
+    f_unlink("0:/sysupgrade64.tar");
+    f_unlink("0:/sysupgrade64.crc");
 
-    LOGNOTE("Finished");
+    LOGNOTE("Finished upgrade for %s-bit system", archtype);
 
     m_statusMessage = "Finished, rebooting";
-    m_currentProgress = 5;
     CScheduler::Get()->Yield();
+
+    new CShutdown(ShutdownReboot, 100);
 
     return true;
 }

@@ -10,7 +10,7 @@ CCHDFileDevice::CCHDFileDevice(const char *chd_filename, MEDIA_TYPE mediaType)
       m_mediaType(mediaType),
       m_hunkBuffer(nullptr),
       m_hunkSize(0),
-      m_cachedHunkNum(UINT32_MAX), // Start with an invalid hunk number
+      m_cachedHunkNum(UINT32_MAX), 
       m_lastTrackIndex(0)
 {
     LOGNOTE("CCHDFileDevice created for: %s", chd_filename);
@@ -128,7 +128,7 @@ bool CCHDFileDevice::ParseTrackMetadata()
 
             m_numTracks++;
         }
-
+        
         metadata_index++;
     }
 
@@ -139,7 +139,6 @@ bool CCHDFileDevice::Init()
 {
     LOGNOTE("Initializing CHD file: %s", m_chd_filename);
 
-    // Open the CHD file
     chd_error err = chd_open(m_chd_filename, CHD_OPEN_READ, nullptr, &m_chd);
     if (err != CHDERR_NONE)
     {
@@ -147,7 +146,6 @@ bool CCHDFileDevice::Init()
         return false;
     }
 
-    // Get CHD header info
     const chd_header *header = chd_get_header(m_chd);
     if (!header)
     {
@@ -160,7 +158,6 @@ bool CCHDFileDevice::Init()
     LOGNOTE("CHD version: %d, hunk size: %d bytes",
             header->version, header->hunkbytes);
 
-    // Allocate hunk buffer
     m_hunkSize = header->hunkbytes;
     m_hunkBuffer = new u8[m_hunkSize];
     if (!m_hunkBuffer)
@@ -171,7 +168,6 @@ bool CCHDFileDevice::Init()
         return false;
     }
 
-    // Parse track metadata
     if (!ParseTrackMetadata())
     {
         LOGERR("No CD-ROM tracks found in CHD");
@@ -181,14 +177,9 @@ bool CCHDFileDevice::Init()
     }
 
     LOGNOTE("CHD has %d tracks", m_numTracks);
-
-    // Determine frame size from first track
     m_frameSize = m_tracks[0].dataSize;
 
-    // Check for subchannel data in the CHD
-    bool hasPhysicalSubchannels = (header->unitbytes == CD_FRAME_SIZE); // 2448 = has subchannel
-
-    // Check if filename contains .subchan. flag to force enable subchannels
+    bool hasPhysicalSubchannels = (header->unitbytes == CD_FRAME_SIZE);
     bool forceEnableSubchannels = (strstr(m_chd_filename, ".subchan.") != nullptr);
 
     if (hasPhysicalSubchannels)
@@ -252,6 +243,7 @@ void CCHDFileDevice::GenerateCueSheet()
 
         // Calculate MSF for track start
         u32 lba = track.startLBA;
+        
         u32 minutes = lba / (60 * 75);
         u32 seconds = (lba / 75) % 60;
         u32 frames = lba % 75;
@@ -277,8 +269,8 @@ int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
     if (!header)
         return -1;
 
-    u32 unitBytes = header->unitbytes;    // 2448 bytes (2352 + 96 subchannel)
-    u32 sectorBytes = CD_MAX_SECTOR_DATA; // 2352 bytes (audio/data only)
+    u32 unitBytes = header->unitbytes;
+    u32 sectorBytes = CD_MAX_SECTOR_DATA; 
     u32 framesPerHunk = header->hunkbytes / unitBytes;
 
     size_t bytesRead = 0;
@@ -286,11 +278,9 @@ int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
 
     while (bytesRead < nCount)
     {
-        // Calculate which frame and offset
         u64 absoluteFrame = m_currentOffset / sectorBytes;
         u32 offsetInSector = m_currentOffset % sectorBytes;
 
-        // Calculate hunk
         u32 hunkNum = absoluteFrame / framesPerHunk;
         u32 frameInHunk = absoluteFrame % framesPerHunk;
 
@@ -330,18 +320,15 @@ int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
             bytesToCopy = bytesLeftInSector;
         }
 
-        // Copy data (skip subchannel at end of frame)
         memcpy(dest + bytesRead, m_hunkBuffer + readPosition, bytesToCopy);
 
-        // Byte-swap ONLY for audio tracks (CHD stores audio in different endianness than BIN)
-        // Determine which track we're in, with caching
+        // Byte Swap Logic (Audio Only)
         u64 currentLBA = m_currentOffset / sectorBytes;
         u64 lastTrackEnd = m_tracks[m_lastTrackIndex].startLBA + m_tracks[m_lastTrackIndex].frames;
-
+        
         if (currentLBA < m_tracks[m_lastTrackIndex].startLBA || currentLBA >= lastTrackEnd)
         {
-            // LBA is outside of the last track, so we need to search for the correct one
-            m_lastTrackIndex = -1; // Invalidate last track index
+            m_lastTrackIndex = -1; 
             for (int i = 0; i < m_numTracks; i++)
             {
                 u64 trackEnd = m_tracks[i].startLBA + m_tracks[i].frames;
@@ -355,7 +342,6 @@ int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
 
         if (m_lastTrackIndex >= 0 && m_tracks[m_lastTrackIndex].trackType == CD_TRACK_AUDIO)
         {
-            // Swap bytes for audio data
             for (u32 i = 0; i < bytesToCopy; i += 2)
             {
                 if (bytesRead + i + 1 < nCount)
@@ -376,7 +362,6 @@ int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
 
 int CCHDFileDevice::Write(const void *pBuffer, size_t nCount)
 {
-    // CHD files are read-only
     return -1;
 }
 
@@ -391,9 +376,8 @@ u64 CCHDFileDevice::GetSize() const {
     const chd_header* header = chd_get_header(m_chd);
     if (!header) return 0;
     
-    // Always return size based on sector data only (2352 bytes), not including subchannel
     u64 totalFrames = header->logicalbytes / header->unitbytes;
-    return totalFrames * CD_MAX_SECTOR_DATA;  // 2352 bytes per frame
+    return totalFrames * CD_MAX_SECTOR_DATA; 
 }
 
 u64 CCHDFileDevice::Tell() const
@@ -432,7 +416,6 @@ int CCHDFileDevice::ReadSubchannel(u32 lba, u8 *subchannel)
     if (!m_hasSubchannels || !subchannel)
         return -1;
 
-    // Calculate which hunk contains this LBA
     const chd_header *header = chd_get_header(m_chd);
     u32 framesPerHunk = header->hunkbytes / CD_FRAME_SIZE;
     u32 hunkNum = lba / framesPerHunk;

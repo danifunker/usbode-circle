@@ -6,13 +6,13 @@
         <meta http-equiv="refresh" content="{{meta_refresh_timeout}};url={{meta_refresh_url}}"/>
         {{/meta_refresh_url}}
         <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-        <link href="/style.css" rel="stylesheet"/>
+        <link href="/style.css?{{theme}}&boot_id={{boot_id}}" rel="stylesheet"/>
     </head>
     <body>
         <div class="container">
             
 			<div class="header">
-                <a href="/" class="home"><img src="/logo.jpg" alt="USBODE"/></a>
+                <a href="/" class="home"><img src="/logo.jpg?{{theme}}&boot_id={{boot_id}}" alt="USBODE"/></a>
                 <h1>USBODE</h1>
                 <h2>USB Optical Drive Emulator</h2>
             </div>

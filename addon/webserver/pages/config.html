@@ -14,7 +14,7 @@
 </div>
 {{/success_message}}
 
-<form method="POST" action="/config">
+<form method="POST" action="/config" autocomplete="off">
     <div class="form-section">
         <h3>Display Configuration</h3>
         <div class="form-group">
@@ -48,7 +48,7 @@
             <div class="current-value">Range: 0-1024 (0 is off, 32 is default)</div>
         </div>
     </div>
-
+    
     <div class="form-section">
         <h3>Audio Configuration</h3>
         <div class="form-group">
@@ -82,6 +82,18 @@
     </div>
 
     <div class="form-section">
+        <h3>User Interface Configuration</h3>
+        <div class="form-group">
+            <label for="theme">Web User Interface Theme:</label>
+            <div class="current-value">Current: {{current_theme}}</div>
+            <select name="theme" id="theme">
+                <option value="default">default</option>
+                {{{theme_options}}}
+            </select>
+        </div>
+    </div>
+
+    <div class="form-section">
         <h3>Logging Configuration</h3>
         <div class="form-group">
             <label for="logfile">Log File Path:</label>
@@ -109,8 +121,8 @@
 
     <div class="buttons">
         <button type="submit" name="action" value="save" class="button">Save Configuration</button>
-        <button type="submit" name="action" value="save_reboot" class="button">Save & Reboot</button>
-        <button type="submit" name="action" value="save_shutdown" class="button">Save & Shutdown</button>
+        <button type="submit" name="action" value="save_reboot" class="button no-oldie">Save & Reboot</button>
+        <button type="submit" name="action" value="save_shutdown" class="button no-oldie">Save & Shutdown</button>
         <a href="/" class="button danger">Cancel</a>
     </div>
 </form>

@@ -13,7 +13,7 @@
 #include <fstream>
 #include <shutdown/shutdown.h>
 #include "logpage.h"
-#include "util.h"
+#include "../util.h"
 #include <cdplayer/cdplayer.h>
 
 using namespace kainjow;
