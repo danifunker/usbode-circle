@@ -8,13 +8,18 @@ LOGMODULE("chdfile");
 CCHDFileDevice::CCHDFileDevice(const char *chd_filename, MEDIA_TYPE mediaType)
     : m_chd_filename(chd_filename),
       m_mediaType(mediaType),
-      m_hunkBuffer(nullptr),
       m_hunkSize(0),
-      m_cachedHunkNum(UINT32_MAX), 
+      m_accessCounter(0),
       m_lastTrackIndex(0)
 {
     LOGNOTE("CCHDFileDevice created for: %s", chd_filename);
     memset(m_tracks, 0, sizeof(m_tracks));
+    for (int i = 0; i < CHD_CACHE_SIZE; ++i) {
+        m_cache[i].hunkNum = 0;
+        m_cache[i].buffer = nullptr;
+        m_cache[i].lastUsed = 0;
+        m_cache[i].valid = false;
+    }
 }
 
 CCHDFileDevice::~CCHDFileDevice()
@@ -29,10 +34,11 @@ CCHDFileDevice::~CCHDFileDevice()
         delete[] m_cue_sheet;
         m_cue_sheet = nullptr;
     }
-    if (m_hunkBuffer)
-    {
-        delete[] m_hunkBuffer;
-        m_hunkBuffer = nullptr;
+    for (int i = 0; i < CHD_CACHE_SIZE; ++i) {
+        if (m_cache[i].buffer) {
+            delete[] m_cache[i].buffer;
+            m_cache[i].buffer = nullptr;
+        }
     }
 }
 
@@ -159,20 +165,29 @@ bool CCHDFileDevice::Init()
             header->version, header->hunkbytes);
 
     m_hunkSize = header->hunkbytes;
-    m_hunkBuffer = new u8[m_hunkSize];
-    if (!m_hunkBuffer)
-    {
-        LOGERR("Failed to allocate hunk buffer");
-        chd_close(m_chd);
-        m_chd = nullptr;
-        return false;
+
+    // Allocate cache buffers
+    for (int i = 0; i < CHD_CACHE_SIZE; ++i) {
+        m_cache[i].buffer = new u8[m_hunkSize];
+        if (!m_cache[i].buffer) {
+             LOGERR("Failed to allocate hunk buffer %d", i);
+             // Cleanup already allocated
+             for (int j=0; j<i; ++j) {
+                 delete[] m_cache[j].buffer;
+                 m_cache[j].buffer = nullptr;
+             }
+             chd_close(m_chd);
+             m_chd = nullptr;
+             return false;
+        }
+        m_cache[i].valid = false;
+        m_cache[i].lastUsed = 0;
     }
 
     if (!ParseTrackMetadata())
     {
         LOGERR("No CD-ROM tracks found in CHD");
-        chd_close(m_chd);
-        m_chd = nullptr;
+        // Cleanup happens in destructor if this returns false
         return false;
     }
 
@@ -260,6 +275,46 @@ void CCHDFileDevice::GenerateCueSheet()
     LOGNOTE("Generated CUE sheet with %d tracks", m_numTracks);
 }
 
+u8* CCHDFileDevice::GetHunk(u32 hunkNum) {
+    // Check cache
+    for (int i = 0; i < CHD_CACHE_SIZE; ++i) {
+        if (m_cache[i].valid && m_cache[i].hunkNum == hunkNum) {
+            m_cache[i].lastUsed = ++m_accessCounter;
+            return m_cache[i].buffer;
+        }
+    }
+
+    // Find victim (Invalid or LRU)
+    int victim = -1;
+    u64 minAccess = ~0ULL; // UINT64_MAX
+
+    for (int i = 0; i < CHD_CACHE_SIZE; ++i) {
+        if (!m_cache[i].valid) {
+            victim = i;
+            break;
+        }
+        if (m_cache[i].lastUsed < minAccess) {
+            minAccess = m_cache[i].lastUsed;
+            victim = i;
+        }
+    }
+
+    if (victim == -1) victim = 0; // Should not happen given logic above
+
+    // Load hunk
+    chd_error err = chd_read(m_chd, hunkNum, m_cache[victim].buffer);
+    if (err != CHDERR_NONE) {
+        LOGERR("CHD read error at hunk %u: %d", hunkNum, err);
+        return nullptr;
+    }
+
+    m_cache[victim].hunkNum = hunkNum;
+    m_cache[victim].valid = true;
+    m_cache[victim].lastUsed = ++m_accessCounter;
+
+    return m_cache[victim].buffer;
+}
+
 int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
 {
     if (!m_chd || !pBuffer)
@@ -284,35 +339,12 @@ int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
         u32 hunkNum = absoluteFrame / framesPerHunk;
         u32 frameInHunk = absoluteFrame % framesPerHunk;
 
-        // Read the hunk if it's not already cached
-        if (hunkNum != m_cachedHunkNum)
-        {
-            chd_error err = chd_read(m_chd, hunkNum, m_hunkBuffer);
-            if (err != CHDERR_NONE)
-            {
-                LOGERR("CHD read error at hunk %u: %d", hunkNum, err);
-                return bytesRead > 0 ? bytesRead : -1;
-            }
-            m_cachedHunkNum = hunkNum;
-        }
+        u8* hunkBuf = GetHunk(hunkNum);
+        if (!hunkBuf) return bytesRead > 0 ? bytesRead : -1;
 
-        // Position within hunk: frame start + offset within sector
         u32 frameStartInHunk = frameInHunk * unitBytes;
         u32 readPosition = frameStartInHunk + offsetInSector;
 
-        // DEBUG CODE - log first audio frame
-        // if (absoluteFrame == 2912 && bytesRead == 0)
-        // {
-        //     LOGDBG("First audio frame: hunk=%u, frameInHunk=%u, readPos=%u",
-        //             hunkNum, frameInHunk, readPosition);
-        //     LOGDBG("First 16 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-        //             hunkBuf[readPosition + 0], hunkBuf[readPosition + 1], hunkBuf[readPosition + 2], hunkBuf[readPosition + 3],
-        //             hunkBuf[readPosition + 4], hunkBuf[readPosition + 5], hunkBuf[readPosition + 6], hunkBuf[readPosition + 7],
-        //             hunkBuf[readPosition + 8], hunkBuf[readPosition + 9], hunkBuf[readPosition + 10], hunkBuf[readPosition + 11],
-        //             hunkBuf[readPosition + 12], hunkBuf[readPosition + 13], hunkBuf[readPosition + 14], hunkBuf[readPosition + 15]);
-        // }
-
-        // How much can we read from this sector?
         u32 bytesLeftInSector = sectorBytes - offsetInSector;
         u32 bytesToCopy = nCount - bytesRead;
         if (bytesToCopy > bytesLeftInSector)
@@ -320,37 +352,61 @@ int CCHDFileDevice::Read(void *pBuffer, size_t nCount)
             bytesToCopy = bytesLeftInSector;
         }
 
-        memcpy(dest + bytesRead, m_hunkBuffer + readPosition, bytesToCopy);
-
-        // Byte Swap Logic (Audio Only)
-        u64 currentLBA = m_currentOffset / sectorBytes;
+        // Determine track info for current position
+        u64 currentLBA = absoluteFrame;
         u64 lastTrackEnd = m_tracks[m_lastTrackIndex].startLBA + m_tracks[m_lastTrackIndex].frames;
         
+        // Optimizing track lookup
         if (currentLBA < m_tracks[m_lastTrackIndex].startLBA || currentLBA >= lastTrackEnd)
         {
-            m_lastTrackIndex = -1; 
-            for (int i = 0; i < m_numTracks; i++)
-            {
-                u64 trackEnd = m_tracks[i].startLBA + m_tracks[i].frames;
-                if (currentLBA >= m_tracks[i].startLBA && currentLBA < trackEnd)
+             // Reset search
+             bool found = false;
+             // Check next track first (sequential access optimization)
+             int nextTrack = m_lastTrackIndex + 1;
+             if (nextTrack < m_numTracks) {
+                 u64 nextEnd = m_tracks[nextTrack].startLBA + m_tracks[nextTrack].frames;
+                 if (currentLBA >= m_tracks[nextTrack].startLBA && currentLBA < nextEnd) {
+                     m_lastTrackIndex = nextTrack;
+                     found = true;
+                 }
+             }
+
+             if (!found) {
+                // Linear search
+                for (int i = 0; i < m_numTracks; i++)
                 {
-                    m_lastTrackIndex = i;
-                    break;
+                    u64 trackEnd = m_tracks[i].startLBA + m_tracks[i].frames;
+                    if (currentLBA >= m_tracks[i].startLBA && currentLBA < trackEnd)
+                    {
+                        m_lastTrackIndex = i;
+                        break;
+                    }
                 }
-            }
+             }
         }
 
         if (m_lastTrackIndex >= 0 && m_tracks[m_lastTrackIndex].trackType == CD_TRACK_AUDIO)
         {
-            for (u32 i = 0; i < bytesToCopy; i += 2)
-            {
-                if (bytesRead + i + 1 < nCount)
-                {
-                    u8 temp = dest[bytesRead + i];
-                    dest[bytesRead + i] = dest[bytesRead + i + 1];
-                    dest[bytesRead + i + 1] = temp;
-                }
+            // Optimized audio copy and swap
+            const u8* src = hunkBuf + readPosition;
+            u8* d = dest + bytesRead;
+
+            // We process bytes 2 by 2
+            // Since this is audio, we assume alignment is fine for byte access
+            for (u32 i = 0; i < bytesToCopy; i += 2) {
+                 if (i + 1 < bytesToCopy) {
+                     // Swap bytes while copying
+                     d[i] = src[i+1];
+                     d[i+1] = src[i];
+                 } else {
+                     // Last odd byte (should not happen for full sector reads)
+                     d[i] = src[i];
+                 }
             }
+        }
+        else
+        {
+            memcpy(dest + bytesRead, hunkBuf + readPosition, bytesToCopy);
         }
 
         bytesRead += bytesToCopy;
@@ -421,30 +477,12 @@ int CCHDFileDevice::ReadSubchannel(u32 lba, u8 *subchannel)
     u32 hunkNum = lba / framesPerHunk;
     u32 frameInHunk = lba % framesPerHunk;
 
-    // Read the hunk if it's not already cached
-    if (hunkNum != m_cachedHunkNum)
-    {
-        chd_error err = chd_read(m_chd, hunkNum, m_hunkBuffer);
-        if (err != CHDERR_NONE)
-        {
-            LOGERR("CHD read error at hunk %u: %d", hunkNum, err);
-            return -1;
-        }
-        m_cachedHunkNum = hunkNum;
-    }
+    u8* hunkBuf = GetHunk(hunkNum);
+    if (!hunkBuf) return -1;
 
     // Subchannel data is at the end of each frame
     u32 frameOffset = frameInHunk * CD_FRAME_SIZE;
-    memcpy(subchannel, m_hunkBuffer + frameOffset + CD_MAX_SECTOR_DATA, CD_MAX_SUBCODE_DATA);
-
-    // DEBUG: Log first subchannel read
-    if (lba == 0) {
-        LOGNOTE("ReadSubchannel LBA=0, first 16 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                subchannel[0], subchannel[1], subchannel[2], subchannel[3],
-                subchannel[4], subchannel[5], subchannel[6], subchannel[7],
-                subchannel[8], subchannel[9], subchannel[10], subchannel[11],
-                subchannel[12], subchannel[13], subchannel[14], subchannel[15]);
-    }
+    memcpy(subchannel, hunkBuf + frameOffset + CD_MAX_SECTOR_DATA, CD_MAX_SUBCODE_DATA);
 
     return CD_MAX_SUBCODE_DATA;
 }

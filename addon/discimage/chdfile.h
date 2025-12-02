@@ -20,6 +20,15 @@ struct CHDTrackInfo {
     u32 dataSize;   // bytes per frame
 };
 
+#define CHD_CACHE_SIZE 16
+
+struct HunkCacheEntry {
+    u32 hunkNum;
+    u8* buffer;
+    u64 lastUsed;
+    bool valid;
+};
+
 /// Implementation of CHD image support (MAME compressed hunks format)
 class CCHDFileDevice : public ICHDDevice {
    public:
@@ -70,9 +79,9 @@ class CCHDFileDevice : public ICHDDevice {
     int m_numTracks;
 
     // Hunk cache
-    u8* m_hunkBuffer;
+    HunkCacheEntry m_cache[CHD_CACHE_SIZE];
     u32 m_hunkSize;
-    u32 m_cachedHunkNum;
+    u64 m_accessCounter;
     int m_lastTrackIndex;
     
     // Helper to parse CHD track metadata
@@ -80,6 +89,9 @@ class CCHDFileDevice : public ICHDDevice {
     
     // Helper to generate CUE sheet from CHD metadata
     void GenerateCueSheet();
+
+    // Helper to get a hunk from cache or load it
+    u8* GetHunk(u32 hunkNum);
 };
 
 #endif
