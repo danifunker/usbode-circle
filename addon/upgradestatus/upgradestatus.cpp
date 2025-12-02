@@ -4,6 +4,8 @@
 #include <circle/timer.h>
 #include <circle/util.h>
 #include <gitinfo/gitinfo.h>
+#include <shutdown/shutdown.h>
+#include <devicestate/devicestate.h>
 
 LOGMODULE("upgradestatus");
 
@@ -17,6 +19,7 @@ UpgradeStatus::UpgradeStatus()
       m_totalProgress(0),
       m_statusMessage("Upgrade starting...")
 {
+    m_pTransferBuffer = new uint8_t[BUFFER_SIZE];
     
     LOGNOTE("UpgradeStatus service initialized");
     
@@ -24,6 +27,11 @@ UpgradeStatus::UpgradeStatus()
     if (checkUpgradeExists()) {
         m_upgradeRequired = true;
     }
+}
+
+UpgradeStatus::~UpgradeStatus() {
+    delete[] m_pTransferBuffer;
+    m_pTransferBuffer = nullptr;
 }
 
 UpgradeStatus* UpgradeStatus::Get() {
@@ -156,15 +164,14 @@ bool UpgradeStatus::extractFileFromTar(const char *tarPath, const char *wantedNa
 
             // Copy file contents
             size_t remaining = filesize;
-            uint8_t buf[32768];
             while (remaining > 0) {
 
         	// Let the web interface update
 	        CScheduler::Get()->Yield();
 
                 LOGNOTE("Extracting, remaining is %u", remaining);
-                size_t chunk = (remaining > sizeof(buf)) ? sizeof(buf) : remaining;
-                if (f_read(&tarFile, buf, chunk, &br) != FR_OK || br != chunk) {
+                size_t chunk = (remaining > BUFFER_SIZE) ? BUFFER_SIZE : remaining;
+                if (f_read(&tarFile, m_pTransferBuffer, chunk, &br) != FR_OK || br != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
                     LOGNOTE("Error reading tar file");
@@ -172,7 +179,7 @@ bool UpgradeStatus::extractFileFromTar(const char *tarPath, const char *wantedNa
                 }
 
 	        CScheduler::Get()->Yield();
-                if (f_write(&outFile, buf, chunk, &bw) != FR_OK || bw != chunk) {
+                if (f_write(&outFile, m_pTransferBuffer, chunk, &bw) != FR_OK || bw != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
                     LOGNOTE("Error writing tar file");
@@ -263,18 +270,17 @@ bool UpgradeStatus::extractAllFromTar(const char *tarPath, const char *destDir) 
             }
 
             size_t remaining = filesize;
-            uint8_t buf[32768];
             while (remaining > 0) {
                 CScheduler::Get()->Yield();
-                size_t chunk = (remaining > sizeof(buf)) ? sizeof(buf) : remaining;
-                if (f_read(&tarFile, buf, chunk, &br) != FR_OK || br != chunk) {
+                size_t chunk = (remaining > BUFFER_SIZE) ? BUFFER_SIZE : remaining;
+                if (f_read(&tarFile, m_pTransferBuffer, chunk, &br) != FR_OK || br != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
 		    LOGNOTE("Can't read tar file");
                     return false;
                 }
                 CScheduler::Get()->Yield();
-                if (f_write(&outFile, buf, chunk, &bw) != FR_OK || bw != chunk) {
+                if (f_write(&outFile, m_pTransferBuffer, chunk, &bw) != FR_OK || bw != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
 		    LOGNOTE("Can't write output file");
@@ -416,7 +422,6 @@ bool UpgradeStatus::performUpgrade() {
         return false;
     }
 
-    uint8_t readBuf[32768];
     uint32_t crc = crc32_init();
     init_crc32_table();
 
@@ -425,7 +430,7 @@ bool UpgradeStatus::performUpgrade() {
         // Let the web interface update
         CScheduler::Get()->Yield();
 
-        if (f_read(&tarFile, readBuf, sizeof(readBuf), &br) != FR_OK) { 
+        if (f_read(&tarFile, m_pTransferBuffer, BUFFER_SIZE, &br) != FR_OK) {
             LOGERR("Can't read the tarball that we've just extracted");
             f_close(&tarFile); 
             f_unlink(extractedTar);
@@ -438,7 +443,7 @@ bool UpgradeStatus::performUpgrade() {
         if (br == 0) 
             break;
 
-        crc = crc32_update(crc, readBuf, br);
+        crc = crc32_update(crc, m_pTransferBuffer, br);
     }
     crc = crc32_final(crc);
     f_close(&tarFile);
@@ -475,6 +480,8 @@ bool UpgradeStatus::performUpgrade() {
     m_statusMessage = "Finished, rebooting";
     m_currentProgress = 5;
     CScheduler::Get()->Yield();
+
+    new CShutdown(ShutdownReboot, 2000);
 
     return true;
 }
