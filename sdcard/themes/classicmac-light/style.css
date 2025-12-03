@@ -1,0 +1,400 @@
+/* =========================================
+   1. GLOBAL RESET & FONTS
+   ========================================= */
+
+/* Critical for alignment: ensures padding doesn't increase width */
+* {
+    box-sizing: border-box;
+}
+
+/* --- System Font (GPLv3 Friendly) --- */
+@font-face {
+    font-family: 'sysfont';
+    src: url('/sysfont.eot');
+    src: url('/sysfont.eot?#iefix') format('embedded-opentype'),
+         url('/sysfont.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+/* --- Base Body (The "Desktop") --- */
+body {
+    font-family: 'sysfont', sans-serif;
+    background-color: #6d6d8f;
+    /* Authentic Dithered Desktop Pattern */
+    background-image: radial-gradient(#a3a3c2 15%, transparent 16%),
+                      radial-gradient(#a3a3c2 15%, transparent 16%);
+    background-size: 4px 4px;
+    background-position: 0 0, 2px 2px;
+    
+    color: #000000;
+    margin: 20px; 
+    padding: 0;
+    font-size: 14px;
+    line-height: 1.2em;
+}
+
+/* Global Typography */
+body * {
+    font-family: 'sysfont', sans-serif;
+}
+
+strong, .form-group label {
+    color: #000000;
+    font-weight: bold;
+}
+
+/* --- Links --- */
+a {
+    color: #0000EE;
+    text-decoration: none;
+    cursor: auto; 
+}
+a:hover {
+    text-decoration: underline;
+}
+
+/* =========================================
+   2. LAYOUT CONTAINERS (Window Structure)
+   ========================================= */
+
+/* Common styling for the Window pieces to ensure alignment */
+.header, .content {
+    width: 100%;
+    max-width: 800px; /* Adjust this to your preferred max width */
+    margin: 0 auto;
+    background-color: #DDDDDD; /* Platinum Grey */
+    border-left: 1px solid #000;
+    border-right: 1px solid #000;
+    /* Drop shadow for the whole window */
+    box-shadow: 2px 2px 0px rgba(0,0,0,0.2);
+}
+
+/* =========================================
+   3. THE HEADER (Mac OS 9 Style)
+   ========================================= */
+
+.header {
+    height: 28px; /* Fixed height for title bar */
+    padding: 0 10px;
+    margin-bottom: 0;
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #555;
+    
+    /* We need relative positioning here so the gadgets can anchor to it */
+    position: relative; 
+    
+    /* THE PLATINUM PINSTRIPES */
+    background: repeating-linear-gradient(
+        0deg,
+        #DDDDDD,
+        #DDDDDD 2px,
+        #999999 2px,
+        #999999 3px
+    );
+    
+    /* Center the Title and Icon */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px; 
+}
+
+/* --- GADGET 1: Close Box (Far Left) --- */
+/* Drawn using ::before on the main Header */
+.header::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 6px;
+    width: 13px;
+    height: 13px;
+    background-color: #CCCCCC;
+    border: 1px solid #444;
+    /* 3D Bevel effect */
+    box-shadow: inset 1px 1px 0 #FFF, inset -1px -1px 0 #555;
+    z-index: 10;
+}
+
+/* --- GADGET 2: Collapse Box (Far Right) --- */
+/* Drawn using ::after on the main Header */
+.header::after {
+    content: '';
+    position: absolute;
+    right: 8px; /* Pinned to far right */
+    top: 6px;
+    width: 13px;
+    height: 13px;
+    background-color: #CCCCCC;
+    border: 1px solid #444;
+    box-shadow: inset 1px 1px 0 #FFF, inset -1px -1px 0 #555;
+    z-index: 10;
+    
+    /* ICON: Horizontal Lines (WindowShade) */
+    background-image: repeating-linear-gradient(
+        180deg,
+        transparent,
+        transparent 3px,
+        #000 3px,
+        #000 4px
+    );
+    background-position: center;
+    background-size: 8px 8px;
+    background-repeat: no-repeat;
+}
+
+/* --- GADGET 3: Zoom Box (Near Right) --- */
+/* Drawn using ::after on the H1 tag */
+/* Since H1 is position:static, this absolute element anchors to .header! */
+.header h1::after {
+    content: '';
+    position: absolute;
+    right: 26px; /* 8px (Far Right) + 13px (Width) + 5px (Gap) */
+    top: 6px;
+    width: 13px;
+    height: 13px;
+    background-color: #CCCCCC;
+    border: 1px solid #444;
+    box-shadow: inset 1px 1px 0 #FFF, inset -1px -1px 0 #555;
+    z-index: 10;
+
+    /* ICON: Box Inside Box (Zoom) */
+    /* drawn using 4 gradients for the 4 sides of the square */
+    background-image: 
+        linear-gradient(#000,#000), /* Top */
+        linear-gradient(#000,#000), /* Bottom */
+        linear-gradient(#000,#000), /* Left */
+        linear-gradient(#000,#000); /* Right */
+    
+    background-repeat: no-repeat;
+    background-position: 3px 3px, 3px 8px, 3px 3px, 8px 3px;
+    background-size: 6px 1px, 6px 1px, 1px 6px, 1px 6px;
+}
+
+/* --- Title Elements --- */
+
+/* The Title Text */
+.header h1 {
+    font-size: 14px;
+    font-weight: bold;
+    color: #000;
+    margin: 0;
+    
+    /* Create the "Solid Grey Pill" look */
+    background-color: #DDDDDD;
+    padding: 2px 4px 2px 0; /* Padding right, keeping left tight to icon */
+    line-height: 14px;
+    /* Soft shadow to fade the stripes on the right edge */
+    box-shadow: 5px 0 5px -1px #DDDDDD; 
+    cursor: default;
+    white-space: nowrap;
+    
+    /* IMPORTANT: Must remain static for the Zoom gadget trick to work */
+    position: static;
+}
+
+/* The Icon */
+.header img {
+    height: 16px;
+    width: auto;
+    border: none;
+    margin: 0;
+    
+    /* Ensure icon also sits on grey background */
+    background-color: #DDDDDD;
+    padding-left: 4px;
+    /* Soft shadow to fade the stripes on the left edge */
+    box-shadow: -5px 0 5px -1px #DDDDDD; 
+}
+
+/* Hide legacy H2s */
+.header h2 { display: none; }
+
+
+/* =========================================
+   4. CONTENT AREA
+   ========================================= */
+
+.content {
+    margin-top: -1px; /* Overlap header border */
+    padding: 20px;
+    border-bottom: 1px solid #000;
+    border-top: none;
+}
+
+/* =========================================
+   5. WIDGETS (Buttons, Inputs, Logs)
+   ========================================= */
+
+/* --- Buttons --- */
+.button, button, .pagination a, .pagination span {
+    font-family: 'sysfont', sans-serif;
+    font-size: 13px;
+    display: inline-block;
+    color: #000000;
+    text-decoration: none !important;
+    background-color: #DDDDDD;
+    padding: 3px 14px;
+    margin-right: 8px;
+    margin-bottom: 10px;
+    
+    /* Mac OS "Pill" Shape */
+    border-radius: 4px;
+    border: 1px solid #000;
+    
+    /* 3D Bevel */
+    box-shadow: inset 1px 1px 0px #FFFFFF,
+                inset -1px -1px 0px #888888;
+    
+    cursor: pointer;
+    position: relative;
+}
+
+/* Button Active (Pressed) */
+.button:active, button:active, .pagination a:active {
+    background-color: #999999;
+    box-shadow: inset 1px 1px 0px #444444,
+                inset -1px -1px 0px #CCCCCC;
+}
+
+/* Hover State */
+.button:hover, button.hover {
+    background-color: #EEEEEE;
+}
+
+/* Danger Button */
+.button.danger, button.danger {
+    color: #AA0000;
+}
+
+/* Remove old arrows */
+.button::before, button::before, .button::after, button::after {
+    content: none !important;
+}
+
+/* --- Pagination Specifics --- */
+.pagination span {
+    background-color: #CCCCCC;
+    box-shadow: inset 1px 1px 0px #444444,
+                inset -1px -1px 0px #FFFFFF;
+    color: #444;
+}
+
+/* --- Inputs --- */
+input, select {
+    background-color: #FFFFFF;
+    color: #000000;
+    padding: 4px;
+    margin-top: 5px;
+    border: 1px solid #555;
+    border-bottom: 1px solid #DDD;
+    border-right: 1px solid #DDD;
+    box-shadow: inset 1px 1px 2px #000; /* Deep inset look */
+    font-family: 'sysfont', sans-serif;
+    width: 300px;
+    max-width: 100%;
+}
+
+/* --- Logs (Terminal) --- */
+#log {
+    margin: 16px 0;
+    padding: 8px;
+    border: 1px solid #000;
+    background-color: #FFFFFF; 
+    color: #000000;
+    font-family: 'sysfont', monospace; 
+    height: 400px; /* Reduced height for better fit */
+    overflow-y: scroll;
+    box-shadow: inset 2px 2px 2px #888;
+    
+    /* TEXT WRAPPING FIXES */
+    white-space: pre-wrap;     /* CSS3: wrap text, preserve whitespace */
+    word-wrap: break-word;     /* IE/Legacy: break long words */
+    overflow-wrap: break-word; /* Standard: break long words */
+}
+
+/* --- Scrollbars (Webkit) --- */
+::-webkit-scrollbar {
+    width: 16px;
+    background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAIklEQVQoU2P4////fwYkDADBDERJ/P///38QJTEB3Uw4gCgBU+8T9r30lBQAAAAASUVORK5CYII=');
+}
+::-webkit-scrollbar-thumb {
+    background-color: #DDDDDD;
+    border: 1px solid #FFFFFF;
+    box-shadow: inset -1px -1px 0 #555;
+    border-radius: 6px;
+}
+
+/* =========================================
+   6. HELPER BLOCKS (Messages, Files)
+   ========================================= */
+
+/* Dialog Boxes */
+.message, .info-box {
+    padding: 15px;
+    background-color: #FFFFFF; 
+    color: #000000;            
+    margin-bottom: 20px;
+    border: 2px solid #000000;
+    box-shadow: 3px 3px 0px rgba(0,0,0,0.2);
+}
+
+.message.warning {
+    border-color: #AA0000;
+    background-color: #FFEEEE;
+}
+.message.success {
+    border-color: #00AA00;
+    background-color: #EEFFEE;
+}
+
+/* File Lists */
+.files {
+    padding: 0;
+    background-color: #FFFFFF;
+    border: 1px solid #777;
+    box-shadow: inset 1px 1px 2px #444;
+}
+
+.file {
+    padding: 4px 10px;
+    background-color: #FFFFFF;
+    border-bottom: 1px dotted #CCCCCC;
+    color: #000000;
+}
+.file a {
+    color: #000000;
+    display: block; 
+}
+
+/* Alternating rows */
+.file:nth-child(even){
+    background-color: #F0F0FF; 
+}
+
+/* Selection */
+.file:hover, .file.current {
+    background-color: #000099 !important;
+    color: #FFFFFF !important;
+}
+.file:hover a, .file.current a {
+    color: #FFFFFF !important;
+}
+
+/* Forms */
+.form-group {
+    background-color: #DDDDDD;
+    padding: 10px 0;
+    border: none;
+}
+
+/* Mobile Adjustments */
+@media screen and (max-width: 480px) {
+    .header, .content {
+        width: auto;
+        margin: 10px;
+    }
+    input {
+        width: 100%;
+    }
+}
