@@ -50,15 +50,6 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
 
         //LOGDBG("Read directory index %s", full_name.c_str());
 
-        // Define the display name
-        size_t dot_pos = full_name.rfind('.');
-        std::string display_name;
-        if (dot_pos != std::string::npos) {
-            display_name = full_name.substr(0, dot_pos);
-        } else {
-            display_name = full_name;
-        }
-
         std::string current = "";
         std::string style = "";
         if (full_name == current_image) {
@@ -67,7 +58,6 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
         }
 
         mustache::data link;
-        link.set("display_name", display_name);
         link.set("file_name", full_name);
         link.set("current", current);
         link.set("style", style);

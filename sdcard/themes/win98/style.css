@@ -1,0 +1,328 @@
+/* =========================================
+   1. GLOBAL RESET & FONTS
+   ========================================= */
+
+* {
+    box-sizing: border-box;
+}
+
+/* --- System Font (Nimbus Sans L) --- */
+@font-face {
+    font-family: 'Nimbus Sans L';
+    src: url('nimbussanl-eot.eot');
+    src: url('nimbussanl-eot.eot?#iefix') format('embedded-opentype'),
+         url('nimbussanl-woff.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+/* --- Base Body (The "Desktop") --- */
+body {
+    font-family: 'Nimbus Sans L', 'Segoe UI', sans-serif;
+    background-color: #008080; /* Windows 98 Teal */
+    color: #000000;
+    margin: 20px;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.2em;
+}
+
+body * {
+    font-family: 'Nimbus Sans L', 'Segoe UI', sans-serif;
+}
+
+/* =========================================
+   2. WINDOW FRAME (Mapped to .header & .content)
+   ========================================= */
+
+/* Since we can't wrap .header and .content in a single div,
+   we style them to look like connected parts of one window.
+   We use a 'Silver' background for the frame.
+*/
+
+.header, .content {
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+    border-left: 2px solid #DFDFDF;  /* 3D Highlight */
+    border-right: 2px solid #000000; /* 3D Shadow */
+}
+
+/* =========================================
+   3. THE TITLE BAR (Original .header)
+   ========================================= */
+
+.header {
+    background: linear-gradient(90deg, #000080, #1084d0); /* Active Title Gradient */
+    height: 24px; /* Slightly taller to accommodate borders */
+    padding: 2px;
+    border-top: 2px solid #DFDFDF;   /* Top Highlight */
+    
+    /* Remove the bottom border so it merges with content */
+    border-bottom: none; 
+    
+    /* Prepare for absolute positioning of buttons */
+    position: relative; 
+    display: flex;
+    align-items: center;
+}
+
+/* Title Text */
+.header h1 {
+    font-size: 13px;
+    font-weight: bold;
+    color: #FFFFFF;
+    margin: 0;
+    padding-left: 2px;
+    line-height: 16px;
+    cursor: default;
+    
+    /* Reset Mac styles */
+    background: transparent;
+    box-shadow: none;
+    
+    /* Keep static so pseudo-elements anchor to .header */
+    position: static;
+    flex-grow: 1;
+}
+
+/* Icon (Top Left) */
+.header img {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+}
+
+/* Legacy H2 removal */
+.header h2 { display: none; }
+
+
+/* =========================================
+   4. WINDOW CONTROLS (Pure CSS Injection)
+   ========================================= */
+
+/* We use pseudo-elements on .header and h1 to draw the 3 buttons.
+   Order from Right: Close (X), Maximize ([]), Minimize (_)
+*/
+
+/* Shared Button Logic */
+.header::after,        /* Close */
+.header h1::after,     /* Maximize */
+.header h1::before {   /* Minimize */
+    content: '';
+    position: absolute;
+    top: 4px;
+    width: 16px;
+    height: 14px;
+    background-color: #C0C0C0;
+    border: 1px solid #FFF; /* Bevel Highlight */
+    box-shadow: 1px 1px 0 #000; /* Bevel Shadow */
+    z-index: 10;
+}
+
+/* --- Close Button [X] --- */
+.header::after {
+    right: 4px;
+    /* Draw the X using a linear gradient trick */
+    background-image: 
+        linear-gradient(45deg, transparent 40%, black 40%, black 60%, transparent 60%),
+        linear-gradient(-45deg, transparent 40%, black 40%, black 60%, transparent 60%);
+    background-size: 8px 8px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+/* --- Maximize Button [ ] --- */
+.header h1::after {
+    right: 22px; /* 4px + 16px + 2px gap */
+    /* Draw the square */
+    background-image: linear-gradient(transparent, transparent); /* Reset */
+    box-shadow: 1px 1px 0 #000, inset 1px 1px 0 #FFF; /* Button 3D */
+}
+/* The square icon inside the button */
+.header h1::after {
+    /* Using box-shadow/border trick usually better, but for single element: */
+    border: 1px solid #FFF; 
+    border-right-color: #000;
+    border-bottom-color: #000;
+}
+/* Adding content for the icon specifically */
+/* Since we can't double-nest pseudos, we use a simple border trick for the icon on the background */
+.header h1::after {
+    background: 
+        linear-gradient(black, black) top left / 100% 2px no-repeat,    /* Top line */
+        linear-gradient(black, black) bottom left / 100% 1px no-repeat, /* Bottom line */
+        linear-gradient(black, black) top left / 1px 100% no-repeat,    /* Left line */
+        linear-gradient(black, black) top right / 1px 100% no-repeat;   /* Right line */
+    background-origin: content-box;
+    padding: 3px 2px 2px 2px; /* Shrinks the content box to form the square */
+    background-color: #C0C0C0;
+}
+
+
+/* --- Minimize Button [_] --- */
+.header h1::before {
+    right: 40px; /* 22px + 16px + 2px gap */
+    /* Draw the underscore */
+    background-image: linear-gradient(black, black);
+    background-size: 6px 2px;
+    background-position: 4px 9px;
+    background-repeat: no-repeat;
+}
+
+
+/* =========================================
+   5. CONTENT & EXPLORER BAR SIMULATION
+   ========================================= */
+
+.content {
+    background-color: #C0C0C0; /* Silver Dialog Background */
+    border-bottom: 2px solid #000; /* Bottom Shadow */
+    padding: 10px;
+    position: relative;
+    
+    /* Create space for our fake menu bar at the top */
+    padding-top: 50px; 
+}
+
+/* FAKE MENU BAR & THROBBER
+   We use .content::before to create the "File Edit View..." strip
+*/
+.content::before {
+    content: "File   Edit   View   Go   Favorites   Help";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40px; /* Menu + Toolbar Height */
+    
+    /* Styling */
+    background-color: #C0C0C0;
+    color: #000;
+    padding: 4px 10px;
+    font-family: 'Nimbus Sans L', sans-serif;
+    white-space: pre; /* Respects spaces in content string */
+    border-bottom: 1px solid #808080;
+    box-shadow: 0 1px 0 #FFF; /* 3D Separator line */
+    z-index: 5;
+    
+    /* THE THROBBER (Windows Logo) - CSS Gradient Simulation */
+    /* Placed in top right of this pseudo-element */
+    background-image: 
+        /* The Logo (4 colored squares) */
+        linear-gradient(135deg, #F25D2C 50%, #F25D2C 50%), /* Red */
+        linear-gradient(135deg, #02A8F3 50%, #02A8F3 50%), /* Blue */
+        linear-gradient(135deg, #7FBC00 50%, #7FBC00 50%), /* Green */
+        linear-gradient(135deg, #FFBA01 50%, #FFBA01 50%); /* Yellow */
+        
+    background-size: 10px 10px;
+    background-position: 
+        calc(100% - 15px) 5px,  /* Red */
+        calc(100% - 5px) 5px,   /* Blue (Top Right) */
+        calc(100% - 15px) 15px, /* Green (Bottom Left) */
+        calc(100% - 5px) 15px;  /* Yellow */
+    background-repeat: no-repeat;
+    
+    /* Throbber Container Box Look */
+    box-shadow: inset -38px 0 0 #000; /* Black background for logo */
+}
+
+/* Add a line for the "Address Bar" simulation using ::after? */
+/* Optional: Simulates the white address bar line */
+.content::after {
+    content: "Address: C:\\USBODE";
+    position: absolute;
+    top: 24px;
+    left: 5px;
+    font-size: 11px;
+    color: #444;
+    width: 200px;
+    height: 15px;
+    background: #FFF;
+    border: 1px solid #777;
+    padding-left: 4px;
+    pointer-events: none;
+    z-index: 6;
+}
+
+
+/* =========================================
+   6. INNER WIDGETS
+   ========================================= */
+
+/* --- The File List (White Area) --- */
+.files, #log {
+    background-color: #FFFFFF;
+    border: 2px solid;
+    border-color: #808080 #DFDFDF #DFDFDF #808080; /* Inset 3D */
+    margin-top: 5px;
+    box-shadow: none; /* Reset Mac shadow */
+}
+
+.file {
+    border-bottom: none;
+    padding: 2px 4px;
+}
+.file:hover {
+    background-color: #000080 !important;
+    color: #FFF !important;
+}
+.file:hover a { color: #FFF !important; }
+
+/* --- Buttons --- */
+.button, button, .pagination a, .pagination span {
+    font-family: 'Nimbus Sans L', sans-serif;
+    font-size: 12px;
+    background-color: #C0C0C0;
+    color: #000;
+    border: 1px solid #000;
+    /* Windows 98 Button Bevel */
+    box-shadow: 
+        inset 1px 1px 0 #FFF,
+        inset -1px -1px 0 #000,
+        inset 2px 2px 0 #DFDFDF,
+        inset -2px -2px 0 #808080;
+    border-radius: 0; /* No rounded corners! */
+    padding: 4px 12px;
+    margin-right: 8px;
+    text-transform: none;
+}
+
+.button:active, button:active {
+    box-shadow: 
+        inset 1px 1px 0 #000,
+        inset -1px -1px 0 #FFF,
+        inset 2px 2px 0 #808080,
+        inset -2px -2px 0 #DFDFDF;
+    transform: translate(1px, 1px);
+    background-color: #C0C0C0;
+}
+
+/* --- Inputs --- */
+input, select {
+    border: 2px solid;
+    border-color: #808080 #DFDFDF #DFDFDF #808080; /* Inset */
+    background-color: #FFF;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 3px;
+}
+
+/* --- Messages/Info Boxes --- */
+.message, .info-box {
+    background-color: #C0C0C0;
+    border: 1px solid #000; /* fallback */
+    box-shadow: 
+        inset 1px 1px 0 #FFF,
+        inset -1px -1px 0 #000,
+        inset 2px 2px 0 #DFDFDF,
+        inset -2px -2px 0 #808080;
+    color: #000;
+}
+
+/* Links */
+a { color: #0000FF; text-decoration: underline; }
+a:hover { color: #000080; }
