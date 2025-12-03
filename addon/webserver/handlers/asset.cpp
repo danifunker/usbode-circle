@@ -58,6 +58,7 @@ THTTPStatus AssetHandler::GetContent (const char  *pPath,
         return HTTPBadRequest;
 
     static std::string s_themeBasePath;
+    static std::string s_activeThemeName;
     static bool s_isInitialized = false;
 
     // Get active theme, if set
@@ -65,22 +66,16 @@ THTTPStatus AssetHandler::GetContent (const char  *pPath,
         ConfigService* pConfig = ConfigService::Get();
         const char* themeName = pConfig ? pConfig->GetTheme("default") : "default";
 
-        // Check for built-in themes or external themes
         if (strcmp(themeName, "default") != 0) {
-            // Built-in themes check (stored in themeName itself, but s_themeBasePath handles external)
-            if (strcmp(themeName, "dos-dark") != 0 && strcmp(themeName, "dos-light") != 0) {
-                s_themeBasePath = "0:/themes/";
-                s_themeBasePath += themeName;
-                LOGNOTE("AssetHandler: External theme active: %s", s_themeBasePath.c_str());
-            } else {
-                LOGNOTE("AssetHandler: Built-in theme active: %s", themeName);
-            }
+            s_themeBasePath = "0:/themes/";
+            s_themeBasePath += themeName;
+            s_activeThemeName = themeName;
+            LOGNOTE("AssetHandler: Theme active: %s", s_themeBasePath.c_str());
         } 
         s_isInitialized = true;
     }
 
-    // Check for theme overrides
-    // 1. External themes
+    // Check for theme overrides (SD Card)
     if (!s_themeBasePath.empty()) {
         std::string sdPath = s_themeBasePath + pPath;
         std::ifstream file(sdPath.c_str(), std::ios::binary | std::ios::ate);
@@ -95,25 +90,23 @@ THTTPStatus AssetHandler::GetContent (const char  *pPath,
                 }
             }
         }
-    } else {
-        // 2. Built-in themes (intercept style.css)
-        if (strcmp(pPath, "/style.css") == 0) {
-            ConfigService* pConfig = ConfigService::Get();
-            const char* themeName = pConfig ? pConfig->GetTheme("default") : "default";
+    }
 
-            if (strcmp(themeName, "dos-dark") == 0) {
-                if (*pLength < assets_style_dos_dark_css_len) return HTTPInternalServerError;
-                std::memcpy(pBuffer, assets_style_dos_dark_css, assets_style_dos_dark_css_len);
-                *pLength = assets_style_dos_dark_css_len;
-                *ppContentType = "text/css";
-                return HTTPOK;
-            } else if (strcmp(themeName, "dos-light") == 0) {
-                if (*pLength < assets_style_dos_light_css_len) return HTTPInternalServerError;
-                std::memcpy(pBuffer, assets_style_dos_light_css, assets_style_dos_light_css_len);
-                *pLength = assets_style_dos_light_css_len;
-                *ppContentType = "text/css";
-                return HTTPOK;
-            }
+    // Check for built-in theme fallbacks
+    // This allows SD card themes to override built-in ones if a file is present
+    if (strcmp(pPath, "/style.css") == 0 && !s_activeThemeName.empty()) {
+        if (s_activeThemeName == "dos-dark") {
+            if (*pLength < assets_style_dos_dark_css_len) return HTTPInternalServerError;
+            std::memcpy(pBuffer, assets_style_dos_dark_css, assets_style_dos_dark_css_len);
+            *pLength = assets_style_dos_dark_css_len;
+            *ppContentType = "text/css";
+            return HTTPOK;
+        } else if (s_activeThemeName == "dos-light") {
+            if (*pLength < assets_style_dos_light_css_len) return HTTPInternalServerError;
+            std::memcpy(pBuffer, assets_style_dos_light_css, assets_style_dos_light_css_len);
+            *pLength = assets_style_dos_light_css_len;
+            *ppContentType = "text/css";
+            return HTTPOK;
         }
     }
 

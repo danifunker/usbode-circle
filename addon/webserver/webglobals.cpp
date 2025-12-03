@@ -66,8 +66,19 @@ void CWebGlobals::Initialize(void)
                 strcmp (Fno.fname, ".") != 0 && 
                 strcmp (Fno.fname, "..") != 0)
             {
-                m_Themes.push_back (std::string (Fno.fname));
-                LOGNOTE ("Found theme: %s", Fno.fname);
+                // Prevent duplicates if built-in themes also exist as folders
+                bool bExists = false;
+                for (const auto& theme : m_Themes) {
+                    if (theme == Fno.fname) {
+                        bExists = true;
+                        break;
+                    }
+                }
+
+                if (!bExists) {
+                    m_Themes.push_back (std::string (Fno.fname));
+                    LOGNOTE ("Found theme: %s", Fno.fname);
+                }
             }
         }
         f_closedir (&Dir);
