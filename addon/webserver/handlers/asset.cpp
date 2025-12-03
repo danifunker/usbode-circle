@@ -15,7 +15,8 @@
 #include "font-woff.h"
 #include "favicon.h"
 #include "style.h"
-
+#include "sysfont-eot.h"
+#include "sysfont-woff.h"
 LOGMODULE("assethandler");
 
 struct StaticAsset {
@@ -31,6 +32,8 @@ static const std::map<std::string, StaticAsset> g_staticAssets = {
     { "/style.css",     { (const uint8_t *)assets_style_css, assets_style_css_len, "text/css" } },
     { "/font-eot.eot",  { assets_font_eot_eot, assets_font_eot_eot_len, "application/vnd.ms-fontobject" } },
     { "/font-woff.woff",{ assets_font_woff_woff, assets_font_woff_woff_len, "application/font-woff" } },
+    { "/sysfont-eot.eot",  { assets_sysfont_eot_eot, assets_sysfont_eot_eot_len, "application/vnd.ms-fontobject" } },
+    { "/sysfont-woff.woff",{ assets_sysfont_woff_woff, assets_sysfont_woff_woff_len, "application/font-woff" } },
     // Add more assets here
 };
 

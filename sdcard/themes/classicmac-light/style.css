@@ -10,9 +10,9 @@
 /* --- System Font (GPLv3 Friendly) --- */
 @font-face {
     font-family: 'sysfont';
-    src: url('/sysfont.eot');
-    src: url('/sysfont.eot?#iefix') format('embedded-opentype'),
-         url('/sysfont.woff') format('woff');
+    src: url('/sysfont-eot.eot');
+    src: url('/sysfont-eot.eot?#iefix') format('embedded-opentype'),
+         url('/sysfont-woff.woff') format('woff');
     font-weight: normal;
     font-style: normal;
 }

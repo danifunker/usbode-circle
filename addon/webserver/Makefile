@@ -1,4 +1,4 @@
-#
+	#
 # Makefile
 #
 
@@ -48,6 +48,9 @@ handlers/asset.o: assets/favicon.h
 handlers/asset.o: assets/style.h
 handlers/asset.o: assets/font-eot.h
 handlers/asset.o: assets/font-woff.h
+handlers/asset.o: assets/sysfont-eot.h
+handlers/asset.o: assets/sysfont-woff.h
+
 
 pages/%.h: pages/%.html
 	@echo "  CONVERTTOOL   $@"
