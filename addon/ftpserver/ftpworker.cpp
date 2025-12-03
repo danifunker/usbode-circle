@@ -245,6 +245,9 @@ void CFTPWorker::Run() {
             break;
         }
 
+        // Reset timeout on any received data
+        nTimeout = pTimer->GetTicks();
+
         // FIXME
         m_CommandBuffer[nReceiveBytes - 2] = '\0';
 
@@ -274,7 +277,6 @@ void CFTPWorker::Run() {
         else
             SendStatus(TFTPStatus::CommandNotImplemented, "Command not implemented.");
 
-        nTimeout = pTimer->GetTicks();
         pScheduler->Yield();
     }
 
@@ -311,7 +313,17 @@ CSocket* CFTPWorker::OpenDataConnection() {
         else if (m_TransferMode == TTransferMode::Passive && m_pDataSocket != nullptr) {
             CIPAddress ClientIPAddress;
             u16 nClientPort;
+            LOGDBG("Waiting for passive data connection on port %d", m_nDataSocketPort);
             pDataSocket = m_pDataSocket->Accept(&ClientIPAddress, &nClientPort);
+            
+            if (pDataSocket != nullptr) {
+                CString IPString;
+                ClientIPAddress.Format(&IPString);
+                LOGDBG("Accepted data connection from %s:%d", static_cast<const char*>(IPString), nClientPort);
+            } else {
+                LOGDBG("Failed to accept data connection, retry %d", NumRetries - nRetries + 1);
+                CScheduler::Get()->MsSleep(100);
+            }
         }
 
         --nRetries;
@@ -664,7 +676,15 @@ bool CFTPWorker::Retrieve(const char* pArgs) {
         assert(nSent <= nSize);
     }
 
+    // Clean up data socket
     delete pDataSocket;
+    
+    // Clean up passive listening socket
+    if (m_TransferMode == TTransferMode::Passive && m_pDataSocket != nullptr) {
+        delete m_pDataSocket;
+        m_pDataSocket = nullptr;
+    }
+    
     f_close(&File);
     SendStatus(TFTPStatus::TransferComplete, "Transfer complete.");
 
@@ -776,8 +796,18 @@ bool CFTPWorker::Store(const char* pArgs) {
 #ifdef FTPDAEMON_DEBUG
     LOGDBG("Closing socket/file");
 #endif
-    delete pDataSocket;
-     pDataSocket = nullptr;
+    
+    // Clean up data socket
+    if (pDataSocket != nullptr) {
+        delete pDataSocket;
+        pDataSocket = nullptr;
+    }
+    
+    // Clean up passive listening socket
+    if (m_TransferMode == TTransferMode::Passive && m_pDataSocket != nullptr) {
+        delete m_pDataSocket;
+        m_pDataSocket = nullptr;
+    }
 
     f_close(&File);
 
@@ -976,7 +1006,15 @@ bool CFTPWorker::List(const char* pArgs) {
         delete[] pDirEntries;
     }
 
+    // Clean up data socket
     delete pDataSocket;
+    
+    // Clean up passive listening socket
+    if (m_TransferMode == TTransferMode::Passive && m_pDataSocket != nullptr) {
+        delete m_pDataSocket;
+        m_pDataSocket = nullptr;
+    }
+    
     SendStatus(TFTPStatus::TransferComplete, "Transfer complete.");
     return true;
 }
@@ -1014,7 +1052,15 @@ bool CFTPWorker::ListFileNames(const char* pArgs) {
         delete[] pDirEntries;
     }
 
+    // Clean up data socket
     delete pDataSocket;
+    
+    // Clean up passive listening socket
+    if (m_TransferMode == TTransferMode::Passive && m_pDataSocket != nullptr) {
+        delete m_pDataSocket;
+        m_pDataSocket = nullptr;
+    }
+    
     SendStatus(TFTPStatus::TransferComplete, "Transfer complete.");
     return true;
 }
