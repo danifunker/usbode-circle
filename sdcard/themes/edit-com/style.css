@@ -1,0 +1,342 @@
+/* --- Modern DOS 9x16 Regular font --- */
+@font-face {
+    font-family: 'modern_dos_9x16regular';
+    src: url('/font-eot.eot');
+    src: url('/font-eot.eot?#iefix') format('embedded-opentype'),
+         url('/font-woff.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+/* --- Base Body (Blue Background) --- */
+body {
+    font-family: 'modern_dos_9x16regular', sans-serif; 
+    background-color: #0000AA; /* Edit.com Blue */
+    color: #FFFFFF;            /* White Text */
+    margin: 0; 
+    padding: 0;
+    font-size: 16px;
+    line-height: 1em;
+    word-break: break-word;
+}
+
+/* Mouse Selection Highlighting (Black on White) */
+::selection {
+    background: #FFFFFF;
+    color: #000000;
+}
+::-moz-selection {
+    background: #FFFFFF;
+    color: #000000;
+}
+
+body * {
+    font-family: 'modern_dos_9x16regular', sans-serif; 
+    font-weight: normal;
+    font-size: 16px;
+}
+
+strong, .form-group label {
+    color: #FFFF55; /* Yellow for emphasis */
+}
+
+/* --- Links (Standard) --- */
+a {
+    color: #FFFFFF;
+    text-decoration: none;
+    position: relative;
+}
+
+/* Generic Link Hover - Cyan Background */
+a:not(.button):not(.pagination a):not(.file a):hover {
+    background-color: #00AAAA; 
+    color: #000000;
+}
+
+/* --- BUTTONS & PAGINATION (Shared Geometry) --- */
+.button, button, .pagination a, .pagination span {
+    font-size: 16px;
+    display: inline-block;
+    -webkit-appearance: none;
+    border: none;
+    color: #000000;
+    text-decoration: none !important;
+    height: 16px;
+    margin-bottom: 16px;
+    /* Spacing: Buttons get 9px, Pagination overrides this below */
+    margin-right: 9px; 
+    position: relative;
+    box-shadow: 4px 4px 0px #000000; /* Hard Shadow */
+    cursor: pointer;
+}
+
+/* --- STANDARD BUTTONS --- */
+.button, button {
+    background-color: #AAAAAA; /* DOS Gray */
+    padding: 0 9px;
+}
+
+/* Standard Button Arrows (Transparent Placeholder) */
+.button::before, button::before {
+    content: "\25BA "; 
+    color: transparent; 
+}
+.button::after, button::after {
+    content: " \25C4"; 
+    color: transparent;
+}
+
+/* Reveal Arrows on Hover */
+.button:hover, button.hover {
+    background-color: #FFFFFF;
+    color: #000000;
+}
+.button:hover::before, button:hover::before, 
+.button:hover::after, button:hover::after {
+    color: #000000;
+}
+
+/* Danger Button */
+.button.danger:hover, button.danger:hover {
+    background-color: #AA0000;
+    color: #FFFFFF;
+}
+
+/* --- PAGINATION (Specifics) --- */
+
+/* 1. Shared Geometry for Links (a) and Current Page (span) */
+.pagination a, .pagination span {
+    background-color: #AAAAAA; /* Default Gray */
+    min-width: 42px;    /* Fixed width for uniformity */
+    text-align: center; /* Center the number */
+    padding: 0;         
+    line-height: 16px;  
+    margin-right: 14px; /* Increased Spacing */
+}
+
+/* 2. Current Page (Span) - Distinct Color & Non-Clickable */
+.pagination span {
+    background-color: #FFFFFF; /* Selected White */
+    color: #000000;
+    cursor: default;
+}
+
+/* 3. Pagination Arrows (Absolute Positioning) */
+.pagination a::before {
+    content: "\25BA";
+    position: absolute;
+    left: 4px;
+    color: transparent;
+}
+.pagination a::after {
+    content: "\25C4";
+    position: absolute;
+    right: 4px; 
+    color: transparent;
+}
+
+/* 4. Pagination Hover (Only for links) */
+.pagination a:hover {
+    background-color: #FFFFFF;
+    color: #000000;
+}
+.pagination a:hover::before, .pagination a:hover::after {
+    color: #000000; /* Reveal Arrows */
+}
+
+
+/* --- Headers & Layout --- */
+h1, h2, h3 {
+    color: #FFFFFF;
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+.header {
+    position: relative;
+    margin: 32px 27px;
+    padding: 15px;
+    padding-left: 27px;
+    border: 2px solid #FFFFFF;
+    background-color: #0000AA;
+}
+
+.header img {
+    display: block;
+    float: right;
+    width: 107px;
+    height: 70px;
+    margin-left: 18px;
+    border: 0;
+}
+.header h1 {
+    padding-top: 4px;
+}
+.header h2 {
+    line-height: 16px;
+    margin-bottom: 0;
+    padding-bottom: 2px;
+}
+.content {
+    position: relative;
+    margin: 16px 27px;
+    padding: 16px 27px;
+    padding-top: 32px;
+    border: 2px solid #FFFFFF;
+}
+.navigation {
+    margin-bottom: 16px;
+}
+
+/* --- Dialog Boxes --- */
+.message, .info-box {
+    padding: 16px 18px;
+    background-color: #AAAAAA; 
+    color: #000000;            
+    margin-bottom: 32px;
+    box-shadow: 10px 10px 0 #000; 
+    border: 1px solid #FFFFFF;
+}
+
+.message strong, .info-box strong {
+    color: #0000AA; 
+}
+
+.message.warning {
+    background-color: #AA0000; 
+    color: #FFFFFF;
+}
+.message.success {
+    background-color: #00AA00; 
+    color: #FFFFFF;
+}
+
+/* --- Form Elements --- */
+.files {
+    padding: 16px 18px;
+    border: 2px solid #FFFFFF;
+}
+
+/* Default File Row */
+.file {
+    padding: 5px 9px;
+    background-color: #0000AA;
+    color: #FFFFFF;
+}
+.file a {
+    color: #FFFFFF; 
+    display: block; 
+}
+
+/* High Contrast Alternating Stripe */
+.file:nth-child(even){
+    background-color: #000066; 
+}
+
+/* --- File List Highlighting --- */
+/* Selected File (.current) */
+.file.current {
+    background-color: #FFFFFF !important;
+    color: #000000 !important;
+}
+.file.current a {
+    color: #000000 !important;
+}
+
+/* Hover Effect */
+.file:hover {
+    background-color: #FFFFFF !important;
+    color: #000000 !important;
+    cursor: pointer;
+}
+.file:hover a {
+    color: #000000 !important;
+}
+
+.form-group {
+    margin-bottom: 16px;
+    padding: 16px 27px;
+    border: 2px solid #FFFFFF;
+}
+.form-group label {
+    margin-bottom: 16px;
+}
+.form-group .current-value {
+    margin-top: 16px;
+}
+.form-group button {
+    margin-top: 16px;
+    margin-bottom: 0;
+}
+
+/* Inputs */
+input {
+    appearance: none;
+    -webkit-appearance: none;
+}
+input, select {
+    background-color: #FFFFFF;
+    color: #000000;
+    padding: 0;
+    padding-left: 9px;
+    margin-top: 16px;
+    border: none;
+    box-shadow: inset 2px 2px 0px #000000;
+    font-family: 'modern_dos_9x16regular', sans-serif;
+    width: 300px;
+    max-width: 100%;
+}
+
+/* --- Logs --- */
+#log {
+    margin: 16px 0;
+    padding: 16px 18px;
+    padding-top: 0;
+    border: 2px solid #FFFFFF;
+    background-color: #0000AA;
+    color: #AAAAAA;
+    height: 640px;
+    overflow-y: scroll; 
+    overflow-x: auto; 
+    white-space: pre; 
+    word-break: normal;
+}
+
+::-webkit-scrollbar {
+    width: 16px;
+    background: #AAAAAA;
+}
+::-webkit-scrollbar-thumb {
+    background: #00AAAA;
+    border: 1px solid #FFFFFF;
+}
+
+@media screen and (max-width: 480px) {
+    .header {
+        margin: 16px 18px;
+        padding-left: 18px;
+    }
+    .header h1 {
+        margin-bottom: 0;
+    }
+    .header h2 {
+        display: none;
+    }
+    .header img {
+        width: auto;
+        height: 32px;
+    }
+    .content {
+        margin: 16px 18px;
+        padding: 16px 18px;
+    }
+    .files {
+        padding: 16px 9px;
+    }
+    .form-group {
+        padding: 16px 18px;
+    }
+    input {
+        max-width: calc(100% - 9px);
+    }
+}
