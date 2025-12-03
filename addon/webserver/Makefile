@@ -46,6 +46,8 @@ handlers/logpage.o: pages/log.h
 handlers/asset.o: assets/logo.h
 handlers/asset.o: assets/favicon.h
 handlers/asset.o: assets/style.h
+handlers/asset.o: assets/style_dos_dark.h
+handlers/asset.o: assets/style_dos_light.h
 handlers/asset.o: assets/font-eot.h
 handlers/asset.o: assets/font-woff.h
 

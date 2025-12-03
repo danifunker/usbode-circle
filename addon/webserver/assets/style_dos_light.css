@@ -1,0 +1,161 @@
+body {
+    background-color: #DDDDDD;
+    background-image: repeating-linear-gradient(45deg, #DDDDDD 0, #DDDDDD 1px, #EBEBEB 0, #EBEBEB 50%);
+    background-size: 4px 4px;
+    color: #000000;
+    font-family: "Geneva", "Lucida Grande", sans-serif;
+    margin: 0;
+    padding: 0;
+    font-size: 14px;
+}
+h1, h2, h3 {
+    margin-top: 0;
+    color: #000000;
+    font-family: "Charcoal", "Geneva", sans-serif;
+}
+a {
+    color: #000000;
+    text-decoration: underline;
+}
+.container {
+    background-color: transparent;
+    width: 100%;
+}
+.header {
+    background-color: #EEEEEE;
+    border-bottom: 1px solid #999999;
+    padding: 10px;
+    text-align: center;
+    box-shadow: 0 2px 2px rgba(0,0,0,0.1);
+    height: auto;
+    color: #000000;
+}
+.header h1, .header h2 {
+    color: #000000;
+    margin: 0;
+}
+.content {
+    max-width: 1024px;
+    margin: 0 auto;
+    padding: 20px;
+    min-height: 300px;
+}
+.footer {
+    background-color: #EEEEEE;
+    border-top: 1px solid #999999;
+    padding: 10px;
+    text-align: center;
+    margin: 0;
+    color: #000000;
+}
+.button {
+    font-family: "Geneva", sans-serif;
+    font-size: 12px;
+    background-color: #DDDDDD;
+    padding: 4px 12px;
+    text-decoration: none;
+    border-top: 1px solid #FFFFFF;
+    border-left: 1px solid #FFFFFF;
+    border-right: 1px solid #666666;
+    border-bottom: 1px solid #666666;
+    color: #000000;
+    margin: 5px;
+    display: inline-block;
+    border-radius: 4px;
+}
+.button:active {
+    border-top: 1px solid #666666;
+    border-left: 1px solid #666666;
+    border-right: 1px solid #FFFFFF;
+    border-bottom: 1px solid #FFFFFF;
+    background-color: #CCCCCC;
+}
+.button:hover {
+    background-color: #EFEFEF;
+    border: 1px solid #999999;
+}
+.info-box, .files, .form-group {
+    background-color: #FFFFFF;
+    border: 1px solid #999999;
+    padding: 15px;
+    margin-top: 10px;
+    box-shadow: 2px 2px 0px rgba(0,0,0,0.1);
+}
+.file {
+    padding: 5px;
+    border-bottom: 1px dotted #CCCCCC;
+    background-color: #FFFFFF;
+    margin: 0;
+    display: block;
+}
+.file:nth-child(odd) {
+    background-color: #F0F0F0;
+}
+.file.current {
+    background-color: #CCCCFF;
+    border: 1px solid #0000AA;
+}
+.header-bar {
+    background: linear-gradient(to bottom, #CCCCFF, #9999FF);
+    color: #000000;
+    padding: 5px;
+    border: 1px solid #666699;
+}
+.usb-info {
+    margin: 0;
+    background-color: #FFFFFF;
+    border: 1px solid #999999;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 2px 2px 0px rgba(0,0,0,0.1);
+}
+.message {
+    background-color: #E8E8E8;
+    border: 1px solid #000000;
+    padding: 10px;
+    margin: 10px 0;
+    box-shadow: 3px 3px 0px rgba(0,0,0,0.2);
+}
+.message.warning {
+    background-color: #FFCCCC;
+    color: #000000;
+}
+input, select {
+    background-color: #FFFFFF;
+    border: 1px solid #999999;
+    padding: 3px;
+    font-family: "Geneva", sans-serif;
+}
+#log {
+    margin-top: 10px;
+    width: 80%;
+    height: 600px;
+    border: 1px solid #999999;
+    padding: 8px;
+    overflow-y: scroll;
+    overflow-x: auto;
+    font-family: monospace;
+    white-space: pre;
+    background-color: #FFFFFF;
+}
+.pagination {
+    text-align: center;
+    margin: 15px 0;
+    background-color: #FFFFFF;
+    padding: 8px;
+    border: 1px solid #999999;
+}
+.pagination a, .pagination span {
+    margin: 0 3px;
+    padding: 4px 8px;
+    text-decoration: none;
+    color: #000000;
+    border: 1px solid #CCCCCC;
+    background-color: #EEEEEE;
+    display: inline-block;
+}
+.pagination .current {
+    background-color: #CCCCFF;
+    color: #000000;
+    border-color: #0000AA;
+}

@@ -1,0 +1,161 @@
+body {
+    background-color: #0000AA;
+    color: #AAAAAA;
+    font-family: "Courier New", Courier, monospace;
+    margin: 0;
+    padding: 0;
+    font-size: 16px;
+}
+h1, h2, h3 {
+    margin-top: 0;
+    color: #FFFFFF;
+    text-transform: uppercase;
+}
+a {
+    color: #FFFF55;
+    text-decoration: none;
+}
+a:visited {
+    color: #FFFF55;
+}
+.container {
+    background-color: #0000AA;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+.header {
+    background-color: #AAAAAA;
+    color: #000000;
+    padding: 5px;
+    height: auto;
+    text-align: center;
+    border-bottom: 2px solid #000000;
+}
+.header h1, .header h2 {
+    color: #000000;
+    margin: 0;
+}
+.header h1 {
+    padding-top: 5px;
+}
+.header img {
+    border: 2px solid #000000;
+    margin-right: 10px;
+}
+.content {
+    max-width: 1024px;
+    margin: 0 auto;
+    padding: 20px 10px;
+    min-height: 300px;
+}
+.footer {
+    background-color: #AAAAAA;
+    color: #000000;
+    padding: 5px;
+    text-align: center;
+    border-top: 2px solid #000000;
+    margin: 0;
+}
+.button {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 16px;
+    background-color: #00AAAA;
+    padding: 5px 15px;
+    text-decoration: none;
+    border: none;
+    color: #000000;
+    margin: 5px;
+    display: inline-block;
+    box-shadow: 5px 5px 0px #000000;
+}
+.button:hover {
+    background-color: #00FFFF;
+    color: #000000;
+    border: none;
+}
+.button.danger:hover {
+    background-color: #FF5555;
+    color: #FFFFFF;
+}
+.info-box, .files, .form-group {
+    background-color: #0000AA;
+    border: 2px solid #AAAAAA;
+    padding: 10px;
+    margin-top: 10px;
+    color: #AAAAAA;
+}
+.file {
+    background-color: #0000AA;
+    color: #AAAAAA;
+    padding: 2px;
+    margin: 2px 0;
+    display: block;
+    font-size: 16px;
+}
+.file:nth-child(odd) {
+    background-color: #0000AA;
+}
+.file.current {
+    background-color: #00AAAA;
+    color: #000000;
+    border: none;
+}
+.header-bar {
+    background-color: #AAAAAA;
+    color: #000000;
+    padding: 5px;
+    text-align: center;
+}
+.usb-info, .message {
+    background-color: #0000AA;
+    border: 2px solid #AAAAAA;
+    color: #AAAAAA;
+    padding: 10px;
+    margin: 10px 0;
+}
+.message.warning {
+    border-color: #FF5555;
+    color: #FF5555;
+    background-color: #0000AA;
+}
+input, select {
+    background-color: #000000;
+    color: #AAAAAA;
+    border: 1px solid #AAAAAA;
+    font-family: "Courier New", Courier, monospace;
+    padding: 5px;
+}
+#log {
+    margin-top: 10px;
+    width: 80%;
+    height: 600px;
+    border: 2px solid #AAAAAA;
+    padding: 8px;
+    overflow-y: scroll;
+    overflow-x: auto;
+    font-family: monospace;
+    white-space: pre;
+    background-color: #000000;
+    color: #AAAAAA;
+}
+.pagination {
+    text-align: center;
+    margin: 15px 0;
+    background-color: #0000AA;
+    padding: 8px;
+}
+.pagination a, .pagination span {
+    margin: 0 3px;
+    padding: 4px 8px;
+    text-decoration: none;
+    color: #FFFF55;
+    border: 1px solid #AAAAAA;
+    background-color: #0000AA;
+    display: inline-block;
+}
+.pagination .current {
+    background-color: #00AAAA;
+    color: #000000;
+    border-color: #AAAAAA;
+}

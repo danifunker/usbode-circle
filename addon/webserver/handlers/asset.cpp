@@ -15,6 +15,8 @@
 #include "font-woff.h"
 #include "favicon.h"
 #include "style.h"
+#include "style_dos_dark.h"
+#include "style_dos_light.h"
 
 LOGMODULE("assethandler");
 
@@ -62,15 +64,23 @@ THTTPStatus AssetHandler::GetContent (const char  *pPath,
     if (!s_isInitialized) {
         ConfigService* pConfig = ConfigService::Get();
         const char* themeName = pConfig ? pConfig->GetTheme("default") : "default";
+
+        // Check for built-in themes or external themes
         if (strcmp(themeName, "default") != 0) {
-            s_themeBasePath = "0:/themes/";
-            s_themeBasePath += themeName;
-            LOGNOTE("AssetHandler: Theme active: %s", s_themeBasePath.c_str());
+            // Built-in themes check (stored in themeName itself, but s_themeBasePath handles external)
+            if (strcmp(themeName, "dos-dark") != 0 && strcmp(themeName, "dos-light") != 0) {
+                s_themeBasePath = "0:/themes/";
+                s_themeBasePath += themeName;
+                LOGNOTE("AssetHandler: External theme active: %s", s_themeBasePath.c_str());
+            } else {
+                LOGNOTE("AssetHandler: Built-in theme active: %s", themeName);
+            }
         } 
         s_isInitialized = true;
     }
 
-    // Check theme
+    // Check for theme overrides
+    // 1. External themes
     if (!s_themeBasePath.empty()) {
         std::string sdPath = s_themeBasePath + pPath;
         std::ifstream file(sdPath.c_str(), std::ios::binary | std::ios::ate);
@@ -85,7 +95,27 @@ THTTPStatus AssetHandler::GetContent (const char  *pPath,
                 }
             }
         }
-    }    
+    } else {
+        // 2. Built-in themes (intercept style.css)
+        if (strcmp(pPath, "/style.css") == 0) {
+            ConfigService* pConfig = ConfigService::Get();
+            const char* themeName = pConfig ? pConfig->GetTheme("default") : "default";
+
+            if (strcmp(themeName, "dos-dark") == 0) {
+                if (*pLength < assets_style_dos_dark_css_len) return HTTPInternalServerError;
+                std::memcpy(pBuffer, assets_style_dos_dark_css, assets_style_dos_dark_css_len);
+                *pLength = assets_style_dos_dark_css_len;
+                *ppContentType = "text/css";
+                return HTTPOK;
+            } else if (strcmp(themeName, "dos-light") == 0) {
+                if (*pLength < assets_style_dos_light_css_len) return HTTPInternalServerError;
+                std::memcpy(pBuffer, assets_style_dos_light_css, assets_style_dos_light_css_len);
+                *pLength = assets_style_dos_light_css_len;
+                *ppContentType = "text/css";
+                return HTTPOK;
+            }
+        }
+    }
 
     // Find the asset path, returning 404 if not found
     auto it = g_staticAssets.find(pPath);

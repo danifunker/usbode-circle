@@ -42,6 +42,11 @@ void CWebGlobals::Initialize(void)
     m_nBootID = Rng.GetNumber();
     LOGNOTE ("Boot ID: %u", m_nBootID);
 
+    // Add built-in themes
+    m_Themes.push_back("default");
+    m_Themes.push_back("dos-dark");
+    m_Themes.push_back("dos-light");
+
     // Scan 0:/themes
     DIR Dir;
     FILINFO Fno;
