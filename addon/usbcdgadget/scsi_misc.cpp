@@ -7,6 +7,7 @@
 #include <usbcdgadget/cd_utils.h>
 #include <circle/logger.h>
 #include <circle/timer.h>
+#include <circle/util.h>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...) // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
