@@ -7,6 +7,8 @@
 #include <usbcdgadget/cd_utils.h>
 #include <circle/logger.h>
 #include <circle/util.h>
+#include <cdplayer/cdplayer.h>
+#include <circle/sched/scheduler.h>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...) // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
