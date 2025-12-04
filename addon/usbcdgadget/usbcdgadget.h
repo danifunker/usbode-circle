@@ -739,9 +739,9 @@ private:
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
 
     // Consolidated commands
-    void DoRead(bool isRead12);
-    void DoPlayAudio(bool isPlay12);
-    void DoModeSense(bool isModeSense10);
+    void DoRead(int cdbSize);
+    void DoPlayAudio(int cdbSize);
+    void DoModeSense(int cdbSize);
     // Helper for Mode Sense
     void FillModePage(u8 page, u8 *buffer, int &length);
 

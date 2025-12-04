@@ -1566,11 +1566,11 @@ void CUSBCDGadget::sendGoodStatus()
     SendCSW();
 }
 
-void CUSBCDGadget::DoRead(bool isRead12)
+void CUSBCDGadget::DoRead(int cdbSize)
 {
     if (m_CDReady)
     {
-        if (isRead12)
+        if (cdbSize == 12)
         {
             // Where to start reading (LBA) - 4 bytes
             m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
@@ -1665,14 +1665,14 @@ void CUSBCDGadget::DoRead(bool isRead12)
     }
 }
 
-void CUSBCDGadget::DoPlayAudio(bool isPlay12)
+void CUSBCDGadget::DoPlayAudio(int cdbSize)
 {
-    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", isPlay12 ? "PLAY AUDIO (12)" : "PLAY AUDIO (10)");
+    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", cdbSize == 12 ? "PLAY AUDIO (12)" : "PLAY AUDIO (10)");
 
     // Where to start reading (LBA)
     m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 
-    if (isPlay12)
+    if (cdbSize == 12)
     {
         // Number of blocks to read (LBA)
         m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) | (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
@@ -1683,7 +1683,7 @@ void CUSBCDGadget::DoPlayAudio(bool isPlay12)
         m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
     }
 
-    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (%d) Playing from %lu for %lu blocks", isPlay12 ? 12 : 10, m_nblock_address, m_nnumber_blocks);
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (%d) Playing from %lu for %lu blocks", cdbSize, m_nblock_address, m_nnumber_blocks);
 
     // Play the audio, but only if length > 0
     if (m_nnumber_blocks > 0)
@@ -1694,7 +1694,7 @@ void CUSBCDGadget::DoPlayAudio(bool isPlay12)
             CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
             if (cdplayer)
             {
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (%d) Play command sent", isPlay12 ? 12 : 10);
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (%d) Play command sent", cdbSize);
                 if (m_nblock_address == 0xffffffff)
                     cdplayer->Resume();
                 else
@@ -1972,16 +1972,16 @@ void CUSBCDGadget::FillModePage(u8 page, u8 *buffer, int &length)
     }
 }
 
-void CUSBCDGadget::DoModeSense(bool isModeSense10)
+void CUSBCDGadget::DoModeSense(int cdbSize)
 {
-    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (%d)", isModeSense10 ? 10 : 6);
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (%d)", cdbSize);
 
     int page = m_CBW.CBWCB[2] & 0x3f;
     int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
 
     // Bytes 7,8 for 10-byte, Byte 4 for 6-byte
     u16 allocationLength;
-    if (isModeSense10)
+    if (cdbSize == 10)
         allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
     else
         allocationLength = m_CBW.CBWCB[4];
@@ -2000,7 +2000,7 @@ void CUSBCDGadget::DoModeSense(bool isModeSense10)
     int length = 0;
 
     // Define our response header
-    if (isModeSense10)
+    if (cdbSize == 10)
     {
         ModeSense10Header reply_header;
         memset(&reply_header, 0, sizeof(reply_header));
@@ -2034,7 +2034,7 @@ void CUSBCDGadget::DoModeSense(bool isModeSense10)
     }
 
     // If unsupported page was requested (length didn't increase)
-    if (length == (isModeSense10 ? sizeof(ModeSense10Header) : sizeof(ModeSense6Header)))
+    if (length == (cdbSize == 10 ? sizeof(ModeSense10Header) : sizeof(ModeSense6Header)))
     {
         if (page != 0x3f) {
              setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN COMMAND PACKET
@@ -2044,7 +2044,7 @@ void CUSBCDGadget::DoModeSense(bool isModeSense10)
     }
 
     // Update header with data length
-    if (isModeSense10)
+    if (cdbSize == 10)
     {
         ModeSense10Header *reply_header = (ModeSense10Header *)m_InBuffer;
         reply_header->modeDataLength = htons(length - 2);
@@ -2059,7 +2059,7 @@ void CUSBCDGadget::DoModeSense(bool isModeSense10)
     if (allocationLength < length)
         length = allocationLength;
 
-    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (%d), Sending response with length %d", isModeSense10 ? 10 : 6, length);
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (%d), Sending response with length %d", cdbSize, length);
 
     m_nnumber_blocks = 0; // nothing more after this send
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
@@ -2217,7 +2217,7 @@ void CUSBCDGadget::HandleSCSICommand()
 
     case 0xa8: // Read (12) - similar to READ(10) but with 32-bit block count
     {
-        DoRead(true);
+        DoRead(12);
         break;
     }
 
@@ -2387,7 +2387,7 @@ void CUSBCDGadget::HandleSCSICommand()
 
     case 0x28: // Read (10)
     {
-        DoRead(false);
+        DoRead(10);
         break;
     }
 
@@ -3628,13 +3628,13 @@ void CUSBCDGadget::HandleSCSICommand()
 
     case 0x45: // PLAY AUDIO (10)
     {
-        DoPlayAudio(false);
+        DoPlayAudio(10);
         break;
     }
 
     case 0xA5: // PLAY AUDIO (12)
     {
-        DoPlayAudio(true);
+        DoPlayAudio(12);
         break;
     }
 
@@ -3658,13 +3658,13 @@ void CUSBCDGadget::HandleSCSICommand()
     // We only need this because MacOS is a problem child
     case 0x1a: // Mode Sense (6)
     {
-        DoModeSense(false);
+        DoModeSense(6);
         break;
     }
 
     case 0x5a: // Mode Sense (10)
     {
-        DoModeSense(true);
+        DoModeSense(10);
         break;
     }
 
