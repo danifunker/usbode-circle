@@ -1566,27 +1566,514 @@ void CUSBCDGadget::sendGoodStatus()
     SendCSW();
 }
 
-void FillModePage2A(ModePage0x2AData &codepage)
+void CUSBCDGadget::DoRead(int cdbSize)
 {
-    memset(&codepage, 0, sizeof(codepage));
-    codepage.pageCodeAndPS = 0x2a;
-    codepage.pageLength = 0x0E; // Should be 22 bytes for full MMC-5 compliance
+    if (m_CDReady)
+    {
+        if (cdbSize == 12)
+        {
+            // Where to start reading (LBA) - 4 bytes
+            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
+                               (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
 
-    // Capability bits (6 bytes) - dynamic based on media type
-    // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
-    codepage.capabilityBits[0] = 0x00; // Support all media types for DVD, else CD only
-    codepage.capabilityBits[1] = 0x00; // All writable types
-    codepage.capabilityBits[2] = 0x01; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
-    codepage.capabilityBits[3] = 0x03; // CD-DA Commands Supported, CD-DA Stream is accurate
-    codepage.capabilityBits[4] = 0x28; // Tray loading mechanism, eject supported, lock supported
-    codepage.capabilityBits[5] = 0x03; // No separate channel volume, no separate channel mute
+            // Number of blocks to read (LBA) - 4 bytes
+            m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) |
+                               (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
 
-    // Speed and buffer info
-    codepage.maxSpeed = htons(1378);          // 8x
-    codepage.numVolumeLevels = htons(0x0100); // 256 volume levels
-    codepage.bufferSize = htons(0x0040);      // Set to 64 KB buffer size
-    codepage.currentSpeed = htons(1378);      // Current speed
-    codepage.maxReadSpeed = htons(1378);      // Some hosts check this field
+            m_nbyteCount = m_CBW.dCBWDataTransferLength;
+
+            // What is this?
+            if (m_nnumber_blocks == 0)
+            {
+                m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
+            }
+        }
+        else
+        {
+            m_nbyteCount = m_CBW.dCBWDataTransferLength;
+
+            // Where to start reading (LBA)
+            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
+                               (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+
+            // Number of blocks to read (LBA)
+            m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+        }
+
+        // Get disc boundaries
+        u32 max_lba = GetMaxLBA();
+
+        // CRITICAL: Validate LBA is within disc boundaries
+        if (m_nblock_address >= max_lba)
+        {
+            MLOGERR("READ", "LBA %u beyond disc boundary (max=%u)",
+                    m_nblock_address, max_lba);
+
+            // SCSI error: ILLEGAL REQUEST / LOGICAL BLOCK ADDRESS OUT OF RANGE
+            setSenseData(0x05, 0x21, 0x00);
+            sendCheckCondition();
+            return;
+        }
+
+        // Check if read extends beyond disc boundary
+        if (m_nblock_address + m_nnumber_blocks > max_lba)
+        {
+            u32 original_blocks = m_nnumber_blocks;
+            m_nnumber_blocks = max_lba - m_nblock_address;
+
+            MLOGNOTE("READ", "Read truncated: LBA=%u, requested=%u, max=%u, truncated to=%u",
+                     m_nblock_address, original_blocks, max_lba, m_nnumber_blocks);
+        }
+
+        // Validate we have blocks to read after boundary checks
+        if (m_nnumber_blocks == 0)
+        {
+            MLOGERR("READ", "No blocks to read after boundary check");
+            setSenseData(0x05, 0x21, 0x00);
+            sendCheckCondition();
+            return;
+        }
+
+        CDROM_DEBUG_LOG("READ", "LBA=%u, cnt=%u, max_lba=%u",
+                        m_nblock_address, m_nnumber_blocks, max_lba);
+
+        // Transfer Block Size is the size of data to return to host
+        // Block Size and Skip Bytes is worked out from cue sheet
+        // For a CDROM, this is always 2048
+        transfer_block_size = 2048;
+        block_size = data_block_size; // set at SetDevice
+        skip_bytes = data_skip_bytes; // set at SetDevice
+        mcs = 0;
+        m_nbyteCount = m_CBW.dCBWDataTransferLength;
+
+        // Recalculate byte count based on potentially truncated block count
+        u32 expected_byte_count = m_nnumber_blocks * transfer_block_size;
+        if (m_nbyteCount > expected_byte_count)
+        {
+            MLOGNOTE("READ", "Host requested %u bytes but only %u available",
+                     m_nbyteCount, expected_byte_count);
+            m_nbyteCount = expected_byte_count;
+        }
+
+        m_CSW.bmCSWStatus = bmCSWStatus;
+        m_nState = TCDState::DataInRead; // see Update() function
+    }
+    else
+    {
+        CDROM_DEBUG_LOG("handleSCSI Read", "failed, %s",
+                        m_CDReady ? "ready" : "not ready");
+        setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+        sendCheckCondition();
+    }
+}
+
+void CUSBCDGadget::DoPlayAudio(int cdbSize)
+{
+    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", cdbSize == 12 ? "PLAY AUDIO (12)" : "PLAY AUDIO (10)");
+
+    // Where to start reading (LBA)
+    m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
+
+    if (cdbSize == 12)
+    {
+        // Number of blocks to read (LBA)
+        m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) | (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
+    }
+    else
+    {
+        // Number of blocks to read (LBA)
+        m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
+    }
+
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (%d) Playing from %lu for %lu blocks", cdbSize, m_nblock_address, m_nnumber_blocks);
+
+    // Play the audio, but only if length > 0
+    if (m_nnumber_blocks > 0)
+    {
+        CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
+        if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
+        {
+            CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+            if (cdplayer)
+            {
+                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (%d) Play command sent", cdbSize);
+                if (m_nblock_address == 0xffffffff)
+                    cdplayer->Resume();
+                else
+                    cdplayer->Play(m_nblock_address, m_nnumber_blocks);
+            }
+        }
+        else
+        {
+            bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
+            m_SenseParams.bSenseKey = 0x05;
+            m_SenseParams.bAddlSenseCode = 0x64; // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
+            m_SenseParams.bAddlSenseCodeQual = 0x00;
+        }
+    }
+
+    m_CSW.bmCSWStatus = bmCSWStatus;
+    SendCSW();
+}
+
+void CUSBCDGadget::FillModePage(u8 page, u8 *buffer, int &length)
+{
+    switch (page)
+    {
+    case 0x01:
+    {
+        // Mode Page 0x01 (Read/Write Error Recovery Parameters Mode Page)
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x01 response");
+
+        // Define our Code Page
+        ModePage0x01Data codepage;
+        memset(&codepage, 0, sizeof(codepage));
+
+        // Copy the header & Code Page
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+    case 0x05:
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x05 (Write Parameters)");
+        struct ModePage0x05Data
+        {
+            u8 pageCodeAndPS;
+            u8 pageLength;
+            u8 writeType : 4;
+            u8 testWrite : 1;
+            u8 linkSize : 2;
+            u8 bufferUnderrun : 1;
+            u8 trackMode : 4;
+            u8 copy : 1;
+            u8 fp : 1;
+            u8 multiSession : 2;
+            u8 dataBlockType : 4;
+            u8 reserved1 : 4;
+            u8 linkSize2;
+            u8 reserved2;
+            u8 hostAppCode : 6;
+            u8 reserved3 : 2;
+            u8 sessionFormat;
+            u8 reserved4;
+            u32 packetSize;
+            u16 audioPauseLength;
+            u8 mcn[16];
+            u8 isrc[16];
+            u8 subHeader[4];
+            u8 vendor[4];
+        } PACKED;
+
+        ModePage0x05Data codepage;
+        memset(&codepage, 0, sizeof(codepage));
+        codepage.pageCodeAndPS = 0x05;
+        codepage.pageLength = 0x32; // 50 bytes
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+    case 0x0D:
+    { // CD Device Parameters
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage",
+                        "MODE SENSE Page 0x0D (CD Device Parameters)");
+
+        struct CDDeviceParametersPage
+        {
+            u8 pageCode;   // 0x0D
+            u8 pageLength; // 0x06
+            u8 reserved1;
+            u8 inactivityTimer; // Minutes before standby
+            u16 secondsPerMSF;  // S/MSF units per second
+            u16 framesPerMSF;   // F/MSF units per second
+        } PACKED;
+
+        CDDeviceParametersPage codePage = {0};
+        codePage.pageCode = 0x0D;
+        codePage.pageLength = 0x06;
+        codePage.inactivityTimer = 0x00;    // No auto-standby
+        codePage.secondsPerMSF = htons(60); // 60 S units per second
+        codePage.framesPerMSF = htons(75);  // 75 F units per second
+
+        memcpy(buffer + length, &codePage, sizeof(codePage));
+        length += sizeof(codePage);
+        break;
+    }
+
+    case 0x08:
+    {
+        // Mode Page 0x08 (Caching)
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x08 (Caching)");
+
+        ModePage0x08Data codepage;
+        memset(&codepage, 0, sizeof(codepage));
+        codepage.pageCodeAndPS = 0x08;
+        codepage.pageLength = 0x12;
+        codepage.cachingFlags = 0x00; // RCD=0, WCE=0
+
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+
+    case 0x1a:
+    {
+        // Mode Page 0x1A (Power Condition)
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x1a response");
+
+        // Define our Code Page
+        ModePage0x1AData codepage;
+        memset(&codepage, 0, sizeof(codepage));
+        codepage.pageCodeAndPS = 0x1a;
+        codepage.pageLength = 0x0a;
+
+        // Copy the header & Code Page
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+
+    case 0x2a:
+    {
+        // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
+        ModePage0x2AData codepage;
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x2a response");
+        // Reuse the logic from original FillModePage2A
+        memset(&codepage, 0, sizeof(codepage));
+        codepage.pageCodeAndPS = 0x2a;
+        codepage.pageLength = 0x0E; // Should be 22 bytes for full MMC-5 compliance
+
+        // Capability bits (6 bytes) - dynamic based on media type
+        // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
+        codepage.capabilityBits[0] = 0x00; // Support all media types for DVD, else CD only
+        codepage.capabilityBits[1] = 0x00; // All writable types
+        codepage.capabilityBits[2] = 0x01; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
+        codepage.capabilityBits[3] = 0x03; // CD-DA Commands Supported, CD-DA Stream is accurate
+        codepage.capabilityBits[4] = 0x28; // Tray loading mechanism, eject supported, lock supported
+        codepage.capabilityBits[5] = 0x03; // No separate channel volume, no separate channel mute
+
+        // Speed and buffer info
+        codepage.maxSpeed = htons(1378);          // 8x
+        codepage.numVolumeLevels = htons(0x0100); // 256 volume levels
+        codepage.bufferSize = htons(0x0040);      // Set to 64 KB buffer size
+        codepage.currentSpeed = htons(1378);      // Current speed
+        codepage.maxReadSpeed = htons(1378);      // Some hosts check this field
+
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+
+    case 0x2D:
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x2D (CD Timeout & Protect)");
+        struct ModePage0x2DData
+        {
+            u8 pageCodeAndPS;
+            u8 pageLength;
+            u8 reserved1;
+            u8 inactivityTimerMultiplier;
+            u16 swpp;
+            u16 disp;
+            u16 group1Timeout;
+            u16 group2Timeout;
+        } PACKED;
+
+        ModePage0x2DData codepage;
+        memset(&codepage, 0, sizeof(codepage));
+        codepage.pageCodeAndPS = 0x2D;
+        codepage.pageLength = 0x0A; // 10 bytes
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+
+    case 0x0e:
+    {
+        // Mode Page 0x0E (CD Audio Control Page)
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x0e response");
+
+        CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+        u8 volume = 0xff;
+        if (cdplayer)
+        {
+            // When we return real volume, games that allow volume control don't send proper volume levels
+            // but when we hard code this to 0xff, everything seems to work fine. Weird.
+            // volume = cdplayer->GetVolume();
+            volume = 0xff;
+        }
+
+        // Define our Code Page
+        ModePage0x0EData codepage;
+        memset(&codepage, 0, sizeof(codepage));
+        codepage.pageCodeAndPS = 0x0e;
+        codepage.pageLength = 16;
+        codepage.IMMEDAndSOTC = 0x05;
+        codepage.CDDAOutput0Select = 0x01; // audio channel 0
+        codepage.Output0Volume = volume;
+        codepage.CDDAOutput1Select = 0x02; // audio channel 1
+        codepage.Output1Volume = volume;
+        codepage.CDDAOutput2Select = 0x00; // none
+        codepage.Output2Volume = 0x00;     // muted
+        codepage.CDDAOutput3Select = 0x00; // none
+        codepage.Output3Volume = 0x00;     // muted
+
+        // Copy the header & Code Page
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+
+    case 0x1c:
+    {
+        // Mode Page 0x1C (Informational Exceptions Control)
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x1c response");
+
+        ModePage0x1CData codepage;
+        memset(&codepage, 0, sizeof(codepage));
+        codepage.pageCodeAndPS = 0x1c;
+        codepage.pageLength = 0x0a;
+        codepage.flags = 0x00; // No special flags
+        codepage.mrie = 0x00;  // No reporting
+
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+    case 0x30:
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x30 (Apple Vendor)");
+        ModePage0x30Data codepage;
+        memset(&codepage, 0, sizeof(codepage));
+        codepage.pageCodeAndPS = 0x30;
+        codepage.pageLength = 0x14; // 20 bytes for "APPLE COMPUTER, INC."
+        memcpy(codepage.appleID, "APPLE COMPUTER, INC.", 20);
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+
+    case 0x31:
+    {
+        // Page 0x31 - Apple vendor-specific page
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense 0x31 (Apple vendor page)");
+        ModePage0x31Data codepage;
+        memset(&codepage, 0, sizeof(codepage));
+        codepage.pageCodeAndPS = 0x31;
+        codepage.pageLength = 0x14; // 20 bytes for "APPLE COMPUTER, INC."
+        memcpy(codepage.appleID, "APPLE COMPUTER, INC.", 20);
+        memcpy(buffer + length, &codepage, sizeof(codepage));
+        length += sizeof(codepage);
+        break;
+    }
+
+    default:
+        // We don't support this code page
+        CDROM_DEBUG_LOG("CUSBCDGadget::FillModePage", "Mode Sense unsupported page 0x%02x", page);
+        break;
+    }
+}
+
+void CUSBCDGadget::DoModeSense(int cdbSize)
+{
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (%d)", cdbSize);
+
+    int page = m_CBW.CBWCB[2] & 0x3f;
+    int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
+
+    // Bytes 7,8 for 10-byte, Byte 4 for 6-byte
+    u16 allocationLength;
+    if (cdbSize == 10)
+        allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
+    else
+        allocationLength = m_CBW.CBWCB[4];
+
+    // We don't support saved values
+    if (page_control == 0x03)
+    {
+        bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
+        m_SenseParams.bSenseKey = 0x05;      // Illegal Request
+        m_SenseParams.bAddlSenseCode = 0x39; // Saving parameters not supported
+        m_SenseParams.bAddlSenseCodeQual = 0x00;
+        sendCheckCondition();
+        return;
+    }
+
+    int length = 0;
+
+    // Define our response header
+    if (cdbSize == 10)
+    {
+        ModeSense10Header reply_header;
+        memset(&reply_header, 0, sizeof(reply_header));
+        reply_header.mediumType = GetMediumType();
+        length += sizeof(reply_header);
+        memcpy(m_InBuffer, &reply_header, sizeof(reply_header));
+    }
+    else
+    {
+        ModeSense6Header reply_header;
+        memset(&reply_header, 0, sizeof(reply_header));
+        reply_header.mediumType = GetMediumType();
+        length += sizeof(reply_header);
+        memcpy(m_InBuffer, &reply_header, sizeof(reply_header));
+    }
+
+    // Process pages
+    if (page == 0x3f) // All pages
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense All Mode Pages");
+
+        if (cdbSize == 10)
+        {
+            // Original MODE SENSE (10) order: 01, 05, 08, 0D, 1a, 1c, 2a, 2D, 0e, 30, 31
+            u8 pages[] = {0x01, 0x05, 0x08, 0x0D, 0x1a, 0x1c, 0x2a, 0x2D, 0x0e, 0x30, 0x31};
+            for (u8 p : pages) FillModePage(p, m_InBuffer, length);
+        }
+        else
+        {
+            // Original MODE SENSE (6) order: 01, 05, 0D, 08, 1a, 2a, 2D, 0e, 1c, 30, 31
+            u8 pages[] = {0x01, 0x05, 0x0D, 0x08, 0x1a, 0x2a, 0x2D, 0x0e, 0x1c, 0x30, 0x31};
+            for (u8 p : pages) FillModePage(p, m_InBuffer, length);
+        }
+    }
+    else
+    {
+        FillModePage(page, m_InBuffer, length);
+    }
+
+    // If unsupported page was requested (length didn't increase)
+    if (length == (cdbSize == 10 ? sizeof(ModeSense10Header) : sizeof(ModeSense6Header)))
+    {
+        if (page != 0x3f) {
+             setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN COMMAND PACKET
+             sendCheckCondition();
+             return;
+        }
+    }
+
+    // Update header with data length
+    if (cdbSize == 10)
+    {
+        ModeSense10Header *reply_header = (ModeSense10Header *)m_InBuffer;
+        reply_header->modeDataLength = htons(length - 2);
+    }
+    else
+    {
+        ModeSense6Header *reply_header = (ModeSense6Header *)m_InBuffer;
+        reply_header->modeDataLength = (length - 1);
+    }
+
+    // Trim the reply length according to what the host requested
+    if (allocationLength < length)
+        length = allocationLength;
+
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (%d), Sending response with length %d", cdbSize, length);
+
+    m_nnumber_blocks = 0; // nothing more after this send
+    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
+    m_nState = TCDState::DataIn;
+    m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
 // TODO: This entire method is a monster. Break up into a Function table of static methods
@@ -1739,44 +2226,7 @@ void CUSBCDGadget::HandleSCSICommand()
 
     case 0xa8: // Read (12) - similar to READ(10) but with 32-bit block count
     {
-        if (m_CDReady)
-        {
-            // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "Read (12)");
-            // will be updated if read fails on any block
-            m_CSW.bmCSWStatus = bmCSWStatus;
-
-            // Where to start reading (LBA) - 4 bytes
-            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
-                               (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
-            // Number of blocks to read (LBA) - 4 bytes
-            m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) |
-                               (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
-
-            // Transfer Block Size is the size of data to return to host
-            // Block Size and Skip Bytes is worked out from cue sheet
-            // For a CDROM, this is always 2048
-            transfer_block_size = 2048;
-            block_size = data_block_size; // set at SetDevice
-            skip_bytes = data_skip_bytes; // set at SetDevice;
-            mcs = 0;
-
-            m_nbyteCount = m_CBW.dCBWDataTransferLength;
-
-            // What is this?
-            if (m_nnumber_blocks == 0)
-            {
-                m_nnumber_blocks = 1 + (m_nbyteCount) / 2048;
-            }
-            m_CSW.bmCSWStatus = bmCSWStatus;
-            m_nState = TCDState::DataInRead; // see Update() function
-        }
-        else
-        {
-            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ(12) failed, %s", m_CDReady ? "ready" : "not ready");
-            setSenseData(0x02, 0x04, 0x00); // Not Ready, Logical Unit Not Ready
-            sendCheckCondition();
-        }
+        DoRead(12);
         break;
     }
 
@@ -1946,80 +2396,7 @@ void CUSBCDGadget::HandleSCSICommand()
 
     case 0x28: // Read (10)
     {
-        if (m_CDReady)
-        {
-            // Where to start reading (LBA)
-            m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) |
-                               (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
-            // Number of blocks to read (LBA)
-            m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
-
-            // Get disc boundaries
-            u32 max_lba = GetMaxLBA();
-
-            // CRITICAL: Validate LBA is within disc boundaries
-            if (m_nblock_address >= max_lba)
-            {
-                MLOGERR("READ(10)", "LBA %u beyond disc boundary (max=%u)",
-                        m_nblock_address, max_lba);
-
-                // SCSI error: ILLEGAL REQUEST / LOGICAL BLOCK ADDRESS OUT OF RANGE
-                setSenseData(0x05, 0x21, 0x00);
-                sendCheckCondition();
-                break;
-            }
-
-            // Check if read extends beyond disc boundary
-            if (m_nblock_address + m_nnumber_blocks > max_lba)
-            {
-                u32 original_blocks = m_nnumber_blocks;
-                m_nnumber_blocks = max_lba - m_nblock_address;
-
-                MLOGNOTE("READ(10)", "Read truncated: LBA=%u, requested=%u, max=%u, truncated to=%u",
-                         m_nblock_address, original_blocks, max_lba, m_nnumber_blocks);
-            }
-
-            // Validate we have blocks to read after boundary checks
-            if (m_nnumber_blocks == 0)
-            {
-                MLOGERR("READ(10)", "No blocks to read after boundary check");
-                setSenseData(0x05, 0x21, 0x00);
-                sendCheckCondition();
-                break;
-            }
-
-            CDROM_DEBUG_LOG("READ(10)", "LBA=%u, cnt=%u, max_lba=%u",
-                            m_nblock_address, m_nnumber_blocks, max_lba);
-
-            // Transfer Block Size is the size of data to return to host
-            // Block Size and Skip Bytes is worked out from cue sheet
-            // For a CDROM, this is always 2048
-            transfer_block_size = 2048;
-            block_size = data_block_size; // set at SetDevice
-            skip_bytes = data_skip_bytes; // set at SetDevice
-            mcs = 0;
-            m_nbyteCount = m_CBW.dCBWDataTransferLength;
-
-            // Recalculate byte count based on potentially truncated block count
-            u32 expected_byte_count = m_nnumber_blocks * transfer_block_size;
-            if (m_nbyteCount > expected_byte_count)
-            {
-                MLOGNOTE("READ(10)", "Host requested %u bytes but only %u available",
-                         m_nbyteCount, expected_byte_count);
-                m_nbyteCount = expected_byte_count;
-            }
-
-            m_CSW.bmCSWStatus = bmCSWStatus;
-            m_nState = TCDState::DataInRead; // see Update() function
-        }
-        else
-        {
-            CDROM_DEBUG_LOG("handleSCSI Read(10)", "failed, %s",
-                            m_CDReady ? "ready" : "not ready");
-            setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
-            sendCheckCondition();
-        }
+        DoRead(10);
         break;
     }
 
@@ -3260,90 +3637,13 @@ void CUSBCDGadget::HandleSCSICommand()
 
     case 0x45: // PLAY AUDIO (10)
     {
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10)");
-
-        // Where to start reading (LBA)
-        m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
-        // Number of blocks to read (LBA)
-        m_nnumber_blocks = (u32)((m_CBW.CBWCB[7] << 8) | m_CBW.CBWCB[8]);
-
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
-
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                        "PLAY AUDIO (10): LBA=%u, blocks=%u, USB=%s",
-                        m_nblock_address, m_nnumber_blocks,
-                        m_IsFullSpeed ? "FS" : "HS");
-
-        // Play the audio, but only if length > 0
-        if (m_nnumber_blocks > 0)
-        {
-            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-            if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
-            {
-                CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
-                if (cdplayer)
-                {
-                    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (10) Play command sent");
-                    if (m_nblock_address == 0xffffffff)
-                        cdplayer->Resume();
-                    else
-                        cdplayer->Play(m_nblock_address, m_nnumber_blocks);
-                }
-            }
-            else
-            {
-                bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
-                m_SenseParams.bSenseKey = 0x05;
-                m_SenseParams.bAddlSenseCode = 0x64; // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
-                m_SenseParams.bAddlSenseCodeQual = 0x00;
-            }
-        }
-
-        m_CSW.bmCSWStatus = bmCSWStatus;
-        SendCSW();
+        DoPlayAudio(10);
         break;
     }
 
     case 0xA5: // PLAY AUDIO (12)
     {
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12)");
-
-        // Where to start reading (LBA)
-        m_nblock_address = (u32)(m_CBW.CBWCB[2] << 24) | (u32)(m_CBW.CBWCB[3] << 16) | (u32)(m_CBW.CBWCB[4] << 8) | m_CBW.CBWCB[5];
-
-        // Number of blocks to read (LBA)
-        m_nnumber_blocks = (u32)(m_CBW.CBWCB[6] << 24) | (u32)(m_CBW.CBWCB[7] << 16) | (u32)(m_CBW.CBWCB[8] << 8) | m_CBW.CBWCB[9];
-
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12) Playing from %lu for %lu blocks", m_nblock_address, m_nnumber_blocks);
-
-        // Play the audio, but only if length > 0
-        if (m_nnumber_blocks > 0)
-        {
-            CUETrackInfo trackInfo = GetTrackInfoForLBA(m_nblock_address);
-            if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
-            {
-                CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
-                if (cdplayer)
-                {
-                    MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "PLAY AUDIO (12) Play command sent");
-                    if (m_nblock_address == 0xffffffff)
-                        cdplayer->Resume();
-                    else
-                        cdplayer->Play(m_nblock_address, m_nnumber_blocks);
-                }
-            }
-            else
-            {
-                bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
-                m_SenseParams.bSenseKey = 0x05;
-                m_SenseParams.bAddlSenseCode = 0x64; // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
-                m_SenseParams.bAddlSenseCodeQual = 0x00;
-            }
-        }
-
-        m_CSW.bmCSWStatus = bmCSWStatus;
-        SendCSW();
+        DoPlayAudio(12);
         break;
     }
 
@@ -3367,613 +3667,13 @@ void CUSBCDGadget::HandleSCSICommand()
     // We only need this because MacOS is a problem child
     case 0x1a: // Mode Sense (6)
     {
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6)");
-        // int DBD = (m_CBW.CBWCB[1] >> 3) & 0x01; // We don't implement block descriptors
-        int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
-        int page = m_CBW.CBWCB[2] & 0x3f;
-        // int sub_page_code = m_CBW.CBWCB[3];
-        int allocationLength = m_CBW.CBWCB[4];
-        // int control = m_CBW.CBWCB[5];  // unused
-
-        int length = 0;
-
-        // We don't support saved values
-        if (page_control == 0x03)
-        {
-            bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
-            m_SenseParams.bSenseKey = 0x05;      // Illegal Request
-            m_SenseParams.bAddlSenseCode = 0x39; // Saving parameters not supported
-            m_SenseParams.bAddlSenseCodeQual = 0x00;
-        }
-        else
-        {
-
-            // Define our response
-            ModeSense6Header reply_header;
-            memset(&reply_header, 0, sizeof(reply_header));
-            reply_header.mediumType = GetMediumType();
-
-            switch (page)
-            {
-
-            case 0x3f: // This required all mode pages
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x3f: All Mode Pages");
-            // Fall through...
-            case 0x01:
-            {
-                // Mode Page 0x01 (Read/Write Error Recovery Parameters Mode Page)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x01 response");
-
-                // Define our Code Page
-                ModePage0x01Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-
-                // Copy the header & Code Page
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-            case 0x05:
-            {
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x05 (Write Parameters)");
-                struct ModePage0x05Data
-                {
-                    u8 pageCodeAndPS;
-                    u8 pageLength;
-                    u8 writeType : 4;
-                    u8 testWrite : 1;
-                    u8 linkSize : 2;
-                    u8 bufferUnderrun : 1;
-                    u8 trackMode : 4;
-                    u8 copy : 1;
-                    u8 fp : 1;
-                    u8 multiSession : 2;
-                    u8 dataBlockType : 4;
-                    u8 reserved1 : 4;
-                    u8 linkSize2;
-                    u8 reserved2;
-                    u8 hostAppCode : 6;
-                    u8 reserved3 : 2;
-                    u8 sessionFormat;
-                    u8 reserved4;
-                    u32 packetSize;
-                    u16 audioPauseLength;
-                    u8 mcn[16];
-                    u8 isrc[16];
-                    u8 subHeader[4];
-                    u8 vendor[4];
-                } PACKED;
-
-                ModePage0x05Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x05;
-                codepage.pageLength = 0x32; // 50 bytes
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                if (page != 0x3f)
-                    break;
-            }
-            case 0x0D:
-            { // CD Device Parameters
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                                "MODE SENSE(10) Page 0x0D (CD Device Parameters)");
-
-                struct CDDeviceParametersPage
-                {
-                    u8 pageCode;   // 0x0D
-                    u8 pageLength; // 0x06
-                    u8 reserved1;
-                    u8 inactivityTimer; // Minutes before standby
-                    u16 secondsPerMSF;  // S/MSF units per second
-                    u16 framesPerMSF;   // F/MSF units per second
-                } PACKED;
-
-                CDDeviceParametersPage codePage = {0};
-                codePage.pageCode = 0x0D;
-                codePage.pageLength = 0x06;
-                codePage.inactivityTimer = 0x00;    // No auto-standby
-                codePage.secondsPerMSF = htons(60); // 60 S units per second
-                codePage.framesPerMSF = htons(75);  // 75 F units per second
-
-                // memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-
-                memcpy(m_InBuffer + length, &codePage, sizeof(codePage));
-                length += sizeof(codePage);
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x08:
-            {
-                // Mode Page 0x08 (Caching)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x08 (Caching)");
-
-                ModePage0x08Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x08;
-                codepage.pageLength = 0x12;
-                codepage.cachingFlags = 0x00; // RCD=0, WCE=0
-
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x1a:
-            {
-                // Mode Page 0x1A (Power Condition)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x1a response");
-
-                // Define our Code Page
-                ModePage0x1AData codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x1a;
-                codepage.pageLength = 0x0a;
-
-                // Copy the header & Code Page
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x2a:
-            {
-                // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
-                ModePage0x2AData codepage;
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2a response");
-                FillModePage2A(codepage);
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x2D:
-            {
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x2D (CD Timeout & Protect)");
-                struct ModePage0x2DData
-                {
-                    u8 pageCodeAndPS;
-                    u8 pageLength;
-                    u8 reserved1;
-                    u8 inactivityTimerMultiplier;
-                    u16 swpp;
-                    u16 disp;
-                    u16 group1Timeout;
-                    u16 group2Timeout;
-                } PACKED;
-
-                ModePage0x2DData codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x2D;
-                codepage.pageLength = 0x0A; // 10 bytes
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x0e:
-            {
-                // Mode Page 0x0E (CD Audio Control Page)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x0e response");
-
-                CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
-                u8 volume = 0xff;
-                if (cdplayer)
-                {
-                    // When we return real volume, games that allow volume control don't send proper volume levels
-                    // but when we hard code this to 0xff, everything seems to work fine. Weird.
-                    // volume = cdplayer->GetVolume();
-                    volume = 0xff;
-                }
-
-                // Define our Code Page
-                ModePage0x0EData codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x0e;
-                codepage.pageLength = 16;
-                codepage.IMMEDAndSOTC = 0x05;
-                codepage.CDDAOutput0Select = 0x01; // audio channel 0
-                codepage.Output0Volume = volume;
-                codepage.CDDAOutput1Select = 0x02; // audio channel 1
-                codepage.Output1Volume = volume;
-                codepage.CDDAOutput2Select = 0x00; // none
-                codepage.Output2Volume = 0x00;     // muted
-                codepage.CDDAOutput3Select = 0x00; // none
-                codepage.Output3Volume = 0x00;     // muted
-
-                // Copy the header & Code Page
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x1c:
-            {
-                // Mode Page 0x1C (Informational Exceptions Control)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x1c response");
-
-                ModePage0x1CData codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x1c;
-                codepage.pageLength = 0x0a;
-                codepage.flags = 0x00; // No special flags
-                codepage.mrie = 0x00;  // No reporting
-
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                if (page != 0x3f)
-                    break;
-            }
-            case 0x30:
-            {
-                CDROM_DEBUG_LOG("HandleSCSI", "Mode Sense (6) 0x30 (Apple Vendor)");
-                ModePage0x30Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x30;
-                codepage.pageLength = 0x14; // 20 bytes for "APPLE COMPUTER, INC."
-                memcpy(codepage.appleID, "APPLE COMPUTER, INC.", 20);
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x31:
-            {
-                // Page 0x31 - Apple vendor-specific page
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) 0x31 (Apple vendor page)");
-                ModePage0x31Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x31;
-                codepage.pageLength = 0x14; // 20 bytes for "APPLE COMPUTER, INC."
-                memcpy(codepage.appleID, "APPLE COMPUTER, INC.", 20);
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                break;
-            }
-
-            default:
-            {
-                // We don't support this code page
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6) unsupported page 0x%02x", page);
-                setSenseData(0x05, 0x24, 0x00);
-                sendCheckCondition();
-                return;
-            }
-            }
-
-            reply_header.modeDataLength = htons(length - 1);
-            memcpy(m_InBuffer, &reply_header, sizeof(reply_header));
-        }
-
-        // Trim the reply length according to what the host requested
-        if (allocationLength < length)
-            length = allocationLength;
-
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (6), Sending response with length %d", length);
-
-        m_nnumber_blocks = 0; // nothing more after this send
-        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
-        m_nState = TCDState::DataIn;
-        m_CSW.bmCSWStatus = bmCSWStatus;
+        DoModeSense(6);
         break;
     }
 
     case 0x5a: // Mode Sense (10)
     {
-        // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10)");
-
-        int LLBAA = (m_CBW.CBWCB[1] >> 7) & 0x01; // We don't support this
-        int DBD = (m_CBW.CBWCB[1] >> 6) & 0x01;   // TODO: Implement this!
-        int page = m_CBW.CBWCB[2] & 0x3F;
-        int page_control = (m_CBW.CBWCB[2] >> 6) & 0x03;
-        u16 allocationLength = m_CBW.CBWCB[7] << 8 | (m_CBW.CBWCB[8]);
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) with LLBAA = %d, DBD = %d, page = %02x, allocationLength = %lu", LLBAA, DBD, page, allocationLength);
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) RAW CBWCB[2]=0x%02x, page=0x%02x, page_control=0x%02x", m_CBW.CBWCB[2], page, page_control);
-        int length = 0;
-
-        // We don't support saved values
-        if (page_control == 0x03)
-        {
-            // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) page_control=0x03 (saved) not supported");
-            bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
-            m_SenseParams.bSenseKey = 0x05;      // Illegal Request
-            m_SenseParams.bAddlSenseCode = 0x39; // Saving parameters not supported
-            m_SenseParams.bAddlSenseCodeQual = 0x00;
-        }
-        else
-        {
-            // Define our response
-            ModeSense10Header reply_header;
-            memset(&reply_header, 0, sizeof(reply_header));
-            reply_header.mediumType = GetMediumType();
-            length += sizeof(reply_header);
-
-            switch (page)
-            {
-            case 0x3f: // This required all mode pages
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x3f: All Mode Pages");
-                // Fall through...
-            case 0x01:
-            {
-                // Mode Page 0x01 (Read/Write Error Recovery Parameters Mode Page)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x01 response");
-
-                // Define our Code Page
-                ModePage0x01Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-
-                // Copy the header & Code Page
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-            case 0x05:
-            {
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x05 (Write Parameters)");
-                struct ModePage0x05Data
-                {
-                    u8 pageCodeAndPS;
-                    u8 pageLength;
-                    u8 writeType : 4;
-                    u8 testWrite : 1;
-                    u8 linkSize : 2;
-                    u8 bufferUnderrun : 1;
-                    u8 trackMode : 4;
-                    u8 copy : 1;
-                    u8 fp : 1;
-                    u8 multiSession : 2;
-                    u8 dataBlockType : 4;
-                    u8 reserved1 : 4;
-                    u8 linkSize2;
-                    u8 reserved2;
-                    u8 hostAppCode : 6;
-                    u8 reserved3 : 2;
-                    u8 sessionFormat;
-                    u8 reserved4;
-                    u32 packetSize;
-                    u16 audioPauseLength;
-                    u8 mcn[16];
-                    u8 isrc[16];
-                    u8 subHeader[4];
-                    u8 vendor[4];
-                } PACKED;
-
-                ModePage0x05Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x05;
-                codepage.pageLength = 0x32; // 50 bytes
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                if (page != 0x3f)
-                    break;
-            }
-            case 0x08:
-            {
-                // Mode Page 0x08 (Caching)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x08 (Caching)");
-
-                ModePage0x08Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x08;
-                codepage.pageLength = 0x12;
-                codepage.cachingFlags = 0x00; // RCD=0, WCE=0
-
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-            // In case 0x5a, add new page:
-            case 0x0D:
-            { // CD Device Parameters
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
-                                "MODE SENSE(10) Page 0x0D (CD Device Parameters)");
-
-                struct CDDeviceParametersPage
-                {
-                    u8 pageCode;   // 0x0D
-                    u8 pageLength; // 0x06
-                    u8 reserved1;
-                    u8 inactivityTimer; // Minutes before standby
-                    u16 secondsPerMSF;  // S/MSF units per second
-                    u16 framesPerMSF;   // F/MSF units per second
-                } PACKED;
-
-                CDDeviceParametersPage codePage = {0};
-                codePage.pageCode = 0x0D;
-                codePage.pageLength = 0x06;
-                codePage.inactivityTimer = 0x00;    // No auto-standby
-                codePage.secondsPerMSF = htons(60); // 60 S units per second
-                codePage.framesPerMSF = htons(75);  // 75 F units per second
-
-                // memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-
-                memcpy(m_InBuffer + length, &codePage, sizeof(codePage));
-                length += sizeof(codePage);
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x1a:
-            {
-                // Mode Page 0x1A (Power Condition)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x1a response");
-
-                // Define our Code Page
-                ModePage0x1AData codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x1a;
-                codepage.pageLength = 0x0a;
-
-                // Copy the header & Code Page
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x1c:
-            {
-                // Mode Page 0x1C (Informational Exceptions Control)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x1c response");
-
-                ModePage0x1CData codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x1c;
-                codepage.pageLength = 0x0a;
-                codepage.flags = 0x00; // No special flags
-                codepage.mrie = 0x00;  // No reporting
-
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x2a:
-            {
-                // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2a response");
-
-                // Use shared code 0x2A filling function
-                ModePage0x2AData codepage;
-                FillModePage2A(codepage);
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-            case 0x2D:
-            {
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x2D (CD Timeout & Protect)");
-                struct ModePage0x2DData
-                {
-                    u8 pageCodeAndPS;
-                    u8 pageLength;
-                    u8 reserved1;
-                    u8 inactivityTimerMultiplier;
-                    u16 swpp;
-                    u16 disp;
-                    u16 group1Timeout;
-                    u16 group2Timeout;
-                } PACKED;
-
-                ModePage0x2DData codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x2D;
-                codepage.pageLength = 0x0A; // 10 bytes
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x0e:
-            {
-                // Mode Page 0x0E (CD Audio Control Page)
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x0e response");
-
-                CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
-                u8 volume = 0xff;
-                if (cdplayer)
-                {
-                    // When we return real volume, games that allow volume control don't send proper volume levels
-                    // but when we hard code this to 0xff, everything seems to work fine. Weird.
-                    // volume = cdplayer->GetVolume();
-                    volume = 0xff;
-                }
-
-                // Define our Code Page
-                ModePage0x0EData codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x0e;
-                codepage.pageLength = 16;
-                codepage.IMMEDAndSOTC = 0x05;
-                codepage.CDDAOutput0Select = 0x01; // audio channel 0
-                codepage.Output0Volume = volume;
-                codepage.CDDAOutput1Select = 0x02; // audio channel 1
-                codepage.Output1Volume = volume;
-                codepage.CDDAOutput2Select = 0x00; // none
-                codepage.Output2Volume = 0x00;     // muted
-                codepage.CDDAOutput3Select = 0x00; // none
-                codepage.Output3Volume = 0x00;     // muted
-
-                // Copy the header & Code Page
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-
-                if (page != 0x3f)
-                    break;
-            }
-            case 0x30:
-            {
-                CDROM_DEBUG_LOG("HandleSCSI", "Mode Sense (10) 0x30 (Apple Vendor)");
-                ModePage0x30Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x30;
-                codepage.pageLength = 0x14; // 20 bytes for "APPLE COMPUTER, INC."
-                memcpy(codepage.appleID, "APPLE COMPUTER, INC.", 20);
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                if (page != 0x3f)
-                    break;
-            }
-
-            case 0x31:
-            {
-                // Page 0x31 - Apple vendor-specific page
-                CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) 0x31 (Apple vendor page)");
-                ModePage0x31Data codepage;
-                memset(&codepage, 0, sizeof(codepage));
-                codepage.pageCodeAndPS = 0x31;
-                codepage.pageLength = 0x14; // 20 bytes for "APPLE COMPUTER, INC."
-                memcpy(codepage.appleID, "APPLE COMPUTER, INC.", 20);
-                memcpy(m_InBuffer + length, &codepage, sizeof(codepage));
-                length += sizeof(codepage);
-                break;
-            }
-
-            default:
-            {
-                // We don't support this code page
-                // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10) unsupported page 0x%02x", page);
-                setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN COMMAND PACKET
-                sendCheckCondition();
-                return;
-            }
-            }
-
-            reply_header.modeDataLength = htons(length - 2);
-            memcpy(m_InBuffer, &reply_header, sizeof(reply_header));
-        }
-
-        // Trim the reply length according to what the host requested
-        if (allocationLength < length)
-            length = allocationLength;
-
-        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Sense (10), Sending response with length %d", length);
-
-        m_nnumber_blocks = 0; // nothing more after this send
-        m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, m_InBuffer, length);
-        m_nState = TCDState::DataIn;
-        m_CSW.bmCSWStatus = bmCSWStatus;
+        DoModeSense(10);
         break;
     }
 
