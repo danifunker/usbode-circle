@@ -738,6 +738,13 @@ private:
     void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     void FormatRawTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool useBCD);
 
+    // Consolidated commands
+    void DoRead(bool isRead12);
+    void DoPlayAudio(bool isPlay12);
+    void DoModeSense(bool isModeSense10);
+    // Helper for Mode Sense
+    void FillModePage(u8 page, u8 *buffer, int &length);
+
     bool m_readSubchannels = false;
     u8 m_subchannelMode = 0;
 
