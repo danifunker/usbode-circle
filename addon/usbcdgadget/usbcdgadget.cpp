@@ -789,44 +789,6 @@ void CUSBCDGadget::sendGoodStatus()
     SendCSW();
 }
 
-// TODO: This entire method is a monster. Break up into a Function table of static methods
-//
-//  Each command lives in its own .cpp file with a class that has a static Handle() function.
-//  Then the table contains function pointers to those static methods.
-//
-//  This will mean we need to tidy up class global variables
-//
-//  e.g.
-//  "inquirycommand.h"
-//  class InquiryCommand {
-//  public:
-//      static void Handle(const uint8_t* cmd, void* context);
-//  };
-//
-//  "inquirycommand.cpp"
-//  #include "InquiryCommand.h"
-//  void InquiryCommand::Handle(const uint8_t* cmd, void* context) {
-//      // Fill m_InBuffer, set status, etc.
-//  }
-//
-//  ... and then the code in here
-//  #include "InquiryCommand.h"
-//  #include "RequestSenseCommand.h"
-//  etc...
-//
-//  typedef void (*SCSIHandler)(const uint8_t*, void*);
-//  SCSIHandler g_SCSIHandlers[256] = {
-//      /* initialized below */
-//  };
-//
-//  void InitSCSIHandlers() {
-//      g_SCSIHandlers[0x12] = InquiryCommand::Handle;
-//      g_SCSIHandlers[0x03] = RequestSenseCommand::Handle;
-//      ...
-//  }
-//
-//  https://chatgpt.com/share/683ecad4-e250-8012-b9aa-22c76de6e871
-//
 void CUSBCDGadget::HandleSCSICommand()
 {
     // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);

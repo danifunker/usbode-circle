@@ -340,64 +340,6 @@ void CUSBCDGadget::Update()
         }
         break;
     }
-        /*
-                case TCDState::DataOutWrite:
-                        {
-                                //process block from host
-                                assert(m_nnumber_blocks>0);
-                                u64 offset=0;
-                                int writeCount=0;
-                                if(m_CDReady)
-                                {
-                                        offset=m_pDevice->Seek(BLOCK_SIZE*m_nblock_address);
-                                        if(offset!=(u64)(-1))
-                                        {
-                                                writeCount=m_pDevice->Write(m_OutBuffer,BLOCK_SIZE);
-                                        }
-                                        if(writeCount>0)
-                                        {
-                                                if(writeCount<BLOCK_SIZE)
-                                                {
-                                                        MLOGERR("UpdateWrite","writeCount = %u ",writeCount);
-                                                        m_CSW.bmCSWStatus=CD_CSW_STATUS_FAIL;
-                                                        m_ReqSenseReply.bSenseKey = 0x2;
-                                                        m_ReqSenseReply.bAddlSenseCode = 0x1;
-                                                        SendCSW();
-                                                        break;
-                                                }
-                                                m_nnumber_blocks--;
-                                                m_nblock_address++;
-                                                if(m_nnumber_blocks==0)  //done receiving data from host
-                                                {
-                                                        SendCSW();
-                                                        break;
-                                                }
-                                        }
-                                }
-                                if(!m_CDReady || offset==(u64)(-1) || writeCount<=0)
-                                {
-                                        MLOGERR("UpdateWrite","failed, %s, offset=%i, writeCount=%i",
-                                                m_CDReady?"ready":"not ready",offset,writeCount);
-                                        m_CSW.bmCSWStatus=CD_CSW_STATUS_FAIL;
-                                        m_ReqSenseReply.bSenseKey = 2;
-                                        m_ReqSenseReply.bAddlSenseCode = 1;
-                                        SendCSW();
-                                        break;
-                                }
-                                else
-                                {
-                                        if(m_nnumber_blocks>0)  //get next block
-                                        {
-                                                m_pEP[EPOut]->BeginTransfer(
-                                                        CUSBCDGadgetEndpoint::TransferDataOut,
-                                                        m_OutBuffer,512);
-                                                m_nState=TCDState::DataOut;
-                                        }
-                                }
-                                break;
-                        }
-        */
-
     default:
         break;
     }
