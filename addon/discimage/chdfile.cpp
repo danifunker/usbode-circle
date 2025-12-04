@@ -73,6 +73,14 @@ bool CCHDFileDevice::ParseTrackMetadata()
 
             track.startLBA = (m_numTracks > 0) ? (m_tracks[m_numTracks - 1].startLBA + m_tracks[m_numTracks - 1].frames) : 0;
 
+            // Parse PREGAP if present
+            track.pregap = 0;
+            char *pPregap = strstr(metadata, "PREGAP:");
+            if (pPregap)
+            {
+                sscanf(pPregap, "PREGAP:%u", &track.pregap);
+            }
+
             // Parse type string to track type enum
             if (strcmp(typeStr, "AUDIO") == 0)
             {
@@ -122,9 +130,9 @@ bool CCHDFileDevice::ParseTrackMetadata()
                 track.dataSize = 2352;
             }
 
-            LOGNOTE("Track %d: Type=%s (%d), Start=%u, Frames=%u, DataSize=%u",
+            LOGNOTE("Track %d: Type=%s (%d), Start=%u, Frames=%u, Pregap=%u, DataSize=%u",
                     track.trackNumber, typeStr, track.trackType, track.startLBA,
-                    track.frames, track.dataSize);
+                    track.frames, track.pregap, track.dataSize);
 
             m_numTracks++;
         }
@@ -242,17 +250,32 @@ void CCHDFileDevice::GenerateCueSheet()
         }
 
         // Calculate MSF for track start
-        u32 lba = track.startLBA;
-        
-        u32 minutes = lba / (60 * 75);
-        u32 seconds = (lba / 75) % 60;
-        u32 frames = lba % 75;
+        u32 lba00 = track.startLBA;
+        u32 lba01 = track.startLBA + track.pregap;
 
-        written = snprintf(buf, remaining,
-                           "  TRACK %02d %s\n"
-                           "    INDEX 01 %02d:%02d:%02d\n",
-                           track.trackNumber, mode,
-                           minutes, seconds, frames);
+        // Write TRACK line
+        written = snprintf(buf, remaining, "  TRACK %02d %s\n", track.trackNumber, mode);
+        buf += written;
+        remaining -= written;
+
+        // Write INDEX 00 if there is a pregap
+        if (track.pregap > 0)
+        {
+            u32 m = lba00 / (60 * 75);
+            u32 s = (lba00 / 75) % 60;
+            u32 f = lba00 % 75;
+
+            written = snprintf(buf, remaining, "    INDEX 00 %02d:%02d:%02d\n", m, s, f);
+            buf += written;
+            remaining -= written;
+        }
+
+        // Write INDEX 01
+        u32 m = lba01 / (60 * 75);
+        u32 s = (lba01 / 75) % 60;
+        u32 f = lba01 % 75;
+
+        written = snprintf(buf, remaining, "    INDEX 01 %02d:%02d:%02d\n", m, s, f);
         buf += written;
         remaining -= written;
     }

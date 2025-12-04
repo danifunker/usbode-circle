@@ -16,6 +16,7 @@ struct CHDTrackInfo {
     u32 trackNumber;
     u32 startLBA;
     u32 frames;
+    u32 pregap;
     u32 trackType;  // CD_TRACK_MODE1, CD_TRACK_AUDIO, etc.
     u32 dataSize;   // bytes per frame
 };
