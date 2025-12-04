@@ -512,7 +512,7 @@ private:
     CUEParser cueParser;
 
     char m_HardwareSerialNumber[20];               // Hardware serial number (e.g., "USBODE-XXXXXXXX")
-    static const char *const s_StringDescriptor[]; // USB string descriptors
+    const char *m_StringDescriptor[4];             // USB string descriptors
     u8 m_StringDescriptorBuffer[80];               // Buffer for string descriptor conversion
 
     // Whether to report CSS copy protection
