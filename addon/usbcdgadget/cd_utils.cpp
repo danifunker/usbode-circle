@@ -5,6 +5,7 @@
 //
 #include <usbcdgadget/cd_utils.h>
 #include <circle/logger.h>
+#include <circle/util.h>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...) // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
@@ -94,9 +95,7 @@ u32 CDUtils::lba_to_msf(u32 lba, boolean relative)
     return (frames << 24) | (seconds << 16) | (minutes << 8) | reserved;
 }
 
-// ============================================================================
 // Track Info & Calculation
-// ============================================================================
 
 CUETrackInfo CDUtils::GetTrackInfoForLBA(CUSBCDGadget* gadget, u32 lba)
 {
@@ -231,6 +230,14 @@ u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
     }
 
     u32 ret = track_start + (u32)lastTrackBlocks; // Cast back to u32 for LBA (max ~2TB disc)
+
+    if (strcmp(gadget->m_USBTargetOS, "apple") == 0)
+    {
+        // Apple systems expect the lead-out to be 1 second (75 sectors) beyond the end of the disc
+        ret += 75;
+        CDROM_DEBUG_LOG("CDUtils::GetLeadoutLBA",
+                        "Adjusting lead-out for Apple target OS, new lead-out LBA is %lu", (unsigned long)ret);
+    }
 
     CDROM_DEBUG_LOG("CDUtils::GetLeadoutLBA",
                     "device size is %llu, last track file offset is %lu, last track sector_length is %lu, "

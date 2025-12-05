@@ -197,6 +197,7 @@ private:
     // ========================================================================
 
     static TUSBDeviceDescriptor s_DeviceDescriptor;
+    static TUSBDeviceDescriptor s_DeviceDescriptorMacOS9;
     static const char *const s_StringDescriptorTemplate[];
 
     /// \brief USB configuration descriptor with interface and endpoints
@@ -227,7 +228,7 @@ private:
 
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
-
+    static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorMacOS9;
     // ========================================================================
     // Instance Variables - Device and USB State
     // ========================================================================

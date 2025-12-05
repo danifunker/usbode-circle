@@ -364,7 +364,9 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget* gadget, uint8_t session, uint16_t allo
             firsttrack = trackinfo->track_number;
             if (trackinfo->track_mode == CUETrack_AUDIO)
             {
-                gadget->m_InBuffer[5] = 0x10; // A0 control for audio
+                gadget->m_InBuffer[5] = 0x10;  // A0 control for audio
+                gadget->m_InBuffer[16] = 0x10; // A1 control for audio
+                gadget->m_InBuffer[27] = 0x10; // A2 control for audio
             }
             CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "First track: %d, mode=%d", firsttrack, trackinfo->track_mode);
         }
@@ -385,12 +387,6 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget* gadget, uint8_t session, uint16_t allo
 
     CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "Header: First=%d, Last=%d. A0: First=%d, A1: Last=%d",
                     firsttrack, lasttrack.track_number, firsttrack, lasttrack.track_number);
-
-    if (lasttrack.track_mode == CUETrack_AUDIO)
-    {
-        gadget->m_InBuffer[16] = 0x10; // A1 control
-        gadget->m_InBuffer[27] = 0x10; // A2 control
-    }
 
     // A2: Leadout position
     u32 leadoutLBA = CDUtils::GetLeadoutLBA(gadget);

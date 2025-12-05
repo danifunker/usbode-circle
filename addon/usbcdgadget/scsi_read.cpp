@@ -20,27 +20,27 @@
             MLOGNOTE(From, __VA_ARGS__); \
     } while (0)
 
-void SCSIRead::Read10(CUSBCDGadget* gadget)
+void SCSIRead::Read10(CUSBCDGadget *gadget)
 {
     DoRead(gadget, 10);
 }
 
-void SCSIRead::Read12(CUSBCDGadget* gadget)
+void SCSIRead::Read12(CUSBCDGadget *gadget)
 {
     DoRead(gadget, 12);
 }
 
-void SCSIRead::PlayAudio10(CUSBCDGadget* gadget)
+void SCSIRead::PlayAudio10(CUSBCDGadget *gadget)
 {
     DoPlayAudio(gadget, 10);
 }
 
-void SCSIRead::PlayAudio12(CUSBCDGadget* gadget)
+void SCSIRead::PlayAudio12(CUSBCDGadget *gadget)
 {
     DoPlayAudio(gadget, 12);
 }
 
-void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
+void SCSIRead::DoRead(CUSBCDGadget *gadget, int cdbSize)
 {
     if (gadget->m_CDReady)
     {
@@ -48,11 +48,11 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
         {
             // Where to start reading (LBA) - 4 bytes
             gadget->m_nblock_address = (u32)(gadget->m_CBW.CBWCB[2] << 24) | (u32)(gadget->m_CBW.CBWCB[3] << 16) |
-                               (u32)(gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
+                                       (u32)(gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
 
             // Number of blocks to read (LBA) - 4 bytes
             gadget->m_nnumber_blocks = (u32)(gadget->m_CBW.CBWCB[6] << 24) | (u32)(gadget->m_CBW.CBWCB[7] << 16) |
-                               (u32)(gadget->m_CBW.CBWCB[8] << 8) | gadget->m_CBW.CBWCB[9];
+                                       (u32)(gadget->m_CBW.CBWCB[8] << 8) | gadget->m_CBW.CBWCB[9];
 
             gadget->m_nbyteCount = gadget->m_CBW.dCBWDataTransferLength;
 
@@ -68,7 +68,7 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
 
             // Where to start reading (LBA)
             gadget->m_nblock_address = (u32)(gadget->m_CBW.CBWCB[2] << 24) | (u32)(gadget->m_CBW.CBWCB[3] << 16) |
-                               (u32)(gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
+                                       (u32)(gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
 
             // Number of blocks to read (LBA)
             gadget->m_nnumber_blocks = (u32)((gadget->m_CBW.CBWCB[7] << 8) | gadget->m_CBW.CBWCB[8]);
@@ -114,6 +114,10 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
         // Transfer Block Size is the size of data to return to host
         // Block Size and Skip Bytes is worked out from cue sheet
         // For a CDROM, this is always 2048
+        // Get track-specific format for this LBA
+        CUETrackInfo currentTrack = CDUtils::GetTrackInfoForLBA(gadget, gadget->m_nblock_address);
+        gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, currentTrack);
+        gadget->skip_bytes = CDUtils::GetSkipbytesForTrack(gadget, currentTrack);
         gadget->transfer_block_size = 2048;
         gadget->block_size = gadget->data_block_size; // set at SetDevice
         gadget->skip_bytes = gadget->data_skip_bytes; // set at SetDevice
@@ -141,7 +145,7 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
     }
 }
 
-void SCSIRead::DoPlayAudio(CUSBCDGadget* gadget, int cdbSize)
+void SCSIRead::DoPlayAudio(CUSBCDGadget *gadget, int cdbSize)
 {
     MLOGNOTE("SCSIRead::DoPlayAudio", cdbSize == 12 ? "PLAY AUDIO (12)" : "PLAY AUDIO (10)");
 
@@ -180,7 +184,7 @@ void SCSIRead::DoPlayAudio(CUSBCDGadget* gadget, int cdbSize)
         else
         {
             gadget->bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
-            gadget->setSenseData(0x05, 0x64, 0x00); // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
+            gadget->setSenseData(0x05, 0x64, 0x00);   // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
         }
     }
 
@@ -188,7 +192,7 @@ void SCSIRead::DoPlayAudio(CUSBCDGadget* gadget, int cdbSize)
     gadget->SendCSW();
 }
 
-void SCSIRead::PlayAudioMSF(CUSBCDGadget* gadget)
+void SCSIRead::PlayAudioMSF(CUSBCDGadget *gadget)
 {
     // Start MSF
     u8 SM = gadget->m_CBW.CBWCB[3];
@@ -235,14 +239,14 @@ void SCSIRead::PlayAudioMSF(CUSBCDGadget* gadget)
     {
         MLOGNOTE("SCSIRead::PlayAudioMSF", "PLAY AUDIO MSF: Not an audio track");
         gadget->bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
-        gadget->setSenseData(0x05, 0x64, 0x00); // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
+        gadget->setSenseData(0x05, 0x64, 0x00);   // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
     }
 
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
     gadget->SendCSW();
 }
 
-void SCSIRead::Seek(CUSBCDGadget* gadget)
+void SCSIRead::Seek(CUSBCDGadget *gadget)
 {
     // Where to start reading (LBA)
     gadget->m_nblock_address = (u32)(gadget->m_CBW.CBWCB[2] << 24) | (u32)(gadget->m_CBW.CBWCB[3] << 16) | (u32)(gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
@@ -259,7 +263,7 @@ void SCSIRead::Seek(CUSBCDGadget* gadget)
     gadget->SendCSW();
 }
 
-void SCSIRead::PauseResume(CUSBCDGadget* gadget)
+void SCSIRead::PauseResume(CUSBCDGadget *gadget)
 {
     MLOGNOTE("SCSIRead::PauseResume", "PAUSE/RESUME");
     int resume = gadget->m_CBW.CBWCB[8] & 0x01;
@@ -277,7 +281,7 @@ void SCSIRead::PauseResume(CUSBCDGadget* gadget)
     gadget->SendCSW();
 }
 
-void SCSIRead::StopScan(CUSBCDGadget* gadget)
+void SCSIRead::StopScan(CUSBCDGadget *gadget)
 {
     MLOGNOTE("SCSIRead::StopScan", "STOP / SCAN");
 
@@ -291,7 +295,7 @@ void SCSIRead::StopScan(CUSBCDGadget* gadget)
     gadget->SendCSW();
 }
 
-void SCSIRead::ReadCD(CUSBCDGadget* gadget)
+void SCSIRead::ReadCD(CUSBCDGadget *gadget)
 {
     if (!gadget->m_CDReady)
     {
@@ -302,7 +306,7 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
 
     int expectedSectorType = (gadget->m_CBW.CBWCB[1] >> 2) & 0x07;
     gadget->m_nblock_address = (gadget->m_CBW.CBWCB[2] << 24) | (gadget->m_CBW.CBWCB[3] << 16) |
-                       (gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
+                               (gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
     gadget->m_nnumber_blocks = (gadget->m_CBW.CBWCB[6] << 16) | (gadget->m_CBW.CBWCB[7] << 8) | gadget->m_CBW.CBWCB[8];
     gadget->mcs = (gadget->m_CBW.CBWCB[9] >> 3) & 0x1F;
 

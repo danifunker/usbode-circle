@@ -315,9 +315,9 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
         // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
         codepage.capabilityBits[0] = 0x00; // Support all media types for DVD, else CD only
         codepage.capabilityBits[1] = 0x00; // All writable types
-        codepage.capabilityBits[2] = 0x01; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
-        codepage.capabilityBits[3] = 0x03; // CD-DA Commands Supported, CD-DA Stream is accurate
-        codepage.capabilityBits[4] = 0x28; // Tray loading mechanism, eject supported, lock supported
+        codepage.capabilityBits[2] = 0x71; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
+        codepage.capabilityBits[3] = 0x63; // CD-DA Commands Supported, CD-DA Stream is accurate
+        codepage.capabilityBits[4] = 0x29; // Tray loading mechanism, eject supported, lock supported
         codepage.capabilityBits[5] = 0x03; // No separate channel volume, no separate channel mute
 
         // Speed and buffer info

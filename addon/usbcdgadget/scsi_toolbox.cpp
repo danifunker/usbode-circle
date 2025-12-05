@@ -117,6 +117,12 @@ void SCSIToolbox::SetNextCD(CUSBCDGadget* gadget)
     SCSITBService *scsitbservice = static_cast<SCSITBService *>(CScheduler::Get()->GetTask("scsitbservice"));
     scsitbservice->SetNextCD(index);
 
+    // CRITICAL: Trigger media change notification
+    gadget->m_mediaState = CUSBCDGadget::MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
+    gadget->setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - NOT READY TO READY TRANSITION
+    gadget->discChanged = true; // For GET EVENT STATUS NOTIFICATION
+    MLOGNOTE("SCSIToolbox::SetNextCD", "Media change triggered: state=UNIT_ATTENTION, sense=06/28/00");
+
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     gadget->SendCSW();
 }
