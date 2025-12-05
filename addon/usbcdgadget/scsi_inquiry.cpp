@@ -169,6 +169,12 @@ void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK; // Request Sense always succeeds
     gadget->m_nState = CUSBCDGadget::TCDState::SendReqSenseReply;
 
+    if (gadget->m_SenseParams.bSenseKey == 0x06 && gadget->m_SenseParams.bAddlSenseCode == 0x28)
+    {
+        CDROM_DEBUG_LOG("SCSIInquiry::RequestSense", "Syncing GESN: Clearing discChanged flag via RequestSense");
+        gadget->discChanged = false;
+    }
+
     // CRITICAL FIX: Clear sense data AFTER reporting it (SCSI autoclearing behavior)
     CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
                     "REQUEST SENSE: Clearing sense data after reporting");
@@ -301,34 +307,69 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
         break;
     }
 
-    case 0x2a:
+case 0x2a:
     {
-        // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
-        ModePage0x2AData codepage;
         CDROM_DEBUG_LOG("SCSIInquiry::FillModePage", "Mode Sense 0x2a response");
-        // Reuse the logic from original FillModePage2A
-        memset(&codepage, 0, sizeof(codepage));
-        codepage.pageCodeAndPS = 0x2a;
-        codepage.pageLength = 0x0E; // Should be 22 bytes for full MMC-5 compliance
 
-        // Capability bits (6 bytes) - dynamic based on media type
-        // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
-        codepage.capabilityBits[0] = 0x00; // Support all media types for DVD, else CD only
-        codepage.capabilityBits[1] = 0x00; // All writable types
-        codepage.capabilityBits[2] = 0x71; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
-        codepage.capabilityBits[3] = 0x63; // CD-DA Commands Supported, CD-DA Stream is accurate
-        codepage.capabilityBits[4] = 0x29; // Tray loading mechanism, eject supported, lock supported
-        codepage.capabilityBits[5] = 0x03; // No separate channel volume, no separate channel mute
+        if (strcmp(gadget->m_USBTargetOS, "apple") == 0)
+        {
+            // --- APPLE SPECIFIC LOGIC (Mimic Sony Spressa) ---
+            ModePage0x2AData_APPLE codepage;
+            memset(&codepage, 0, sizeof(codepage));
+            
+            codepage.pageCodeAndPS = 0x2a;
+            codepage.pageLength = 0x14; // 20 bytes payload (Sony Match)
 
-        // Speed and buffer info
-        codepage.maxSpeed = htons(1378);          // 8x
-        codepage.numVolumeLevels = htons(0x0100); // 256 volume levels
-        codepage.bufferSize = htons(0x0040);      // Set to 64 KB buffer size
-        codepage.currentSpeed = htons(1378);      // Current speed
-        codepage.maxReadSpeed = htons(1378);      // Some hosts check this field
+            // Capabilities: 07 07 71 63 (Sony Match)
+            codepage.capabilityBits[0] = 0x07; // Read: CD-R, CD-E, Method 2
+            codepage.capabilityBits[1] = 0x07; // Write: None (0 is safer for emulation)
+            codepage.capabilityBits[2] = 0x71; // Features 1 (Includes M2F1, M2F2, Audio)
+            codepage.capabilityBits[3] = 0x63; // Features 2 (CD-DA)
+            
+            // Mechanism State: 0x29 (Tray, Eject supported, Locked)
+            codepage.capabilityBits[4] = 0x29; 
+            codepage.capabilityBits[5] = 0x23; // Audio control
 
-        memcpy(buffer + length, &codepage, sizeof(codepage));
-        length += sizeof(codepage);
+            // Speed / Buffer (Mimic Sony Spressa)
+            codepage.maxSpeed = htons(0x108a);          
+            codepage.numVolumeLevels = htons(0x0100); 
+            codepage.bufferSize = htons(0x0800);      
+            codepage.currentSpeed = htons(0x108a);
+            
+            // Tail bytes (Sony specific padding/values)
+            codepage.reserved1[0] = 0x00;
+            codepage.reserved1[1] = 0x00;
+            codepage.maxReadSpeed = htons(0x02c2); 
+            codepage.reserved2[0] = 0x02;
+            codepage.reserved2[1] = 0xc2;
+
+            memcpy(buffer + length, &codepage, sizeof(codepage));
+            length += sizeof(codepage);
+        }
+        else
+        {
+            // --- EXISTING LOGIC (For Windows/Linux compatibility) ---
+            ModePage0x2AData codepage;
+            memset(&codepage, 0, sizeof(codepage));
+            codepage.pageCodeAndPS = 0x2a;
+            codepage.pageLength = 0x0E; 
+
+            codepage.capabilityBits[0] = 0x00; 
+            codepage.capabilityBits[1] = 0x00; 
+            codepage.capabilityBits[2] = 0x71; 
+            codepage.capabilityBits[3] = 0x63; 
+            codepage.capabilityBits[4] = 0x29; 
+            codepage.capabilityBits[5] = 0x03; 
+
+            codepage.maxSpeed = htons(1378);          
+            codepage.numVolumeLevels = htons(0x0100); 
+            codepage.bufferSize = htons(0x0040);      
+            codepage.currentSpeed = htons(1378);      
+            codepage.maxReadSpeed = htons(1378);      
+
+            memcpy(buffer + length, &codepage, sizeof(codepage));
+            length += sizeof(codepage);
+        }
         break;
     }
 
@@ -552,6 +593,10 @@ void SCSIInquiry::ModeSense10(CUSBCDGadget *gadget)
     ModeSense10Header reply_header;
     memset(&reply_header, 0, sizeof(reply_header));
     reply_header.mediumType = CDUtils::GetMediumType(gadget);
+    if (strcmp(gadget->m_USBTargetOS, "apple") == 0)
+    {
+        reply_header.mediumType = 0x70;
+    }
     length += sizeof(reply_header);
     memcpy(gadget->m_InBuffer, &reply_header, sizeof(reply_header));
 
@@ -582,6 +627,10 @@ void SCSIInquiry::ModeSense10(CUSBCDGadget *gadget)
 
     // Update header with data length
     ModeSense10Header *reply_header_ptr = (ModeSense10Header *)gadget->m_InBuffer;
+    if (strcmp(gadget->m_USBTargetOS, "apple") == 0)
+    {
+        reply_header_ptr->mediumType = 0x00;
+    }
     reply_header_ptr->modeDataLength = htons(length - 2);
 
     // Trim the reply length according to what the host requested

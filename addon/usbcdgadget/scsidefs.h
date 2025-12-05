@@ -243,6 +243,23 @@ struct ModePage0x2AData
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X2A 20
 
+// Mode Page 0x2A for Apple (Matches Sony Spressa 22-byte layout)
+struct ModePage0x2AData_APPLE
+{
+    u8 pageCodeAndPS;     // Byte 0
+    u8 pageLength;        // Byte 1 (Set to 0x14)
+    u8 capabilityBits[6]; // Bytes 2-7
+    u16 maxSpeed;         // Bytes 8-9
+    u16 numVolumeLevels;  // Bytes 10-11
+    u16 bufferSize;       // Bytes 12-13
+    u16 currentSpeed;     // Bytes 14-15
+    u8 reserved1[2];      // Bytes 16-17 (Sony sends 00 00)
+    u16 maxReadSpeed;     // Bytes 18-19 (Sony sends 02 C2)
+    u8 reserved2[2];      // Bytes 20-21 (Sony sends 02 C2)
+} PACKED;
+
+#define SIZE_MODE_SENSE10_PAGE_0X2A_APPLE 22
+
 struct ModePage0x30Data
 {
     u8 pageCodeAndPS;      // 0x30
