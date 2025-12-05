@@ -21,7 +21,7 @@
             MLOGNOTE(From, __VA_ARGS__); \
     } while (0)
 
-void SCSIInquiry::Inquiry(CUSBCDGadget* gadget)
+void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
 {
     int allocationLength = (gadget->m_CBW.CBWCB[3] << 8) | gadget->m_CBW.CBWCB[4];
     CDROM_DEBUG_LOG("SCSIInquiry::Inquiry", "Inquiry %0x, allocation length %d", gadget->m_CBW.CBWCB[1], allocationLength);
@@ -68,7 +68,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget* gadget)
 
             memcpy(gadget->m_InBuffer, &SupportedVPDPageReply, sizeof(SupportedVPDPageReply));
             gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       gadget->m_InBuffer, datalen);
+                                                             gadget->m_InBuffer, datalen);
             gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
             gadget->m_nnumber_blocks = 0; // nothing more after this send
             gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -94,7 +94,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget* gadget)
 
             memcpy(gadget->m_InBuffer, &UnitSerialNumberReply, sizeof(UnitSerialNumberReply));
             gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       gadget->m_InBuffer, datalen);
+                                                             gadget->m_InBuffer, datalen);
             gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
             gadget->m_nnumber_blocks = 0; // nothing more after this send
             gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -126,7 +126,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget* gadget)
 
             memcpy(gadget->m_InBuffer, &DeviceIdentificationReply, sizeof(DeviceIdentificationReply));
             gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                       gadget->m_InBuffer, datalen);
+                                                             gadget->m_InBuffer, datalen);
             gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
             gadget->m_nnumber_blocks = 0; // nothing more after this send
             gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -143,7 +143,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget* gadget)
     }
 }
 
-void SCSIInquiry::RequestSense(CUSBCDGadget* gadget)
+void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 {
     u8 blocks = (u8)(gadget->m_CBW.CBWCB[4]);
 
@@ -164,7 +164,7 @@ void SCSIInquiry::RequestSense(CUSBCDGadget* gadget)
     memcpy(gadget->m_InBuffer, &gadget->m_ReqSenseReply, length);
 
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                               gadget->m_InBuffer, length);
+                                                     gadget->m_InBuffer, length);
 
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK; // Request Sense always succeeds
     gadget->m_nState = CUSBCDGadget::TCDState::SendReqSenseReply;
@@ -184,7 +184,7 @@ void SCSIInquiry::RequestSense(CUSBCDGadget* gadget)
     }
 }
 
-void SCSIInquiry::FillModePage(CUSBCDGadget* gadget, u8 page, u8 *buffer, int &length)
+void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &length)
 {
     switch (page)
     {
@@ -435,6 +435,24 @@ void SCSIInquiry::FillModePage(CUSBCDGadget* gadget, u8 page, u8 *buffer, int &l
         break;
     }
 
+case 0x4e:
+{
+    // Page 0x4e - Mac OS 9 queries this, but Sony drive returns page 0x0e
+    CDROM_DEBUG_LOG("SCSIInquiry::FillModePage", "Mode Sense 0x4e (returns 0x0e with max volume)");
+    ModePage0x4eData codepage;
+    memset(&codepage, 0, sizeof(codepage));
+    codepage.pageCodeAndPS = 0x0e; // Return page 0x0e, not 0x4e
+    codepage.pageLength = 0x0e;     // 14 bytes
+    codepage.flags = 0x02;          // SOTC bit set
+    codepage.port0Channel = 0x0f;   // Max channel
+    codepage.port0Volume = 0xff;    // Max volume
+    codepage.port1Channel = 0x0f;   // Max channel
+    codepage.port1Volume = 0xff;    // Max volume
+    memcpy(buffer + length, &codepage, sizeof(codepage));
+    length += sizeof(codepage);
+    break;
+}
+
     default:
         // We don't support this code page
         CDROM_DEBUG_LOG("SCSIInquiry::FillModePage", "Mode Sense unsupported page 0x%02x", page);
@@ -442,7 +460,7 @@ void SCSIInquiry::FillModePage(CUSBCDGadget* gadget, u8 page, u8 *buffer, int &l
     }
 }
 
-void SCSIInquiry::ModeSense6(CUSBCDGadget* gadget)
+void SCSIInquiry::ModeSense6(CUSBCDGadget *gadget)
 {
     int cdbSize = 6;
     CDROM_DEBUG_LOG("SCSIInquiry::ModeSense6", "Mode Sense (%d)", cdbSize);
@@ -454,8 +472,8 @@ void SCSIInquiry::ModeSense6(CUSBCDGadget* gadget)
     // We don't support saved values
     if (page_control == 0x03)
     {
-        gadget->bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
-        gadget->setSenseData(0x05, 0x39, 0x00);      // Illegal Request, Saving parameters not supported
+        gadget->bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
+        gadget->setSenseData(0x05, 0x39, 0x00);   // Illegal Request, Saving parameters not supported
         gadget->sendCheckCondition();
         return;
     }
@@ -474,8 +492,9 @@ void SCSIInquiry::ModeSense6(CUSBCDGadget* gadget)
     {
         CDROM_DEBUG_LOG("SCSIInquiry::ModeSense6", "Mode Sense All Mode Pages");
         // Original MODE SENSE (6) order: 01, 05, 0D, 08, 1a, 2a, 2D, 0e, 1c, 30, 31
-        u8 pages[] = {0x01, 0x05, 0x0D, 0x08, 0x1a, 0x2a, 0x2D, 0x0e, 0x1c, 0x30, 0x31};
-        for (u8 p : pages) FillModePage(gadget, p, gadget->m_InBuffer, length);
+        u8 pages[] = {0x01, 0x05, 0x0D, 0x08, 0x1a, 0x2a, 0x2D, 0x0e, 0x1c, 0x30, 0x31, 0x4e};
+        for (u8 p : pages)
+            FillModePage(gadget, p, gadget->m_InBuffer, length);
     }
     else
     {
@@ -485,10 +504,11 @@ void SCSIInquiry::ModeSense6(CUSBCDGadget* gadget)
     // If unsupported page was requested (length didn't increase)
     if (length == sizeof(ModeSense6Header))
     {
-        if (page != 0x3f) {
-             gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN COMMAND PACKET
-             gadget->sendCheckCondition();
-             return;
+        if (page != 0x3f)
+        {
+            gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN COMMAND PACKET
+            gadget->sendCheckCondition();
+            return;
         }
     }
 
@@ -508,7 +528,7 @@ void SCSIInquiry::ModeSense6(CUSBCDGadget* gadget)
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSIInquiry::ModeSense10(CUSBCDGadget* gadget)
+void SCSIInquiry::ModeSense10(CUSBCDGadget *gadget)
 {
     int cdbSize = 10;
     CDROM_DEBUG_LOG("SCSIInquiry::ModeSense10", "Mode Sense (%d)", cdbSize);
@@ -520,8 +540,8 @@ void SCSIInquiry::ModeSense10(CUSBCDGadget* gadget)
     // We don't support saved values
     if (page_control == 0x03)
     {
-        gadget->bmCSWStatus = CD_CSW_STATUS_FAIL;    // CD_CSW_STATUS_FAIL
-        gadget->setSenseData(0x05, 0x39, 0x00);      // Illegal Request, Saving parameters not supported
+        gadget->bmCSWStatus = CD_CSW_STATUS_FAIL; // CD_CSW_STATUS_FAIL
+        gadget->setSenseData(0x05, 0x39, 0x00);   // Illegal Request, Saving parameters not supported
         gadget->sendCheckCondition();
         return;
     }
@@ -540,8 +560,9 @@ void SCSIInquiry::ModeSense10(CUSBCDGadget* gadget)
     {
         CDROM_DEBUG_LOG("SCSIInquiry::ModeSense10", "Mode Sense All Mode Pages");
         // Original MODE SENSE (10) order: 01, 05, 08, 0D, 1a, 1c, 2a, 2D, 0e, 30, 31
-        u8 pages[] = {0x01, 0x05, 0x08, 0x0D, 0x1a, 0x1c, 0x2a, 0x2D, 0x0e, 0x30, 0x31};
-        for (u8 p : pages) FillModePage(gadget, p, gadget->m_InBuffer, length);
+        u8 pages[] = {0x01, 0x05, 0x08, 0x0D, 0x1a, 0x1c, 0x2a, 0x2D, 0x0e, 0x30, 0x31, 0x4e};
+        for (u8 p : pages)
+            FillModePage(gadget, p, gadget->m_InBuffer, length);
     }
     else
     {
@@ -551,10 +572,11 @@ void SCSIInquiry::ModeSense10(CUSBCDGadget* gadget)
     // If unsupported page was requested (length didn't increase)
     if (length == sizeof(ModeSense10Header))
     {
-        if (page != 0x3f) {
-             gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN COMMAND PACKET
-             gadget->sendCheckCondition();
-             return;
+        if (page != 0x3f)
+        {
+            gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN COMMAND PACKET
+            gadget->sendCheckCondition();
+            return;
         }
     }
 
@@ -574,7 +596,7 @@ void SCSIInquiry::ModeSense10(CUSBCDGadget* gadget)
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSIInquiry::GetConfiguration(CUSBCDGadget* gadget)
+void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
 {
     int rt = gadget->m_CBW.CBWCB[1] & 0x03;
     int feature = (gadget->m_CBW.CBWCB[2] << 8) | gadget->m_CBW.CBWCB[3];
@@ -866,7 +888,7 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget* gadget)
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSIInquiry::ModeSelect10(CUSBCDGadget* gadget)
+void SCSIInquiry::ModeSelect10(CUSBCDGadget *gadget)
 {
     u16 transferLength = gadget->m_CBW.CBWCB[7] << 8 | (gadget->m_CBW.CBWCB[8]);
     CDROM_DEBUG_LOG("SCSIInquiry::ModeSelect10", "Mode Select (10), transferLength is %u", transferLength);
@@ -874,7 +896,7 @@ void SCSIInquiry::ModeSelect10(CUSBCDGadget* gadget)
     // Read the data from the host but don't do anything with it (yet!)
     gadget->m_nState = CUSBCDGadget::TCDState::DataOut;
     gadget->m_pEP[CUSBCDGadget::EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataOut,
-                                gadget->m_OutBuffer, transferLength);
+                                                      gadget->m_OutBuffer, transferLength);
 
     // Unfortunately the payload doesn't arrive here. Check out the
     // ProcessOut method for payload processing

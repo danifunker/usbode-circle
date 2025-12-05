@@ -259,6 +259,19 @@ struct ModePage0x31Data
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X31 22
 
+struct ModePage0x4eData
+{
+    u8 pageCodeAndPS;      // 0x0e (returns 0x0e, not 0x4e)
+    u8 pageLength;         // 0x0e (14 bytes)
+    u8 flags;              // Flags/control bits
+    u8 reserved1[5];       // Reserved bytes
+    u8 port0Channel;       // Port 0 channel selection
+    u8 port0Volume;        // Port 0 volume
+    u8 port1Channel;       // Port 1 channel selection  
+    u8 port1Volume;        // Port 1 volume
+    u8 reserved2[4];       // Reserved bytes
+} PACKED;
+
 // reply to SCSI Read Capacity 0x25
 struct TUSBCDReadCapacityReply // 8 bytes
 {
