@@ -38,7 +38,7 @@
 #include <discimage/imagedevice.h>
 
 #define SECTOR_SIZE 2352
-#define BATCH_SIZE 16 
+#define BATCH_SIZE 64
 #define BYTES_PER_FRAME 4
 #define FRAMES_PER_SECTOR (SECTOR_SIZE / BYTES_PER_FRAME)
 #define DAC_BUFFER_SIZE_FRAMES (FRAMES_PER_SECTOR * BATCH_SIZE)
@@ -97,17 +97,22 @@ class CCDPlayer : public CTask {
     static CCDPlayer *s_pThis;
     CSoundBaseDevice *m_pSound;
     IImageDevice *m_pBinFileDevice;
-    u32 address;
-    u32 end_address;
+    u32 m_PlayLBA;
+    u32 m_EndLBA;
     PlayState state;
     u8 volumeByte = 255;
     u8 defaultVolumeByte = 255;
 
-    u8 *m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
-    u8 *m_WriteChunk;
-    unsigned int m_BufferBytesValid = 0;
-    unsigned int m_BufferReadPos = 0;
-    unsigned int m_BytesProcessedInSector = 0;
+    u8 *m_ReadBuffer = nullptr;
+    u8 *m_WriteChunk = nullptr;
+
+    // Ring Buffer State
+    u32 m_BufferHead = 0; // Write index (where data from Disk goes)
+    u32 m_BufferTail = 0; // Read index (where data to DAC comes from)
+    u32 m_BufferCount = 0; // Bytes in buffer
+
+    u64 m_ReadBytePos = 0; // Current read position in file
+    u32 m_PlayByteOffset = 0; // Current play position (offset within LBA)
 };
 
 #endif

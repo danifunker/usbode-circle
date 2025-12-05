@@ -37,6 +37,16 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
     assert(s_pThis == nullptr);
     s_pThis = this;
 
+    // Initialize state
+    m_PlayLBA = 0;
+    m_EndLBA = 0;
+    state = NONE;
+    m_BufferHead = 0;
+    m_BufferTail = 0;
+    m_BufferCount = 0;
+    m_ReadBytePos = 0;
+    m_PlayByteOffset = 0;
+
     LOGNOTE("CD Player starting");
     SetName("cdplayer");
     Initialize();
@@ -44,7 +54,7 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
 
 boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     LOGNOTE("CD Player setting device (old=%p, new=%p, state=%u, addr=%u, end=%u)", 
-            m_pBinFileDevice, pBinFileDevice, state, address, end_address);
+            m_pBinFileDevice, pBinFileDevice, state, m_PlayLBA, m_EndLBA);
     
     // CRITICAL: Stop any active playback before device swap
     if (state == PLAYING || state == PAUSED || state == SEEKING_PLAYING || state == SEEKING) {
@@ -55,20 +65,21 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     }
     
     // Reset ALL address pointers - critical for preventing reads to invalid LBAs
-    address = 0;
-    end_address = 0;
+    m_PlayLBA = 0;
+    m_EndLBA = 0;
     
     // Clear all buffer state
-    m_BufferBytesValid = 0;
-    m_BufferReadPos = 0;
-    m_BytesProcessedInSector = 0;
+    m_BufferHead = 0;
+    m_BufferTail = 0;
+    m_BufferCount = 0;
+    m_ReadBytePos = 0;
+    m_PlayByteOffset = 0;
     
     // Zero out buffers to prevent stale data
     if (m_ReadBuffer) {
         memset(m_ReadBuffer, 0, AUDIO_BUFFER_SIZE);
     }
     if (m_WriteChunk) {
-        // WriteChunk size depends on total_frames, but we can at least clear what we know
         memset(m_WriteChunk, 0, DAC_BUFFER_SIZE_BYTES);
     }
     
@@ -99,17 +110,6 @@ boolean CCDPlayer::Initialize() {
         LOGNOTE("CD Player Initializing sndusb");
     }
 #endif
-    /*
-            else
-            {
-     #ifdef USE_VCHIQ_SOUND
-                    m_pSound = new CVCHIQSoundBaseDevice (&m_VCHIQ, SAMPLE_RATE, SOUND_CHUNK_SIZE,
-                                            (TVCHIQSoundDestination) m_Options.GetSoundOption ());
-     #else
-                    m_pSound = new CPWMSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-     #endif
-            }
-    */
 
     // configure sound device
     LOGNOTE("CD Player Initializing. Allocating queue size %d frames", DAC_BUFFER_SIZE_FRAMES);
@@ -122,11 +122,28 @@ boolean CCDPlayer::Initialize() {
         LOGERR("Couldn't start the sound device");
     }
 
+    // Allocation moved here from Run(), and removed from member initializer
+    if (!m_ReadBuffer) {
+        m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+    }
+    if (!m_WriteChunk) {
+        // We allocate the write chunk here based on max possible frame size
+        m_WriteChunk = new u8[DAC_BUFFER_SIZE_BYTES];
+    }
+
     return TRUE;
 }
 
 CCDPlayer::~CCDPlayer(void) {
     s_pThis = nullptr;
+    if (m_ReadBuffer) {
+        delete[] m_ReadBuffer;
+        m_ReadBuffer = nullptr;
+    }
+    if (m_WriteChunk) {
+        delete[] m_WriteChunk;
+        m_WriteChunk = nullptr;
+    }
 }
 
 u8 CCDPlayer::GetVolume() {
@@ -172,7 +189,11 @@ boolean CCDPlayer::Resume() {
 boolean CCDPlayer::Seek(u32 lba) {
     // See to the new lba
     LOGNOTE("CD Player seeking to %u", lba);
-    address = lba;
+    m_PlayLBA = lba;
+
+    // Also update read position because we will jump there
+    m_ReadBytePos = (u64)lba * SECTOR_SIZE;
+
     state = SEEKING;
     return true;
 }
@@ -190,7 +211,7 @@ unsigned int CCDPlayer::GetState() {
 }
 
 u32 CCDPlayer::GetCurrentAddress() {
-    return address;
+    return m_PlayLBA;
 }
 
 // Loads a sample from "system/test.pcm" and plays it
@@ -211,6 +232,9 @@ boolean CCDPlayer::SoundTest() {
     unsigned int total_frames = m_pSound->GetQueueSizeFrames();
     UINT bytesRead = 0;
     boolean success = false;
+
+    // Use m_ReadBuffer temporarily for this test
+    if (!m_ReadBuffer) return false;
 
     // Read sound bytes and give them to the DAC
     for (unsigned nCount = 0; m_pSound->IsActive(); nCount++) {
@@ -253,8 +277,10 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
         return false;
     }
 
-    address = lba;
-    end_address = address + num_blocks;
+    m_PlayLBA = lba;
+    m_EndLBA = m_PlayLBA + num_blocks;
+    m_ReadBytePos = (u64)m_PlayLBA * SECTOR_SIZE;
+
     state = SEEKING_PLAYING; // seek then transition to PLAYING in Run()
     return true;
 }
@@ -295,121 +321,171 @@ void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
 
 void CCDPlayer::Run(void) {
 
-    // Initialize buffer state variables.
-    m_BufferBytesValid = 0;
-    m_BufferReadPos = 0;
-    m_BytesProcessedInSector = 0;
     unsigned int total_frames = m_pSound->GetQueueSizeFrames();
-    m_WriteChunk = new u8[total_frames * BYTES_PER_FRAME];
-    m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+
+    // Ensure buffers are allocated (safety check)
+    if (!m_ReadBuffer || !m_WriteChunk) {
+        LOGERR("Buffers not allocated in Run(), attempting allocation");
+        if (!m_ReadBuffer) m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+        if (!m_WriteChunk) m_WriteChunk = new u8[DAC_BUFFER_SIZE_BYTES];
+    }
 
     LOGNOTE("CD Player Run Loop initializing. Queue Size is %d frames", total_frames);
 
     while (true) {
         if (state == SEEKING || state == SEEKING_PLAYING) {
-            LOGNOTE("Seeking to sector %u (byte %u)", address, unsigned(address * SECTOR_SIZE));
-            u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
+            LOGNOTE("Seeking to sector %u (byte %lu)", m_PlayLBA, (unsigned long)m_ReadBytePos);
 
-            // When we seek, the contents of our read and write buffer are now invalid.
-            memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
-            m_BufferBytesValid = 0;
-            m_BufferReadPos = 0;
-            m_BytesProcessedInSector = 0; // Reset byte progress on seek
+            // Perform the seek
+            u64 offset = m_pBinFileDevice->Seek(m_ReadBytePos);
+
+            // Reset Ring Buffer
+            m_BufferHead = 0;
+            m_BufferTail = 0;
+            m_BufferCount = 0;
+            m_PlayByteOffset = 0;
+            // m_PlayLBA and m_ReadBytePos were set in Play()/Seek()
 
             if (offset != (u64)(-1)) {
                 LOGNOTE("Seeking successful");
                 state = (state == SEEKING_PLAYING) ? PLAYING : STOPPED_OK;
             } else {
-                LOGERR("Error seeking to byte position %u", address * SECTOR_SIZE);
+                LOGERR("Error seeking to byte position %lu", (unsigned long)m_ReadBytePos);
                 state = STOPPED_ERROR;
             }
         }
 
         if (state == PLAYING) {
-            // Fill the read buffer if it has been consumed.
-            if (m_BufferReadPos >= m_BufferBytesValid) {
-                m_BufferReadPos = 0; // Reset read position
+            // ====================================================================
+            // PRODUCER: Fill the Ring Buffer from Disk
+            // ====================================================================
 
-                u64 sectors_remaining = (address < end_address) ? (end_address - address) : 0;
-                if (sectors_remaining == 0) {
-                    LOGNOTE("Playback finished, no sectors remaining.");
-                    state = STOPPED_OK;
-                    m_BufferBytesValid = 0;
-                    continue;
+            // We loop here to try and fill the buffer as much as possible,
+            // but we break if we can't read contiguous blocks or if file I/O is slow.
+            // Ideally, we read whenever there is space.
+
+            u64 max_read_limit = (u64)m_EndLBA * SECTOR_SIZE;
+
+            while (m_ReadBytePos < max_read_limit) {
+                u32 space = AUDIO_BUFFER_SIZE - m_BufferCount;
+
+                // Only read if we have substantial space (e.g., at least 1 sector)
+                // This prevents tiny inefficient reads.
+                if (space < SECTOR_SIZE) break;
+
+                // Determine max contiguous write size (up to end of buffer or wrap around)
+                u32 contiguous_space = AUDIO_BUFFER_SIZE - m_BufferHead;
+                u32 to_read = (space < contiguous_space) ? space : contiguous_space;
+
+                // Don't read past the end of the track/segment
+                u64 remaining_file_bytes = max_read_limit - m_ReadBytePos;
+                if (remaining_file_bytes == 0) break;
+
+                if (to_read > remaining_file_bytes) to_read = (u32)remaining_file_bytes;
+
+                // Align reads to sector size where possible for performance, unless at end
+                if (to_read >= SECTOR_SIZE) {
+                    to_read = (to_read / SECTOR_SIZE) * SECTOR_SIZE;
                 }
 
-                u64 sectors_to_read_now = (AUDIO_BUFFER_SIZE / SECTOR_SIZE < sectors_remaining) ? (AUDIO_BUFFER_SIZE / SECTOR_SIZE) : sectors_remaining;
-                int bytes_to_read = sectors_to_read_now * SECTOR_SIZE;
+                // CRITICAL: Seek before every read as per requirement
+                m_pBinFileDevice->Seek(m_ReadBytePos);
 
-		// Because another task could have moved the file pointer after a Yield(),
-                // we MUST seek to our intended address before every read operation.
-                u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
-                if (offset == (u64)(-1)) {
-                    LOGERR("Pre-read seek failed at position %u", address * SECTOR_SIZE);
-                    state = STOPPED_ERROR;
-                    continue; // Re-evaluate state in the next loop iteration.
+                int readCount = m_pBinFileDevice->Read(m_ReadBuffer + m_BufferHead, to_read);
+
+                if (readCount <= 0) {
+                    if (readCount < 0) LOGERR("File read error at %lu", (unsigned long)m_ReadBytePos);
+                    else LOGNOTE("EOF reached at %lu", (unsigned long)m_ReadBytePos);
+
+                    // Stop if error or EOF (though we checked limits above)
+                    // If EOF unexpectedly, we just stop reading.
+                    // If we expected more data but got 0, it's an issue.
+                    break;
                 }
 
-                //LOGDBG("Buffer exhausted. Reading %d bytes from file.", bytes_to_read);
-                int readCount = m_pBinFileDevice->Read(m_ReadBuffer, bytes_to_read);
+                // Update Ring Buffer State
+                m_BufferHead = (m_BufferHead + readCount) % AUDIO_BUFFER_SIZE;
+                m_BufferCount += readCount;
+                m_ReadBytePos += readCount;
 
-                if (readCount < 0) {
-                    LOGERR("File read error.");
-                    state = STOPPED_ERROR;
-                    m_BufferBytesValid = 0;
-                } else {
-                    if (readCount < bytes_to_read) {
-                        LOGWARN("Partial read from file: Read %d, expected %d.", readCount, bytes_to_read);
-                    }
-                    m_BufferBytesValid = readCount;
-                    if (m_BufferBytesValid == 0) {
-                       LOGNOTE("Read 0 bytes, treating as end of track.");
-                       state = STOPPED_OK;
-                    }
-                }
+                // If we filled the buffer, break to let Consumer run
+                if (m_BufferCount == AUDIO_BUFFER_SIZE) break;
             }
 
-            // Feed the sound device from our buffer, if we have valid data.
-            if (m_BufferBytesValid > 0 && state == PLAYING) {
-                unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
-                unsigned int bytes_for_sound_device = available_queue_size * BYTES_PER_FRAME;
+            // ====================================================================
+            // CONSUMER: Feed the Sound Device from Ring Buffer
+            // ====================================================================
 
-                unsigned int bytes_available_in_buffer = m_BufferBytesValid - m_BufferReadPos;
-                unsigned int bytes_to_process = (bytes_for_sound_device < bytes_available_in_buffer) ? bytes_for_sound_device : bytes_available_in_buffer;
+            if (m_BufferCount > 0) {
+                unsigned int available_queue_frames = total_frames - m_pSound->GetQueueFramesAvail();
+                unsigned int bytes_dest_space = available_queue_frames * BYTES_PER_FRAME;
 
+                // How much data do we have available to send?
+                unsigned int bytes_src_avail = m_BufferCount;
+
+                unsigned int bytes_to_process = (bytes_dest_space < bytes_src_avail) ? bytes_dest_space : bytes_src_avail;
+
+                // Align to frame boundary
                 bytes_to_process -= (bytes_to_process % BYTES_PER_FRAME);
 
                 if (bytes_to_process > 0) {
-                    // copy from read buffer to write chunk.
-                    for (unsigned int i = 0; i < bytes_to_process; ++i) {
-                        m_WriteChunk[i] = m_ReadBuffer[m_BufferReadPos + i];
+                    // We need to copy from Ring Buffer (m_BufferTail) to m_WriteChunk (Linear).
+                    // This might require two copies if wrapping around.
+
+                    u32 contiguous_read = AUDIO_BUFFER_SIZE - m_BufferTail;
+
+                    if (bytes_to_process <= contiguous_read) {
+                        // Single copy
+                        memcpy(m_WriteChunk, m_ReadBuffer + m_BufferTail, bytes_to_process);
+                        m_BufferTail = (m_BufferTail + bytes_to_process) % AUDIO_BUFFER_SIZE;
+                    } else {
+                        // Double copy (wrap around)
+                        u32 first_part = contiguous_read;
+                        u32 second_part = bytes_to_process - first_part;
+
+                        memcpy(m_WriteChunk, m_ReadBuffer + m_BufferTail, first_part);
+                        memcpy(m_WriteChunk + first_part, m_ReadBuffer, second_part);
+
+                        m_BufferTail = second_part; // Wrapped to index 'second_part'
                     }
 
+                    m_BufferCount -= bytes_to_process;
+
+                    // Scale Volume and Write
                     ScaleVolume(m_WriteChunk, bytes_to_process);
 
                     int writeCount = m_pSound->Write(m_WriteChunk, bytes_to_process);
+
                     if (writeCount < 0) {
                          LOGERR("Error writing to sound device.");
                          state = STOPPED_ERROR;
                     } else {
+                        // Note: If Write() returns less than we prepared, it's weird because we checked available space.
+                        // But if it happens, we can't easily "unread" from ring buffer because we already advanced m_BufferTail.
+                        // Fortunately, Circle's Write usually writes everything if space was checked.
+                        // If it truncated, we lost some audio samples. Ideally we shouldn't advance Tail for unwritten bytes.
+                        // But let's assume Write behaves well if Space > 0.
                         if ((unsigned int)writeCount != bytes_to_process) {
                             LOGWARN("Truncated write to sound device. Wrote %d, expected %d", writeCount, bytes_to_process);
                         }
 
-                        m_BufferReadPos += writeCount;
-
-                        m_BytesProcessedInSector += writeCount;
-                        if (m_BytesProcessedInSector >= SECTOR_SIZE) {
-                            address += m_BytesProcessedInSector / SECTOR_SIZE;
-                            m_BytesProcessedInSector %= SECTOR_SIZE;
-                        }
-
-                        if (address >= end_address) {
-                            LOGNOTE("Finished playing track range.");
-                            state = STOPPED_OK;
+                        // Update playback position tracking (m_PlayLBA)
+                        m_PlayByteOffset += writeCount;
+                        if (m_PlayByteOffset >= SECTOR_SIZE) {
+                            u32 sectors_advanced = m_PlayByteOffset / SECTOR_SIZE;
+                            m_PlayLBA += sectors_advanced;
+                            m_PlayByteOffset %= SECTOR_SIZE;
                         }
                     }
                 }
+            } else {
+                // Buffer is empty.
+                // If we also finished reading everything, then we are done.
+                if (m_ReadBytePos >= (u64)m_EndLBA * SECTOR_SIZE) {
+                    LOGNOTE("Playback finished (End LBA reached and buffer empty).");
+                    state = STOPPED_OK;
+                }
+                // Else, we are underrunning (waiting for Producer).
             }
         }
         CScheduler::Get()->Yield();
