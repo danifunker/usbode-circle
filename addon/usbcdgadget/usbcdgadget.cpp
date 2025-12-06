@@ -847,28 +847,25 @@ void CUSBCDGadget::HandleSCSICommand()
     if (m_mediaState == MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
     {
         u8 cmd = m_CBW.CBWCB[0];
-        bool allowed = false;
+        bool blocked = false;
 
-        if (cmd == 0x03)
-            allowed = true; // REQUEST SENSE
-        else if (cmd == 0x12)
-            allowed = true; // INQUIRY
-        else if (cmd == 0x1E)
-            allowed = true; // PREVENT ALLOW MEDIUM REMOVAL - CRITICAL!
-        else if (cmd == 0x46)
-            allowed = true; // GET CONFIGURATION - Important for Vista+
-        else if (cmd == 0x4A)
-            allowed = true; // GET EVENT STATUS NOTIFICATION
-        else if ((cmd & 0xF0) == 0xD0)
-            allowed = true; // SCSI Toolbox Commands (0xD0-0xDF)
-        else if (cmd == 0x1A)
-            allowed = true; // MODE SENSE (6)
-        else if (cmd == 0x5A)
-            allowed = true; // MODE SENSE (10)
-        else if (cmd == 0x43)
-            allowed = true; // READ TOC/PMA/ATIP
+        // Block commands that actually READ or PLAY disc data
+        if (cmd == 0x28)
+            blocked = true; // READ 10
+        else if (cmd == 0xA8)
+            blocked = true; // READ 12
+        else if (cmd == 0xBE)
+            blocked = true; // READ CD
+        else if (cmd == 0x45)
+            blocked = true; // PLAY AUDIO 10
+        else if (cmd == 0xA5)
+            blocked = true; // PLAY AUDIO 12
+        else if (cmd == 0x47)
+            blocked = true; // PLAY AUDIO MSF
+        else if (cmd == 0x2B)
+            blocked = true; // SEEK
 
-        if (!allowed)
+        if (blocked)
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand",
                             "Command 0x%02x -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)", cmd);
