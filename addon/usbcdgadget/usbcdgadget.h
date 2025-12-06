@@ -243,6 +243,7 @@ private:
     boolean m_CDReady = false;   // Device ready flag
     boolean m_IsFullSpeed = 0;   // USB 1.1 full-speed vs USB 2.0 high-speed
     boolean discChanged = false; // Media change flag
+    boolean m_bPendingSwapEject = false; // Flag to force Eject Request event on Mac OS during swap
     bool m_bDebugLogging;        // Debug flag to enable verbose CD-ROM logging
     // ========================================================================
     // Instance Variables - USB Protocol Buffers

@@ -161,14 +161,29 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
 
         if (gadget->discChanged)
         {
-            MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - sending NewMedia event");
-            event.eventCode = 0x02;                  // NewMedia event
-            event.data[0] = gadget->m_CDReady ? 0x02 : 0x00; // Media present : No media
+            // Apple Mac OS 9 workaround:
+            // When a disc is swapped via web UI (not physical eject), Mac OS 9 is still stuck in "GET EVENT STATUS"
+            // polling mode and won't switch to "TEST UNIT READY" polling unless it sees an Eject Request (0x01).
+            // A real drive would send 0x01 when the button is pressed. Here we simulate that for web swaps.
+            if (gadget->m_bPendingSwapEject && strcmp(gadget->m_USBTargetOS, "apple") == 0)
+            {
+                MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - sending Eject Request event (Apple)");
+                event.eventCode = 0x01; // Eject Request
+                // Keep media present/no media status consistent with current state (usually Present for swap)
+                event.data[0] = gadget->m_CDReady ? 0x02 : 0x00;
+            }
+            else
+            {
+                MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - sending NewMedia event");
+                event.eventCode = 0x02;                          // NewMedia event
+                event.data[0] = gadget->m_CDReady ? 0x02 : 0x00; // Media present : No media
+            }
 
             // Only clear the disc changed event if we're actually going to send the full response
             if (allocationLength >= (sizeof(TUSBCDEventStatusReplyHeader) + sizeof(TUSBCDEventStatusReplyEvent)))
             {
                 gadget->discChanged = false;
+                gadget->m_bPendingSwapEject = false;
             }
         }
         else if (gadget->m_CDReady)

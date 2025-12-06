@@ -503,9 +503,10 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
+        m_bPendingSwapEject = true;
         CTimer::Get()->MsDelay(100);
         CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
-                        "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
+                        "Disc swap: Set UNIT_ATTENTION, sense=06/28/00, pending eject request");
     }
     else
     {
