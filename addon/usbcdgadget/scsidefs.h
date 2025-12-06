@@ -171,9 +171,9 @@ struct ModePage0x01Data
 // Mode Page 0x08 (Caching)
 struct ModePage0x08Data
 {
-    u8 pageCodeAndPS;     // 0x08
-    u8 pageLength;        // 0x12 (18 bytes)
-    u8 cachingFlags;      // Bit 2: WCE, Bit 0: RCD
+    u8 pageCodeAndPS; // 0x08
+    u8 pageLength;    // 0x12 (18 bytes)
+    u8 cachingFlags;  // Bit 2: WCE, Bit 0: RCD
     u8 demandReadRetention;
     u8 writeRetention;
     u16 disablePrefetchTransfer;
@@ -207,12 +207,12 @@ struct ModePage0x0EData
 // Mode Page 0x1C (Informational Exceptions Control)
 struct ModePage0x1CData
 {
-    u8 pageCodeAndPS;     // 0x1C
-    u8 pageLength;        // 0x0A (10 bytes)
-    u8 flags;             // PERF, EBF, EWASC, DEXCPT, TEST, LOGERR
-    u8 mrie;              // Method of Reporting Informational Exceptions
-    u32 intervalTimer;    // Interval timer (big-endian)
-    u32 reportCount;      // Report count (big-endian)
+    u8 pageCodeAndPS;  // 0x1C
+    u8 pageLength;     // 0x0A (10 bytes)
+    u8 flags;          // PERF, EBF, EWASC, DEXCPT, TEST, LOGERR
+    u8 mrie;           // Method of Reporting Informational Exceptions
+    u32 intervalTimer; // Interval timer (big-endian)
+    u32 reportCount;   // Report count (big-endian)
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X1C 12
 // Mode Page 0x1A (Power Condition)
@@ -243,11 +243,28 @@ struct ModePage0x2AData
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X2A 20
 
+// Mode Page 0x2A for Apple (Matches Sony Spressa 22-byte layout)
+struct ModePage0x2AData_APPLE
+{
+    u8 pageCodeAndPS;     // Byte 0
+    u8 pageLength;        // Byte 1 (Set to 0x14)
+    u8 capabilityBits[6]; // Bytes 2-7
+    u16 maxSpeed;         // Bytes 8-9
+    u16 numVolumeLevels;  // Bytes 10-11
+    u16 bufferSize;       // Bytes 12-13
+    u16 currentSpeed;     // Bytes 14-15
+    u8 reserved1[2];      // Bytes 16-17 (Sony sends 00 00)
+    u16 maxReadSpeed;     // Bytes 18-19 (Sony sends 02 C2)
+    u8 reserved2[2];      // Bytes 20-21 (Sony sends 02 C2)
+} PACKED;
+
+#define SIZE_MODE_SENSE10_PAGE_0X2A_APPLE 22
+
 struct ModePage0x30Data
 {
-    u8 pageCodeAndPS;      // 0x30
-    u8 pageLength;         // 0x16 (22 bytes)
-    u8 appleID[20];        // "APPLE COMPUTER, INC   " (Padded with spaces)
+    u8 pageCodeAndPS; // 0x30
+    u8 pageLength;    // 0x16 (22 bytes)
+    u8 appleID[20];   // "APPLE COMPUTER, INC   " (Padded with spaces)
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X30 22
 
@@ -258,6 +275,19 @@ struct ModePage0x31Data
     uint8_t appleID[20];
 } PACKED;
 #define SIZE_MODE_SENSE10_PAGE_0X31 22
+
+struct ModePage0x4eData
+{
+    u8 pageCodeAndPS; // 0x0e (returns 0x0e, not 0x4e)
+    u8 pageLength;    // 0x0e (14 bytes)
+    u8 flags;         // Flags/control bits
+    u8 reserved1[5];  // Reserved bytes
+    u8 port0Channel;  // Port 0 channel selection
+    u8 port0Volume;   // Port 0 volume
+    u8 port1Channel;  // Port 1 channel selection
+    u8 port1Volume;   // Port 1 volume
+    u8 reserved2[4];  // Reserved bytes
+} PACKED;
 
 // reply to SCSI Read Capacity 0x25
 struct TUSBCDReadCapacityReply // 8 bytes
@@ -333,21 +363,21 @@ struct TUSBCDReadDiscStructureHeader
 struct DVDPhysicalFormatInfo
 {
     // Byte 0: Book type and part version
-    u8 bookTypePartVer;      // bits 7-4: book type, bits 3-0: part version
+    u8 bookTypePartVer; // bits 7-4: book type, bits 3-0: part version
     // Byte 1: Disc size and maximum transfer rate
-    u8 discSizeMaxRate;      // bits 7-4: max rate, bits 3-0: disc size
+    u8 discSizeMaxRate; // bits 7-4: max rate, bits 3-0: disc size
     // Byte 2: Number of layers, track path, layer type
-    u8 layersPathType;       // bit 7: reserved, bits 6-5: num layers, bit 4: track path, bits 3-0: layer type
+    u8 layersPathType; // bit 7: reserved, bits 6-5: num layers, bit 4: track path, bits 3-0: layer type
     // Byte 3: Linear density and track density
-    u8 densities;            // bits 7-4: track density, bits 3-0: linear density
+    u8 densities; // bits 7-4: track density, bits 3-0: linear density
     // Bytes 4-6: Data area start sector (24-bit, big-endian)
-    u8 dataStartSector[3];   // Start sector of data area
+    u8 dataStartSector[3]; // Start sector of data area
     // Bytes 7-9: Data area end sector (24-bit, big-endian)
-    u8 dataEndSector[3];     // End sector of data area
+    u8 dataEndSector[3]; // End sector of data area
     // Bytes 10-12: End sector of layer 0 (24-bit, big-endian)
-    u8 layer0EndSector[3];   // End sector of layer 0 (for dual-layer)
+    u8 layer0EndSector[3]; // End sector of layer 0 (for dual-layer)
     // Byte 13: BCA flag
-    u8 bcaFlag;              // bit 7: BCA present, bits 6-0: reserved
+    u8 bcaFlag; // bit 7: BCA present, bits 6-0: reserved
     // Bytes 14-16: Media specific (reserved for DVD-ROM)
     u8 reserved[3];
 } PACKED;
@@ -355,8 +385,8 @@ struct DVDPhysicalFormatInfo
 // DVD Copyright Information (Format 0x01) - 4 bytes payload
 struct DVDCopyrightInfo
 {
-    u8 copyrightProtectionType;  // 0x00=None, 0x01=CSS/CPPM
-    u8 regionManagementInfo;     // Region codes (bitfield)
+    u8 copyrightProtectionType; // 0x00=None, 0x01=CSS/CPPM
+    u8 regionManagementInfo;    // Region codes (bitfield)
     u8 reserved1;
     u8 reserved2;
 } PACKED;
@@ -535,38 +565,38 @@ struct TUSBCDDVDReadFeatureReply
 // Feature 0010h - Random Readable - Ability to read data from random locations
 struct TUSBCDRandomReadableFeatureReply
 {
-    u16 featureCode;           // 0x0010
+    u16 featureCode;             // 0x0010
     u8 VersionPersistentCurrent; // Version, Persistent, Current bits
-    u8 AdditionalLength;       // Length of additional data (8 bytes)
-    u32 blockSize;             // Logical block size (2048 bytes, big-endian)
-    u16 blocking;              // Number of logical blocks per device read (big-endian)
-    u8 pp;                     // Error Recovery Page Present bit
-    u8 reserved;               // Reserved
+    u8 AdditionalLength;         // Length of additional data (8 bytes)
+    u32 blockSize;               // Logical block size (2048 bytes, big-endian)
+    u16 blocking;                // Number of logical blocks per device read (big-endian)
+    u8 pp;                       // Error Recovery Page Present bit
+    u8 reserved;                 // Reserved
 } PACKED;
 #define SIZE_RANDOM_READABLE_REPLY 12
 // Feature 0106h - DVD CSS - Content Scramble System support
 struct TUSBCDDVDCSSFeatureReply
 {
-    u16 featureCode;           // 0x0106
+    u16 featureCode;             // 0x0106
     u8 VersionPersistentCurrent; // Version, Persistent, Current bits
-    u8 AdditionalLength;       // Length of additional data (4 bytes)
-    u8 reserved1;              // Reserved
-    u8 reserved2;              // Reserved
-    u8 reserved3;              // Reserved
-    u8 cssVersion;             // CSS version number (0x01)
+    u8 AdditionalLength;         // Length of additional data (4 bytes)
+    u8 reserved1;                // Reserved
+    u8 reserved2;                // Reserved
+    u8 reserved3;                // Reserved
+    u8 cssVersion;               // CSS version number (0x01)
 } PACKED;
 #define SIZE_DVD_CSS_REPLY 8
 
 // Feature 0107h - Real Time Streaming - Support for real-time data streaming
 struct TUSBCDRealTimeStreamingFeatureReply
 {
-    u16 featureCode;           // 0x0107
+    u16 featureCode;             // 0x0107
     u8 VersionPersistentCurrent; // Version, Persistent, Current bits
-    u8 AdditionalLength;       // Length of additional data (4 bytes)
-    u8 flags;                  // SW, WSPD, MP2A, SCS, RBCB bits
-    u8 reserved1;              // Reserved
-    u8 reserved2;              // Reserved
-    u8 reserved3;              // Reserved
+    u8 AdditionalLength;         // Length of additional data (4 bytes)
+    u8 flags;                    // SW, WSPD, MP2A, SCS, RBCB bits
+    u8 reserved1;                // Reserved
+    u8 reserved2;                // Reserved
+    u8 reserved3;                // Reserved
 } PACKED;
 #define SIZE_REAL_TIME_STREAMING_REPLY 8
 

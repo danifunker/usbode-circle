@@ -73,7 +73,7 @@ public:
     /// \param usProductId USB Product ID (defaults to USB_GADGET_DEVICE_ID_CD)
     /// \note pDevice must be initialized yet, when it is specified here.
     /// \note SetDevice() has to be called later, when pDevice is not specified here.
-    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed, 
+    CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed,
                  IImageDevice *pDevice = nullptr,
                  u16 usVendorId = USB_GADGET_VENDOR_ID,
                  u16 usProductId = USB_GADGET_DEVICE_ID_CD);
@@ -122,7 +122,7 @@ private:
     // ========================================================================
 
     // Command handler function pointer type
-    typedef void (*SCSIHandler)(CUSBCDGadget* gadget);
+    typedef void (*SCSIHandler)(CUSBCDGadget *gadget);
 
     // Function table for SCSI handlers
     SCSIHandler m_SCSIHandlers[256];
@@ -197,6 +197,7 @@ private:
     // ========================================================================
 
     static TUSBDeviceDescriptor s_DeviceDescriptor;
+    static TUSBDeviceDescriptor s_DeviceDescriptorMacOS9;
     static const char *const s_StringDescriptorTemplate[];
 
     /// \brief USB configuration descriptor with interface and endpoints
@@ -209,25 +210,25 @@ private:
     } PACKED;
 
     struct TUSBMSTGadgetConfigurationDescriptorHighSpeedWithAudio
-{
-    TUSBConfigurationDescriptor Configuration;
-    
-    // Data interface (bulk endpoints)
-    TUSBInterfaceDescriptor DataInterface;
-    TUSBEndpointDescriptor EndpointInBulk;
-    TUSBEndpointDescriptor EndpointOutBulk;
-    
-    // Audio streaming interface - Alternate 0 (zero bandwidth)
-    TUSBInterfaceDescriptor AudioInterfaceAlt0;
-    
-    // Audio streaming interface - Alternate 1 (active)
-    TUSBInterfaceDescriptor AudioInterfaceAlt1;
-    TUSBEndpointDescriptor EndpointInAudio;
-} PACKED;
+    {
+        TUSBConfigurationDescriptor Configuration;
+
+        // Data interface (bulk endpoints)
+        TUSBInterfaceDescriptor DataInterface;
+        TUSBEndpointDescriptor EndpointInBulk;
+        TUSBEndpointDescriptor EndpointOutBulk;
+
+        // Audio streaming interface - Alternate 0 (zero bandwidth)
+        TUSBInterfaceDescriptor AudioInterfaceAlt0;
+
+        // Audio streaming interface - Alternate 1 (active)
+        TUSBInterfaceDescriptor AudioInterfaceAlt1;
+        TUSBEndpointDescriptor EndpointInAudio;
+    } PACKED;
 
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorFullSpeed;
     static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorHighSpeed;
-
+    static const TUSBMSTGadgetConfigurationDescriptor s_ConfigurationDescriptorMacOS9;
     // ========================================================================
     // Instance Variables - Device and USB State
     // ========================================================================
@@ -252,15 +253,15 @@ private:
 
     // Buffer size constants
     static const size_t MaxOutMessageSize = 2048;
-    static const size_t MaxBlocksToReadFullSpeed = 16;  // USB 1.1: 16 blocks = 37,632 bytes max
-    static const size_t MaxBlocksToReadHighSpeed = 32;  // USB 2.0: 32 blocks = 75,264 bytes max
+    static const size_t MaxBlocksToReadFullSpeed = 16; // USB 1.1: 16 blocks = 37,632 bytes max
+    static const size_t MaxBlocksToReadHighSpeed = 32; // USB 2.0: 32 blocks = 75,264 bytes max
     static const size_t MaxSectorSize = 2352;
-    static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize; // 75,264 bytes
+    static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize;          // 75,264 bytes
     static const size_t MaxInMessageSizeFullSpeed = MaxBlocksToReadFullSpeed * MaxSectorSize; // 37,632 bytes
 
-    alignas(64) DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);       // USB IN transfers
-    alignas(64) DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize);     // USB OUT transfers  
-    alignas(64) DMA_BUFFER(u8, m_FileChunk, MaxInMessageSize);      // File staging buffer    
+    alignas(64) DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // USB IN transfers
+    alignas(64) DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // USB OUT transfers
+    alignas(64) DMA_BUFFER(u8, m_FileChunk, MaxInMessageSize);  // File staging buffer
     // ========================================================================
     // Instance Variables - SCSI Reply Structures
     // ========================================================================
@@ -511,9 +512,9 @@ private:
 
     CUEParser cueParser;
 
-    char m_HardwareSerialNumber[20];               // Hardware serial number (e.g., "USBODE-XXXXXXXX")
-    const char *m_StringDescriptor[4];             // USB string descriptors
-    u8 m_StringDescriptorBuffer[80];               // Buffer for string descriptor conversion
+    char m_HardwareSerialNumber[20];   // Hardware serial number (e.g., "USBODE-XXXXXXXX")
+    const char *m_StringDescriptor[4]; // USB string descriptors
+    u8 m_StringDescriptorBuffer[80];   // Buffer for string descriptor conversion
 
     // Whether to report CSS copy protection
     boolean m_bReportDVDCSS = false;

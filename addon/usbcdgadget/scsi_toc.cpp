@@ -21,7 +21,7 @@
             MLOGNOTE(From, __VA_ARGS__); \
     } while (0)
 
-void SCSITOC::ReadTOC(CUSBCDGadget* gadget)
+void SCSITOC::ReadTOC(CUSBCDGadget *gadget)
 {
     if (!gadget->m_CDReady)
     {
@@ -136,7 +136,7 @@ void SCSITOC::FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_
 }
 
 // Helper function for Raw TOC entry formatting
-void SCSITOC::FormatRawTOCEntry(CUSBCDGadget* gadget, const CUETrackInfo *track, uint8_t *dest, bool useBCD)
+void SCSITOC::FormatRawTOCEntry(CUSBCDGadget *gadget, const CUETrackInfo *track, uint8_t *dest, bool useBCD)
 {
     uint8_t control_adr = 0x14; // Digital track
 
@@ -165,7 +165,7 @@ void SCSITOC::FormatRawTOCEntry(CUSBCDGadget* gadget, const CUETrackInfo *track,
 }
 
 // Complete READ TOC handler
-void SCSITOC::DoReadTOC(CUSBCDGadget* gadget, bool msf, uint8_t startingTrack, uint16_t allocationLength)
+void SCSITOC::DoReadTOC(CUSBCDGadget *gadget, bool msf, uint8_t startingTrack, uint16_t allocationLength)
 {
     CDROM_DEBUG_LOG("SCSITOC::DoReadTOC", "Entry: msf=%d, startTrack=%d, allocLen=%d", msf, startingTrack, allocationLength);
 
@@ -276,7 +276,7 @@ void SCSITOC::DoReadTOC(CUSBCDGadget* gadget, bool msf, uint8_t startingTrack, u
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSITOC::DoReadSessionInfo(CUSBCDGadget* gadget, bool msf, uint16_t allocationLength)
+void SCSITOC::DoReadSessionInfo(CUSBCDGadget *gadget, bool msf, uint16_t allocationLength)
 {
     CDROM_DEBUG_LOG("SCSITOC::DoReadSessionInfo", "Entry: msf=%d, allocLen=%d", msf, allocationLength);
 
@@ -321,7 +321,7 @@ void SCSITOC::DoReadSessionInfo(CUSBCDGadget* gadget, bool msf, uint16_t allocat
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSITOC::DoReadFullTOC(CUSBCDGadget* gadget, uint8_t session, uint16_t allocationLength, bool useBCD)
+void SCSITOC::DoReadFullTOC(CUSBCDGadget *gadget, uint8_t session, uint16_t allocationLength, bool useBCD)
 {
     CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "Entry: session=%d, allocLen=%d, BCD=%d",
                     session, allocationLength, useBCD);
@@ -364,7 +364,9 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget* gadget, uint8_t session, uint16_t allo
             firsttrack = trackinfo->track_number;
             if (trackinfo->track_mode == CUETrack_AUDIO)
             {
-                gadget->m_InBuffer[5] = 0x10; // A0 control for audio
+                gadget->m_InBuffer[5] = 0x10;  // A0 control for audio
+                gadget->m_InBuffer[16] = 0x10; // A1 control for audio
+                gadget->m_InBuffer[27] = 0x10; // A2 control for audio
             }
             CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "First track: %d, mode=%d", firsttrack, trackinfo->track_mode);
         }
@@ -385,12 +387,6 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget* gadget, uint8_t session, uint16_t allo
 
     CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "Header: First=%d, Last=%d. A0: First=%d, A1: Last=%d",
                     firsttrack, lasttrack.track_number, firsttrack, lasttrack.track_number);
-
-    if (lasttrack.track_mode == CUETrack_AUDIO)
-    {
-        gadget->m_InBuffer[16] = 0x10; // A1 control
-        gadget->m_InBuffer[27] = 0x10; // A2 control
-    }
 
     // A2: Leadout position
     u32 leadoutLBA = CDUtils::GetLeadoutLBA(gadget);
@@ -450,7 +446,7 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget* gadget, uint8_t session, uint16_t allo
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSITOC::ReadDiscInformation(CUSBCDGadget* gadget)
+void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
 {
     CDROM_DEBUG_LOG("SCSITOC::ReadDiscInformation", "Read Disc Information");
 
@@ -489,7 +485,7 @@ void SCSITOC::ReadDiscInformation(CUSBCDGadget* gadget)
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
 }
 
-void SCSITOC::ReadTrackInformation(CUSBCDGadget* gadget)
+void SCSITOC::ReadTrackInformation(CUSBCDGadget *gadget)
 {
     u8 addressType = gadget->m_CBW.CBWCB[1] & 0x03;
     u32 address = (gadget->m_CBW.CBWCB[2] << 24) | (gadget->m_CBW.CBWCB[3] << 16) |
@@ -509,7 +505,7 @@ void SCSITOC::ReadTrackInformation(CUSBCDGadget* gadget)
     DoReadTrackInformation(gadget, addressType, address, allocationLength);
 }
 
-void SCSITOC::DoReadTrackInformation(CUSBCDGadget* gadget, u8 addressType, u32 address, u16 allocationLength)
+void SCSITOC::DoReadTrackInformation(CUSBCDGadget *gadget, u8 addressType, u32 address, u16 allocationLength)
 {
     TUSBCDTrackInformationBlock response;
     memset(&response, 0, sizeof(response));
@@ -607,7 +603,7 @@ void SCSITOC::DoReadTrackInformation(CUSBCDGadget* gadget, u8 addressType, u32 a
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSITOC::ReadHeader(CUSBCDGadget* gadget)
+void SCSITOC::ReadHeader(CUSBCDGadget *gadget)
 {
     bool MSF = (gadget->m_CBW.CBWCB[1] & 0x02);
     uint32_t lba = (gadget->m_CBW.CBWCB[2] << 24) | (gadget->m_CBW.CBWCB[3] << 16) |
@@ -627,7 +623,7 @@ void SCSITOC::ReadHeader(CUSBCDGadget* gadget)
     DoReadHeader(gadget, MSF, lba, allocationLength);
 }
 
-void SCSITOC::DoReadHeader(CUSBCDGadget* gadget, bool MSF, uint32_t lba, uint16_t allocationLength)
+void SCSITOC::DoReadHeader(CUSBCDGadget *gadget, bool MSF, uint32_t lba, uint16_t allocationLength)
 {
     // Terminate audio playback if active (MMC Annex C requirement)
     CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
@@ -675,7 +671,7 @@ void SCSITOC::DoReadHeader(CUSBCDGadget* gadget, bool MSF, uint32_t lba, uint16_
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSITOC::ReadSubChannel(CUSBCDGadget* gadget)
+void SCSITOC::ReadSubChannel(CUSBCDGadget *gadget)
 {
     unsigned int msf = (gadget->m_CBW.CBWCB[1] >> 1) & 0x01;
     // unsigned int subq = (gadget->m_CBW.CBWCB[2] >> 6) & 0x01; //TODO We're ignoring subq for now
@@ -782,14 +778,14 @@ void SCSITOC::ReadSubChannel(CUSBCDGadget* gadget)
         length = allocationLength;
 
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                               gadget->m_InBuffer, length);
+                                                     gadget->m_InBuffer, length);
 
     gadget->m_nnumber_blocks = 0; // nothing more after this send
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
 }
 
-void SCSITOC::ReadDiscStructure(CUSBCDGadget* gadget)
+void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
 {
     u8 mediaType = gadget->m_CBW.CBWCB[1] & 0x0f; // Media type (0=DVD, 1=BD)
     u32 address = ((u32)gadget->m_CBW.CBWCB[2] << 24) | ((u32)gadget->m_CBW.CBWCB[3] << 16) |

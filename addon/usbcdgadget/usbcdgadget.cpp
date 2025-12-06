@@ -116,6 +116,45 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             0     // bInterval
         }};
 
+// Apple-specific FullSpeed descriptor (SCSI transparent subclass 0x06)
+const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorMacOS9 =
+    {
+        {
+            sizeof(TUSBConfigurationDescriptor),
+            DESCRIPTOR_CONFIGURATION,
+            sizeof(TUSBMSTGadgetConfigurationDescriptor),
+            1, // bNumInterfaces
+            1,
+            0,
+            0x80,   // bmAttributes (bus-powered)
+            500 / 2 // bMaxPower (500mA)
+        },
+        {
+            sizeof(TUSBInterfaceDescriptor),
+            DESCRIPTOR_INTERFACE,
+            0,                // bInterfaceNumber
+            0,                // bAlternateSetting
+            2,                // bNumEndpoints
+            0x08, 0x06, 0x50, // SubClass 0x06 (SCSI transparent) for Apple
+            0                 // iInterface
+        },
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x81, // IN number 1
+            2,    // bmAttributes (Bulk)
+            64,   // wMaxPacketSize
+            0     // bInterval
+        },
+        {
+            sizeof(TUSBEndpointDescriptor),
+            DESCRIPTOR_ENDPOINT,
+            0x02, // OUT number 2
+            2,    // bmAttributes (Bulk)
+            64,   // wMaxPacketSize
+            0     // bInterval
+        }};
+
 const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_ConfigurationDescriptorHighSpeed =
     {
         {
@@ -250,7 +289,8 @@ CUSBCDGadget::~CUSBCDGadget(void)
 void CUSBCDGadget::InitSCSIHandlers()
 {
     // Initialize all to nullptr or a default handler
-    for (int i = 0; i < 256; i++) {
+    for (int i = 0; i < 256; i++)
+    {
         m_SCSIHandlers[i] = nullptr;
     }
 
@@ -286,7 +326,7 @@ void CUSBCDGadget::InitSCSIHandlers()
     m_SCSIHandlers[0xD2] = SCSIToolbox::NumberOfFiles;
     m_SCSIHandlers[0xDA] = SCSIToolbox::NumberOfFiles; // Same implementation
     m_SCSIHandlers[0xD0] = SCSIToolbox::ListFiles;
-    m_SCSIHandlers[0xD7] = SCSIToolbox::ListFiles;     // Same implementation
+    m_SCSIHandlers[0xD7] = SCSIToolbox::ListFiles; // Same implementation
     m_SCSIHandlers[0xD8] = SCSIToolbox::SetNextCD;
 
     // Misc
@@ -327,6 +367,10 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         if (!uchDescIndex)
         {
             *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
+            if (strcmp(m_USBTargetOS, "apple") == 0)
+            {
+                return &s_ConfigurationDescriptorMacOS9;
+            }
             return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
         }
         break;
@@ -370,30 +414,39 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
 void CUSBCDGadget::AddEndpoints(void)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::AddEndpoints", "entered");
+
     assert(!m_pEP[EPOut]);
-    if (m_IsFullSpeed)
-        m_pEP[EPOut] = new CUSBCDGadgetEndpoint(
-            reinterpret_cast<const TUSBEndpointDescriptor *>(
-                &s_ConfigurationDescriptorFullSpeed.EndpointOut),
-            this);
+    assert(!m_pEP[EPIn]);
+
+    // Determine which descriptor set to use
+    const TUSBMSTGadgetConfigurationDescriptor *configDesc;
+
+    if (strcmp(m_USBTargetOS, "apple") == 0)
+    {
+        // Apple mode: always use Mac OS 9 descriptors (USB 1.1)
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Mac OS 9 descriptors");
+        configDesc = &s_ConfigurationDescriptorMacOS9;
+    }
+    else if (m_IsFullSpeed)
+    {
+        // Standard full-speed mode
+        configDesc = &s_ConfigurationDescriptorFullSpeed;
+    }
     else
-        m_pEP[EPOut] = new CUSBCDGadgetEndpoint(
-            reinterpret_cast<const TUSBEndpointDescriptor *>(
-                &s_ConfigurationDescriptorHighSpeed.EndpointOut),
-            this);
+    {
+        // High-speed mode
+        configDesc = &s_ConfigurationDescriptorHighSpeed;
+    }
+
+    // Create endpoints using selected descriptor
+    m_pEP[EPOut] = new CUSBCDGadgetEndpoint(
+        reinterpret_cast<const TUSBEndpointDescriptor *>(&configDesc->EndpointOut),
+        this);
     assert(m_pEP[EPOut]);
 
-    assert(!m_pEP[EPIn]);
-    if (m_IsFullSpeed)
-        m_pEP[EPIn] = new CUSBCDGadgetEndpoint(
-            reinterpret_cast<const TUSBEndpointDescriptor *>(
-                &s_ConfigurationDescriptorFullSpeed.EndpointIn),
-            this);
-    else
-        m_pEP[EPIn] = new CUSBCDGadgetEndpoint(
-            reinterpret_cast<const TUSBEndpointDescriptor *>(
-                &s_ConfigurationDescriptorHighSpeed.EndpointIn),
-            this);
+    m_pEP[EPIn] = new CUSBCDGadgetEndpoint(
+        reinterpret_cast<const TUSBEndpointDescriptor *>(&configDesc->EndpointIn),
+        this);
     assert(m_pEP[EPIn]);
 
     m_nState = TCDState::Init;
@@ -438,14 +491,9 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     m_mediaType = m_pDevice->GetMediaType();
     MLOGNOTE("CUSBCDGadget::SetDevice", "Media type set to %d", m_mediaType);
     cueParser = CUEParser(m_pDevice->GetCueSheet());
-
     data_skip_bytes = CDUtils::GetSkipbytes(this);
     data_block_size = CDUtils::GetBlocksize(this);
 
-    // Only set media ready if this is a disc swap
-    // Initial load will be handled by OnActivate() when USB becomes active
-    // Only set media ready if this is a disc swap
-    // Initial load will be handled by OnActivate() when USB becomes active
     if (bDiscSwap)
     {
         m_CDReady = true;
@@ -801,13 +849,24 @@ void CUSBCDGadget::HandleSCSICommand()
         u8 cmd = m_CBW.CBWCB[0];
         bool allowed = false;
 
-        if (cmd == 0x03) allowed = true;      // REQUEST SENSE
-        else if (cmd == 0x12) allowed = true; // INQUIRY
-        else if (cmd == 0x4A) allowed = true; // GET EVENT STATUS NOTIFICATION
-        else if ((cmd & 0xF0) == 0xD0) allowed = true; // SCSI Toolbox Commands (0xD0-0xDF)
-        else if (cmd == 0x1A) allowed = true; // MODE SENSE (6)
-        else if (cmd == 0x5A) allowed = true; // MODE SENSE (10)
-        else if (cmd == 0x43) allowed = true; // READ TOC/PMA/ATIP
+        if (cmd == 0x03)
+            allowed = true; // REQUEST SENSE
+        else if (cmd == 0x12)
+            allowed = true; // INQUIRY
+        else if (cmd == 0x1E)
+            allowed = true; // PREVENT ALLOW MEDIUM REMOVAL - CRITICAL!
+        else if (cmd == 0x46)
+            allowed = true; // GET CONFIGURATION - Important for Vista+
+        else if (cmd == 0x4A)
+            allowed = true; // GET EVENT STATUS NOTIFICATION
+        else if ((cmd & 0xF0) == 0xD0)
+            allowed = true; // SCSI Toolbox Commands (0xD0-0xDF)
+        else if (cmd == 0x1A)
+            allowed = true; // MODE SENSE (6)
+        else if (cmd == 0x5A)
+            allowed = true; // MODE SENSE (10)
+        else if (cmd == 0x43)
+            allowed = true; // READ TOC/PMA/ATIP
 
         if (!allowed)
         {
