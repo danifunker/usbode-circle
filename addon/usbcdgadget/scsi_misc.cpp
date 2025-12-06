@@ -20,7 +20,7 @@
             MLOGNOTE(From, __VA_ARGS__); \
     } while (0)
 
-void SCSIMisc::TestUnitReady(CUSBCDGadget* gadget)
+void SCSIMisc::TestUnitReady(CUSBCDGadget *gadget)
 {
     CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady",
                     "TEST UNIT READY: m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
@@ -53,39 +53,70 @@ void SCSIMisc::TestUnitReady(CUSBCDGadget* gadget)
     gadget->sendGoodStatus();
 }
 
-void SCSIMisc::StartStopUnit(CUSBCDGadget* gadget)
+void SCSIMisc::StartStopUnit(CUSBCDGadget *gadget)
 {
     int start = gadget->m_CBW.CBWCB[4] & 1;
     int loej = (gadget->m_CBW.CBWCB[4] >> 1) & 1;
-    // TODO: Emulate a disk eject/load
-    // loej Start Action
-    // 0    0     Stop the disc - no action for us
-    // 0    1     Start the disc - no action for us
-    // 1    0     Eject the disc - perhaps we need to throw a check condition?
-    // 1    1     Load the disc - perhaps we need to throw a check condition?
 
     CDROM_DEBUG_LOG("SCSIMisc::StartStopUnit", "start/stop, start = %d, loej = %d", start, loej);
+
+    if (loej == 1 && start == 0)
+    {
+        // EJECT - open tray, remove media
+        CDROM_DEBUG_LOG("SCSIMisc::StartStopUnit", "EJECT command - opening tray, setting NO_MEDIUM");
+
+        gadget->m_TrayOpen = true; // TRAY OPENS
+        gadget->m_mediaState = CUSBCDGadget::MediaState::NO_MEDIUM;
+        gadget->m_CDReady = false;
+        gadget->m_SenseParams.bSenseKey = 0x02;
+        gadget->m_SenseParams.bAddlSenseCode = 0x3a;
+        gadget->m_SenseParams.bAddlSenseCodeQual = 0x00;
+        gadget->bmCSWStatus = CD_CSW_STATUS_FAIL;
+        gadget->discChanged = true;
+    }
+    else if (loej == 1 && start == 1)
+    {
+        // LOAD - close tray, remount if disc present
+        if (gadget->m_CDReady && gadget->m_pDevice != nullptr)
+        {
+            CDROM_DEBUG_LOG("SCSIMisc::StartStopUnit", "LOAD command - closing tray, setting UNIT_ATTENTION");
+
+            gadget->m_TrayOpen = false; // TRAY CLOSES
+            gadget->m_mediaState = CUSBCDGadget::MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
+            gadget->m_SenseParams.bSenseKey = 0x06;
+            gadget->m_SenseParams.bAddlSenseCode = 0x28;
+            gadget->m_SenseParams.bAddlSenseCodeQual = 0x00;
+            gadget->bmCSWStatus = CD_CSW_STATUS_FAIL;
+            gadget->discChanged = true;
+        }
+        else
+        {
+            CDROM_DEBUG_LOG("SCSIMisc::StartStopUnit", "LOAD command but no disc - closing empty tray");
+            gadget->m_TrayOpen = false; // TRAY CLOSES (empty)
+        }
+    }
+
     gadget->sendGoodStatus();
 }
 
-void SCSIMisc::PreventAllowMediumRemoval(CUSBCDGadget* gadget)
+void SCSIMisc::PreventAllowMediumRemoval(CUSBCDGadget *gadget)
 {
     // Lie to the host
     gadget->sendGoodStatus();
 }
 
-void SCSIMisc::ReadCapacity(CUSBCDGadget* gadget)
+void SCSIMisc::ReadCapacity(CUSBCDGadget *gadget)
 {
     gadget->m_ReadCapReply.nLastBlockAddr = htonl(CDUtils::GetLeadoutLBA(gadget) - 1); // this value is the Start address of last recorded lead-out minus 1
     memcpy(gadget->m_InBuffer, &gadget->m_ReadCapReply, SIZE_READCAPREP);
     gadget->m_nnumber_blocks = 0; // nothing more after this send
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                               gadget->m_InBuffer, SIZE_READCAPREP);
+                                                     gadget->m_InBuffer, SIZE_READCAPREP);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
 }
 
-void SCSIMisc::MechanismStatus(CUSBCDGadget* gadget)
+void SCSIMisc::MechanismStatus(CUSBCDGadget *gadget)
 {
     u16 allocationLength = (gadget->m_CBW.CBWCB[8] << 8) | gadget->m_CBW.CBWCB[9];
 
@@ -117,12 +148,12 @@ void SCSIMisc::MechanismStatus(CUSBCDGadget* gadget)
 
     memcpy(gadget->m_InBuffer, &status, length);
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                               gadget->m_InBuffer, length);
+                                                     gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
+void SCSIMisc::GetEventStatusNotification(CUSBCDGadget *gadget)
 {
     u8 polled = gadget->m_CBW.CBWCB[1] & 0x01;
     u8 notificationClass = gadget->m_CBW.CBWCB[4]; // This is a bitmask
@@ -140,6 +171,7 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
     }
 
     int length = 0;
+
     // Event Header
     TUSBCDEventStatusReplyHeader header;
     memset(&header, 0, sizeof(header));
@@ -148,7 +180,6 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
     // Media Change Event Request
     if (notificationClass & (1 << 4))
     {
-
         MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - media change event response");
 
         // Update header
@@ -162,10 +193,9 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
         if (gadget->discChanged)
         {
             MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - sending NewMedia event");
-            event.eventCode = 0x02;                  // NewMedia event
-            event.data[0] = gadget->m_CDReady ? 0x02 : 0x00; // Media present : No media
+            event.eventCode = 0x02; // NewMedia event
+            event.data[0] = (gadget->m_TrayOpen ? 0x01 : 0x00) | (gadget->m_CDReady ? 0x02 : 0x00);
 
-            // Only clear the disc changed event if we're actually going to send the full response
             if (allocationLength >= (sizeof(TUSBCDEventStatusReplyHeader) + sizeof(TUSBCDEventStatusReplyEvent)))
             {
                 gadget->discChanged = false;
@@ -174,18 +204,26 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
         else if (gadget->m_CDReady)
         {
             event.eventCode = 0x00; // No Change
-            event.data[0] = 0x02;   // Media present
+            // Media present, tray closed
+            event.data[0] = (gadget->m_TrayOpen ? 0x01 : 0x00) | 0x02;
         }
         else
         {
             event.eventCode = 0x03; // Media Removal
-            event.data[0] = 0x00;   // No media
+            // No media, report current tray state
+            event.data[0] = (gadget->m_TrayOpen ? 0x01 : 0x00);
         }
 
         event.data[1] = 0x00; // Reserved
         event.data[2] = 0x00; // Reserved
+
         memcpy(gadget->m_InBuffer + sizeof(TUSBCDEventStatusReplyHeader), &event, sizeof(TUSBCDEventStatusReplyEvent));
         length += sizeof(TUSBCDEventStatusReplyEvent);
+        MLOGNOTE("SCSIMisc::GetEventStatusNotification",
+                 "Sending eventCode=0x%02x, data[0]=0x%02x (tray=%s, media=%s)",
+                 event.eventCode, event.data[0],
+                 (event.data[0] & 0x01) ? "OPEN" : "CLOSED",
+                 (event.data[0] & 0x02) ? "PRESENT" : "ABSENT");
     }
     else
     {
@@ -200,14 +238,13 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
 
     if (allocationLength < length)
         length = allocationLength;
-
     gadget->m_nnumber_blocks = 0; // nothing more after this send
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSIMisc::GetPerformance(CUSBCDGadget* gadget)
+void SCSIMisc::GetPerformance(CUSBCDGadget *gadget)
 {
     CDROM_DEBUG_LOG("SCSIMisc::GetPerformance", "GET PERFORMANCE (0xAC)");
 
@@ -222,12 +259,12 @@ void SCSIMisc::GetPerformance(CUSBCDGadget* gadget)
     memcpy(gadget->m_InBuffer, getPerformanceStub, sizeof(getPerformanceStub));
 
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                               gadget->m_InBuffer, sizeof(getPerformanceStub));
+                                                     gadget->m_InBuffer, sizeof(getPerformanceStub));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
 }
 
-void SCSIMisc::CommandA4(CUSBCDGadget* gadget)
+void SCSIMisc::CommandA4(CUSBCDGadget *gadget)
 {
     CDROM_DEBUG_LOG("SCSIMisc::CommandA4", "A4 from Win2k");
 
@@ -238,18 +275,18 @@ void SCSIMisc::CommandA4(CUSBCDGadget* gadget)
     memcpy(gadget->m_InBuffer, response, sizeof(response));
 
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                               gadget->m_InBuffer, sizeof(response));
+                                                     gadget->m_InBuffer, sizeof(response));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
-void SCSIMisc::Verify(CUSBCDGadget* gadget)
+void SCSIMisc::Verify(CUSBCDGadget *gadget)
 {
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     gadget->SendCSW();
 }
 
-void SCSIMisc::SetCDROMSpeed(CUSBCDGadget* gadget)
+void SCSIMisc::SetCDROMSpeed(CUSBCDGadget *gadget)
 {
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     gadget->SendCSW();

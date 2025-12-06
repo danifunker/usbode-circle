@@ -459,7 +459,6 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
              "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",
              dev, m_pDevice, (int)m_nState);
 
-    // Hand the new device to the CD Player
     CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
     if (cdplayer)
     {
@@ -467,7 +466,6 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
     }
 
-    // Are we changing the device on an already-active USB connection?
     boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
 
     if (bDiscSwap || !m_CDReady)
@@ -477,14 +475,15 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         m_pDevice = nullptr;
 
         m_CDReady = false;
+        m_TrayOpen = true;
         m_mediaState = MediaState::NO_MEDIUM;
         m_SenseParams.bSenseKey = 0x02;
         m_SenseParams.bAddlSenseCode = 0x3a;
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
-        discChanged = true;
+        // DON'T set discChanged here!
 
-        MLOGNOTE("CUSBCDGadget::SetDevice", "Media ejected: state=NO_MEDIUM, sense=02/3a/00");
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Media ejected: state=NO_MEDIUM, tray=OPEN, sense=02/3a/00");
     }
 
     m_pDevice = dev;
@@ -496,25 +495,25 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
 
     if (bDiscSwap)
     {
+        // Close tray with new disc - NOW signal the change
         m_CDReady = true;
+        m_TrayOpen = false;
         m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
         m_SenseParams.bSenseKey = 0x06;
         m_SenseParams.bAddlSenseCode = 0x28;
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
-        discChanged = true;
+        discChanged = true;  // Set ONLY here, after tray closes
         CTimer::Get()->MsDelay(100);
         CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
-                        "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
+                        "Disc swap: Tray closed with new media, set UNIT_ATTENTION, sense=06/28/00");
     }
     else
     {
-        // Initial load - leave NOT READY, OnActivate will handle it
         CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
                         "Initial load: Deferring media ready state to OnActivate()");
     }
 
-    // Log disc boundaries for debugging
     u32 max_lba = CDUtils::GetLeadoutLBA(this);
     CUETrackInfo first_track = CDUtils::GetTrackInfoForLBA(this, 0);
     int first_track_blocksize = CDUtils::GetBlocksizeForTrack(this, first_track);
@@ -524,8 +523,9 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
                     max_lba, first_track.track_mode, first_track_blocksize);
 
     CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
-                    "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
+                    "=== EXIT === m_CDReady=%d, mediaState=%d, tray=%s, sense=%02x/%02x/%02x",
                     m_CDReady, (int)m_mediaState,
+                    m_TrayOpen ? "OPEN" : "CLOSED",
                     m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
 }
 
@@ -776,6 +776,7 @@ void CUSBCDGadget::OnActivate()
     if (m_pDevice && !m_CDReady)
     {
         m_CDReady = true;
+        m_TrayOpen = false;
         m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
         m_SenseParams.bSenseKey = 0x06;
         m_SenseParams.bAddlSenseCode = 0x28;
