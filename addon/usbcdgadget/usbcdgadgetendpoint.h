@@ -42,6 +42,11 @@ public:
 
 private:
 	friend class CUSBCDGadget;
+    friend class SCSIInquiry;
+    friend class SCSIRead;
+    friend class SCSITOC;
+    friend class SCSIToolbox;
+    friend class SCSIMisc;
 
 	enum TCDTransferMode
 	{

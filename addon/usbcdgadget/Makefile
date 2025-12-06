@@ -30,7 +30,8 @@ CPPFLAGS += $(EXTRA_CPPFLAGS)
 CFLAGS += -I $(USBODEHOME)/addon
 
 ifneq ($(strip $(RASPPI)),5)
-OBJS    = usbcdgadget.o usbcdgadgetendpoint.o
+OBJS    = usbcdgadget.o usbcdgadgetendpoint.o \
+          cd_utils.o scsi_inquiry.o scsi_read.o scsi_toc.o scsi_toolbox.o scsi_misc.o tcdstate_update.o
 
 endif
 
