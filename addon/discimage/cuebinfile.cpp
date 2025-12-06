@@ -92,13 +92,15 @@ u64 CCueBinFileDevice::Seek(u64 nOffset) {
     }
 
     // Don't seek if we're already there
+    // CAUTION: This assumes Tell() (f_tell) is accurate and synchronized.
+    // In multi-tasking, if another task moved the pointer, f_tell should reflect that.
     if (Tell() == nOffset)
 	    return nOffset;
 
     FRESULT result = f_lseek(m_pFile, nOffset);
     if (result != FR_OK) {
         LOGERR("Seek to offset %llu is not ok, err %d", nOffset, result);
-        return 0;
+        return static_cast<u64>(-1);
     }
     return nOffset;
 }
