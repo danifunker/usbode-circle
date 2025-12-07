@@ -145,18 +145,18 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
 
 void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 {
+    //MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
     u8 blocks = (u8)(gadget->m_CBW.CBWCB[4]);
 
-    CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-                    "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x -> reporting to host",
-                    (int)gadget->m_mediaState,
-                    gadget->m_SenseParams.bSenseKey, gadget->m_SenseParams.bAddlSenseCode, gadget->m_SenseParams.bAddlSenseCodeQual);
+    // CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
+    //                 "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x -> reporting to host",
+    //                 (int)gadget->m_mediaState,
+    //                 gadget->m_SenseParams.bSenseKey, gadget->m_SenseParams.bAddlSenseCode, gadget->m_SenseParams.bAddlSenseCodeQual);
 
     u8 length = sizeof(TUSBCDRequestSenseReply);
     if (blocks < length)
         length = blocks;
 
-    // Populate sense reply with CURRENT sense data
     gadget->m_ReqSenseReply.bSenseKey = gadget->m_SenseParams.bSenseKey;
     gadget->m_ReqSenseReply.bAddlSenseCode = gadget->m_SenseParams.bAddlSenseCode;
     gadget->m_ReqSenseReply.bAddlSenseCodeQual = gadget->m_SenseParams.bAddlSenseCodeQual;
@@ -166,21 +166,18 @@ void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                      gadget->m_InBuffer, length);
 
-    gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK; // Request Sense always succeeds
+    gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     gadget->m_nState = CUSBCDGadget::TCDState::SendReqSenseReply;
 
-    // CRITICAL FIX: Clear sense data AFTER reporting it (SCSI autoclearing behavior)
-    CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-                    "REQUEST SENSE: Clearing sense data after reporting");
-    gadget->clearSenseData();
-
-    // Update media state machine: transition from UNIT_ATTENTION to READY
     if (gadget->m_mediaState == CUSBCDGadget::MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
     {
+        gadget->clearSenseData();
         gadget->m_mediaState = CUSBCDGadget::MediaState::MEDIUM_PRESENT_READY;
-        gadget->bmCSWStatus = CD_CSW_STATUS_OK; // Clear global CHECK CONDITION flag
-        CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-                        "REQUEST SENSE: State transition UNIT_ATTENTION -> READY");
+        gadget->bmCSWStatus = CD_CSW_STATUS_OK;
+    }
+    else
+    {
+        gadget->clearSenseData();
     }
 }
 
@@ -320,8 +317,8 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
             codepage.capabilityBits[2] = 0x71; // Features 1 (Includes M2F1, M2F2, Audio)
             codepage.capabilityBits[3] = 0x63; // Features 2 (CD-DA)
 
-            // Mechanism State: 0x29 (Tray, Eject supported, Locked)
-            codepage.capabilityBits[4] = 0x29;
+            // Mechanism State: 0x28 (Tray, Eject supported, No Locking)
+            codepage.capabilityBits[4] = 0x28;
             codepage.capabilityBits[5] = 0x03; // Audio control
 
             // Speed / Buffer (Mimic Sony Spressa)
