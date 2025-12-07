@@ -483,6 +483,10 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
+        if (bDiscSwap)
+        {
+            m_bPendingSwapEject = true;
+        }
 
         MLOGNOTE("CUSBCDGadget::SetDevice", "Media ejected: state=NO_MEDIUM, sense=02/3a/00");
     }
@@ -496,6 +500,12 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
 
     if (bDiscSwap)
     {
+        // Simulate a physical tray opening/closing cycle
+        // This gives the host time to detect the NO_MEDIUM state and (in case of Mac OS)
+        // react to the Eject Request (0x01) event before we report the new media.
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Simulating tray cycle (2s delay)...");
+        CTimer::Get()->MsDelay(2000);
+
         m_CDReady = true;
         m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
         m_SenseParams.bSenseKey = 0x06;
@@ -503,10 +513,9 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
-        m_bPendingSwapEject = true;
         CTimer::Get()->MsDelay(100);
         CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
-                        "Disc swap: Set UNIT_ATTENTION, sense=06/28/00, pending eject request");
+                        "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
     }
     else
     {
