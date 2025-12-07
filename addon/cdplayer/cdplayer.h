@@ -103,7 +103,7 @@ class CCDPlayer : public CTask {
     u8 volumeByte = 255;
     u8 defaultVolumeByte = 255;
 
-    u8 *m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+    u8 *m_ReadBuffer;
     u8 *m_WriteChunk;
     unsigned int m_BufferBytesValid = 0;
     unsigned int m_BufferReadPos = 0;

@@ -31,13 +31,24 @@ CCDPlayer *CCDPlayer::s_pThis = nullptr;
 CCDPlayer::CCDPlayer(const char *pSoundDevice)
     : m_pSoundDevice(pSoundDevice),
       //m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), TRUE) {
-      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE) {
+      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE),
+      m_pSound(nullptr),
+      m_pBinFileDevice(nullptr),
+      address(0),
+      end_address(0),
+      state(NONE),
+      m_ReadBuffer(nullptr),
+      m_WriteChunk(nullptr),
+      m_BufferBytesValid(0),
+      m_BufferReadPos(0),
+      m_BytesProcessedInSector(0) {
 
     // I am the one and only!
     assert(s_pThis == nullptr);
     s_pThis = this;
 
-    m_pSound = nullptr;
+    // Initialize I2C here to prevent re-initialization on disc swaps
+    m_I2CMaster.Initialize();
 
     LOGNOTE("CD Player starting");
     SetName("cdplayer");
@@ -83,8 +94,10 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
 }
 
 boolean CCDPlayer::Initialize() {
-    LOGNOTE("CD Player Initializing I2CMaster");
-    m_I2CMaster.Initialize();
+    // Re-allocate read buffer if needed
+    if (!m_ReadBuffer) {
+        m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+    }
 
     if (m_pSound) {
         delete m_pSound;
@@ -310,7 +323,7 @@ void CCDPlayer::Run(void) {
     m_BytesProcessedInSector = 0;
     unsigned int total_frames = m_pSound->GetQueueSizeFrames();
     m_WriteChunk = new u8[total_frames * BYTES_PER_FRAME];
-    m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+    // m_ReadBuffer is allocated in Initialize() now
 
     LOGNOTE("CD Player Run Loop initializing. Queue Size is %d frames", total_frames);
 
