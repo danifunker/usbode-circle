@@ -459,7 +459,6 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
              "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",
              dev, m_pDevice, (int)m_nState);
 
-    // Hand the new device to the CD Player
     CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
     if (cdplayer)
     {
@@ -467,7 +466,6 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
     }
 
-    // Are we changing the device on an already-active USB connection?
     boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
 
     if (bDiscSwap || !m_CDReady)
@@ -496,33 +494,23 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
 
     if (bDiscSwap)
     {
-        m_CDReady = true;
-        m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
-        m_SenseParams.bSenseKey = 0x06;
-        m_SenseParams.bAddlSenseCode = 0x28;
-        m_SenseParams.bAddlSenseCodeQual = 0x00;
-        bmCSWStatus = CD_CSW_STATUS_FAIL;
-        discChanged = true;
-        CTimer::Get()->MsDelay(100);
-        CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
-                        "Disc swap: Set UNIT_ATTENTION, sense=06/28/00");
+        m_bPendingDiscSwap = true;
+        m_nDiscSwapStartTick = CTimer::Get()->GetTicks();
+        MLOGNOTE("CUSBCDGadget::SetDevice", 
+                 "Disc swap: Staying in NO_MEDIUM, will transition to UNIT_ATTENTION after delay");
     }
     else
     {
-        // Initial load - leave NOT READY, OnActivate will handle it
         CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
                         "Initial load: Deferring media ready state to OnActivate()");
     }
 
-    // Log disc boundaries for debugging
     u32 max_lba = CDUtils::GetLeadoutLBA(this);
     CUETrackInfo first_track = CDUtils::GetTrackInfoForLBA(this, 0);
     int first_track_blocksize = CDUtils::GetBlocksizeForTrack(this, first_track);
-
     CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
                     "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
                     max_lba, first_track.track_mode, first_track_blocksize);
-
     CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
                     "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
                     m_CDReady, (int)m_mediaState,
@@ -655,6 +643,8 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 break;
             }
             memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
+            MLOGNOTE("ReceiveCBW", "*** CBW RECEIVED *** cmd=0x%02x, mediaState=%d, m_CDReady=%d", 
+             m_CBW.CBWCB[0], (int)m_mediaState, m_CDReady);
             if (m_CBW.dCBWSignature != VALID_CBW_SIG)
             {
                 MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x",

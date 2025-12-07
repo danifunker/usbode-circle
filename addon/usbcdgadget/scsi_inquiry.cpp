@@ -145,6 +145,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
 
 void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 {
+    MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
     u8 blocks = (u8)(gadget->m_CBW.CBWCB[4]);
 
     CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
@@ -156,7 +157,6 @@ void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
     if (blocks < length)
         length = blocks;
 
-    // Populate sense reply with CURRENT sense data
     gadget->m_ReqSenseReply.bSenseKey = gadget->m_SenseParams.bSenseKey;
     gadget->m_ReqSenseReply.bAddlSenseCode = gadget->m_SenseParams.bAddlSenseCode;
     gadget->m_ReqSenseReply.bAddlSenseCodeQual = gadget->m_SenseParams.bAddlSenseCodeQual;
@@ -166,21 +166,27 @@ void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                      gadget->m_InBuffer, length);
 
-    gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK; // Request Sense always succeeds
+    gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     gadget->m_nState = CUSBCDGadget::TCDState::SendReqSenseReply;
 
-    // CRITICAL FIX: Clear sense data AFTER reporting it (SCSI autoclearing behavior)
-    CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-                    "REQUEST SENSE: Clearing sense data after reporting");
-    gadget->clearSenseData();
-
-    // Update media state machine: transition from UNIT_ATTENTION to READY
     if (gadget->m_mediaState == CUSBCDGadget::MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
     {
+        gadget->clearSenseData();
         gadget->m_mediaState = CUSBCDGadget::MediaState::MEDIUM_PRESENT_READY;
-        gadget->bmCSWStatus = CD_CSW_STATUS_OK; // Clear global CHECK CONDITION flag
+        gadget->bmCSWStatus = CD_CSW_STATUS_OK;
         CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-                        "REQUEST SENSE: State transition UNIT_ATTENTION -> READY");
+                        "REQUEST SENSE: State transition UNIT_ATTENTION -> READY, sense cleared");
+    }
+    else if (gadget->m_mediaState == CUSBCDGadget::MediaState::NO_MEDIUM)
+    {
+        CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
+                        "REQUEST SENSE: NO_MEDIUM state - NOT clearing sense, keeping 02/3a/00");
+    }
+    else
+    {
+        gadget->clearSenseData();
+        CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
+                        "REQUEST SENSE: Clearing sense data");
     }
 }
 

@@ -148,6 +148,9 @@ private:
     friend class SCSIMisc;
     friend class CDUtils;
 
+    boolean m_bPendingDiscSwap = false;
+    unsigned m_nDiscSwapStartTick = 0;
+
     // ========================================================================
     // Device Initialization
     // ========================================================================

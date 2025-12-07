@@ -27,11 +27,10 @@ void SCSIMisc::TestUnitReady(CUSBCDGadget* gadget)
                     gadget->m_CDReady, (int)gadget->m_mediaState,
                     gadget->m_SenseParams.bSenseKey, gadget->m_SenseParams.bAddlSenseCode, gadget->m_SenseParams.bAddlSenseCodeQual);
 
-    if (!gadget->m_CDReady)
+    if (gadget->m_mediaState == CUSBCDGadget::MediaState::NO_MEDIUM)
     {
-        CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
-        gadget->setSenseData(0x02, 0x3A, 0x00); // NOT READY, MEDIUM NOT PRESENT
-        gadget->m_mediaState = CUSBCDGadget::MediaState::NO_MEDIUM;
+        CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady", "NO_MEDIUM state -> CHECK CONDITION");
+        gadget->setSenseData(0x02, 0x3A, 0x00);
         gadget->sendCheckCondition();
         return;
     }
@@ -40,7 +39,7 @@ void SCSIMisc::TestUnitReady(CUSBCDGadget* gadget)
     {
         CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady",
                         "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
-        gadget->setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
+        gadget->setSenseData(0x06, 0x28, 0x00);
         gadget->sendCheckCondition();
         CTimer::Get()->MsDelay(100);
         return;
@@ -48,8 +47,6 @@ void SCSIMisc::TestUnitReady(CUSBCDGadget* gadget)
 
     CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady",
                     "TEST UNIT READY -> GOOD STATUS");
-
-    // CDROM_DEBUG_LOG ("SCSIMisc::TestUnitReady", "Test Unit Ready (returning CD_CSW_STATUS_FAIL)");
     gadget->sendGoodStatus();
 }
 
@@ -125,47 +122,46 @@ void SCSIMisc::MechanismStatus(CUSBCDGadget* gadget)
 void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
 {
     u8 polled = gadget->m_CBW.CBWCB[1] & 0x01;
-    u8 notificationClass = gadget->m_CBW.CBWCB[4]; // This is a bitmask
+    u8 notificationClass = gadget->m_CBW.CBWCB[4];
     u16 allocationLength = gadget->m_CBW.CBWCB[7] << 8 | (gadget->m_CBW.CBWCB[8]);
 
     CDROM_DEBUG_LOG("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification");
 
     if (polled == 0)
     {
-        // We don't support async mode
         MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - we don't support async notifications");
-        gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+        gadget->setSenseData(0x05, 0x24, 0x00);
         gadget->sendCheckCondition();
         return;
     }
 
     int length = 0;
-    // Event Header
     TUSBCDEventStatusReplyHeader header;
     memset(&header, 0, sizeof(header));
-    header.supportedEventClass = 0x10; // Only support media change events (10000b)
+    header.supportedEventClass = 0x10;
 
-    // Media Change Event Request
     if (notificationClass & (1 << 4))
     {
-
         MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - media change event response");
 
-        // Update header
-        header.eventDataLength = htons(0x04); // Always 4 because only return 1 event
-        header.notificationClass = 0x04;      // 100b = media class
+        header.eventDataLength = htons(0x04);
+        header.notificationClass = 0x04;
 
-        // Define the event
         TUSBCDEventStatusReplyEvent event;
         memset(&event, 0, sizeof(event));
 
-        if (gadget->discChanged)
+        if (gadget->m_mediaState == CUSBCDGadget::MediaState::NO_MEDIUM)
+        {
+            MLOGNOTE("SCSIMisc::GetEventStatusNotification", "NO_MEDIUM state - sending Media Removal event");
+            event.eventCode = 0x03;
+            event.data[0] = 0x00;
+        }
+        else if (gadget->discChanged)
         {
             MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - sending NewMedia event");
-            event.eventCode = 0x02;                  // NewMedia event
-            event.data[0] = gadget->m_CDReady ? 0x02 : 0x00; // Media present : No media
+            event.eventCode = 0x02;
+            event.data[0] = 0x02;
 
-            // Only clear the disc changed event if we're actually going to send the full response
             if (allocationLength >= (sizeof(TUSBCDEventStatusReplyHeader) + sizeof(TUSBCDEventStatusReplyEvent)))
             {
                 gadget->discChanged = false;
@@ -173,23 +169,22 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
         }
         else if (gadget->m_CDReady)
         {
-            event.eventCode = 0x00; // No Change
-            event.data[0] = 0x02;   // Media present
+            event.eventCode = 0x00;
+            event.data[0] = 0x02;
         }
         else
         {
-            event.eventCode = 0x03; // Media Removal
-            event.data[0] = 0x00;   // No media
+            event.eventCode = 0x03;
+            event.data[0] = 0x00;
         }
 
-        event.data[1] = 0x00; // Reserved
-        event.data[2] = 0x00; // Reserved
+        event.data[1] = 0x00;
+        event.data[2] = 0x00;
         memcpy(gadget->m_InBuffer + sizeof(TUSBCDEventStatusReplyHeader), &event, sizeof(TUSBCDEventStatusReplyEvent));
         length += sizeof(TUSBCDEventStatusReplyEvent);
     }
     else
     {
-        // No supported event class requested
         MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - no supported class requested");
         header.notificationClass = 0x00;
         header.eventDataLength = htons(0x00);
@@ -201,7 +196,7 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
     if (allocationLength < length)
         length = allocationLength;
 
-    gadget->m_nnumber_blocks = 0; // nothing more after this send
+    gadget->m_nnumber_blocks = 0;
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
