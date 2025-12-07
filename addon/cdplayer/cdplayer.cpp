@@ -37,6 +37,8 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
     assert(s_pThis == nullptr);
     s_pThis = this;
 
+    m_pSound = nullptr;
+
     LOGNOTE("CD Player starting");
     SetName("cdplayer");
     Initialize();
@@ -74,6 +76,8 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     
     m_pBinFileDevice = pBinFileDevice;
     
+    Initialize();
+
     LOGNOTE("CD Player device set complete: state=%u, device=%p", state, m_pBinFileDevice);
     return true;
 }
@@ -81,6 +85,11 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
 boolean CCDPlayer::Initialize() {
     LOGNOTE("CD Player Initializing I2CMaster");
     m_I2CMaster.Initialize();
+
+    if (m_pSound) {
+        delete m_pSound;
+        m_pSound = nullptr;
+    }
 
     if (strcmp(m_pSoundDevice, "sndpwm") == 0) {
         m_pSound = new CPWMSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
