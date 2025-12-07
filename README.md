@@ -121,9 +121,24 @@ If adding DVD images, (and the system needs to read the disc as "DVD"), add `.dv
 3.  Plug the SD card into the Pi, and the Pi into the target computer. The screen on the HAT should turn on.
 4.  The display will turn on a second or two after plugging in the Pi. The display will say “Not connected yet” until it connects to your wifi network, then that line will display the device’s IP address. On the PirateAudio display, the bottom will indicate what the buttons do. On the Waveshare HAT, Key 1 enters Browsing Mode, where you can see what images are on your SD card. The directional stick on the left side can then be moved up and down to traverse the list of images. Moving it left or right skips 5 images, making it easier to get to the bottom of a long list. Pressing the directional stick or Key 1 here will select that image and load it. Key 2 will back out of that screen without changing the image, and Key 3 is not currently implemented.
 
+### Supported FileTypes
+* ISO files
+* BIN/CUE files (the files must have the same name, aside from extension)
+* MDS/MDF files (Unsure if SafeDisc rips are supported, files must have the same name aside from extension)
+* CHD but be aware performance is about half of what bin/cue is. It is possible to convert with a special arm compression by adding `-f -c cdzs,cdfl -hs 9792` to the chdman conversion (this requires MAME 280+). This is commonly recommended in the misterFPGA community
+
+Other filetypes may be added in the future.
+
 ### BIN/CUE Limitations
 
-BIN/CUE images with multiple .BIN files do not yet work correctly. There is a workaround, however: [CDFix](https://web.archive.org/web/20240112090553/https://krikzz.com/pub/support/mega-everdrive/pro-series/cdfix/) will merge all of the .BIN files into one. Remember to make a backup of the image files before running this utility. We are aware of issues regarding the CDFix program which may cut off 2 second track delimiters, and are currently investigating the issue.
+BIN/CUE images with multiple .BIN files do not yet work correctly. There is a workaround, however: use chdman to convert the multi-bin file to chd, then convert
+it back to a bin/cue. Example command lines:
+
+`chdman createcd -i MultiBin.cue -o MultiBin.chd` 
+Note CHD files are compatible with USBODE, but performance isn't perfect yet. So to convert back to .bin/cue use:
+`chdman extractct -i MultiBin.chd -o SingleBin.cue -ob SingleBin.bin`
+
+If there are issues with CD playback, please try this first. The previous recommendation was to use an old unsupported software which does not properly support conversion.
 
 ### Using FTP:
 
@@ -153,7 +168,33 @@ usbcdrom_pid=0x1887
 ```
 be sure to include the preceeding `0x` to instruct USBODE this is a hex number, not a decimal number.
 
-## Notes about versions
+## Classic MacOS 9.2.1 Mixed-Mode Disc Support
+To use USBODE with MacOS9, USBODE must be in "Classic Mac" mode. This is set either in `config.txt` with `usbtargetos=apple` or by going into the Web Interface configuration and selecting "Classic Mac" mode, which will set the `config.txt` manually for you.
+
+This mode enables a couple of quirks for MacOS9, and sets the emulation mode to a Sony Spressa CD-ROM drive, which uses the USBAuthoring extension, and allows for Digital Audio Extraction over USB, and the ability to mount mixed-mode discs over USB. 
+
+To switch discs when USBODE is in Classic Mode, eject the disc from the OS first, then mount a new disc and macos9 should detect it.
+
+Current requirements are as follows:
+* OS 9.2.1
+* iTunes 1.1
+* USBAuthoring Extension 1.1.2 (1.1 doesn't work)
+
+I tried initially to get this to work in OS 9.1, however CD Audio games weren't playing the music correctly.
+Feel free to test different combinations, and please report back earlier MacOS version support for mixed-mode discs!
+
+Current known-good working games:
+Age of Empires (Requires Patch 1.3)
+MechWarrior 2
+
+Current known-bad games: (CD Audio doesn't work correctly):
+Quake 2
+
+I have not been able to get Quake 2 CD Audio working on a physical USB CDROM drive either.
+
+If experiencing issues with games not listed on this list, please try to update to the latest patch version.
+
+## Notes about version
 
 - The Stable version of this project is available under the [Main branch](https://github.com/danifunker/usbode-circle/tree/main). This project also has a [pipeline](https://github.com/danifunker/usbode-circle/actions) set up to facilitate rapid deployment of new features. The pipeline builds are cutting edge and are not guaranteed to be stable.
 - If you’re using USBODE 1.99 or before, you need to re-image your SDcard with the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) application. That project and its instructions are located [here](https://github.com/danifunker/usbode/releases). Be aware USBODE 1.99 currently supports booting better than this project.
