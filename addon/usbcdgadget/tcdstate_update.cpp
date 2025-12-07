@@ -29,7 +29,7 @@ void CUSBCDGadget::Update()
         // MLOGNOTE("CUSBCDGadget::Update", "Pending disc swap: elapsed=%u, threshold=%u", 
         //          elapsed, CLOCKHZ / 2000);
         
-        if (elapsed >= CLOCKHZ / 2000)
+        if (elapsed >= CLOCKHZ / 10000)
         {
             m_bPendingDiscSwap = false;
             m_CDReady = true;

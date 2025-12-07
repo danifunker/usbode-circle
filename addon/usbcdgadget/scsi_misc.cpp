@@ -29,7 +29,7 @@ void SCSIMisc::TestUnitReady(CUSBCDGadget* gadget)
 
     if (gadget->m_mediaState == CUSBCDGadget::MediaState::NO_MEDIUM)
     {
-        CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady", "NO_MEDIUM state -> CHECK CONDITION");
+        //CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady", "NO_MEDIUM state -> CHECK CONDITION");
         gadget->setSenseData(0x02, 0x3A, 0x00);
         gadget->sendCheckCondition();
         return;
@@ -37,16 +37,16 @@ void SCSIMisc::TestUnitReady(CUSBCDGadget* gadget)
 
     if (gadget->m_mediaState == CUSBCDGadget::MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
     {
-        CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady",
-                        "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
+        // CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady",
+        //                 "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
         gadget->setSenseData(0x06, 0x28, 0x00);
         gadget->sendCheckCondition();
         CTimer::Get()->MsDelay(100);
         return;
     }
 
-    CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady",
-                    "TEST UNIT READY -> GOOD STATUS");
+    // CDROM_DEBUG_LOG("SCSIMisc::TestUnitReady",
+    //                 "TEST UNIT READY -> GOOD STATUS");
     gadget->sendGoodStatus();
 }
 
