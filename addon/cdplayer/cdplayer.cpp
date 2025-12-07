@@ -23,17 +23,29 @@
 #include <circle/string.h>
 #include <circle/synchronize.h>
 #include <circle/util.h>
+#include <configservice/configservice.h>
 
 LOGMODULE("cdplayer");
 
 CCDPlayer *CCDPlayer::s_pThis = nullptr;
 
 CCDPlayer::CCDPlayer(const char *pSoundDevice)
-    : m_pSoundDevice(pSoundDevice),
-      //m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), TRUE) {
-      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE) {
-
-    // I am the one and only!
+    : m_pDACEnable(nullptr),
+      m_pSoundDevice(pSoundDevice),
+      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE),
+      m_pSound(nullptr),
+      m_pBinFileDevice(nullptr),
+      address(0),
+      end_address(0),
+      state(NONE),
+      volumeByte(255),
+      defaultVolumeByte(255),
+      m_ReadBuffer(nullptr),
+      m_WriteChunk(nullptr),
+      m_BufferBytesValid(0),
+      m_BufferReadPos(0),
+      m_BytesProcessedInSector(0) {
+    
     assert(s_pThis == nullptr);
     s_pThis = this;
 
@@ -79,6 +91,10 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
 }
 
 boolean CCDPlayer::Initialize() {
+    // Get config service - default is PCM5100A mode (Pirate Audio)
+    ConfigService* config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+    bool usePCM5100 = config ? !config->GetPCM5100Disable() : true;  // Default to PCM5100A
+    
     LOGNOTE("CD Player Initializing I2CMaster");
     m_I2CMaster.Initialize();
 
@@ -86,30 +102,29 @@ boolean CCDPlayer::Initialize() {
         m_pSound = new CPWMSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
         LOGNOTE("CD Player Initializing sndpwm");
     } else if (strcmp(m_pSoundDevice, "sndi2s") == 0) {
-        m_pSound = new CI2SSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE, FALSE,
-                                           &m_I2CMaster, DAC_I2C_ADDRESS);
-        LOGNOTE("CD Player Initializing sndi2c");
+        if (usePCM5100) {
+            LOGNOTE("CD Player using PCM5100A mode (Pirate Audio default)");
+            
+            // Enable DAC via GPIO 25
+            m_pDACEnable = new CGPIOPin(25, GPIOModeOutput);
+            m_pDACEnable->Write(HIGH);
+            LOGNOTE("DAC enable pin (GPIO 25) set HIGH for PCM5100A");
+            
+            // PCM5100A doesn't use I2C - pass nullptr
+            m_pSound = new CI2SSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE, FALSE,
+                                               nullptr, 0);
+            LOGNOTE("CD Player Initializing sndi2s (PCM5100A - no I2C)");
+        } else {
+            LOGNOTE("CD Player using I2C DAC mode (pcm5100_disable=1)");
+            // Standard I2S with I2C DAC
+            m_pSound = new CI2SSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE, FALSE,
+                                               &m_I2CMaster, DAC_I2C_ADDRESS);
+            LOGNOTE("CD Player Initializing sndi2s (standard I2C DAC)");
+        }
     } else if (strcmp(m_pSoundDevice, "sndhdmi") == 0) {
         m_pSound = new CHDMISoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
         LOGNOTE("CD Player Initializing sndhdmi");
     }
-#if RASPPI >= 4
-    else if (strcmp(m_pSoundDevice, "sndusb") == 0) {
-        m_pSound = new CUSBSoundBaseDevice(SAMPLE_RATE);
-        LOGNOTE("CD Player Initializing sndusb");
-    }
-#endif
-    /*
-            else
-            {
-     #ifdef USE_VCHIQ_SOUND
-                    m_pSound = new CVCHIQSoundBaseDevice (&m_VCHIQ, SAMPLE_RATE, SOUND_CHUNK_SIZE,
-                                            (TVCHIQSoundDestination) m_Options.GetSoundOption ());
-     #else
-                    m_pSound = new CPWMSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-     #endif
-            }
-    */
 
     // configure sound device
     LOGNOTE("CD Player Initializing. Allocating queue size %d frames", DAC_BUFFER_SIZE_FRAMES);
@@ -126,6 +141,10 @@ boolean CCDPlayer::Initialize() {
 }
 
 CCDPlayer::~CCDPlayer(void) {
+    if (m_pDACEnable) {
+        delete m_pDACEnable;
+        m_pDACEnable = nullptr;
+    }
     s_pThis = nullptr;
 }
 

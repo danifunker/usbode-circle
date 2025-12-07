@@ -33,6 +33,7 @@
 #include <circle/timer.h>
 #include <circle/types.h>
 #include <circle/util.h>
+#include <circle/gpiopin.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
 #include <discimage/imagedevice.h>
@@ -43,22 +44,20 @@
 #define FRAMES_PER_SECTOR (SECTOR_SIZE / BYTES_PER_FRAME)
 #define DAC_BUFFER_SIZE_FRAMES (FRAMES_PER_SECTOR * BATCH_SIZE)
 #define DAC_BUFFER_SIZE_BYTES (DAC_BUFFER_SIZE_FRAMES * BYTES_PER_FRAME)
-
 #define SOUND_CHUNK_SIZE      (384 * 10)
 #define SAMPLE_RATE 44100
 #define WRITE_CHANNELS 2  // 1: Mono, 2: Stereo
 #define FORMAT SoundFormatSigned16
 #define DAC_I2C_ADDRESS 0
-
 #define VOLUME_SCALE_BITS 12 // 1.0 = 4096
 #define VOLUME_STEPS 16
-
 #define AUDIO_BUFFER_SIZE  DAC_BUFFER_SIZE_FRAMES * BYTES_PER_FRAME
 
 class CCDPlayer : public CTask {
-   public:
+public:
     CCDPlayer(const char *pSoundDevice);
     ~CCDPlayer(void);
+    
     boolean Initialize();
     boolean SetDevice(IImageDevice *pBinFileDevice);
     boolean Pause();
@@ -75,8 +74,9 @@ class CCDPlayer : public CTask {
     boolean SoundTest();
     size_t buffer_available();
     size_t buffer_free_space();
+    
     void Run(void);
-
+    
     enum PlayState {
         PLAYING,
         SEEKING,
@@ -84,12 +84,15 @@ class CCDPlayer : public CTask {
         STOPPED_OK,
         STOPPED_ERROR,
         PAUSED,
-	NONE
+        NONE
     };
 
-   private:
+private:
     void ScaleVolume(u8 *buffer, u32 byteCount);
-   private:
+
+private:
+    // Members must be in initialization order
+    CGPIOPin *m_pDACEnable;
     const char *m_pSoundDevice;
     CI2CMaster m_I2CMaster;
     CInterruptSystem m_Interrupt;
@@ -100,14 +103,13 @@ class CCDPlayer : public CTask {
     u32 address;
     u32 end_address;
     PlayState state;
-    u8 volumeByte = 255;
-    u8 defaultVolumeByte = 255;
-
-    u8 *m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+    u8 volumeByte;
+    u8 defaultVolumeByte; 
+    u8 *m_ReadBuffer;
     u8 *m_WriteChunk;
-    unsigned int m_BufferBytesValid = 0;
-    unsigned int m_BufferReadPos = 0;
-    unsigned int m_BytesProcessedInSector = 0;
+    unsigned int m_BufferBytesValid;
+    unsigned int m_BufferReadPos;
+    unsigned int m_BytesProcessedInSector;
 };
 
 #endif

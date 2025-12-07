@@ -54,7 +54,8 @@ public:
     unsigned GetProperty(const char* property, unsigned defaultValue, const char* section="usbode");
     void SetProperty(const char* property, unsigned value, const char* section="usbode");
     void SetProperty(const char* property, const char* value, const char* section="usbode");
-
+    bool GetPCM5100Disable(bool defaultValue = false);
+    void SetPCM5100Disable(bool value);
     bool IsDirty();
 
     void Run(void);

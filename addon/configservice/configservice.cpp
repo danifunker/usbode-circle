@@ -71,6 +71,16 @@ const char* ConfigService::GetSoundDev(const char* defaultValue)
     return defaultValue;
 }
 
+bool ConfigService::GetPCM5100Disable(bool defaultValue)
+{
+    return m_config->GetNumber("pcm5100_disable", defaultValue ? 1 : 0) != 0;
+}
+
+void ConfigService::SetPCM5100Disable(bool value)
+{
+    m_config->SetNumber("pcm5100_disable", value ? 1 : 0);
+}
+
 const char* ConfigService::GetTheme(const char* defaultValue)
 {
     return m_config->GetString("theme", defaultValue);
