@@ -326,8 +326,8 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
             codepage.capabilityBits[2] = 0x71; // Features 1 (Includes M2F1, M2F2, Audio)
             codepage.capabilityBits[3] = 0x63; // Features 2 (CD-DA)
 
-            // Mechanism State: 0x29 (Tray, Eject supported, Locked)
-            codepage.capabilityBits[4] = 0x29;
+            // Mechanism State: 0x28 (Tray, Eject supported, No Locking)
+            codepage.capabilityBits[4] = 0x28;
             codepage.capabilityBits[5] = 0x03; // Audio control
 
             // Speed / Buffer (Mimic Sony Spressa)
