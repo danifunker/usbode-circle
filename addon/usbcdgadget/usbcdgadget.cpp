@@ -643,8 +643,8 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 break;
             }
             memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
-            MLOGNOTE("ReceiveCBW", "*** CBW RECEIVED *** cmd=0x%02x, mediaState=%d, m_CDReady=%d", 
-             m_CBW.CBWCB[0], (int)m_mediaState, m_CDReady);
+            //MLOGNOTE("ReceiveCBW", "*** CBW RECEIVED *** cmd=0x%02x, mediaState=%d, m_CDReady=%d", 
+            // m_CBW.CBWCB[0], (int)m_mediaState, m_CDReady);
             if (m_CBW.dCBWSignature != VALID_CBW_SIG)
             {
                 MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x",

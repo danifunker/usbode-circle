@@ -26,8 +26,8 @@ void CUSBCDGadget::Update()
     if (m_bPendingDiscSwap)
     {
         unsigned elapsed = CTimer::Get()->GetTicks() - m_nDiscSwapStartTick;
-        MLOGNOTE("CUSBCDGadget::Update", "Pending disc swap: elapsed=%u, threshold=%u", 
-                 elapsed, CLOCKHZ / 2000);
+        // MLOGNOTE("CUSBCDGadget::Update", "Pending disc swap: elapsed=%u, threshold=%u", 
+        //          elapsed, CLOCKHZ / 2000);
         
         if (elapsed >= CLOCKHZ / 2000)
         {
@@ -39,8 +39,8 @@ void CUSBCDGadget::Update()
             m_SenseParams.bAddlSenseCodeQual = 0x00;
             bmCSWStatus = CD_CSW_STATUS_FAIL;
             discChanged = true;
-            MLOGNOTE("CUSBCDGadget::Update",
-                     "Disc swap complete: Transitioned to UNIT_ATTENTION after %u ticks", elapsed);
+            // MLOGNOTE("CUSBCDGadget::Update",
+            //           "Disc swap complete: Transitioned to UNIT_ATTENTION after %u ticks", elapsed);
         }
     }
 

@@ -145,13 +145,13 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
 
 void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 {
-    MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
+    //MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
     u8 blocks = (u8)(gadget->m_CBW.CBWCB[4]);
 
-    CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-                    "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x -> reporting to host",
-                    (int)gadget->m_mediaState,
-                    gadget->m_SenseParams.bSenseKey, gadget->m_SenseParams.bAddlSenseCode, gadget->m_SenseParams.bAddlSenseCodeQual);
+    // CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
+    //                 "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x -> reporting to host",
+    //                 (int)gadget->m_mediaState,
+    //                 gadget->m_SenseParams.bSenseKey, gadget->m_SenseParams.bAddlSenseCode, gadget->m_SenseParams.bAddlSenseCodeQual);
 
     u8 length = sizeof(TUSBCDRequestSenseReply);
     if (blocks < length)
@@ -174,19 +174,10 @@ void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
         gadget->clearSenseData();
         gadget->m_mediaState = CUSBCDGadget::MediaState::MEDIUM_PRESENT_READY;
         gadget->bmCSWStatus = CD_CSW_STATUS_OK;
-        CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-                        "REQUEST SENSE: State transition UNIT_ATTENTION -> READY, sense cleared");
-    }
-    else if (gadget->m_mediaState == CUSBCDGadget::MediaState::NO_MEDIUM)
-    {
-        CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-                        "REQUEST SENSE: NO_MEDIUM state - NOT clearing sense, keeping 02/3a/00");
     }
     else
     {
         gadget->clearSenseData();
-        CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-                        "REQUEST SENSE: Clearing sense data");
     }
 }
 
