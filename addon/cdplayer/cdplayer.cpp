@@ -53,6 +53,13 @@ CCDPlayer::CCDPlayer(void)
     // Get sound device from service
     if (m_pAudioService) {
         m_pSound = m_pAudioService->GetSoundDevice();
+        if (m_pSound) {
+            // Ensure sound device is active for this new player instance
+            // (Previous instance destructor likely cancelled/stopped it)
+            if (!m_pSound->IsActive()) {
+                m_pSound->Start();
+            }
+        }
     } else {
         LOGERR("Audio Service not available!");
     }
@@ -73,6 +80,10 @@ CCDPlayer::CCDPlayer(void)
 
 CCDPlayer::~CCDPlayer(void) {
     LOGNOTE("CD Player stopping/destroying");
+
+    if (m_pSound) {
+        m_pSound->Cancel();
+    }
 
     // Clean up buffers
     if (m_ReadBuffer) {
@@ -376,7 +387,7 @@ void CCDPlayer::Run(void) {
 
             // Feed the sound device from our buffer, if we have valid data.
             if (m_BufferBytesValid > 0 && state == PLAYING) {
-                unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
+                unsigned int available_queue_size = m_pSound->GetQueueFramesAvail();
                 unsigned int bytes_for_sound_device = available_queue_size * BYTES_PER_FRAME;
 
                 unsigned int bytes_available_in_buffer = m_BufferBytesValid - m_BufferReadPos;
