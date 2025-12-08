@@ -53,16 +53,17 @@ void CUSBCDGadgetEndpoint::OnActivate (void)
 	if (GetDirection () == DirectionOut)
 	{
 		m_pGadget->OnActivate();
-	}
 
-    // Initialize Audio Service here (deferred init)
-    CAudioService *pAudio = CAudioService::Get();
-    if (pAudio) {
-        MLOGNOTE("dwgadget", "Initializing Audio Service after endpoint activation");
-        pAudio->Initialize();
-    } else {
-        MLOGNOTE("dwgadget", "WARNING: Audio Service not found!");
-    }
+        // Initialize Audio Service here (deferred init)
+        // Only on OUT endpoint to prevent race conditions and double-init
+        CAudioService *pAudio = CAudioService::Get();
+        if (pAudio) {
+            MLOGNOTE("dwgadget", "Initializing Audio Service after endpoint activation");
+            pAudio->Initialize();
+        } else {
+            MLOGNOTE("dwgadget", "WARNING: Audio Service not found!");
+        }
+	}
 }
 
 void CUSBCDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)

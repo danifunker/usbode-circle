@@ -301,7 +301,9 @@ void CCDPlayer::Run(void) {
             if (m_pAudioService && m_pAudioService->IsInitialized()) {
                 m_pSound = m_pAudioService->GetSoundDevice();
                 if (m_pSound) {
-                    m_pSound->Start();
+                    if (!m_pSound->IsActive()) {
+                        m_pSound->Start();
+                    }
                     // Allocate buffers now that we have sound device info
                     unsigned int total_frames = m_pSound->GetQueueSizeFrames();
                     m_WriteChunk = new u8[total_frames * BYTES_PER_FRAME];
