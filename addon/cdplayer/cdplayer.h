@@ -1,9 +1,8 @@
 //
 // cdplayer.h
 //
-// Circle - A C++ bare metal environment for Raspberry Pi
-// Copyright (C) 2017  R. Stange <rsta2@o2online.de>
-//
+// Base CD Audio Player Task for Circle
+// Copyright (C) 2025 Ian Cass, Dani Sarfati
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
@@ -60,6 +59,7 @@ class CCDPlayer : public CTask {
     CCDPlayer(const char *pSoundDevice);
     ~CCDPlayer(void);
     boolean Initialize();
+    void EnsureAudioInitialized();
     boolean SetDevice(IImageDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();
@@ -89,6 +89,7 @@ class CCDPlayer : public CTask {
 
    private:
     void ScaleVolume(u8 *buffer, u32 byteCount);
+    
    private:
     const char *m_pSoundDevice;
     CI2CMaster m_I2CMaster;
@@ -102,8 +103,9 @@ class CCDPlayer : public CTask {
     PlayState state;
     u8 volumeByte = 255;
     u8 defaultVolumeByte = 255;
+    boolean m_bAudioInitialized = false;  // NEW
 
-    u8 *m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+    u8 *m_ReadBuffer;  // CHANGED: removed = new u8[AUDIO_BUFFER_SIZE]
     u8 *m_WriteChunk;
     unsigned int m_BufferBytesValid = 0;
     unsigned int m_BufferReadPos = 0;

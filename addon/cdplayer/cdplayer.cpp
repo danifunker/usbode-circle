@@ -30,8 +30,14 @@ CCDPlayer *CCDPlayer::s_pThis = nullptr;
 
 CCDPlayer::CCDPlayer(const char *pSoundDevice)
     : m_pSoundDevice(pSoundDevice),
-      //m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), TRUE) {
-      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE) {
+      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE),
+      m_pSound(nullptr),   
+      m_pBinFileDevice(nullptr),
+      address(0),
+      end_address(0),
+      state(NONE),
+      m_ReadBuffer(nullptr),
+      m_WriteChunk(nullptr) {
 
     // I am the one and only!
     assert(s_pThis == nullptr);
@@ -39,7 +45,6 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
 
     LOGNOTE("CD Player starting");
     SetName("cdplayer");
-    Initialize();
 }
 
 boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
@@ -125,6 +130,61 @@ boolean CCDPlayer::Initialize() {
     return TRUE;
 }
 
+void CCDPlayer::EnsureAudioInitialized() {
+    if (m_bAudioInitialized) {
+        return;
+    }
+    
+    LOGNOTE("=== LAZY I2S INITIALIZATION (after USB stabilization) ===");
+    
+    if (!m_I2CMaster.Initialize()) {
+        LOGERR("Failed to initialize I2C master");
+        return;
+    }
+
+    if (strcmp(m_pSoundDevice, "sndpwm") == 0) {
+        m_pSound = new CPWMSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
+        LOGNOTE("CD Player Initializing sndpwm");
+    } else if (strcmp(m_pSoundDevice, "sndi2s") == 0) {
+        m_pSound = new CI2SSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE, FALSE,
+                                           &m_I2CMaster, DAC_I2C_ADDRESS);
+        LOGNOTE("CD Player Initializing sndi2s");
+    } else if (strcmp(m_pSoundDevice, "sndhdmi") == 0) {
+        m_pSound = new CHDMISoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
+        LOGNOTE("CD Player Initializing sndhdmi");
+    }
+#if RASPPI >= 4
+    else if (strcmp(m_pSoundDevice, "sndusb") == 0) {
+        m_pSound = new CUSBSoundBaseDevice(SAMPLE_RATE);
+        LOGNOTE("CD Player Initializing sndusb");
+    }
+#endif
+
+    if (!m_pSound) {
+        LOGERR("Failed to create sound device");
+        return;
+    }
+
+    LOGNOTE("Allocating queue size %d frames", DAC_BUFFER_SIZE_FRAMES);
+    if (!m_pSound->AllocateQueueFrames(DAC_BUFFER_SIZE_FRAMES)) {
+        LOGERR("Cannot allocate sound queue");
+        return;
+    }
+    
+    m_pSound->SetWriteFormat(FORMAT, WRITE_CHANNELS);
+    
+    LOGNOTE("Default volume stored as: 0x%02x", defaultVolumeByte);
+    
+    if (!m_pSound->Start()) {
+        LOGERR("Couldn't start the sound device");
+        return;
+    }
+    
+    m_bAudioInitialized = true;
+    LOGNOTE("=== I2S INITIALIZED: active=%d ===", m_pSound->IsActive());
+}
+
+
 CCDPlayer::~CCDPlayer(void) {
     s_pThis = nullptr;
 }
@@ -196,8 +256,12 @@ u32 CCDPlayer::GetCurrentAddress() {
 // Loads a sample from "system/test.pcm" and plays it
 // Returns false if there was any problem
 boolean CCDPlayer::SoundTest() {
-    if (!m_pSound->IsActive()) {
+    if (!m_pSound) {
         LOGERR("Sound Test: Can't perform test, sound is not active");
+        return false;
+    }
+    if (!m_pSound->IsActive()) {
+        LOGERR("Sound Test: Can't perform test, sound is in use");
         return false;
     }
 
@@ -294,18 +358,31 @@ void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
 }
 
 void CCDPlayer::Run(void) {
-
-    // Initialize buffer state variables.
-    m_BufferBytesValid = 0;
-    m_BufferReadPos = 0;
-    m_BytesProcessedInSector = 0;
-    unsigned int total_frames = m_pSound->GetQueueSizeFrames();
-    m_WriteChunk = new u8[total_frames * BYTES_PER_FRAME];
-    m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
-
-    LOGNOTE("CD Player Run Loop initializing. Queue Size is %d frames", total_frames);
+    LOGNOTE("CD Player Run Loop started");
+    
+    boolean buffers_allocated = false;
+    unsigned int total_frames = 0;
 
     while (true) {
+        // STATE 1: Wait for audio initialization (triggered by USB endpoint activation)
+        if (!m_bAudioInitialized) {
+            CScheduler::Get()->Yield();
+            continue;
+        }
+        
+        // STATE 2: Audio initialized - allocate buffers once
+        if (!buffers_allocated) {
+            m_BufferBytesValid = 0;
+            m_BufferReadPos = 0;
+            m_BytesProcessedInSector = 0;
+            total_frames = m_pSound->GetQueueSizeFrames();
+            m_WriteChunk = new u8[total_frames * BYTES_PER_FRAME];
+            m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+            buffers_allocated = true;
+            LOGNOTE("CD Player Run Loop initialized. Queue Size is %d frames", total_frames);
+        }
+        
+        // STATE 3: Normal operation - seeking
         if (state == SEEKING || state == SEEKING_PLAYING) {
             LOGNOTE("Seeking to sector %u (byte %u)", address, unsigned(address * SECTOR_SIZE));
             u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
@@ -325,6 +402,7 @@ void CCDPlayer::Run(void) {
             }
         }
 
+        // STATE 3: Normal operation - playing
         if (state == PLAYING) {
             // Fill the read buffer if it has been consumed.
             if (m_BufferReadPos >= m_BufferBytesValid) {
@@ -341,7 +419,7 @@ void CCDPlayer::Run(void) {
                 u64 sectors_to_read_now = (AUDIO_BUFFER_SIZE / SECTOR_SIZE < sectors_remaining) ? (AUDIO_BUFFER_SIZE / SECTOR_SIZE) : sectors_remaining;
                 int bytes_to_read = sectors_to_read_now * SECTOR_SIZE;
 
-		// Because another task could have moved the file pointer after a Yield(),
+                // Because another task could have moved the file pointer after a Yield(),
                 // we MUST seek to our intended address before every read operation.
                 u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
                 if (offset == (u64)(-1)) {
