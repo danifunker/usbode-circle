@@ -31,6 +31,7 @@ public:
 
     int Write(const void *pBuffer, unsigned nCount);
     boolean Start();
+    void Stop();
     boolean IsActive() const;
     unsigned GetQueueSizeFrames() const;
     unsigned GetQueueFramesAvail() const;

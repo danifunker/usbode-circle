@@ -82,6 +82,13 @@ boolean CAudioService::Start()
     return m_pSound->Start();
 }
 
+void CAudioService::Stop()
+{
+    if (m_pSound) m_pSound->Cancel();
+    m_bAudioInitialized = false;
+    m_bStartRequested = false;
+}
+
 boolean CAudioService::IsActive() const
 {
     if (!m_pSound) return FALSE;
