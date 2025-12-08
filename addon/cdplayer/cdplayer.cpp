@@ -93,12 +93,6 @@ boolean CCDPlayer::Initialize() {
     return TRUE;
 }
 
-void CCDPlayer::EnsureAudioInitialized() {
-    if (m_pAudioService) {
-        m_pAudioService->EnsureAudioInitialized();
-    }
-}
-
 CCDPlayer::~CCDPlayer(void) {
     s_pThis = nullptr;
 }

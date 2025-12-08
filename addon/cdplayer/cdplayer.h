@@ -46,7 +46,6 @@ class CCDPlayer : public CTask {
     CCDPlayer();
     ~CCDPlayer(void);
     boolean Initialize();
-    void EnsureAudioInitialized();
     boolean SetDevice(IImageDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();

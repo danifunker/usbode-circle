@@ -2,8 +2,10 @@
 # Makefile
 #
 
-CIRCLEHOME = ../../circle
-EXTRALIBS = ../../circle-stdlib/libcircle-stdlib.a
+USBODEHOME = ../..
+STDLIBHOME = $(USBODEHOME)/circle-stdlib
+NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
+CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
 OBJS	= audioservice.o
 
@@ -12,6 +14,9 @@ libaudioservice.a: $(OBJS)
 	@rm -f $@
 	@$(AR) cr $@ $(OBJS)
 
+include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
 
-CFLAGS += -I$(CIRCLEHOME)/addon/fatfs -I../../ -I../../circle-stdlib/include
+CFLAGS += -I ../../addon
+
+-include $(DEPS)
