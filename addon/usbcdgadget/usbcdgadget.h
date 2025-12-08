@@ -93,6 +93,9 @@ protected:
     // CDWUSBGadget Overrides
     // ========================================================================
 
+    /// \brief Get CDPlayer instance
+    CCDPlayer *GetCDPlayer() { return m_pCDPlayer; }
+
     /// \brief Get device-specific descriptor
     /// \param wValue Parameter from setup packet (descriptor type (MSB) and index (LSB))
     /// \param wIndex Parameter from setup packet (e.g. language ID for string descriptors)

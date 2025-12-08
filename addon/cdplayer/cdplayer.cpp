@@ -36,7 +36,8 @@ CCDPlayer::CCDPlayer(void)
       state(NONE),
       m_ReadBuffer(nullptr),
       m_WriteChunk(nullptr),
-      m_bStop(false) {
+      m_bStop(false),
+      m_bAudioInitRequested(false) {
 
     LOGNOTE("CD Player starting");
 
@@ -51,30 +52,8 @@ CCDPlayer::CCDPlayer(void)
         LOGWARN("ConfigService not available, using default volume 255");
     }
 
-    // Get sound device from service
-    if (m_pAudioService) {
-        m_pSound = m_pAudioService->GetSoundDevice();
-        if (m_pSound) {
-            // Ensure sound device is active for this new player instance
-            // (Previous instance destructor likely cancelled/stopped it)
-            if (!m_pSound->IsActive()) {
-                m_pSound->Start();
-            }
-        }
-    } else {
-        LOGERR("Audio Service not available!");
-    }
-
-    // Allocate buffers on heap to prevent stack overflow
-    unsigned int total_frames = DAC_BUFFER_SIZE_FRAMES; // Default
-    if (m_pSound) {
-        total_frames = m_pSound->GetQueueSizeFrames();
-    }
-    m_WriteChunk = new u8[total_frames * BYTES_PER_FRAME];
-    m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
-
-    memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
-    memset(m_ReadBuffer, 0, AUDIO_BUFFER_SIZE);
+    // Sound device is now retrieved in Run(), not Constructor.
+    m_pSound = nullptr;
 
     SetName("cdplayer");
 }
@@ -98,8 +77,12 @@ CCDPlayer::~CCDPlayer(void) {
 }
 
 boolean CCDPlayer::Initialize() {
-    // Initialization is now mostly done in constructor via AudioService
-    return (m_pSound != nullptr);
+    // Initialization is deferred
+    return true;
+}
+
+void CCDPlayer::EnsureAudioInitialized() {
+    m_bAudioInitRequested = true;
 }
 
 boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
@@ -316,21 +299,42 @@ void CCDPlayer::Stop(void) {
 void CCDPlayer::Run(void) {
     LOGNOTE("CD Player Run Loop started");
     
-    if (!m_pSound) {
-        LOGERR("No sound device, terminating run loop");
-        return;
-    }
-
-    unsigned int total_frames = m_pSound->GetQueueSizeFrames();
-    LOGNOTE("CD Player Run Loop initialized. Queue Size is %d frames", total_frames);
-
     while (!m_bStop) {
+        // STATE 1: Wait for audio initialization
+        if (!m_pSound) {
+            // Check if init is requested or if service is already initialized
+            // (Service might be init from previous run, or requested by OnActivate)
+            if (m_bAudioInitRequested || (m_pAudioService && m_pAudioService->IsInitialized())) {
+                if (m_pAudioService) {
+                    m_pAudioService->Initialize(); // Safe to call multiple times
+                    m_pSound = m_pAudioService->GetSoundDevice();
+                    if (m_pSound) {
+                        m_pSound->Start();
+                        // Allocate buffers now that we have sound device info
+                        unsigned int total_frames = m_pSound->GetQueueSizeFrames();
+                        m_WriteChunk = new u8[total_frames * BYTES_PER_FRAME];
+                        m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
+                        memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
+                        memset(m_ReadBuffer, 0, AUDIO_BUFFER_SIZE);
+                        LOGNOTE("CD Player Audio Initialized. Queue Size %d", total_frames);
+                    } else {
+                        LOGERR("Failed to get sound device");
+                    }
+                }
+                m_bAudioInitRequested = false;
+            } else {
+                // Wait for init request
+                CScheduler::Get()->Yield();
+                continue;
+            }
+        }
         // STATE 3: Normal operation - seeking
         if (state == SEEKING || state == SEEKING_PLAYING) {
             LOGNOTE("Seeking to sector %u (byte %u)", address, unsigned(address * SECTOR_SIZE));
             u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
 
             // When we seek, the contents of our read and write buffer are now invalid.
+            unsigned int total_frames = m_pSound->GetQueueSizeFrames();
             memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
             m_BufferBytesValid = 0;
             m_BufferReadPos = 0;
@@ -392,6 +396,10 @@ void CCDPlayer::Run(void) {
 
             // Feed the sound device from our buffer, if we have valid data.
             if (m_BufferBytesValid > 0 && state == PLAYING) {
+                if (!m_pSound->IsActive()) {
+                    // If sound was stopped (e.g. overflow/underflow or external), restart it
+                    m_pSound->Start();
+                }
                 unsigned int available_queue_size = m_pSound->GetQueueFramesAvail();
                 unsigned int bytes_for_sound_device = available_queue_size * BYTES_PER_FRAME;
 

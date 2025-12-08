@@ -261,17 +261,9 @@ TShutdownMode CKernel::Run(void)
     }
 
     // Initialize the Audio Service
-    CAudioService *pAudioService = new CAudioService(&m_Interrupt);
-    if (pAudioService->Initialize())
-    {
-        LOGNOTE("Started Audio Service");
-    }
-    else
-    {
-        LOGERR("Failed to start Audio Service");
-        delete pAudioService;
-        pAudioService = nullptr;
-    }
+    // Initialization is deferred until USB activation
+    new CAudioService(&m_Interrupt);
+    LOGNOTE("Started Audio Service");
 
     // Mount images partition for normal operation
     if (f_mount(&m_ImagesFileSystem, IMAGESDRIVE, 1) != FR_OK)

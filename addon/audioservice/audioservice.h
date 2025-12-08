@@ -35,6 +35,7 @@ public:
     ~CAudioService(void);
 
     boolean Initialize();
+    boolean IsInitialized(void) const;
 
     CSoundBaseDevice *GetSoundDevice(void) const;
     static CAudioService *Get(void);
@@ -44,6 +45,7 @@ private:
     CI2CMaster m_I2CMaster;
     CSoundBaseDevice *m_pSound;
     CScreenDevice *m_pHDMIScreen;
+    boolean m_bInitialized;
     static CAudioService *s_pThis;
 };
 
