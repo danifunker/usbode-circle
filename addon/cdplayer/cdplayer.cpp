@@ -54,6 +54,11 @@ CCDPlayer::CCDPlayer()
 boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     LOGNOTE("CD Player setting device (old=%p, new=%p, state=%u, addr=%u, end=%u)", 
             m_pBinFileDevice, pBinFileDevice, state, address, end_address);
+
+    if (m_pAudioService) {
+        LOGNOTE("Stopping audio service...");
+        m_pAudioService->Stop();
+    }
     
     // CRITICAL: Stop any active playback before device swap
     if (state == PLAYING || state == PAUSED || state == SEEKING_PLAYING || state == SEEKING) {
