@@ -20,21 +20,15 @@
 #define _ccdplayer_h
 
 #include <circle/logger.h>
-#include <circle/machineinfo.h>
 #include <circle/sched/synchronizationevent.h>
 #include <circle/sched/task.h>
-#include <circle/sound/hdmisoundbasedevice.h>
-#include <circle/sound/i2ssoundbasedevice.h>
-#include <circle/sound/pwmsoundbasedevice.h>
-#include <circle/sound/usbsoundbasedevice.h>
-#include <circle/new.h>
-#include <circle/time.h>
-#include <circle/timer.h>
+#include <circle/sound/soundbasedevice.h>
 #include <circle/types.h>
 #include <circle/util.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
 #include <discimage/imagedevice.h>
+#include <audioservice/audioservice.h>
 
 #define SECTOR_SIZE 2352
 #define BATCH_SIZE 16 
@@ -43,23 +37,13 @@
 #define DAC_BUFFER_SIZE_FRAMES (FRAMES_PER_SECTOR * BATCH_SIZE)
 #define DAC_BUFFER_SIZE_BYTES (DAC_BUFFER_SIZE_FRAMES * BYTES_PER_FRAME)
 
-#define SOUND_CHUNK_SIZE      (384 * 10)
-#define SAMPLE_RATE 44100
-#define WRITE_CHANNELS 2  // 1: Mono, 2: Stereo
-#define FORMAT SoundFormatSigned16
-#define DAC_I2C_ADDRESS 0
-
-#define VOLUME_SCALE_BITS 12 // 1.0 = 4096
-#define VOLUME_STEPS 16
-
 #define AUDIO_BUFFER_SIZE  DAC_BUFFER_SIZE_FRAMES * BYTES_PER_FRAME
 
 class CCDPlayer : public CTask {
    public:
-    CCDPlayer(const char *pSoundDevice);
+    CCDPlayer(void);
     ~CCDPlayer(void);
     boolean Initialize();
-    void EnsureAudioInitialized();
     boolean SetDevice(IImageDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();
@@ -91,11 +75,7 @@ class CCDPlayer : public CTask {
     void ScaleVolume(u8 *buffer, u32 byteCount);
     
    private:
-    const char *m_pSoundDevice;
-    CI2CMaster m_I2CMaster;
-    CInterruptSystem m_Interrupt;
-    CSynchronizationEvent m_Event;
-    static CCDPlayer *s_pThis;
+    CAudioService *m_pAudioService;
     CSoundBaseDevice *m_pSound;
     IImageDevice *m_pBinFileDevice;
     u32 address;
@@ -103,9 +83,8 @@ class CCDPlayer : public CTask {
     PlayState state;
     u8 volumeByte = 255;
     u8 defaultVolumeByte = 255;
-    boolean m_bAudioInitialized = false;  // NEW
 
-    u8 *m_ReadBuffer;  // CHANGED: removed = new u8[AUDIO_BUFFER_SIZE]
+    u8 *m_ReadBuffer;
     u8 *m_WriteChunk;
     unsigned int m_BufferBytesValid = 0;
     unsigned int m_BufferReadPos = 0;

@@ -47,6 +47,7 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(USBODEHOME)/addon/cueparser/libcueparser.a \
 	$(USBODEHOME)/addon/ftpserver/libftpserver.a \
 	$(USBODEHOME)/addon/cdplayer/libcdplayer.a \
+	$(USBODEHOME)/addon/audioservice/libaudioservice.a \
 	$(USBODEHOME)/addon/scsitbservice/libscsitbservice.a \
 	$(USBODEHOME)/addon/cdromservice/libcdromservice.a \
 	$(USBODEHOME)/addon/sdcardservice/libsdcardservice.a \

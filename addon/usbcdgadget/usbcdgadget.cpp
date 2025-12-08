@@ -459,11 +459,20 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
              "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",
              dev, m_pDevice, (int)m_nState);
 
-    CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
-    if (cdplayer)
+    // Destroy existing CDPlayer instance to ensure clean state and fresh buffers
+    if (m_pCDPlayer)
     {
-        cdplayer->SetDevice(dev);
-        MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Destroying existing CDPlayer instance");
+        delete m_pCDPlayer;
+        m_pCDPlayer = nullptr;
+    }
+
+    // Create new CDPlayer instance
+    m_pCDPlayer = new CCDPlayer();
+    if (m_pCDPlayer)
+    {
+        m_pCDPlayer->SetDevice(dev);
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Created new CDPlayer and passed device");
     }
 
     boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
@@ -724,8 +733,8 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
     {
         ModePage0x0EData *modePage = (ModePage0x0EData *)(m_OutBuffer + 8);
         MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
-        CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
-        if (cdplayer)
+
+        if (m_pCDPlayer)
         {
 
             // Descent 2 sets the volume weird. For each volume change, it sends
@@ -737,14 +746,14 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
             // So, we'll pick the minimum of the two
 
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume");
-            cdplayer->SetVolume(
+            m_pCDPlayer->SetVolume(
                 modePage->Output0Volume < modePage->Output1Volume
                     ? modePage->Output0Volume
                     : modePage->Output1Volume);
         }
         else
         {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Couldn't get CDPlayer");
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "No active CDPlayer to set volume");
         }
         break;
     }

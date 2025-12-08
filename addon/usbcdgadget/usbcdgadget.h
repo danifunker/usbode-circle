@@ -34,6 +34,7 @@
 #include <cueparser/cueparser.h>
 #include <discimage/imagedevice.h>
 #include <usbcdgadget/scsidefs.h>
+#include <cdplayer/cdplayer.h>
 
 #ifndef USB_GADGET_DEVICE_ID_CD
 #define USB_GADGET_DEVICE_ID_CD 0x1d6b
@@ -237,6 +238,7 @@ private:
     // ========================================================================
 
     IImageDevice *m_pDevice;             // Image device (Plugin System)
+    CCDPlayer *m_pCDPlayer = nullptr;    // CD Player instance
     CUSBCDGadgetEndpoint *m_pEP[NumEPs]; // Endpoint objects
 
     TCDState m_nState = Init; // SCSI command state machine

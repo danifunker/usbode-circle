@@ -33,6 +33,7 @@
 #include <configservice/configservice.h>
 #include <setupstatus/setupstatus.h>
 #include <upgradestatus/upgradestatus.h>
+#include <audioservice/audioservice.h>
 #include <circle/memory.h>
 
 #include <circle/time.h>
@@ -259,41 +260,17 @@ TShutdownMode CKernel::Run(void)
         }
     }
 
-    // Initialize the CD Player service
-    const char *pSoundDevice = m_Options.GetSoundDevice();
-
-    // Currently supporting PWM and I2S sound devices. HDMI needs more work.
-    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0)
+    // Initialize the Audio Service
+    CAudioService *pAudioService = new CAudioService(&m_Interrupt);
+    if (pAudioService->Initialize())
     {
-        unsigned int volume = config->GetDefaultVolume();
-        if (volume > 0xff)
-            volume = 0xff;
-        CCDPlayer *player = new CCDPlayer(pSoundDevice);
-        player->SetDefaultVolume((u8)volume);
-        LOGNOTE("Started the CD Player service. Default volume is %d", volume);
+        LOGNOTE("Started Audio Service");
     }
-
-    if (strcmp(pSoundDevice, "sndhdmi") == 0)
+    else
     {
-        // Initialize basic HDMI display to enable audio
-        // Use Circle's screen device to activate HDMI
-        CScreenDevice *hdmiScreen = new CScreenDevice(1920, 1080); // false = no console output
-        if (hdmiScreen->Initialize())
-        {
-            LOGNOTE("HDMI display initialized for audio support");
-
-            unsigned int volume = config->GetDefaultVolume();
-            if (volume > 0xff)
-                volume = 0xff;
-            CCDPlayer *player = new CCDPlayer(pSoundDevice);
-            player->SetDefaultVolume((u8)volume);
-            LOGNOTE("Started CD Player with HDMI audio. Default volume is %d", volume);
-        }
-        else
-        {
-            LOGERR("Failed to initialize HDMI display - HDMI audio not available");
-            LOGNOTE("Consider using PWM or I2S audio instead");
-        }
+        LOGERR("Failed to start Audio Service");
+        delete pAudioService;
+        pAudioService = nullptr;
     }
 
     // Mount images partition for normal operation

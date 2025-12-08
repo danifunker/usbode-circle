@@ -54,13 +54,6 @@ void CUSBCDGadgetEndpoint::OnActivate (void)
 	{
 		m_pGadget->OnActivate();
 	}
-    CCDPlayer *cdplayer = (CCDPlayer *) CScheduler::Get()->GetTask("cdplayer");
-    if (cdplayer) {
-        MLOGNOTE("dwgadget", "Initializing I2S audio after endpoint activation");
-        cdplayer->EnsureAudioInitialized();
-    } else {
-        MLOGNOTE("dwgadget", "WARNING: CD Player not found!");
-    }    
 }
 
 void CUSBCDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
