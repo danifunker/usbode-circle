@@ -54,6 +54,7 @@ private:
     u8 m_Volume;
     u8 m_DefaultVolume;
     boolean m_bAudioInitialized;
+    volatile boolean m_bStartRequested;
 };
 
 #endif

@@ -15,7 +15,8 @@ CAudioService::CAudioService(const char *pSoundDevice, CInterruptSystem *pInterr
       m_pSound(nullptr),
       m_Volume(255),
       m_DefaultVolume(255),
-      m_bAudioInitialized(false)
+      m_bAudioInitialized(false),
+      m_bStartRequested(false)
 {
     SetName(AUDIO_SERVICE_NAME);
 }
@@ -63,19 +64,9 @@ boolean CAudioService::Initialize()
 
 void CAudioService::EnsureAudioInitialized()
 {
-    if (m_bAudioInitialized) {
-        return;
-    }
-
-    if (m_pSound && !m_pSound->IsActive()) {
-        if (m_pSound->Start()) {
-            m_bAudioInitialized = true;
-            LOGNOTE("AudioService: Audio initialized and started");
-        } else {
-            LOGERR("AudioService: Failed to start sound device");
-        }
-    } else if (m_pSound && m_pSound->IsActive()) {
-         m_bAudioInitialized = true;
+    // Signal the run loop to perform initialization safely in task context
+    if (!m_bAudioInitialized) {
+        m_bStartRequested = true;
     }
 }
 
@@ -158,6 +149,32 @@ void CAudioService::ScaleVolume(u8 *buffer, u32 byteCount)
 void CAudioService::Run(void)
 {
     while (1) {
-        CScheduler::Get()->MsSleep(1000);
+        // Handle deferred initialization request
+        if (m_bStartRequested && !m_bAudioInitialized) {
+            LOGNOTE("AudioService: Processing start request...");
+
+            if (m_pSound) {
+                if (m_pSound->IsActive()) {
+                     m_bAudioInitialized = true;
+                     m_bStartRequested = false;
+                     LOGNOTE("AudioService: Audio already active.");
+                } else {
+                    if (m_pSound->Start()) {
+                        m_bAudioInitialized = true;
+                        m_bStartRequested = false;
+                        LOGNOTE("AudioService: Audio initialized and started successfully.");
+                    } else {
+                        LOGERR("AudioService: Failed to start sound device.");
+                        // Keep m_bStartRequested true? Or retry later?
+                        // For now, let's reset it to prevent log spam, maybe CCDPlayer will ask again via EnsureAudioInitialized
+                        m_bStartRequested = false;
+                    }
+                }
+            } else {
+                m_bStartRequested = false;
+            }
+        }
+
+        CScheduler::Get()->MsSleep(100);
     }
 }
