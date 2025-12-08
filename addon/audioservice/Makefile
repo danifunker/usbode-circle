@@ -7,12 +7,16 @@ STDLIBHOME = $(USBODEHOME)/circle-stdlib
 NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
-OBJS	= audioservice.o
+OBJS    = audioservice.o
+
+libaudioservice.a: $(OBJS)
+	@echo "  AR    $@"
+	@rm -f $@
+	@$(AR) cr $@ $(OBJS)
 
 include $(STDLIBHOME)/Config.mk
-
-CFLAGS += -I $(NEWLIBDIR)/include -I $(STDDEF_INCPATH) -I $(STDLIBHOME)/include -I $(CIRCLEHOME)/include -I $(USBODEHOME)/addon
-
 include $(CIRCLEHOME)/Rules.mk
+
+CFLAGS += -I ../../addon
 
 -include $(DEPS)
