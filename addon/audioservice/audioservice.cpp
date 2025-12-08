@@ -19,11 +19,8 @@
 #include "audioservice.h"
 #include <circle/logger.h>
 #include <circle/machineinfo.h>
-#include <circle/sound/hdmisoundbasedevice.h>
-#include <circle/sound/i2ssoundbasedevice.h>
-#include <circle/sound/pwmsoundbasedevice.h>
-#include <circle/sound/usbsoundbasedevice.h>
 #include <configservice/configservice.h>
+#include <circle/util.h>
 
 LOGMODULE("audioservice");
 
@@ -75,7 +72,7 @@ boolean CAudioService::Initialize()
     }
 
     ConfigService *config = ConfigService::Get();
-    const char *pSoundDevice = config->GetSoundDevice();
+    const char *pSoundDevice = config->GetSoundDev();
 
     if (strcmp(pSoundDevice, "sndpwm") == 0)
     {

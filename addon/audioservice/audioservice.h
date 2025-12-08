@@ -20,9 +20,13 @@
 #define _audioservice_h
 
 #include <circle/interrupt.h>
-#include <circle/i2c.h>
+#include <circle/i2cmaster.h>
 #include <circle/sound/soundbasedevice.h>
 #include <circle/screen.h>
+#include <circle/sound/hdmisoundbasedevice.h>
+#include <circle/sound/i2ssoundbasedevice.h>
+#include <circle/sound/pwmsoundbasedevice.h>
+#include <circle/sound/usbsoundbasedevice.h>
 
 class CAudioService
 {
