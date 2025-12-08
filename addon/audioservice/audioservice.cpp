@@ -43,7 +43,8 @@ CAudioService::CAudioService(CInterruptSystem *pInterruptSystem)
       m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE),
       m_pSound(nullptr),
       m_pHDMIScreen(nullptr),
-      m_bInitialized(FALSE)
+      m_bInitialized(FALSE),
+      m_bInitRequested(FALSE)
 {
     s_pThis = this;
 }
@@ -66,6 +67,16 @@ CAudioService::~CAudioService(void)
 boolean CAudioService::IsInitialized(void) const
 {
     return m_bInitialized;
+}
+
+void CAudioService::RequestInitialization(void)
+{
+    m_bInitRequested = TRUE;
+}
+
+boolean CAudioService::IsInitRequested(void) const
+{
+    return m_bInitRequested;
 }
 
 boolean CAudioService::Initialize()

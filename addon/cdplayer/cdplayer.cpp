@@ -305,10 +305,17 @@ void CCDPlayer::Run(void) {
     while (!m_bStop) {
         // STATE 1: Wait for audio initialization
         if (!m_pSound) {
-            // Wait for audio service to be initialized by the USB gadget endpoint
-            if (m_pAudioService && m_pAudioService->IsInitialized()) {
-                m_pSound = m_pAudioService->GetSoundDevice();
-                if (m_pSound) {
+            // Wait for audio service request or existing initialization
+            if (m_pAudioService) {
+                if (m_pAudioService->IsInitRequested() || m_pAudioService->IsInitialized()) {
+                    if (!m_pAudioService->IsInitialized()) {
+                        m_pAudioService->Initialize();
+                    }
+                    m_pSound = m_pAudioService->GetSoundDevice();
+                }
+            }
+
+            if (m_pSound) {
                     if (!m_pSound->IsActive()) {
                         m_pSound->Start();
                     }
@@ -320,10 +327,14 @@ void CCDPlayer::Run(void) {
                     memset(m_ReadBuffer, 0, AUDIO_BUFFER_SIZE);
                     LOGNOTE("CD Player Audio Initialized. Queue Size %d", total_frames);
                 } else {
-                    LOGERR("Failed to get sound device");
+                    // Initialization requested but failed or returned null?
+                    // Keep waiting or log error?
+                    // LOGERR("Failed to get sound device");
                 }
-            } else {
-                // Wait for AudioService to be initialized
+            }
+
+            if (!m_pSound) {
+                // Wait for AudioService to be initialized/requested
                 CScheduler::Get()->Yield();
                 continue;
             }

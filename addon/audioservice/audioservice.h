@@ -36,6 +36,8 @@ public:
 
     boolean Initialize();
     boolean IsInitialized(void) const;
+    void RequestInitialization(void);
+    boolean IsInitRequested(void) const;
 
     CSoundBaseDevice *GetSoundDevice(void) const;
     static CAudioService *Get(void);
@@ -46,6 +48,7 @@ private:
     CSoundBaseDevice *m_pSound;
     CScreenDevice *m_pHDMIScreen;
     boolean m_bInitialized;
+    volatile boolean m_bInitRequested;
     static CAudioService *s_pThis;
 };
 

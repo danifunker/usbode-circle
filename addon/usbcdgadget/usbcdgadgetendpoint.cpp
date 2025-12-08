@@ -54,12 +54,13 @@ void CUSBCDGadgetEndpoint::OnActivate (void)
 	{
 		m_pGadget->OnActivate();
 
-        // Initialize Audio Service here (deferred init)
+        // Request Audio Service initialization (deferred init)
         // Only on OUT endpoint to prevent race conditions and double-init
+        // Initialization must happen in Task context (CDPlayer), not IRQ (Endpoint)
         CAudioService *pAudio = CAudioService::Get();
         if (pAudio) {
-            MLOGNOTE("dwgadget", "Initializing Audio Service after endpoint activation");
-            pAudio->Initialize();
+            MLOGNOTE("dwgadget", "Requesting Audio Service Init after endpoint activation");
+            pAudio->RequestInitialization();
         } else {
             MLOGNOTE("dwgadget", "WARNING: Audio Service not found!");
         }
