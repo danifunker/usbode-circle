@@ -27,7 +27,7 @@
 #include <circle/sysconfig.h>
 #include <circle/util.h>
 #include <stddef.h>
-#include <cdplayer/cdplayer.h>
+#include <audioservice/audioservice.h>
 #include <circle/sched/scheduler.h>
 
 #define MLOGNOTE(From,...)		//CLogger::Get ()->Write (From, LogNotice, __VA_ARGS__)
@@ -54,12 +54,14 @@ void CUSBCDGadgetEndpoint::OnActivate (void)
 	{
 		m_pGadget->OnActivate();
 	}
-    CCDPlayer *cdplayer = m_pGadget->GetCDPlayer();
-    if (cdplayer) {
-        MLOGNOTE("dwgadget", "Initializing I2S audio after endpoint activation");
-        cdplayer->EnsureAudioInitialized();
+
+    // Initialize Audio Service here (deferred init)
+    CAudioService *pAudio = CAudioService::Get();
+    if (pAudio) {
+        MLOGNOTE("dwgadget", "Initializing Audio Service after endpoint activation");
+        pAudio->Initialize();
     } else {
-        MLOGNOTE("dwgadget", "WARNING: CD Player not found!");
+        MLOGNOTE("dwgadget", "WARNING: Audio Service not found!");
     }
 }
 

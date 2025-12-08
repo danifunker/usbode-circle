@@ -44,7 +44,6 @@ class CCDPlayer : public CTask {
     CCDPlayer(void);
     ~CCDPlayer(void);
     boolean Initialize();
-    void EnsureAudioInitialized();
     boolean SetDevice(IImageDevice *pBinFileDevice);
     boolean Pause();
     boolean Resume();
@@ -84,7 +83,6 @@ class CCDPlayer : public CTask {
     u8 volumeByte = 255;
     u8 defaultVolumeByte = 255;
     volatile boolean m_bStop;
-    volatile boolean m_bAudioInitRequested;
 
     u8 *m_ReadBuffer;
     u8 *m_WriteChunk;
