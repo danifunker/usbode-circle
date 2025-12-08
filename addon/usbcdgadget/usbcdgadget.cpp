@@ -455,16 +455,21 @@ void CUSBCDGadget::AddEndpoints(void)
 // must set device before usb activation
 void CUSBCDGadget::SetDevice(IImageDevice *dev)
 {
-    MLOGNOTE("CUSBCDGadget::SetDevice",
-             "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",
-             dev, m_pDevice, (int)m_nState);
-
+    // Clear all caches before loading a new disc
+    DataMemBarrier();
+    CleanDataCache();
+    InvalidateDataCache();
+    DataMemBarrier();
     CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+
     if (cdplayer)
     {
         cdplayer->SetDevice(dev);
-        MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
     }
+
+    MLOGNOTE("CUSBCDGadget::SetDevice",
+             "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",
+             dev, m_pDevice, (int)m_nState);
 
     boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
 
@@ -503,6 +508,14 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     {
         CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
                         "Initial load: Deferring media ready state to OnActivate()");
+    }
+
+    if (cdplayer)
+    {
+        // Try to set device in CD player with cache management a couple of times to reduce clicking
+        CTimer::Get()->MsDelay(100); // Allow cache operations to complete
+        cdplayer->SetDevice(dev);
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
     }
 
     u32 max_lba = CDUtils::GetLeadoutLBA(this);
