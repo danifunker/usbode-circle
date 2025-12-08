@@ -34,6 +34,7 @@
 #include <cueparser/cueparser.h>
 #include <discimage/imagedevice.h>
 #include <usbcdgadget/scsidefs.h>
+#include <cdplayer/cdplayer.h>
 
 #ifndef USB_GADGET_DEVICE_ID_CD
 #define USB_GADGET_DEVICE_ID_CD 0x1d6b
@@ -91,6 +92,9 @@ protected:
     // ========================================================================
     // CDWUSBGadget Overrides
     // ========================================================================
+
+    /// \brief Get CDPlayer instance
+    CCDPlayer *GetCDPlayer() { return m_pCDPlayer; }
 
     /// \brief Get device-specific descriptor
     /// \param wValue Parameter from setup packet (descriptor type (MSB) and index (LSB))
@@ -237,6 +241,7 @@ private:
     // ========================================================================
 
     IImageDevice *m_pDevice;             // Image device (Plugin System)
+    CCDPlayer *m_pCDPlayer = nullptr;    // CD Player instance
     CUSBCDGadgetEndpoint *m_pEP[NumEPs]; // Endpoint objects
 
     TCDState m_nState = Init; // SCSI command state machine

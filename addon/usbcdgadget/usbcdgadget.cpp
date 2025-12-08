@@ -459,11 +459,23 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
              "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",
              dev, m_pDevice, (int)m_nState);
 
+    // Destroy existing CDPlayer instance to ensure clean state and fresh buffers
     CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
     if (cdplayer)
     {
-        cdplayer->SetDevice(dev);
-        MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Destroying existing CDPlayer instance");
+        cdplayer->Stop();
+        cdplayer->WaitForTermination();
+        delete cdplayer;
+        m_pCDPlayer = nullptr;
+    }
+
+    // Create new CDPlayer instance
+    m_pCDPlayer = new CCDPlayer();
+    if (m_pCDPlayer)
+    {
+        m_pCDPlayer->SetDevice(dev);
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Created new CDPlayer and passed device");
     }
 
     boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
@@ -724,6 +736,7 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
     {
         ModePage0x0EData *modePage = (ModePage0x0EData *)(m_OutBuffer + 8);
         MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
+
         CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
         if (cdplayer)
         {
@@ -744,7 +757,7 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
         }
         else
         {
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Couldn't get CDPlayer");
+            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "No active CDPlayer to set volume");
         }
         break;
     }

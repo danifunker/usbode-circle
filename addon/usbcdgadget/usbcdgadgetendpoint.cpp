@@ -27,7 +27,7 @@
 #include <circle/sysconfig.h>
 #include <circle/util.h>
 #include <stddef.h>
-#include <cdplayer/cdplayer.h>
+#include <audioservice/audioservice.h>
 #include <circle/sched/scheduler.h>
 
 #define MLOGNOTE(From,...)		//CLogger::Get ()->Write (From, LogNotice, __VA_ARGS__)
@@ -53,14 +53,18 @@ void CUSBCDGadgetEndpoint::OnActivate (void)
 	if (GetDirection () == DirectionOut)
 	{
 		m_pGadget->OnActivate();
+
+        // Request Audio Service initialization (deferred init)
+        // Only on OUT endpoint to prevent race conditions and double-init
+        // Initialization must happen in Task context (CDPlayer), not IRQ (Endpoint)
+        CAudioService *pAudio = (CAudioService *) CScheduler::Get()->GetTask("audioservice");
+        if (pAudio) {
+            MLOGNOTE("dwgadget", "Requesting Audio Service Init after endpoint activation");
+            pAudio->RequestInitialization();
+        } else {
+            MLOGNOTE("dwgadget", "WARNING: Audio Service not found!");
+        }
 	}
-    CCDPlayer *cdplayer = (CCDPlayer *) CScheduler::Get()->GetTask("cdplayer");
-    if (cdplayer) {
-        MLOGNOTE("dwgadget", "Initializing I2S audio after endpoint activation");
-        cdplayer->EnsureAudioInitialized();
-    } else {
-        MLOGNOTE("dwgadget", "WARNING: CD Player not found!");
-    }    
 }
 
 void CUSBCDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
