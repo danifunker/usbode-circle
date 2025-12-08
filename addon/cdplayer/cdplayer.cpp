@@ -1,7 +1,7 @@
 //
 // A CD Player for USBODE
 //
-// Copyright (C) 2025 Ian Cass
+// Copyright (C) 2025 Ian Cass, Dani Sarfati
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -58,8 +58,14 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     } else {
         state = NONE;
     }
-    
-    // Reset ALL address pointers - critical for preventing reads to invalid LBAs
+
+    // 1. STOP: Reset the physical Audio Driver to prevent DMA desync
+    if (m_pSound && m_pSound->IsActive()) {
+        m_pSound->Cancel();
+        CScheduler::Get()->MsSleep(50); // Give hardware time to settle
+    }
+
+    // 2. RESET: Reset ALL address pointers
     address = 0;
     end_address = 0;
     
@@ -73,64 +79,76 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
         memset(m_ReadBuffer, 0, AUDIO_BUFFER_SIZE);
     }
     if (m_WriteChunk) {
-        // WriteChunk size depends on total_frames, but we can at least clear what we know
         memset(m_WriteChunk, 0, DAC_BUFFER_SIZE_BYTES);
     }
     
     m_pBinFileDevice = pBinFileDevice;
     
+    // 3. START: Restart the Audio Driver (Resets internal DMA pointers to 0)
+    if (m_pSound) {
+        if (!m_pSound->Start()) {
+            LOGERR("Failed to restart sound device after swap");
+        }
+    }
+    
     LOGNOTE("CD Player device set complete: state=%u, device=%p", state, m_pBinFileDevice);
     return true;
 }
 
-boolean CCDPlayer::Initialize() {
-    LOGNOTE("CD Player Initializing I2CMaster");
-    m_I2CMaster.Initialize();
+// boolean CCDPlayer::Initialize() {
+//     LOGNOTE("CD Player Initializing I2CMaster");
+//     m_I2CMaster.Initialize();
 
-    if (strcmp(m_pSoundDevice, "sndpwm") == 0) {
-        m_pSound = new CPWMSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-        LOGNOTE("CD Player Initializing sndpwm");
-    } else if (strcmp(m_pSoundDevice, "sndi2s") == 0) {
-        m_pSound = new CI2SSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE, FALSE,
-                                           &m_I2CMaster, DAC_I2C_ADDRESS);
-        LOGNOTE("CD Player Initializing sndi2c");
-    } else if (strcmp(m_pSoundDevice, "sndhdmi") == 0) {
-        m_pSound = new CHDMISoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-        LOGNOTE("CD Player Initializing sndhdmi");
-    }
-#if RASPPI >= 4
-    else if (strcmp(m_pSoundDevice, "sndusb") == 0) {
-        m_pSound = new CUSBSoundBaseDevice(SAMPLE_RATE);
-        LOGNOTE("CD Player Initializing sndusb");
-    }
-#endif
-    /*
-            else
-            {
-     #ifdef USE_VCHIQ_SOUND
-                    m_pSound = new CVCHIQSoundBaseDevice (&m_VCHIQ, SAMPLE_RATE, SOUND_CHUNK_SIZE,
-                                            (TVCHIQSoundDestination) m_Options.GetSoundOption ());
-     #else
-                    m_pSound = new CPWMSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-     #endif
-            }
-    */
+//     if (strcmp(m_pSoundDevice, "sndpwm") == 0) {
+//         m_pSound = new CPWMSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
+//         LOGNOTE("CD Player Initializing sndpwm");
+//     } else if (strcmp(m_pSoundDevice, "sndi2s") == 0) {
+//         m_pSound = new CI2SSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE, FALSE,
+//                                            &m_I2CMaster, DAC_I2C_ADDRESS);
+//         LOGNOTE("CD Player Initializing sndi2c");
+//     } else if (strcmp(m_pSoundDevice, "sndhdmi") == 0) {
+//         m_pSound = new CHDMISoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
+//         LOGNOTE("CD Player Initializing sndhdmi");
+//     }
+// #if RASPPI >= 4
+//     else if (strcmp(m_pSoundDevice, "sndusb") == 0) {
+//         m_pSound = new CUSBSoundBaseDevice(SAMPLE_RATE);
+//         LOGNOTE("CD Player Initializing sndusb");
+//     }
+// #endif
+//     /*
+//             else
+//             {
+//      #ifdef USE_VCHIQ_SOUND
+//                     m_pSound = new CVCHIQSoundBaseDevice (&m_VCHIQ, SAMPLE_RATE, SOUND_CHUNK_SIZE,
+//                                             (TVCHIQSoundDestination) m_Options.GetSoundOption ());
+//      #else
+//                     m_pSound = new CPWMSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
+//      #endif
+//             }
+//     */
 
-    // configure sound device
-    LOGNOTE("CD Player Initializing. Allocating queue size %d frames", DAC_BUFFER_SIZE_FRAMES);
-    if (!m_pSound->AllocateQueueFrames(DAC_BUFFER_SIZE_FRAMES)) {
-        LOGERR("Cannot allocate sound queue");
-        // TODO: handle error condition
-    }
-    m_pSound->SetWriteFormat(FORMAT, WRITE_CHANNELS);
-    if (!m_pSound->Start()) {
-        LOGERR("Couldn't start the sound device");
-    }
+//     // configure sound device
+//     LOGNOTE("CD Player Initializing. Allocating queue size %d frames", DAC_BUFFER_SIZE_FRAMES);
+//     if (!m_pSound->AllocateQueueFrames(DAC_BUFFER_SIZE_FRAMES)) {
+//         LOGERR("Cannot allocate sound queue");
+//         // TODO: handle error condition
+//     }
+//     m_pSound->SetWriteFormat(FORMAT, WRITE_CHANNELS);
+//     if (!m_pSound->Start()) {
+//         LOGERR("Couldn't start the sound device");
+//     }
 
-    return TRUE;
-}
+//     return TRUE;
+// }
 
 void CCDPlayer::EnsureAudioInitialized() {
+    // CRITICAL FIX: Prevent double-initialization crash
+    if (m_pSound != nullptr) {
+        m_bAudioInitialized = true;
+        return;
+    }
+
     if (m_bAudioInitialized) {
         return;
     }
@@ -214,6 +232,11 @@ boolean CCDPlayer::Pause() {
 
     LOGNOTE("CD Player pausing");
     state = PAUSED;
+
+    // STOP ENGINE: Prevent DMA underrun while paused
+    if (m_pSound && m_pSound->IsActive()) {
+        m_pSound->Cancel();
+    }
     return true;
 }
 
@@ -225,6 +248,11 @@ boolean CCDPlayer::Resume() {
     }
 
     LOGNOTE("CD Player resuming");
+    
+    // RESTART ENGINE: Reset pointers and prepare for data
+    if (m_pSound && !m_pSound->IsActive()) {
+        m_pSound->Start();
+    }
     state = PLAYING;
     return true;
 }
@@ -256,15 +284,14 @@ u32 CCDPlayer::GetCurrentAddress() {
 // Loads a sample from "system/test.pcm" and plays it
 // Returns false if there was any problem
 boolean CCDPlayer::SoundTest() {
+    // 1. Sanity Checks
     if (!m_pSound) {
         LOGERR("Sound Test: Can't perform test, sound is not active");
         return false;
     }
-    if (!m_pSound->IsActive()) {
-        LOGERR("Sound Test: Can't perform test, sound is in use");
-        return false;
-    }
+    // Note: We don't check IsActive() here because we will force a restart below
 
+    // 2. Open File
     FIL file;
     FRESULT Result = f_open(&file, "system/test.pcm", FA_READ);
     if (Result != FR_OK) {
@@ -272,39 +299,88 @@ boolean CCDPlayer::SoundTest() {
         return false;
     }
 
-    unsigned int total_frames = m_pSound->GetQueueSizeFrames();
+    // 3. Get File Size and Allocate RAM
+    // f_size is a standard FatFS macro. If your version lacks it, use file.fsize
+    unsigned int nTotalBytes = f_size(&file); 
+    
+    if (nTotalBytes == 0) {
+        LOGERR("Sound Test: File is empty");
+        f_close(&file);
+        return false;
+    }
+
+    LOGNOTE("Sound Test: Loading %u bytes into RAM...", nTotalBytes);
+
+    // Allocate aligned memory (new[] provides cache alignment on Circle)
+    u8 *pWholeFileBuffer = new u8[nTotalBytes];
+    if (!pWholeFileBuffer) {
+        LOGERR("Sound Test: Out of memory! (Tried to alloc %u bytes)", nTotalBytes);
+        f_close(&file);
+        return false;
+    }
+
+    // 4. Read Entire File
     UINT bytesRead = 0;
-    boolean success = false;
+    Result = f_read(&file, pWholeFileBuffer, nTotalBytes, &bytesRead);
+    f_close(&file); // Close file immediately to free the bus
 
-    // Read sound bytes and give them to the DAC
-    for (unsigned nCount = 0; m_pSound->IsActive(); nCount++) {
-        // Get available queue size in stereo frames
-        unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
+    if (Result != FR_OK || bytesRead != nTotalBytes) {
+        LOGERR("Sound Test: Failed to read file (Read %d of %d)", bytesRead, nTotalBytes);
+        delete[] pWholeFileBuffer;
+        return false;
+    }
 
-        // Determine how many  frames (4 bytes) can fit in this free space
-        int bytes_to_read = available_queue_size * BYTES_PER_FRAME;  // 2 bytes per sample, 2 samples per frame
+    // RESET ENGINE: Ensure we are fresh before the loop starts
+    if (m_pSound->IsActive()) m_pSound->Cancel();
+    if (!m_pSound->Start()) {
+        LOGERR("Sound Test: Failed to restart audio engine");
+        delete[] pWholeFileBuffer;
+        return false;
+    }
 
-        if (bytes_to_read) {
-            if (f_read(&file, m_ReadBuffer, bytes_to_read, &bytesRead) != FR_OK) {
-                LOGERR("Sound Test: Failed to read audio data");
+    LOGNOTE("Sound Test: Load Complete. Starting RAM Playback...");
+
+    // 5. Playback Loop
+    unsigned int nOffset = 0;
+    boolean success = true;
+
+    while (nOffset < nTotalBytes && m_pSound->IsActive()) {
+        // How much space is currently in the I2S DMA ring buffer?
+        // Note: GetQueueFramesAvail returns FRAMES. Convert to BYTES.
+        unsigned int nFramesAvail = m_pSound->GetQueueSizeFrames() - m_pSound->GetQueueFramesAvail();
+        unsigned int nBytesAvail = nFramesAvail * BYTES_PER_FRAME;
+
+        // How much do we have left to write?
+        unsigned int nBytesRemaining = nTotalBytes - nOffset;
+
+        // Determine write chunk size
+        unsigned int nWriteSize = (nBytesRemaining < nBytesAvail) ? nBytesRemaining : nBytesAvail;
+
+        if (nWriteSize > 0) {
+            int nWritten = m_pSound->Write(&pWholeFileBuffer[nOffset], nWriteSize);
+
+            if (nWritten != (int)nWriteSize) {
+                LOGERR("Sound Test: Write failure or truncated! (Wrote %d expected %d)", nWritten, nWriteSize);
+                success = false;
                 break;
             }
 
-            if (bytesRead == 0) {
-                LOGNOTE("Sound test: finished successfully");
-                success = true;
-                break;
-            }
-
-            int nResult = m_pSound->Write(m_ReadBuffer, bytesRead);
-            if (nResult != (int)bytesRead) {
-                LOGERR("Sound Test: data dropped");
-                break;
-            }
+            nOffset += nWritten;
         }
+
+        // CRITICAL: Allow the scheduler to run other tasks (USB, Timers)
+        // If we don't yield, the system freezes.
         CScheduler::Get()->Yield();
     }
-    f_close(&file);
+
+    // STOP ENGINE: Prevent DMA desync after test completes
+    if (m_pSound->IsActive()) m_pSound->Cancel();
+
+    LOGNOTE("Sound Test: Playback Complete. Freeing RAM.");
+    
+    // 6. Cleanup
+    delete[] pWholeFileBuffer;
+    
     return success;
 }
 
@@ -315,6 +391,11 @@ boolean CCDPlayer::Play(u32 lba, u32 num_blocks) {
     if (m_pBinFileDevice == nullptr) {
         LOGERR("CD Player: Play requested but no device set");
         return false;
+    }
+
+    // RESTART ENGINE: Ensure audio is running (e.g. if we stopped it in PlaybackStop)
+    if (m_pSound && !m_pSound->IsActive()) {
+        m_pSound->Start();
     }
 
     address = lba;
@@ -332,9 +413,92 @@ boolean CCDPlayer::PlaybackStop() {
 
     LOGNOTE("CD Player stopping playback");
     state = STOPPED_OK;
+
+    // STOP ENGINE: Prevent DMA desync.
+    // If we leave it running without data, it will loop/desync.
+    if (m_pSound && m_pSound->IsActive()) {
+        m_pSound->Cancel();
+    }
+
     return true;
 }
 
+// Add to CCDPlayer class
+boolean CCDPlayer::SineWaveTest() {
+    if (!m_pSound) return false;
+
+    LOGNOTE("Starting Audio Integrity Test (Heartbeat)...");
+    
+    // 1. Setup Constraints
+    // We want 1 second of audio data
+    // 44100 frames * 2 channels * 2 bytes (16-bit) = 176,400 bytes
+    unsigned nFrames = 44100;
+    unsigned nChannels = 2; // Stereo
+    unsigned nBytes = nFrames * nChannels * sizeof(s16);
+
+    // 2. Allocate a buffer as Signed 16-bit integers
+    // Using 'new' ensures 64-byte alignment for DMA
+    s16 *pBuffer = new s16[nFrames * nChannels]; 
+    memset(pBuffer, 0, nBytes); // Start with silence
+
+    // 3. Generate the "Beep" (Triangle Wave)
+    // We will fill only the first 200ms (approx 8820 frames)
+    unsigned nBeepFrames = 8820;
+    
+    // Pitch: 440Hz at 44.1kHz = period of ~100 frames
+    int period = 100; 
+    int half_period = 50;
+    
+    for (unsigned i = 0; i < nBeepFrames; i++) {
+        // Simple triangle wave math: counts up then down
+        int phase = i % period;
+        int sampleVal;
+        
+        if (phase < half_period) {
+            // Ramp Up: -10000 to +10000
+            sampleVal = -10000 + (phase * 400); 
+        } else {
+            // Ramp Down: +10000 to -10000
+            sampleVal = 10000 - ((phase - half_period) * 400);
+        }
+
+        // Write to LEFT channel (Even index)
+        pBuffer[i * 2]     = (s16)sampleVal;
+        
+        // Write to RIGHT channel (Odd index)
+        pBuffer[i * 2 + 1] = (s16)sampleVal;
+    }
+
+    // RESET ENGINE: Ensure we are fresh before playing
+    if (m_pSound->IsActive()) m_pSound->Cancel();
+    if (!m_pSound->Start()) {
+        delete[] pBuffer;
+        return false;
+    }
+
+    // 4. Play the loop 5 times
+    // Pattern: [ BEEP (200ms) ....... SILENCE (800ms) ]
+    for (int loop = 0; loop < 5; loop++) {
+        
+        // We cast back to u8* or void* for the Write function
+        int written = m_pSound->Write(pBuffer, nBytes);
+        
+        if (written != (int)nBytes) {
+            LOGERR("IntegrityTest: Buffer rejected! Wrote %d of %d", written, nBytes);
+        }
+
+        // Sleep for 1s to let the buffer drain naturally
+        // This simulates the "Spacing" of the tasks without stressing the CPU
+        CScheduler::Get()->Sleep(1); 
+    }
+
+    // STOP ENGINE: Prevent DMA desync
+    if (m_pSound->IsActive()) m_pSound->Cancel();
+
+    delete[] pBuffer;
+    LOGNOTE("Integrity Test Complete");
+    return true;
+}
 
 // DACs don't support volume control, so we scale the data
 // accordingly instead
@@ -412,6 +576,12 @@ void CCDPlayer::Run(void) {
                 if (sectors_remaining == 0) {
                     LOGNOTE("Playback finished, no sectors remaining.");
                     state = STOPPED_OK;
+                    
+                    // STOP ENGINE: Prevent DMA desync when track finishes naturally
+                    if (m_pSound && m_pSound->IsActive()) {
+                        m_pSound->Cancel();
+                    }
+
                     m_BufferBytesValid = 0;
                     continue;
                 }
@@ -443,6 +613,7 @@ void CCDPlayer::Run(void) {
                     if (m_BufferBytesValid == 0) {
                        LOGNOTE("Read 0 bytes, treating as end of track.");
                        state = STOPPED_OK;
+                       if (m_pSound && m_pSound->IsActive()) m_pSound->Cancel(); // Safety stop
                     }
                 }
             }
@@ -463,12 +634,15 @@ void CCDPlayer::Run(void) {
                         m_WriteChunk[i] = m_ReadBuffer[m_BufferReadPos + i];
                     }
 
-                    ScaleVolume(m_WriteChunk, bytes_to_process);
+                    //ScaleVolume(m_WriteChunk, bytes_to_process);
+                    
 
                     int writeCount = m_pSound->Write(m_WriteChunk, bytes_to_process);
                     if (writeCount < 0) {
                          LOGERR("Error writing to sound device.");
                          state = STOPPED_ERROR;
+                         // Error state - reset engine
+                         if (m_pSound && m_pSound->IsActive()) m_pSound->Cancel();
                     } else {
                         if ((unsigned int)writeCount != bytes_to_process) {
                             LOGWARN("Truncated write to sound device. Wrote %d, expected %d", writeCount, bytes_to_process);
@@ -485,6 +659,7 @@ void CCDPlayer::Run(void) {
                         if (address >= end_address) {
                             LOGNOTE("Finished playing track range.");
                             state = STOPPED_OK;
+                            if (m_pSound && m_pSound->IsActive()) m_pSound->Cancel();
                         }
                     }
                 }

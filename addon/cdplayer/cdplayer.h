@@ -59,6 +59,7 @@ class CCDPlayer : public CTask {
     CCDPlayer(const char *pSoundDevice);
     ~CCDPlayer(void);
     boolean Initialize();
+    boolean SineWaveTest();
     void EnsureAudioInitialized();
     boolean SetDevice(IImageDevice *pBinFileDevice);
     boolean Pause();
