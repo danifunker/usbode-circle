@@ -261,39 +261,68 @@ TShutdownMode CKernel::Run(void)
 
     // Initialize the CD Player service
     const char *pSoundDevice = m_Options.GetSoundDevice();
+    CAudioService *audioService = nullptr;
+    boolean bAudioReady = false;
 
-    // Currently supporting PWM and I2S sound devices. HDMI needs more work.
-    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0)
-    {
-        unsigned int volume = config->GetDefaultVolume();
-        if (volume > 0xff)
-            volume = 0xff;
-        CCDPlayer *player = new CCDPlayer(pSoundDevice);
-        player->SetDefaultVolume((u8)volume);
-        LOGNOTE("Started the CD Player service. Default volume is %d", volume);
+    // Determine if audio service should be initialized
+    boolean bInitAudio = false;
+    if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0) {
+        bInitAudio = true;
     }
-
-    if (strcmp(pSoundDevice, "sndhdmi") == 0)
-    {
-        // Initialize basic HDMI display to enable audio
-        // Use Circle's screen device to activate HDMI
+#if RASPPI >= 4
+    else if (strcmp(pSoundDevice, "sndusb") == 0) {
+        bInitAudio = true;
+    }
+#endif
+    else if (strcmp(pSoundDevice, "sndhdmi") == 0) {
+         // Initialize basic HDMI display to enable audio
         CScreenDevice *hdmiScreen = new CScreenDevice(1920, 1080); // false = no console output
         if (hdmiScreen->Initialize())
         {
-            LOGNOTE("HDMI display initialized for audio support");
+             LOGNOTE("HDMI display initialized for audio support");
+             bInitAudio = true;
+        } else {
+             LOGERR("Failed to initialize HDMI display - HDMI audio not available");
+        }
+    }
 
+    if (bInitAudio)
+    {
+        // Initialize AudioService
+        audioService = new CAudioService(pSoundDevice, &m_Interrupt);
+        if (audioService->Initialize())
+        {
+            LOGNOTE("Initialized AudioService with %s", pSoundDevice);
+
+            // Configure volume
             unsigned int volume = config->GetDefaultVolume();
-            if (volume > 0xff)
-                volume = 0xff;
-            CCDPlayer *player = new CCDPlayer(pSoundDevice);
-            player->SetDefaultVolume((u8)volume);
-            LOGNOTE("Started CD Player with HDMI audio. Default volume is %d", volume);
+            if (volume > 0xff) volume = 0xff;
+            audioService->SetDefaultVolume((u8)volume);
+
+            // Allocate queue
+            if (audioService->AllocateQueueFrames(DAC_BUFFER_SIZE_FRAMES)) {
+                audioService->SetWriteFormat(AUDIO_FORMAT, AUDIO_CHANNELS);
+                if (audioService->Start()) {
+                    bAudioReady = true;
+                } else {
+                     LOGERR("Failed to start sound device");
+                }
+            } else {
+                LOGERR("Cannot allocate sound queue");
+            }
         }
         else
         {
-            LOGERR("Failed to initialize HDMI display - HDMI audio not available");
-            LOGNOTE("Consider using PWM or I2S audio instead");
+             LOGERR("Failed to initialize AudioService");
         }
+    }
+
+    // Start CDPlayer if AudioService is ready (or even if it's not, it might wait?)
+    // CDPlayer now depends on AudioService.
+    if (audioService)
+    {
+         CCDPlayer *player = new CCDPlayer();
+         LOGNOTE("Started the CD Player service.");
     }
 
     // Mount images partition for normal operation

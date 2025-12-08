@@ -28,10 +28,8 @@ LOGMODULE("cdplayer");
 
 CCDPlayer *CCDPlayer::s_pThis = nullptr;
 
-CCDPlayer::CCDPlayer(const char *pSoundDevice)
-    : m_pSoundDevice(pSoundDevice),
-      m_I2CMaster(CMachineInfo::Get()->GetDevice(DeviceI2CMaster), FALSE),
-      m_pSound(nullptr),   
+CCDPlayer::CCDPlayer()
+    : m_pAudioService(nullptr),
       m_pBinFileDevice(nullptr),
       address(0),
       end_address(0),
@@ -45,6 +43,12 @@ CCDPlayer::CCDPlayer(const char *pSoundDevice)
 
     LOGNOTE("CD Player starting");
     SetName("cdplayer");
+
+    // Get the Audio Service
+    m_pAudioService = (CAudioService *)CScheduler::Get()->GetTask(AUDIO_SERVICE_NAME);
+    if (!m_pAudioService) {
+        LOGERR("CD Player: Audio Service not found!");
+    }
 }
 
 boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
@@ -84,125 +88,34 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
 }
 
 boolean CCDPlayer::Initialize() {
-    LOGNOTE("CD Player Initializing I2CMaster");
-    m_I2CMaster.Initialize();
-
-    if (strcmp(m_pSoundDevice, "sndpwm") == 0) {
-        m_pSound = new CPWMSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-        LOGNOTE("CD Player Initializing sndpwm");
-    } else if (strcmp(m_pSoundDevice, "sndi2s") == 0) {
-        m_pSound = new CI2SSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE, FALSE,
-                                           &m_I2CMaster, DAC_I2C_ADDRESS);
-        LOGNOTE("CD Player Initializing sndi2c");
-    } else if (strcmp(m_pSoundDevice, "sndhdmi") == 0) {
-        m_pSound = new CHDMISoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-        LOGNOTE("CD Player Initializing sndhdmi");
-    }
-#if RASPPI >= 4
-    else if (strcmp(m_pSoundDevice, "sndusb") == 0) {
-        m_pSound = new CUSBSoundBaseDevice(SAMPLE_RATE);
-        LOGNOTE("CD Player Initializing sndusb");
-    }
-#endif
-    /*
-            else
-            {
-     #ifdef USE_VCHIQ_SOUND
-                    m_pSound = new CVCHIQSoundBaseDevice (&m_VCHIQ, SAMPLE_RATE, SOUND_CHUNK_SIZE,
-                                            (TVCHIQSoundDestination) m_Options.GetSoundOption ());
-     #else
-                    m_pSound = new CPWMSoundBaseDevice (&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-     #endif
-            }
-    */
-
-    // configure sound device
-    LOGNOTE("CD Player Initializing. Allocating queue size %d frames", DAC_BUFFER_SIZE_FRAMES);
-    if (!m_pSound->AllocateQueueFrames(DAC_BUFFER_SIZE_FRAMES)) {
-        LOGERR("Cannot allocate sound queue");
-        // TODO: handle error condition
-    }
-    m_pSound->SetWriteFormat(FORMAT, WRITE_CHANNELS);
-    if (!m_pSound->Start()) {
-        LOGERR("Couldn't start the sound device");
-    }
-
+    // Initialization is now handled by AudioService
+    LOGNOTE("CD Player Initialize called (deferred to AudioService)");
     return TRUE;
 }
-
-void CCDPlayer::EnsureAudioInitialized() {
-    if (m_bAudioInitialized) {
-        return;
-    }
-    
-    LOGNOTE("=== LAZY I2S INITIALIZATION (after USB stabilization) ===");
-    
-    if (!m_I2CMaster.Initialize()) {
-        LOGERR("Failed to initialize I2C master");
-        return;
-    }
-
-    if (strcmp(m_pSoundDevice, "sndpwm") == 0) {
-        m_pSound = new CPWMSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-        LOGNOTE("CD Player Initializing sndpwm");
-    } else if (strcmp(m_pSoundDevice, "sndi2s") == 0) {
-        m_pSound = new CI2SSoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE, FALSE,
-                                           &m_I2CMaster, DAC_I2C_ADDRESS);
-        LOGNOTE("CD Player Initializing sndi2s");
-    } else if (strcmp(m_pSoundDevice, "sndhdmi") == 0) {
-        m_pSound = new CHDMISoundBaseDevice(&m_Interrupt, SAMPLE_RATE, SOUND_CHUNK_SIZE);
-        LOGNOTE("CD Player Initializing sndhdmi");
-    }
-#if RASPPI >= 4
-    else if (strcmp(m_pSoundDevice, "sndusb") == 0) {
-        m_pSound = new CUSBSoundBaseDevice(SAMPLE_RATE);
-        LOGNOTE("CD Player Initializing sndusb");
-    }
-#endif
-
-    if (!m_pSound) {
-        LOGERR("Failed to create sound device");
-        return;
-    }
-
-    LOGNOTE("Allocating queue size %d frames", DAC_BUFFER_SIZE_FRAMES);
-    if (!m_pSound->AllocateQueueFrames(DAC_BUFFER_SIZE_FRAMES)) {
-        LOGERR("Cannot allocate sound queue");
-        return;
-    }
-    
-    m_pSound->SetWriteFormat(FORMAT, WRITE_CHANNELS);
-    
-    LOGNOTE("Default volume stored as: 0x%02x", defaultVolumeByte);
-    
-    if (!m_pSound->Start()) {
-        LOGERR("Couldn't start the sound device");
-        return;
-    }
-    
-    m_bAudioInitialized = true;
-    LOGNOTE("=== I2S INITIALIZED: active=%d ===", m_pSound->IsActive());
-}
-
 
 CCDPlayer::~CCDPlayer(void) {
     s_pThis = nullptr;
 }
 
 u8 CCDPlayer::GetVolume() {
-    return volumeByte;
+    if (m_pAudioService) return m_pAudioService->GetVolume();
+    return 0;
 }
 
 boolean CCDPlayer::SetDefaultVolume(u8 vol) {
-    LOGNOTE("Setting default volume to 0x%02x", vol);
-    defaultVolumeByte = vol;
-    return true;
+    if (m_pAudioService) {
+        m_pAudioService->SetDefaultVolume(vol);
+        return true;
+    }
+    return false;
 }
 
 boolean CCDPlayer::SetVolume(u8 vol) {
-    LOGNOTE("Setting volume to 0x%02x", vol);
-    volumeByte = vol;
-    return true;
+    if (m_pAudioService) {
+        m_pAudioService->SetVolume(vol);
+        return true;
+    }
+    return false;
 }
 
 boolean CCDPlayer::Pause() {
@@ -256,11 +169,11 @@ u32 CCDPlayer::GetCurrentAddress() {
 // Loads a sample from "system/test.pcm" and plays it
 // Returns false if there was any problem
 boolean CCDPlayer::SoundTest() {
-    if (!m_pSound) {
-        LOGERR("Sound Test: Can't perform test, sound is not active");
+    if (!m_pAudioService) {
+        LOGERR("Sound Test: Can't perform test, audio service is missing");
         return false;
     }
-    if (!m_pSound->IsActive()) {
+    if (!m_pAudioService->IsActive()) {
         LOGERR("Sound Test: Can't perform test, sound is in use");
         return false;
     }
@@ -272,17 +185,17 @@ boolean CCDPlayer::SoundTest() {
         return false;
     }
 
-    unsigned int total_frames = m_pSound->GetQueueSizeFrames();
+    unsigned int total_frames = m_pAudioService->GetQueueSizeFrames();
     UINT bytesRead = 0;
     boolean success = false;
 
     // Read sound bytes and give them to the DAC
-    for (unsigned nCount = 0; m_pSound->IsActive(); nCount++) {
+    for (unsigned nCount = 0; m_pAudioService->IsActive(); nCount++) {
         // Get available queue size in stereo frames
-        unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
+        unsigned int available_queue_size = total_frames - m_pAudioService->GetQueueFramesAvail();
 
         // Determine how many  frames (4 bytes) can fit in this free space
-        int bytes_to_read = available_queue_size * BYTES_PER_FRAME;  // 2 bytes per sample, 2 samples per frame
+        int bytes_to_read = available_queue_size * AUDIO_BYTES_PER_FRAME;  // 2 bytes per sample, 2 samples per frame
 
         if (bytes_to_read) {
             if (f_read(&file, m_ReadBuffer, bytes_to_read, &bytesRead) != FR_OK) {
@@ -296,7 +209,7 @@ boolean CCDPlayer::SoundTest() {
                 break;
             }
 
-            int nResult = m_pSound->Write(m_ReadBuffer, bytesRead);
+            int nResult = m_pAudioService->Write(m_ReadBuffer, bytesRead);
             if (nResult != (int)bytesRead) {
                 LOGERR("Sound Test: data dropped");
                 break;
@@ -336,27 +249,6 @@ boolean CCDPlayer::PlaybackStop() {
 }
 
 
-// DACs don't support volume control, so we scale the data
-// accordingly instead
-void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
-    if (volumeByte == 0xff && defaultVolumeByte == 0xff)
-        return;
-
-    // Convert both to Q12 scale
-    u16 defaultScale = (defaultVolumeByte == 0xff) ? 4096 : (defaultVolumeByte << 4);  // max = 0xff << 4 = 4080
-    u16 volumeScale  = (volumeByte == 0xff)         ? 4096 : (volumeByte << 4);
-
-    // Combine both: result is Q12 * Q12 >> 12 = Q12 again
-    u16 finalScale = (defaultScale * volumeScale) >> 12;
-
-    for (u32 i = 0; i < byteCount; i += 2) {
-        short sample = (short)((buffer[i + 1] << 8) | buffer[i]);
-        int scaled = (sample * finalScale) >> 12;
-        buffer[i] = (u8)(scaled & 0xFF);
-        buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
-    }
-}
-
 void CCDPlayer::Run(void) {
     LOGNOTE("CD Player Run Loop started");
     
@@ -364,10 +256,17 @@ void CCDPlayer::Run(void) {
     unsigned int total_frames = 0;
 
     while (true) {
-        // STATE 1: Wait for audio initialization (triggered by USB endpoint activation)
-        if (!m_bAudioInitialized) {
+        if (!m_pAudioService) {
             CScheduler::Get()->Yield();
             continue;
+        }
+
+        // STATE 1: Wait for audio initialization
+        m_pAudioService->EnsureAudioInitialized(); // This checks m_bAudioInitialized inside
+        if (!m_pAudioService->IsActive()) { // Or check a flag if EnsureAudioInitialized is not enough
+            // AudioService needs to be active
+             CScheduler::Get()->Yield();
+             continue;
         }
         
         // STATE 2: Audio initialized - allocate buffers once
@@ -375,8 +274,13 @@ void CCDPlayer::Run(void) {
             m_BufferBytesValid = 0;
             m_BufferReadPos = 0;
             m_BytesProcessedInSector = 0;
-            total_frames = m_pSound->GetQueueSizeFrames();
-            m_WriteChunk = new u8[total_frames * BYTES_PER_FRAME];
+            total_frames = m_pAudioService->GetQueueSizeFrames();
+            if (total_frames == 0) {
+                 // Wait until queue size is valid
+                 CScheduler::Get()->Yield();
+                 continue;
+            }
+            m_WriteChunk = new u8[total_frames * AUDIO_BYTES_PER_FRAME];
             m_ReadBuffer = new u8[AUDIO_BUFFER_SIZE];
             buffers_allocated = true;
             LOGNOTE("CD Player Run Loop initialized. Queue Size is %d frames", total_frames);
@@ -388,7 +292,7 @@ void CCDPlayer::Run(void) {
             u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
 
             // When we seek, the contents of our read and write buffer are now invalid.
-            memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
+            memset(m_WriteChunk, 0, total_frames * AUDIO_BYTES_PER_FRAME);
             m_BufferBytesValid = 0;
             m_BufferReadPos = 0;
             m_BytesProcessedInSector = 0; // Reset byte progress on seek
@@ -449,13 +353,13 @@ void CCDPlayer::Run(void) {
 
             // Feed the sound device from our buffer, if we have valid data.
             if (m_BufferBytesValid > 0 && state == PLAYING) {
-                unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
-                unsigned int bytes_for_sound_device = available_queue_size * BYTES_PER_FRAME;
+                unsigned int available_queue_size = total_frames - m_pAudioService->GetQueueFramesAvail();
+                unsigned int bytes_for_sound_device = available_queue_size * AUDIO_BYTES_PER_FRAME;
 
                 unsigned int bytes_available_in_buffer = m_BufferBytesValid - m_BufferReadPos;
                 unsigned int bytes_to_process = (bytes_for_sound_device < bytes_available_in_buffer) ? bytes_for_sound_device : bytes_available_in_buffer;
 
-                bytes_to_process -= (bytes_to_process % BYTES_PER_FRAME);
+                bytes_to_process -= (bytes_to_process % AUDIO_BYTES_PER_FRAME);
 
                 if (bytes_to_process > 0) {
                     // copy from read buffer to write chunk.
@@ -463,9 +367,9 @@ void CCDPlayer::Run(void) {
                         m_WriteChunk[i] = m_ReadBuffer[m_BufferReadPos + i];
                     }
 
-                    ScaleVolume(m_WriteChunk, bytes_to_process);
+                    m_pAudioService->ScaleVolume(m_WriteChunk, bytes_to_process);
 
-                    int writeCount = m_pSound->Write(m_WriteChunk, bytes_to_process);
+                    int writeCount = m_pAudioService->Write(m_WriteChunk, bytes_to_process);
                     if (writeCount < 0) {
                          LOGERR("Error writing to sound device.");
                          state = STOPPED_ERROR;
