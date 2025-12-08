@@ -190,8 +190,16 @@ boolean CCDPlayer::SoundTest() {
         LOGERR("Sound Test: Can't perform test, sound is not active");
         return false;
     }
+
+    // Ensure sound device is active
     if (!m_pSound->IsActive()) {
-        LOGERR("Sound Test: Can't perform test, sound is in use");
+        LOGNOTE("Sound Test: Starting stopped sound device");
+        m_pSound->Start();
+    }
+
+    // Ensure buffers are allocated (might be null if Run loop hasn't run yet)
+    if (!m_ReadBuffer) {
+        LOGERR("Sound Test: Buffers not allocated yet");
         return false;
     }
 
