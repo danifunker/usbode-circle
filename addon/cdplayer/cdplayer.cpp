@@ -35,7 +35,8 @@ CCDPlayer::CCDPlayer(void)
       end_address(0),
       state(NONE),
       m_ReadBuffer(nullptr),
-      m_WriteChunk(nullptr) {
+      m_WriteChunk(nullptr),
+      m_bStop(false) {
 
     LOGNOTE("CD Player starting");
 
@@ -230,7 +231,7 @@ boolean CCDPlayer::SoundTest() {
     // Read sound bytes and give them to the DAC
     for (unsigned nCount = 0; m_pSound->IsActive(); nCount++) {
         // Get available queue size in stereo frames
-        unsigned int available_queue_size = total_frames - m_pSound->GetQueueFramesAvail();
+        unsigned int available_queue_size = m_pSound->GetQueueFramesAvail();
 
         // Determine how many  frames (4 bytes) can fit in this free space
         int bytes_to_read = available_queue_size * BYTES_PER_FRAME;  // 2 bytes per sample, 2 samples per frame
@@ -308,6 +309,10 @@ void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
     }
 }
 
+void CCDPlayer::Stop(void) {
+    m_bStop = true;
+}
+
 void CCDPlayer::Run(void) {
     LOGNOTE("CD Player Run Loop started");
     
@@ -319,7 +324,7 @@ void CCDPlayer::Run(void) {
     unsigned int total_frames = m_pSound->GetQueueSizeFrames();
     LOGNOTE("CD Player Run Loop initialized. Queue Size is %d frames", total_frames);
 
-    while (true) {
+    while (!m_bStop) {
         // STATE 3: Normal operation - seeking
         if (state == SEEKING || state == SEEKING_PLAYING) {
             LOGNOTE("Seeking to sector %u (byte %u)", address, unsigned(address * SECTOR_SIZE));

@@ -58,6 +58,7 @@ class CCDPlayer : public CTask {
     boolean PlaybackStop();
     boolean SoundTest();
     void Run(void);
+    void Stop(void);
 
     enum PlayState {
         PLAYING,
@@ -81,6 +82,7 @@ class CCDPlayer : public CTask {
     PlayState state;
     u8 volumeByte = 255;
     u8 defaultVolumeByte = 255;
+    volatile boolean m_bStop;
 
     u8 *m_ReadBuffer;
     u8 *m_WriteChunk;

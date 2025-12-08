@@ -463,6 +463,8 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     if (m_pCDPlayer)
     {
         MLOGNOTE("CUSBCDGadget::SetDevice", "Destroying existing CDPlayer instance");
+        m_pCDPlayer->Stop();
+        m_pCDPlayer->WaitForTermination();
         delete m_pCDPlayer;
         m_pCDPlayer = nullptr;
     }
