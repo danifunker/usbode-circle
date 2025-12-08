@@ -76,7 +76,7 @@ class CCDPlayer : public CTask {
     size_t buffer_available();
     size_t buffer_free_space();
     void Run(void);
-
+    void FlushAudioBuffers();
     enum PlayState {
         PLAYING,
         SEEKING,
@@ -104,7 +104,7 @@ class CCDPlayer : public CTask {
     u8 volumeByte = 255;
     u8 defaultVolumeByte = 255;
     boolean m_bAudioInitialized = false;  // NEW
-
+    
     u8 *m_ReadBuffer;  // CHANGED: removed = new u8[AUDIO_BUFFER_SIZE]
     u8 *m_WriteChunk;
     unsigned int m_BufferBytesValid = 0;

@@ -58,7 +58,7 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     } else {
         state = NONE;
     }
-    
+    FlushAudioBuffers();
     // Reset ALL address pointers - critical for preventing reads to invalid LBAs
     address = 0;
     end_address = 0;
@@ -355,6 +355,38 @@ void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
         buffer[i] = (u8)(scaled & 0xFF);
         buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
     }
+}
+
+void CCDPlayer::FlushAudioBuffers() {
+    if (!m_pSound || !m_bAudioInitialized) {
+        return;
+    }
+    
+    LOGNOTE("=== FLUSHING AUDIO BUFFERS ===");
+    
+    // Stop feeding audio and let DAC drain its queue
+    unsigned int frames_queued = m_pSound->GetQueueSizeFrames() - m_pSound->GetQueueFramesAvail();
+    LOGNOTE("Audio queue has %u frames, waiting for drain...", frames_queued);
+    
+    // Wait for queue to mostly drain (let it get to ~10% full)
+    unsigned int target = m_pSound->GetQueueSizeFrames() / 10;
+    int iterations = 0;
+    while (frames_queued > target && iterations < 100) {
+        CScheduler::Get()->Sleep(10); // sleep 10ms
+        frames_queued = m_pSound->GetQueueSizeFrames() - m_pSound->GetQueueFramesAvail();
+        iterations++;
+    }
+    
+    LOGNOTE("Audio queue drained to %u frames after %d iterations", frames_queued, iterations);
+    
+    // Clear our software buffers
+    if (m_WriteChunk && m_ReadBuffer) {
+        unsigned int total_frames = m_pSound->GetQueueSizeFrames();
+        memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
+        memset(m_ReadBuffer, 0, AUDIO_BUFFER_SIZE);
+    }
+    
+    LOGNOTE("=== AUDIO BUFFERS FLUSHED ===");
 }
 
 void CCDPlayer::Run(void) {

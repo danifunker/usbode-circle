@@ -459,13 +459,6 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
              "=== ENTRY === dev=%p, m_pDevice=%p, m_nState=%d",
              dev, m_pDevice, (int)m_nState);
 
-    CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
-    if (cdplayer)
-    {
-        cdplayer->SetDevice(dev);
-        MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
-    }
-
     boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
 
     if (bDiscSwap || !m_CDReady)
@@ -494,6 +487,11 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
 
     if (bDiscSwap)
     {
+        // Flush disc caches for cdplayer audio
+        // DataMemBarrier();  // Force pending DMA writes to complete
+        // CleanDataCache();   // Flush CPU cache to main memory
+        // InvalidateDataCache(); // Invalidate CPU cache
+        // DataMemBarrier();
         m_bPendingDiscSwap = true;
         m_nDiscSwapStartTick = CTimer::Get()->GetTicks();
         MLOGNOTE("CUSBCDGadget::SetDevice", 
@@ -508,6 +506,13 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     u32 max_lba = CDUtils::GetLeadoutLBA(this);
     CUETrackInfo first_track = CDUtils::GetTrackInfoForLBA(this, 0);
     int first_track_blocksize = CDUtils::GetBlocksizeForTrack(this, first_track);
+    CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+
+    if (cdplayer)
+    {
+        cdplayer->SetDevice(dev);
+        MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
+    }
     CDROM_DEBUG_LOG("CUSBCDGadget::SetDevice",
                     "Disc info: max_lba=%u, track1_mode=%d, track1_blocksize=%d",
                     max_lba, first_track.track_mode, first_track_blocksize);
