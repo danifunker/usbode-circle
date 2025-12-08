@@ -761,7 +761,6 @@ void CUSBCDGadget::OnActivate()
                     m_CDReady, (int)m_mediaState);
 
     CTimer::Get()->MsDelay(10);
-
     // Set media ready NOW - USB endpoints are active
     if (m_pDevice && !m_CDReady)
     {
