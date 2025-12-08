@@ -460,12 +460,13 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
              dev, m_pDevice, (int)m_nState);
 
     // Destroy existing CDPlayer instance to ensure clean state and fresh buffers
-    if (m_pCDPlayer)
+    CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+    if (cdplayer)
     {
         MLOGNOTE("CUSBCDGadget::SetDevice", "Destroying existing CDPlayer instance");
-        m_pCDPlayer->Stop();
-        m_pCDPlayer->WaitForTermination();
-        delete m_pCDPlayer;
+        cdplayer->Stop();
+        cdplayer->WaitForTermination();
+        delete cdplayer;
         m_pCDPlayer = nullptr;
     }
 
@@ -736,7 +737,8 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
         ModePage0x0EData *modePage = (ModePage0x0EData *)(m_OutBuffer + 8);
         MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
 
-        if (m_pCDPlayer)
+        CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
+        if (cdplayer)
         {
 
             // Descent 2 sets the volume weird. For each volume change, it sends
@@ -748,7 +750,7 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
             // So, we'll pick the minimum of the two
 
             MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume");
-            m_pCDPlayer->SetVolume(
+            cdplayer->SetVolume(
                 modePage->Output0Volume < modePage->Output1Volume
                     ? modePage->Output0Volume
                     : modePage->Output1Volume);
