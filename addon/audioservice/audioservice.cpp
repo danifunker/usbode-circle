@@ -47,6 +47,7 @@ CAudioService::CAudioService(CInterruptSystem *pInterruptSystem)
       m_bInitRequested(FALSE)
 {
     s_pThis = this;
+    SetName("audioservice");
 }
 
 CAudioService::~CAudioService(void)
@@ -72,11 +73,25 @@ boolean CAudioService::IsInitialized(void) const
 void CAudioService::RequestInitialization(void)
 {
     m_bInitRequested = TRUE;
+    m_Event.Set();
 }
 
 boolean CAudioService::IsInitRequested(void) const
 {
     return m_bInitRequested;
+}
+
+void CAudioService::Run(void)
+{
+    while (true)
+    {
+        m_Event.Wait();
+
+        if (m_bInitRequested && !m_bInitialized)
+        {
+            Initialize();
+        }
+    }
 }
 
 boolean CAudioService::Initialize()

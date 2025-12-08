@@ -28,7 +28,7 @@
 LOGMODULE("cdplayer");
 
 CCDPlayer::CCDPlayer(void)
-    : m_pAudioService(CAudioService::Get()),
+    : m_pAudioService((CAudioService *) CScheduler::Get()->GetTask("audioservice")),
       m_pSound(nullptr),   
       m_pBinFileDevice(nullptr),
       address(0),
@@ -307,10 +307,9 @@ void CCDPlayer::Run(void) {
         if (!m_pSound) {
             // Wait for audio service request or existing initialization
             if (m_pAudioService) {
-                if (m_pAudioService->IsInitRequested() || m_pAudioService->IsInitialized()) {
-                    if (!m_pAudioService->IsInitialized()) {
-                        m_pAudioService->Initialize();
-                    }
+                // Initialize() is now handled by CAudioService's own task loop
+                // We just wait for it to be done.
+                if (m_pAudioService->IsInitialized()) {
                     m_pSound = m_pAudioService->GetSoundDevice();
                 }
             }

@@ -19,6 +19,8 @@
 #ifndef _audioservice_h
 #define _audioservice_h
 
+#include <circle/sched/task.h>
+#include <circle/sched/synchronizationevent.h>
 #include <circle/interrupt.h>
 #include <circle/i2cmaster.h>
 #include <circle/sound/soundbasedevice.h>
@@ -28,11 +30,13 @@
 #include <circle/sound/pwmsoundbasedevice.h>
 #include <circle/sound/usbsoundbasedevice.h>
 
-class CAudioService
+class CAudioService : public CTask
 {
 public:
     CAudioService(CInterruptSystem *pInterruptSystem);
     ~CAudioService(void);
+
+    void Run(void);
 
     boolean Initialize();
     boolean IsInitialized(void) const;
@@ -49,6 +53,7 @@ private:
     CScreenDevice *m_pHDMIScreen;
     boolean m_bInitialized;
     volatile boolean m_bInitRequested;
+    CSynchronizationEvent m_Event;
     static CAudioService *s_pThis;
 };
 
