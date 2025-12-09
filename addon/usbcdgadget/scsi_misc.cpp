@@ -143,13 +143,13 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget* gadget)
     int length = 0;
     TUSBCDEventStatusReplyHeader header;
     memset(&header, 0, sizeof(header));
-    header.supportedEventClass = 0x10;
+    header.supportedEventClass = 0xDE;
 
     if (notificationClass & (1 << 4))
     {
         MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - media change event response");
 
-        header.eventDataLength = htons(0x04);
+        header.eventDataLength = htons(0x06);
         header.notificationClass = 0x04;
 
         TUSBCDEventStatusReplyEvent event;
