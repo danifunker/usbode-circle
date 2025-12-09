@@ -51,7 +51,10 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     LOGNOTE("CD Player setting device (old=%p, new=%p, state=%u, addr=%u, end=%u)", 
             m_pBinFileDevice, pBinFileDevice, state, address, end_address);
     
-    // CRITICAL: Stop any active playback before device swap
+    // Track if we need to restart audio after the swap
+    boolean bNeedRestart = false;
+    
+    // STEP 1: Stop any active playback
     if (state == PLAYING || state == PAUSED || state == SEEKING_PLAYING || state == SEEKING) {
         LOGWARN("Device swap during active playback (state=%u) - forcing stop", state);
         state = STOPPED_OK;
@@ -59,25 +62,62 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
         state = NONE;
     }
     
-    // Reset ALL address pointers - critical for preventing reads to invalid LBAs
+    // STEP 2: Stop the audio system and wait for it to drain
+    if (m_pSound && m_pSound->IsActive()) {
+        LOGNOTE("Cancelling active audio for disc swap");
+        bNeedRestart = true;  // Remember that audio was active
+        m_pSound->Cancel();
+        
+        // Wait for DMA to finish current transfer (with timeout)
+        unsigned timeout_ms = 0;
+        while (m_pSound->IsActive() && timeout_ms < 500) {
+            CTimer::Get()->MsDelay(5);
+            timeout_ms += 5;
+        }
+        
+        if (m_pSound->IsActive()) {
+            LOGWARN("Audio still active after %ums timeout - forcing flush anyway", timeout_ms);
+        } else {
+            LOGNOTE("Audio stopped cleanly after %ums", timeout_ms);
+        }
+    }
+    
+    // STEP 3: Flush the entire audio pipeline (FIFOs + DMA buffers)
+    if (m_pSound) {
+        LOGNOTE("Flushing audio pipeline (FIFOs + DMA buffers)");
+        m_pSound->FlushAudioPipeline();
+    }
+    
+    // STEP 4: Reset ALL address pointers
     address = 0;
     end_address = 0;
     
-    // Clear all buffer state
+    // STEP 5: Clear all buffer state
     m_BufferBytesValid = 0;
     m_BufferReadPos = 0;
     m_BytesProcessedInSector = 0;
     
-    // Zero out buffers to prevent stale data
+    // STEP 6: Zero out application buffers
     if (m_ReadBuffer) {
         memset(m_ReadBuffer, 0, AUDIO_BUFFER_SIZE);
     }
     if (m_WriteChunk) {
-        // WriteChunk size depends on total_frames, but we can at least clear what we know
         memset(m_WriteChunk, 0, DAC_BUFFER_SIZE_BYTES);
     }
     
+    // STEP 7: Assign new device
     m_pBinFileDevice = pBinFileDevice;
+    
+    // STEP 8: Restart audio if it was running before the swap
+    if (bNeedRestart && m_pSound) {
+        LOGNOTE("Restarting audio after disc swap");
+        if (!m_pSound->Start()) {
+            LOGERR("Failed to restart audio after disc swap!");
+            state = STOPPED_ERROR;
+        } else {
+            LOGNOTE("Audio restarted successfully");
+        }
+    }
     
     LOGNOTE("CD Player device set complete: state=%u, device=%p", state, m_pBinFileDevice);
     return true;
