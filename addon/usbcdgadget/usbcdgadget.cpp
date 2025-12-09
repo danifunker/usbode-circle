@@ -828,8 +828,10 @@ void CUSBCDGadget::sendGoodStatus()
 
 void CUSBCDGadget::HandleSCSICommand()
 {
-    // CDROM_DEBUG_LOG ("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
-
+if (m_CBW.CBWCB[0] != 0x00)  // Filter out TEST_UNIT_READY spam
+{
+    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+}
     // Centralized Unit Attention Check
     // Some commands (like INQUIRY) must work even if Unit Attention is pending.
     // Others (like READ) must fail so the host knows the media changed.

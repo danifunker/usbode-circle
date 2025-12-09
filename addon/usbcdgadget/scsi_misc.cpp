@@ -67,9 +67,13 @@ void SCSIMisc::StartStopUnit(CUSBCDGadget* gadget)
 
 void SCSIMisc::PreventAllowMediumRemoval(CUSBCDGadget* gadget)
 {
-    // USBODE doesn't support medium locking - return "invalid field in CDB"
-    gadget->setSenseData(0x05, 0x24, 0x00);
-    gadget->sendCheckCondition();
+    int prevent = gadget->m_CBW.CBWCB[4] & 0x01;
+    
+    CDROM_DEBUG_LOG("SCSIMisc::PreventAllowMediumRemoval", 
+                    "PREVENT/ALLOW: prevent=%d (accepting but not locking)", prevent);
+    
+    // Accept the command - we just won't actually lock anything
+    gadget->sendGoodStatus();
 }
 
 void SCSIMisc::ReadCapacity(CUSBCDGadget* gadget)
