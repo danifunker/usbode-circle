@@ -145,7 +145,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
 
 void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 {
-    //MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
+    // MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
     u8 blocks = (u8)(gadget->m_CBW.CBWCB[4]);
 
     // CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
@@ -190,9 +190,14 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
         // Mode Page 0x01 (Read/Write Error Recovery Parameters Mode Page)
         CDROM_DEBUG_LOG("SCSIInquiry::FillModePage", "Mode Sense 0x01 response");
 
-        // Define our Code Page
         ModePage0x01Data codepage;
         memset(&codepage, 0, sizeof(codepage));
+
+        // Set the required fields to match LG drive
+        codepage.pageCodeAndPS = 0x01;          // Page code 0x01
+        codepage.pageLength = 0x0a;             // 10 bytes of parameters
+        codepage.errorRecoveryBehaviour = 0x80; // AWRE bit set (automatic write reallocation enabled)
+        codepage.readRetryCount = 0xc0;         // Read retry count
 
         // Copy the header & Code Page
         memcpy(buffer + length, &codepage, sizeof(codepage));
