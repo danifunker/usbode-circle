@@ -1,0 +1,145 @@
+diff --git a/include/circle/sound/dmasoundbuffers.h b/include/circle/sound/dmasoundbuffers.h
+index f4e1121c..3d1a07d7 100644
+--- a/include/circle/sound/dmasoundbuffers.h
++++ b/include/circle/sound/dmasoundbuffers.h
+@@ -71,6 +71,8 @@ public:
+ 	/// \note Does not stop immediately, use IsActive() to check if operation is still running
+ 	void Cancel (void);
+ 
++	void ZeroBuffers(void);  // Zero both DMA buffers
++
+ 	/// \return Is DMA operation running?
+ 	boolean IsActive (void) const;
+ 
+diff --git a/include/circle/sound/i2ssoundbasedevice.h b/include/circle/sound/i2ssoundbasedevice.h
+index 498e2bcf..e20c4a18 100644
+--- a/include/circle/sound/i2ssoundbasedevice.h
++++ b/include/circle/sound/i2ssoundbasedevice.h
+@@ -65,7 +65,7 @@ public:
+ 			     unsigned	       nHWChannels = 2);
+ 
+ 	virtual ~CI2SSoundBaseDevice (void);
+-
++	void FlushAudioPipeline(void) override;
+ 	/// \return Minium value of one sample
+ 	int GetRangeMin (void) const override;
+ 	/// \return Maximum value of one sample
+diff --git a/include/circle/sound/pwmsoundbasedevice.h b/include/circle/sound/pwmsoundbasedevice.h
+index 2617db22..36585ff6 100644
+--- a/include/circle/sound/pwmsoundbasedevice.h
++++ b/include/circle/sound/pwmsoundbasedevice.h
+@@ -68,7 +68,7 @@ public:
+ 	/// \brief Cancels the PWM and DMA operation
+ 	/// \note Cancel takes effect after a short delay
+ 	void Cancel (void);
+-
++	void FlushAudioPipeline(void) override;
+ 	/// \return Is PWM and DMA operation running?
+ 	boolean IsActive (void) const;
+ 
+diff --git a/include/circle/sound/soundbasedevice.h b/include/circle/sound/soundbasedevice.h
+index 465bf282..63f6e3e0 100644
+--- a/include/circle/sound/soundbasedevice.h
++++ b/include/circle/sound/soundbasedevice.h
+@@ -120,7 +120,7 @@ public:
+ 
+ 	/// \return Pointer to sound controller object or nullptr, if not supported.
+ 	virtual CSoundController *GetController (void)		{ return nullptr; }
+-
++	virtual void FlushAudioPipeline(void) { } // Default no-op - subclasses override
+ 	// Output /////////////////////////////////////////////////////////////
+ 
+ 	/// \brief Allocate the queue used for Write()
+diff --git a/lib/sound/dmasoundbuffers.cpp b/lib/sound/dmasoundbuffers.cpp
+index 59451436..2b8fc85f 100644
+--- a/lib/sound/dmasoundbuffers.cpp
++++ b/lib/sound/dmasoundbuffers.cpp
+@@ -398,3 +398,24 @@ boolean CDMASoundBuffers::SetupDMAControlBlock (unsigned nID)
+ 
+ 	return TRUE;
+ }
++
++void CDMASoundBuffers::ZeroBuffers(void)
++{
++    m_SpinLock.Acquire();
++    
++    if (m_pDMABuffer[0] != nullptr)
++    {
++        memset(m_pDMABuffer[0], 0, m_nChunkSize * sizeof(u32));
++        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[0], 
++                                         m_nChunkSize * sizeof(u32));
++    }
++    
++    if (m_pDMABuffer[1] != nullptr)
++    {
++        memset(m_pDMABuffer[1], 0, m_nChunkSize * sizeof(u32));
++        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[1], 
++                                         m_nChunkSize * sizeof(u32));
++    }
++    
++    m_SpinLock.Release();
++}
+\ No newline at end of file
+diff --git a/lib/sound/i2ssoundbasedevice.cpp b/lib/sound/i2ssoundbasedevice.cpp
+index d38682da..093db852 100644
+--- a/lib/sound/i2ssoundbasedevice.cpp
++++ b/lib/sound/i2ssoundbasedevice.cpp
+@@ -421,6 +421,25 @@ unsigned CI2SSoundBaseDevice::RXCompletedHandler (boolean bStatus, u32 *pBuffer,
+ 	return 0;
+ }
+ 
++void CI2SSoundBaseDevice::FlushAudioPipeline(void)
++{
++    // Clear I2S-specific FIFOs
++    PeripheralEntry();
++    write32(ARM_PCM_CS_A, read32(ARM_PCM_CS_A) | CS_A_TXCLR | CS_A_RXCLR);
++    CTimer::Get()->usDelay(10);
++    PeripheralExit();
++
++    // Zero DMA buffers (works for any device using CDMASoundBuffers)
++    if (m_DeviceMode != DeviceModeRXOnly)
++    {
++        m_TXBuffers.ZeroBuffers();
++    }
++    if (m_DeviceMode != DeviceModeTXOnly)
++    {
++        m_RXBuffers.ZeroBuffers();
++    }
++}
++
+ #include <circle/sound/pcm512xsoundcontroller.h>
+ #include <circle/sound/wm8960soundcontroller.h>
+ 
+diff --git a/lib/sound/pwmsoundbasedevice.cpp b/lib/sound/pwmsoundbasedevice.cpp
+index a221de88..358cdff8 100644
+--- a/lib/sound/pwmsoundbasedevice.cpp
++++ b/lib/sound/pwmsoundbasedevice.cpp
+@@ -462,3 +462,27 @@ void CPWMSoundBaseDevice::SetupDMAControlBlock (unsigned nID)
+ 	m_pControlBlock[nID]->nReserved[0]	       = 0;
+ 	m_pControlBlock[nID]->nReserved[1]	       = 0;
+ }
++
++void CPWMSoundBaseDevice::FlushAudioPipeline(void)
++{
++    // Clear PWM FIFO
++    PeripheralEntry();
++    write32(PWM_CTL, read32(PWM_CTL) | ARM_PWM_CTL_CLRF1);
++    CTimer::Get()->usDelay(10);
++    PeripheralExit();
++    
++    // Zero both DMA buffers directly (PWM doesn't use CDMASoundBuffers)
++    if (m_pDMABuffer[0] != nullptr)
++    {
++        memset(m_pDMABuffer[0], 0, m_nChunkSize * sizeof(u32));
++        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[0], 
++                                         m_nChunkSize * sizeof(u32));
++    }
++    
++    if (m_pDMABuffer[1] != nullptr)
++    {
++        memset(m_pDMABuffer[1], 0, m_nChunkSize * sizeof(u32));
++        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[1], 
++                                         m_nChunkSize * sizeof(u32));
++    }
++}
+\ No newline at end of file
