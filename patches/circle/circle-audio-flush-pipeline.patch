@@ -51,7 +51,7 @@ index 465bf282..63f6e3e0 100644
  
  	/// \brief Allocate the queue used for Write()
 diff --git a/lib/sound/dmasoundbuffers.cpp b/lib/sound/dmasoundbuffers.cpp
-index 59451436..2b8fc85f 100644
+index 59451436..cd07fc73 100644
 --- a/lib/sound/dmasoundbuffers.cpp
 +++ b/lib/sound/dmasoundbuffers.cpp
 @@ -398,3 +398,24 @@ boolean CDMASoundBuffers::SetupDMAControlBlock (unsigned nID)
@@ -62,21 +62,21 @@ index 59451436..2b8fc85f 100644
 +void CDMASoundBuffers::ZeroBuffers(void)
 +{
 +    m_SpinLock.Acquire();
-+    
++
 +    if (m_pDMABuffer[0] != nullptr)
 +    {
 +        memset(m_pDMABuffer[0], 0, m_nChunkSize * sizeof(u32));
-+        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[0], 
++        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[0],
 +                                         m_nChunkSize * sizeof(u32));
 +    }
-+    
++
 +    if (m_pDMABuffer[1] != nullptr)
 +    {
 +        memset(m_pDMABuffer[1], 0, m_nChunkSize * sizeof(u32));
-+        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[1], 
++        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[1],
 +                                         m_nChunkSize * sizeof(u32));
 +    }
-+    
++
 +    m_SpinLock.Release();
 +}
 \ No newline at end of file
@@ -111,7 +111,7 @@ index d38682da..093db852 100644
  #include <circle/sound/wm8960soundcontroller.h>
  
 diff --git a/lib/sound/pwmsoundbasedevice.cpp b/lib/sound/pwmsoundbasedevice.cpp
-index a221de88..358cdff8 100644
+index a221de88..00326db2 100644
 --- a/lib/sound/pwmsoundbasedevice.cpp
 +++ b/lib/sound/pwmsoundbasedevice.cpp
 @@ -462,3 +462,27 @@ void CPWMSoundBaseDevice::SetupDMAControlBlock (unsigned nID)
@@ -126,19 +126,19 @@ index a221de88..358cdff8 100644
 +    write32(PWM_CTL, read32(PWM_CTL) | ARM_PWM_CTL_CLRF1);
 +    CTimer::Get()->usDelay(10);
 +    PeripheralExit();
-+    
++
 +    // Zero both DMA buffers directly (PWM doesn't use CDMASoundBuffers)
 +    if (m_pDMABuffer[0] != nullptr)
 +    {
 +        memset(m_pDMABuffer[0], 0, m_nChunkSize * sizeof(u32));
-+        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[0], 
++        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[0],
 +                                         m_nChunkSize * sizeof(u32));
 +    }
-+    
++
 +    if (m_pDMABuffer[1] != nullptr)
 +    {
 +        memset(m_pDMABuffer[1], 0, m_nChunkSize * sizeof(u32));
-+        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[1], 
++        CleanAndInvalidateDataCacheRange((uintptr)m_pDMABuffer[1],
 +                                         m_nChunkSize * sizeof(u32));
 +    }
 +}
