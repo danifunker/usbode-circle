@@ -145,12 +145,25 @@
             <div class="current-value">Test audio output functionality (computer generated sound runs for about 6 seconds)</div>
             <input type="hidden" name="action" value="soundtest">
             <button type="submit" class="button">Execute Sound Test</button>
+
         </div>
     </form>
     {{#message}}
     <div class="message">{{message}}</div>
     {{/message}}
 </div>
+    <h3>Audio Test2</h3>
+    <form method="POST" action="/config">
+                <div class="form-group">
+            <label>Sine Wave Test:</label>
+            <div class="current-value">Play a 440Hz sine wave for 5 seconds</div>
+            <input type="hidden" name="action" value="sinewavetest">
+            <button type="submit" class="button">Sine Wave Test</button>
+        </div>
+    </form>
+    {{#message2}}
+    <div class="message">{{message2}}</div>
+    {{/message2}}
 {{/sound_test_available}}
 
 {{^sound_test_available}}

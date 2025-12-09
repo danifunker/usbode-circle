@@ -89,7 +89,22 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             } else {
                 context["message"] = "Error: CD Player not available (sound not enabled)";
             }
-        } else {
+        } 
+        else if (form_params.count("action") && form_params["action"] == "sinewavetest") {
+            LOGNOTE("Sine wave test button pressed");
+            
+            if (pCDPlayer) {
+                if (pCDPlayer->SineWaveTest()) {
+                    context["message"] = "Sine wave wave test executed successfully";
+                } else {
+                    context["message"] = "Sine wave wave test failed";
+                }
+            } else {
+                context["message"] = "Error: CD Player not available (sound not enabled)";
+            }
+        }
+        
+        else {
             // Handle regular configuration updates
             
             // Display HAT configuration
