@@ -731,9 +731,9 @@ void SCSITOC::ReadSubChannel(CUSBCDGadget *gadget)
     {
         // Current Position Header
         TUSBCDSubChannelHeaderReply header;
-        memset(&header, 0, SIZE_SUBCHANNEL_HEADER_REPLY);
+        memset(&header, 0, sizeof(header));
         header.audioStatus = 0x15; // Audio status not supported
-        header.dataLength = SIZE_SUBCHANNEL_01_DATA_REPLY;
+        header.dataLength = htons(SIZE_SUBCHANNEL_01_DATA_REPLY);
 
         // Override audio status by querying the player
         if (cdplayer)

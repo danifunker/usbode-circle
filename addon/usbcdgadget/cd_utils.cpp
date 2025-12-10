@@ -312,7 +312,7 @@ int CDUtils::GetMediumType(CUSBCDGadget* gadget)
     // Modern MMC: Medium Type should be 0x00, rely on GET CONFIGURATION
     if (gadget->m_USBTargetOS != USBTargetOS::Apple)
     {
-        return 0x00;  // Modern drives return 0x00
+        return 0x13;  // Modern drives return 0x13
     }
     
     // Legacy Mac OS 9 needs actual detection

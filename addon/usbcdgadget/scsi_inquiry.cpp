@@ -146,6 +146,10 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
 void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 {
     // MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
+    memset(&gadget->m_ReqSenseReply, 0, sizeof(TUSBCDRequestSenseReply));
+    
+    gadget->m_ReqSenseReply.bErrCode = 0x70;        // Current error
+    gadget->m_ReqSenseReply.bAddlSenseLen = 0x0A;   // 10 additional bytes
     u8 blocks = (u8)(gadget->m_CBW.CBWCB[4]);
 
     // CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
@@ -353,8 +357,8 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
             // Capability bits (6 bytes) - dynamic based on media type
             // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
             codepage.capabilityBits[0] = 0x3F; // Read: CD-R, CD-RW, Method 2
-            codepage.capabilityBits[1] = 0x00; // All writable types
-            codepage.capabilityBits[2] = 0xf3; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
+            codepage.capabilityBits[1] = 0x37; // All writable types
+            codepage.capabilityBits[2] = 0xf1; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
             codepage.capabilityBits[3] = 0x77; // CD-DA Commands Supported, CD-DA Stream is accurate
             codepage.capabilityBits[4] = 0x29; // Tray loading mechanism, eject supported, lock supported
             codepage.capabilityBits[5] = 0x23; // No separate channel volume, no separate channel mute
@@ -767,7 +771,7 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     }
     else
     {
-        dynHeader.currentProfile = htons(PROFILE_CDROM);
+        dynHeader.currentProfile = htons(0x0000);
         CDROM_DEBUG_LOG("SCSIInquiry::GetConfiguration", "GET CONFIGURATION: Returning PROFILE_CDROM (0x0008)");
     }
 
