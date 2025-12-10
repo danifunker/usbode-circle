@@ -35,7 +35,14 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
         if (allocationLength < datalen)
             datalen = allocationLength;
 
-        memcpy(gadget->m_InBuffer, &gadget->m_InqReply, datalen);
+        if (gadget->m_USBTargetOS == USBTargetOS::Apple)
+        {
+            memcpy(gadget->m_InBuffer, &gadget->m_InqReply_Apple, datalen);
+        }
+        else
+        {
+            memcpy(gadget->m_InBuffer, &gadget->m_InqReply, datalen);
+        }
         gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, datalen);
         gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
         gadget->m_nnumber_blocks = 0; // nothing more after this send
@@ -448,8 +455,15 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
         ModePage0x0EData codepage;
         memset(&codepage, 0, sizeof(codepage));
         codepage.pageCodeAndPS = 0x0e;
-        codepage.pageLength = 0x0e;
-        codepage.IMMEDAndSOTC = 0x04;
+        if (gadget->m_USBTargetOS == USBTargetOS::Apple)
+        {
+            codepage.pageLength = 16;
+            codepage.IMMEDAndSOTC = 0x05;
+        }
+        else {
+            codepage.pageLength = 0x0e;
+            codepage.IMMEDAndSOTC = 0x04;
+        }
         codepage.CDDAOutput0Select = 0x01; // audio channel 0
         codepage.Output0Volume = volume;
         codepage.CDDAOutput1Select = 0x02; // audio channel 1

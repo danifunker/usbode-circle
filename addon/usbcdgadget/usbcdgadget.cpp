@@ -759,7 +759,6 @@ void CUSBCDGadget::OnActivate()
                     m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
                     m_CDReady, (int)m_mediaState);
 
-    //CTimer::Get()->MsDelay(10);
     // Set media ready NOW - USB endpoints are active
     if (m_pDevice && !m_CDReady)
     {
@@ -770,7 +769,6 @@ void CUSBCDGadget::OnActivate()
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
-        //CTimer::Get()->MsDelay(100);
         CDROM_DEBUG_LOG("CD OnActivate",
                         "Initial media ready: Set UNIT_ATTENTION, sense=06/28/00");
     }

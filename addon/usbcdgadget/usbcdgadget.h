@@ -288,6 +288,24 @@ private:
         {0},                  // Version descriptors (16 bytes, all zeros for now)
         {0}                   // Reserved/padding (22 bytes)
     };
+    TUSBCDInquiryReply m_InqReply_Apple{
+        0x05,                                     // Peripheral type = CD/DVD
+        0x80,                                     // RMB set = removable media
+        0x00,                                     // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
+        0x32,                                     // Response Data Format = This response is SPC3 format
+        0x1F,                                     // Additional Length
+        0x50,                                     // SCCS ACC TPGS 3PC Reserved PROTECT
+        0x00,                                     // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
+        0x00,                                     // Obsolete Obsolete WBUS16a SYNCa LINKED Obsolete CMDQUE VS
+        {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, // Vendor Identification
+        {'C', 'D', 'R', 'O', 'M', ' ', 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', ' ', ' '},
+        {'0', '0', '0', '1'}, // Product Revision
+        {0},                  // Vendor specific (20 bytes, all zeros)
+        {0},                  // Reserved (2 bytes)
+        {0},                  // Version descriptors (16 bytes, all zeros for now)
+        {0}                   // Reserved/padding (22 bytes)
+    };
+	
     TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
 
     TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};
