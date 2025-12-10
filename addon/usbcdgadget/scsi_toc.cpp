@@ -486,15 +486,15 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget *gadget, uint8_t session, uint16_t allo
 void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
 {
     CDROM_DEBUG_LOG("SCSITOC::ReadDiscInformation", "Read Disc Information");
-
-    // Update disc information with current media state (MacOS-compatible)
-    gadget->m_DiscInfoReply.disc_status = 0x0E; // Complete disc, finalized (bits 1-0=10b), last session complete (bit 3)
+    
+    // Update disc information with current media state
+    gadget->m_DiscInfoReply.disc_status = 0x0E; // Complete disc, finalized, last session complete
     gadget->m_DiscInfoReply.first_track_number = 0x01;
     gadget->m_DiscInfoReply.number_of_sessions = 0x01; // Single session
     gadget->m_DiscInfoReply.first_track_last_session = 0x01;
     gadget->m_DiscInfoReply.last_track_last_session = CDUtils::GetLastTrackNumber(gadget);
-
-    // Set disc type based on track 1 mode (MacOS uses this)
+    
+    // Set disc type based on track 1 mode
     CUETrackInfo trackInfo = CDUtils::GetTrackInfoForTrack(gadget, 1);
     if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
     {
@@ -504,22 +504,24 @@ void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
     {
         gadget->m_DiscInfoReply.disc_type = 0x10; // CD-ROM (data)
     }
-
+    
     u32 leadoutLBA = CDUtils::GetLeadoutLBA(gadget);
     gadget->m_DiscInfoReply.last_lead_in_start_time = htonl(leadoutLBA);
     gadget->m_DiscInfoReply.last_possible_lead_out = htonl(leadoutLBA);
-
-    // Set response length
+    
+    // Get allocation length from CDB
     u16 allocationLength = gadget->m_CBW.CBWCB[7] << 8 | (gadget->m_CBW.CBWCB[8]);
+    
+    // Return FULL structure (24 bytes) to match LG behavior
     int length = sizeof(TUSBDiscInfoReply);
     if (allocationLength < length)
         length = allocationLength;
-
+    
     memcpy(gadget->m_InBuffer, &gadget->m_DiscInfoReply, length);
-    gadget->m_nnumber_blocks = 0; // nothing more after this send
+    gadget->m_nnumber_blocks = 0;
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
-    gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
+    gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
 void SCSITOC::ReadTrackInformation(CUSBCDGadget *gadget)
@@ -836,28 +838,52 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
                     "READ DISC STRUCTURE: media=%d, format=0x%02x, layer=%d, address=0x%08x, alloc=%d, AGID=%d, mediaType=%d",
                     mediaType, format, layer, address, allocationLength, agid, (int)gadget->m_mediaType);
 
-    // For CD media and DVD-specific formats: return minimal empty response
-    // MacOS doesn't handle CHECK CONDITION well for this command - causes USB reset
-    if (gadget->m_mediaType != MEDIA_TYPE::DVD &&
-        (format == 0x00 || format == 0x02 || format == 0x03 || format == 0x04))
+    // CRITICAL: For CD media, DVD-specific formats must FAIL with proper sense code
+    // This tells Windows "not a DVD" so it sends READ TOC instead
+    if (gadget->m_mediaType != MEDIA_TYPE::DVD)
     {
+        // Format 0x01 (Copyright) is allowed for CDs
+        if (format == 0x01)
+        {
+            CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
+                            "READ DISC STRUCTURE format 0x01: Copyright Information (CSS=0)");
+
+            // Build response: Header + Copyright Info
+            TUSBCDReadDiscStructureHeader header;
+            DVDCopyrightInfo copyInfo;
+
+            memset(&header, 0, sizeof(header));
+            memset(&copyInfo, 0, sizeof(copyInfo));
+
+            copyInfo.copyrightProtectionType = 0x00; // No protection for CD
+            copyInfo.regionManagementInfo = 0x00;
+            copyInfo.reserved1 = 0x00;
+            copyInfo.reserved2 = 0x00;
+
+            header.dataLength = htons(sizeof(copyInfo));
+
+            memcpy(gadget->m_InBuffer, &header, sizeof(header));
+            int dataLength = sizeof(header);
+            memcpy(gadget->m_InBuffer + dataLength, &copyInfo, sizeof(copyInfo));
+            dataLength += sizeof(copyInfo);
+
+            if (allocationLength < dataLength)
+                dataLength = allocationLength;
+
+            gadget->m_nnumber_blocks = 0;
+            gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, dataLength);
+            gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
+            gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+            return;
+        }
+
+        // All DVD-specific formats (0x00, 0x02, 0x03, 0x04, etc.) must FAIL for CD media
         CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
-                        "READ DISC STRUCTURE format 0x%02x for CD media - returning minimal response", format);
-
-        // Return minimal header indicating no data available
-        TUSBCDReadDiscStructureHeader header;
-        memset(&header, 0, sizeof(header));
-        header.dataLength = htons(2); // Just header, no payload
-
-        int length = sizeof(header);
-        if (allocationLength < length)
-            length = allocationLength;
-
-        memcpy(gadget->m_InBuffer, &header, length);
-        gadget->m_nnumber_blocks = 0;
-        gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
-        gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
-        gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+                        "READ DISC STRUCTURE format 0x%02x: FAILING for CD media (Incompatible Medium)", format);
+        
+        // Set sense: ILLEGAL REQUEST - Incompatible Medium Installed
+        gadget->setSenseData(0x05, 0x30, 0x02);
+        gadget->sendCheckCondition();
         return;
     }
 
@@ -868,16 +894,6 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
     {
     case 0x00: // Physical Format Information
     {
-        if (gadget->m_mediaType != MEDIA_TYPE::DVD)
-        {
-            // Not supported for CD
-            CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
-                            "READ DISC STRUCTURE format 0x00 not supported for CD media");
-            gadget->setSenseData(0x05, 0x24, 0x00); // ILLEGAL REQUEST, INVALID FIELD IN CDB
-            gadget->sendCheckCondition();
-            return;
-        }
-
         CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
                         "READ DISC STRUCTURE format 0x00: Physical Format Information");
 
@@ -892,28 +908,18 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
         u32 discCapacity = 2298496; // Default: ~4.7GB single-layer DVD-ROM (2,298,496 sectors)
 
         // Byte 0: Book type and part version
-        // Book type: 0x00 = DVD-ROM, 0x0A = DVD+R
-        // Part version: 0x01 for DVD-ROM
         physInfo.bookTypePartVer = 0x01; // DVD-ROM, version 1.0
 
         // Byte 1: Disc size and maximum rate
-        // Disc size: 0x00 = 120mm, 0x01 = 80mm
-        // Max rate: 0x02 = 10.08 Mbps
         physInfo.discSizeMaxRate = 0x20; // Max rate=2, disc size=0
 
         // Byte 2: Layers, path, type
-        // Num layers: 0x00 = 1 layer, 0x01 = 2 layers
-        // Track path: 0 = Parallel
-        // Layer type: 0x01 = embossed data layer (bit 0)
         physInfo.layersPathType = 0x01; // Single layer, parallel, embossed
 
         // Byte 3: Densities
-        // Linear density: 0x00 = 0.267 um/bit
-        // Track density: 0x00 = 0.74 um/track
         physInfo.densities = 0x00;
 
         // Bytes 4-6: Data start sector (24-bit big-endian)
-        // Standard DVD starts at 0x030000
         u32 dataStart = 0x030000;
         physInfo.dataStartSector[0] = (dataStart >> 16) & 0xFF;
         physInfo.dataStartSector[1] = (dataStart >> 8) & 0xFF;
@@ -926,20 +932,19 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
         physInfo.dataEndSector[2] = dataEnd & 0xFF;
 
         // Bytes 10-12: Layer 0 end (24-bit big-endian)
-        // For single layer, this is 0
         physInfo.layer0EndSector[0] = 0x00;
         physInfo.layer0EndSector[1] = 0x00;
         physInfo.layer0EndSector[2] = 0x00;
 
         // Byte 13: BCA flag
-        physInfo.bcaFlag = 0x00; // No BCA
+        physInfo.bcaFlag = 0x00;
 
         // Bytes 14-16: Reserved
         physInfo.reserved[0] = 0x00;
         physInfo.reserved[1] = 0x00;
         physInfo.reserved[2] = 0x00;
 
-        // Set header length (excludes the header itself)
+        // Set header length
         header.dataLength = htons(sizeof(physInfo));
 
         // Copy to buffer
@@ -968,15 +973,15 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
         memset(&copyInfo, 0, sizeof(copyInfo));
 
         // Set copyright protection type
-        if (gadget->m_bReportDVDCSS && gadget->m_mediaType == MEDIA_TYPE::DVD)
+        if (gadget->m_bReportDVDCSS)
         {
             copyInfo.copyrightProtectionType = 0x01; // CSS/CPPM
-            copyInfo.regionManagementInfo = 0x00;    // All regions (0xFF = no regions)
+            copyInfo.regionManagementInfo = 0x00;    // All regions
         }
         else
         {
             copyInfo.copyrightProtectionType = 0x00; // No protection
-            copyInfo.regionManagementInfo = 0x00;    // N/A
+            copyInfo.regionManagementInfo = 0x00;
         }
 
         copyInfo.reserved1 = 0x00;
@@ -995,15 +1000,6 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
 
     case 0x04: // Manufacturing Information
     {
-        if (gadget->m_mediaType != MEDIA_TYPE::DVD)
-        {
-            CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
-                            "READ DISC STRUCTURE format 0x04 not supported for CD media");
-            gadget->setSenseData(0x05, 0x24, 0x00); // ILLEGAL REQUEST, INVALID FIELD IN CDB
-            gadget->sendCheckCondition();
-            return;
-        }
-
         CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
                         "READ DISC STRUCTURE format 0x04: Manufacturing Information");
 
@@ -1026,56 +1022,34 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
         CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
                         "READ DISC STRUCTURE format 0xFF: Disc Structure List");
 
-        // Build list of supported formats
+        // Build list of supported formats for DVD
         TUSBCDReadDiscStructureHeader header;
         memset(&header, 0, sizeof(header));
 
-        if (gadget->m_mediaType == MEDIA_TYPE::DVD)
-        {
-            // DVD supports: 0x00 (Physical), 0x01 (Copyright), 0x04 (Manufacturing), 0xFF (List)
-            u8 formatList[] = {
-                0x00, 0x00, 0x00, 0x00, // Format 0x00: Physical Format
-                0x01, 0x00, 0x00, 0x00, // Format 0x01: Copyright
-                0x04, 0x00, 0x00, 0x00, // Format 0x04: Manufacturing
-                0xFF, 0x00, 0x00, 0x00  // Format 0xFF: List
-            };
+        // DVD supports: 0x00 (Physical), 0x01 (Copyright), 0x04 (Manufacturing), 0xFF (List)
+        u8 formatList[] = {
+            0x00, 0x00, 0x00, 0x00, // Format 0x00: Physical Format
+            0x01, 0x00, 0x00, 0x00, // Format 0x01: Copyright
+            0x04, 0x00, 0x00, 0x00, // Format 0x04: Manufacturing
+            0xFF, 0x00, 0x00, 0x00  // Format 0xFF: List
+        };
 
-            header.dataLength = htons(sizeof(formatList));
-            memcpy(gadget->m_InBuffer, &header, sizeof(header));
-            dataLength += sizeof(header);
-            memcpy(gadget->m_InBuffer + dataLength, formatList, sizeof(formatList));
-            dataLength += sizeof(formatList);
-        }
-        else
-        {
-            // CD only supports: 0x01 (Copyright), 0xFF (List)
-            u8 formatList[] = {
-                0x01, 0x00, 0x00, 0x00, // Format 0x01: Copyright
-                0xFF, 0x00, 0x00, 0x00  // Format 0xFF: List
-            };
-
-            header.dataLength = htons(sizeof(formatList));
-            memcpy(gadget->m_InBuffer, &header, sizeof(header));
-            dataLength += sizeof(header);
-            memcpy(gadget->m_InBuffer + dataLength, formatList, sizeof(formatList));
-            dataLength += sizeof(formatList);
-        }
+        header.dataLength = htons(sizeof(formatList));
+        memcpy(gadget->m_InBuffer, &header, sizeof(header));
+        dataLength += sizeof(header);
+        memcpy(gadget->m_InBuffer + dataLength, formatList, sizeof(formatList));
+        dataLength += sizeof(formatList);
         break;
     }
 
     default: // Unsupported format
     {
         CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
-                        "READ DISC STRUCTURE: Unsupported format 0x%02x", format);
+                        "READ DISC STRUCTURE: Unsupported format 0x%02x - FAILING", format);
 
-        // Return minimal empty structure
-        TUSBCDReadDiscStructureHeader header;
-        memset(&header, 0, sizeof(header));
-        header.dataLength = htons(0); // No data
-
-        memcpy(gadget->m_InBuffer, &header, sizeof(header));
-        dataLength += sizeof(header);
-        break;
+        gadget->setSenseData(0x05, 0x24, 0x00); // ILLEGAL REQUEST - Invalid Field in CDB
+        gadget->sendCheckCondition();
+        return;
     }
     }
 

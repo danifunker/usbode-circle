@@ -673,28 +673,44 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     int dataLength = 0;
     dataLength += sizeof(gadget->header);
 
+    // RT=2 means return ONLY the requested feature (single feature query)
     if (rt == 0x02)
     {
         if (startFeature == 0x0002)
         {
+            // Feature 0x0002: Morphing - Drive can report operational changes
             memcpy(gadget->m_InBuffer + dataLength, &gadget->morphing, sizeof(gadget->morphing));
             dataLength += sizeof(gadget->morphing);
         }
     }
     else
     {
+        // RT!=2 means return ALL features starting from startFeature (full capability list)
+        
         if (startFeature <= 0x0000)
         {
+            // Feature 0x0000: Profile List - Describes all media types this drive can handle
             TUSBCDProfileListFeatureReply dynProfileList = gadget->profile_list;
-            dynProfileList.AdditionalLength = 0x08;
+            
+            // CONDITIONAL: Only advertise DVD profile when DVD media is loaded
+            if (gadget->m_mediaType == MEDIA_TYPE::DVD) {
+                dynProfileList.AdditionalLength = 0x08;  // 2 profiles (CD + DVD)
+            } else {
+                dynProfileList.AdditionalLength = 0x04;  // 1 profile (CD only)
+            }
+            
             memcpy(gadget->m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
             dataLength += sizeof(dynProfileList);
 
-            TUSBCProfileDescriptorReply activeDVD = gadget->dvd_profile;
-            activeDVD.currentP = (gadget->m_mediaType == MEDIA_TYPE::DVD) ? 0x01 : 0x00;
-            memcpy(gadget->m_InBuffer + dataLength, &activeDVD, sizeof(activeDVD));
-            dataLength += sizeof(activeDVD);
+            // CONDITIONAL: Only include DVD profile descriptor if DVD media is present
+            if (gadget->m_mediaType == MEDIA_TYPE::DVD) {
+                TUSBCProfileDescriptorReply activeDVD = gadget->dvd_profile;
+                activeDVD.currentP = 0x01;  // Mark as current profile
+                memcpy(gadget->m_InBuffer + dataLength, &activeDVD, sizeof(activeDVD));
+                dataLength += sizeof(activeDVD);
+            }
 
+            // CD profile - always present (our base capability)
             TUSBCProfileDescriptorReply activeCD = gadget->cdrom_profile;
             activeCD.currentP = (gadget->m_mediaType != MEDIA_TYPE::DVD) ? 0x01 : 0x00;
             memcpy(gadget->m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
@@ -703,72 +719,86 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
 
         if (startFeature <= 0x0001)
         {
+            // Feature 0x0001: Core - Basic SCSI multimedia command support
             memcpy(gadget->m_InBuffer + dataLength, &gadget->core, sizeof(gadget->core));
             dataLength += sizeof(gadget->core);
         }
 
         if (startFeature <= 0x0002)
         {
+            // Feature 0x0002: Morphing - Asynchronous operational change notifications
             memcpy(gadget->m_InBuffer + dataLength, &gadget->morphing, sizeof(gadget->morphing));
             dataLength += sizeof(gadget->morphing);
         }
 
         if (startFeature <= 0x0003)
         {
+            // Feature 0x0003: Removable Medium - Medium can be ejected/inserted
             memcpy(gadget->m_InBuffer + dataLength, &gadget->mechanism, sizeof(gadget->mechanism));
             dataLength += sizeof(gadget->mechanism);
         }
 
         if (startFeature <= 0x0010)
         {
+            // Feature 0x0010: Random Readable - Can read any addressable block
             memcpy(gadget->m_InBuffer + dataLength, &gadget->randomreadable, sizeof(gadget->randomreadable));
             dataLength += sizeof(gadget->randomreadable);
         }
 
         if (startFeature <= 0x001D)
         {
+            // Feature 0x001D: Multi-Read - Can read all CD media types
             memcpy(gadget->m_InBuffer + dataLength, &gadget->multiread, sizeof(gadget->multiread));
             dataLength += sizeof(gadget->multiread);
         }
 
         if (startFeature <= 0x001E)
         {
+            // Feature 0x001E: CD Read - CD-specific structure reading (TOC, subcode, etc.)
             memcpy(gadget->m_InBuffer + dataLength, &gadget->cdread, sizeof(gadget->cdread));
-            gadget->m_InBuffer[dataLength + 5] &= ~0x01;
+            gadget->m_InBuffer[dataLength + 5] &= ~0x01;  // Clear DAP bit
             dataLength += sizeof(gadget->cdread);
         }
 
-        if (startFeature <= 0x001F)
+        // CONDITIONAL: Only advertise DVD Read feature when DVD media is loaded
+        if (startFeature <= 0x001F && gadget->m_mediaType == MEDIA_TYPE::DVD)
         {
+            // Feature 0x001F: DVD Read - DVD-specific structure reading
             memcpy(gadget->m_InBuffer + dataLength, &gadget->dvdread, sizeof(gadget->dvdread));
             dataLength += sizeof(gadget->dvdread);
         }
 
         if (startFeature <= 0x0100)
         {
+            // Feature 0x0100: Power Management - Drive can enter low-power states
             memcpy(gadget->m_InBuffer + dataLength, &gadget->powermanagement, sizeof(gadget->powermanagement));
             dataLength += sizeof(gadget->powermanagement);
         }
 
         if (startFeature <= 0x0103)
         {
+            // Feature 0x0103: CD Audio External Play - Analog audio output support
             memcpy(gadget->m_InBuffer + dataLength, &gadget->audioplay, sizeof(gadget->audioplay));
             dataLength += sizeof(gadget->audioplay);
         }
 
-        if (startFeature <= 0x0106)
+        // CONDITIONAL: Only advertise DVD CSS when DVD media is loaded
+        if (startFeature <= 0x0106 && gadget->m_mediaType == MEDIA_TYPE::DVD)
         {
+            // Feature 0x0106: DVD CSS - Content Scramble System copy protection
             memcpy(gadget->m_InBuffer + dataLength, &gadget->dvdcss, sizeof(gadget->dvdcss));
             dataLength += sizeof(gadget->dvdcss);
         }
 
         if (startFeature <= 0x0107)
         {
+            // Feature 0x0107: Real Time Streaming - Can maintain real-time data streams
             memcpy(gadget->m_InBuffer + dataLength, &gadget->rtstreaming, sizeof(gadget->rtstreaming));
             dataLength += sizeof(gadget->rtstreaming);
         }
     }
 
+    // Build the feature header with current profile and total data length
     TUSBCDFeatureHeaderReply dynHeader = gadget->header;
 
     if (gadget->m_mediaType == MEDIA_TYPE::DVD)
@@ -778,13 +808,14 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     }
     else
     {
-        dynHeader.currentProfile = htons(0x0000);
+        dynHeader.currentProfile = htons(PROFILE_CDROM; 
         CDROM_DEBUG_LOG("SCSIInquiry::GetConfiguration", "GET CONFIGURATION: Returning PROFILE_CDROM (0x0008)");
     }
 
     dynHeader.dataLength = htonl(dataLength - 4);
     memcpy(gadget->m_InBuffer, &dynHeader, sizeof(dynHeader));
 
+    // Truncate response if host requested less data than we prepared
     if (allocationLength < dataLength)
         dataLength = allocationLength;
 

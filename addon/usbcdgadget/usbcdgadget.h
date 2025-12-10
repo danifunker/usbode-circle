@@ -276,7 +276,7 @@ private:
         0x80,                                     // RMB set = removable media
         0x00,                                     // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
         0x32,                                     // Response Data Format = This response is SPC3 format
-        0x1F,                                     // Additional Length
+        0x5B,                                     // Additional Length
         0x00,                                     // SCCS ACC TPGS 3PC Reserved PROTECT
         0x00,                                     // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
         0x00,                                     // Obsolete Obsolete WBUS16a SYNCa LINKED Obsolete CMDQUE VS
@@ -393,7 +393,7 @@ private:
     // Feature 0002h - Morphing Feature. The Drive is able to report operational changes
     TUSBCDMorphingFeatureReply morphing = {
         htons(0x0002), // featureCode
-        0x0b,          // VersionPersistentCurrent
+        0x07,          // VersionPersistentCurrent
         0x04,          // AdditionalLength
         0x02,          // OCEventASYNC
         0x00,          // reserved
