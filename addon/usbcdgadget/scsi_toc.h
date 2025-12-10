@@ -26,6 +26,7 @@ private:
     static void FormatRawTOCEntry(CUSBCDGadget* gadget, const CUETrackInfo *track, uint8_t *dest, bool useBCD);
     static void DoReadTrackInformation(CUSBCDGadget* gadget, u8 addressType, u32 address, u16 allocationLength);
     static void DoReadHeader(CUSBCDGadget* gadget, bool MSF, uint32_t lba, uint16_t allocationLength);
+    static void DoReadCDText(CUSBCDGadget* gadget, uint16_t allocationLength);
 };
 
 #endif

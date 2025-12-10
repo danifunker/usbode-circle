@@ -98,6 +98,10 @@ void SCSITOC::ReadTOC(CUSBCDGadget *gadget)
             gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
         }
         break;
+    case 5:
+        CDROM_DEBUG_LOG("SCSITOC::ReadTOC", "Format 0x05: CD-TEXT");
+        DoReadCDText(gadget, allocationLength);
+        break;        
     default:
         CDROM_DEBUG_LOG("SCSITOC::ReadTOC", "INVALID FORMAT 0x%02x", format);
         gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
@@ -162,6 +166,39 @@ void SCSITOC::FormatRawTOCEntry(CUSBCDGadget *gadget, const CUETrackInfo *track,
     {
         CDUtils::LBA2MSF(track->data_start, &dest[8], false);
     }
+}
+
+void SCSITOC::DoReadCDText(CUSBCDGadget *gadget, uint16_t allocationLength)
+{
+    CDROM_DEBUG_LOG("SCSITOC::DoReadCDText", "Entry: allocLen=%d", allocationLength);
+
+    // CD-TEXT Format (MMC-3):
+    // Byte 0-1: TOC Data Length (Size of returned data minus these 2 bytes)
+    // Byte 2-3: Reserved (Must be 0x00)
+    // Byte 4-n: Text Packs (18 bytes each)
+
+    // Since we don't have text data, we return a header indicating NO text packs.
+    // Length is 2 (accounting for the two reserved bytes at offset 2 and 3).
+    
+    uint16_t dataLen = 2; 
+
+    gadget->m_InBuffer[0] = (dataLen >> 8) & 0xFF;
+    gadget->m_InBuffer[1] = dataLen & 0xFF;
+    gadget->m_InBuffer[2] = 0x00;
+    gadget->m_InBuffer[3] = 0x00;
+
+    // Total bytes to send = 4 (Header)
+    uint32_t len = 4;
+    
+    if (len > allocationLength)
+        len = allocationLength;
+
+    CDROM_DEBUG_LOG("SCSITOC::DoReadCDText", "Sending empty CD-Text header (%d bytes)", len);
+
+    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
+    gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
+    gadget->m_nnumber_blocks = 0;
+    gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
 
 // Complete READ TOC handler
