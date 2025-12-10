@@ -32,11 +32,6 @@
 #include <usbcdgadget/usbcdgadget.h>
 #include <discimage/imagedevice.h>  // Changed from cuedevice.h
 
-enum class USBTargetOS
-{
-    DOSWIN, // Standard USB Mass Storage (default)
-    MACOSCLASSIC  // Classic MAC OS with CD Audio
-};
 class CDROMService : public CTask {
 public:
     CDROMService(u16 vid, u16 pid);

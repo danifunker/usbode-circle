@@ -4,9 +4,11 @@
 // Update Loop for Data Transfer
 //
 #include <usbcdgadget/usbcdgadget.h>
+#include <cdplayer/cdplayer.h>
 #include <usbcdgadget/cd_utils.h>
 #include <circle/logger.h>
 #include <circle/util.h>
+#include <circle/sched/scheduler.h>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...) // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
@@ -26,21 +28,55 @@ void CUSBCDGadget::Update()
     if (m_bPendingDiscSwap)
     {
         unsigned elapsed = CTimer::Get()->GetTicks() - m_nDiscSwapStartTick;
-        // MLOGNOTE("CUSBCDGadget::Update", "Pending disc swap: elapsed=%u, threshold=%u", 
-        //          elapsed, CLOCKHZ / 2000);
-        
-        if (elapsed >= CLOCKHZ / 10000)
+        unsigned delayTicks = CLOCKHZ / 10000; // 100 ms
+
+        if (elapsed >= delayTicks)
         {
-            m_bPendingDiscSwap = false;
-            m_CDReady = true;
-            m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
-            m_SenseParams.bSenseKey = 0x06;
-            m_SenseParams.bAddlSenseCode = 0x28;
-            m_SenseParams.bAddlSenseCodeQual = 0x00;
-            bmCSWStatus = CD_CSW_STATUS_FAIL;
-            discChanged = true;
-            // MLOGNOTE("CUSBCDGadget::Update",
-            //           "Disc swap complete: Transitioned to UNIT_ATTENTION after %u ticks", elapsed);
+            // Advance to next media state
+            switch (m_mediaState)
+            {
+            case MediaState::NO_MEDIUM:
+                // Stage 2: Transition from NO_MEDIUM to UNIT_ATTENTION
+                m_CDReady = true;
+                m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
+                setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION / MEDIUM CHANGED
+                bmCSWStatus = CD_CSW_STATUS_FAIL;
+                discChanged = true;
+                m_nDiscSwapStartTick = CTimer::Get()->GetTicks();
+                CDROM_DEBUG_LOG("CUSBCDGadget::Update",
+                         "Disc swap: NO_MEDIUM -> UNIT_ATTENTION after %u ms",
+                         elapsed);
+                break;
+
+            case MediaState::MEDIUM_PRESENT_UNIT_ATTENTION:
+                // Stage 3: Complete - REQUEST SENSE will transition to READY
+                m_bPendingDiscSwap = false;
+                CDROM_DEBUG_LOG("CUSBCDGadget::Update",
+                         "Disc swap: Complete after %u ms, waiting for REQUEST SENSE to clear UNIT_ATTENTION",
+                         elapsed);
+                break;
+
+            default:
+                // Shouldn't happen
+                m_bPendingDiscSwap = false;
+                MLOGERR("CUSBCDGadget::Update",
+                        "Disc swap: Unexpected state %d, aborting", (int)m_mediaState);
+                break;
+            }
+        }
+    }
+    if (m_bNeedsAudioInit == TRUE)
+    {
+        m_bNeedsAudioInit = FALSE;
+        CCDPlayer *cdplayer = (CCDPlayer *)CScheduler::Get()->GetTask("cdplayer");
+        if (cdplayer)
+        {
+            MLOGNOTE("CUSBCDGadget::Update", "Initializing I2S audio after pending flag");
+            cdplayer->EnsureAudioInitialized();
+        }
+        else
+        {
+            MLOGNOTE("CUSBCDGadget::Update", "WARNING: CD Player not found!");
         }
     }
 

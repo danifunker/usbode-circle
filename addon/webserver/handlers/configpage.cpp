@@ -154,8 +154,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             
             // USB Target OS configuration
             if (form_params.count("usbtargetos")) {
-                config->SetUSBTargetOS(form_params["usbtargetos"].c_str());
-            }
+            config->SetUSBTargetOS(ConfigService::StringToUSBTargetOS(form_params["usbtargetos"].c_str()));            }
             
             // Check for action parameter to determine what to do after saving
             std::string action = form_params.count("action") ? form_params["action"] : "save";
@@ -185,8 +184,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string current_usbspeed = config->GetUSBFullSpeed() ? "full" : "high";
     std::string current_logfile = config->GetLogfile();
     std::string current_theme = config->GetTheme();
-    std::string current_usbtargetos = config->GetUSBTargetOS("doswin");
-    
+    std::string current_usbtargetos = ConfigService::USBTargetOSToString(config->GetUSBTargetOS());
+
     // Remove 0:/ prefix from logfile for display
     if (current_logfile.find("0:/") == 0) {
         current_logfile = current_logfile.substr(3);

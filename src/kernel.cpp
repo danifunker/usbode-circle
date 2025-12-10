@@ -153,9 +153,9 @@ boolean CKernel::Initialize(void)
     }
     if (bOK)
     {
-    // Don't start network if we're doing an upgrade, since this will cause a
-    UpgradeStatus *upgradeCheck = UpgradeStatus::Get();
-    
+        // Don't start network if we're doing an upgrade, since this will cause a
+        UpgradeStatus *upgradeCheck = UpgradeStatus::Get();
+
         if (!m_WLAN.Initialize() || upgradeCheck->isUpgradeRequired())
         {
             LOGWARN("WLAN not available - continuing without network");
@@ -305,24 +305,27 @@ TShutdownMode CKernel::Run(void)
     LOGNOTE("Partition 1 (data/images) mounted successfully");
 
     // Read VID/PID from config (with defaults)
-const char* usbProtocolStr = config->GetUSBTargetOS("doswin");
+    USBTargetOS GetUSBTargetOS(USBTargetOS defaultValue = USBTargetOS::DosWin);
 
-u16 vendorId;
-u16 productId;
+    u16 vendorId;
+    u16 productId;
 
-if (strcmp(usbProtocolStr, "apple") == 0) {
-    // Apple Mode, use Sony PID/VID
-    vendorId = config->GetUSBCDRomVendorId(0x04E6);   // SCM Microsystems
-    productId = config->GetUSBCDRomProductId(0x0101); // eUSB ATA Bridge (Sony Spressa USB CDRW)
-    LOGNOTE("USB Target OS: Apple - VID:0x%04x PID:0x%04x", vendorId, productId);
-} else {
-    vendorId = config->GetUSBCDRomVendorId(0x04da);
-    productId = config->GetUSBCDRomProductId(0x0d01);
-    LOGNOTE("USB Target OS: DOSWIN - VID:0x%04x PID:0x%04x", vendorId, productId);
-}
+    if (config->GetUSBTargetOS() == USBTargetOS::Apple)
+    {
+        // Apple Mode, use Sony PID/VID
+        vendorId = config->GetUSBCDRomVendorId(0x04E6);   // SCM Microsystems
+        productId = config->GetUSBCDRomProductId(0x0101); // eUSB ATA Bridge (Sony Spressa USB CDRW)
+        LOGNOTE("USB Target OS: Apple - VID:0x%04x PID:0x%04x", vendorId, productId);
+    }
+    else
+    {
+        vendorId = config->GetUSBCDRomVendorId(0x04da);
+        productId = config->GetUSBCDRomProductId(0x0d01);
+        LOGNOTE("USB Target OS: DOSWIN - VID:0x%04x PID:0x%04x", vendorId, productId);
+    }
 
-// Create CDROM service with runtime VID/PID
-new CDROMService(vendorId, productId);
+    // Create CDROM service with runtime VID/PID
+    new CDROMService(vendorId, productId);
 
     new SCSITBService();
     LOGNOTE("Started SCSITB service");

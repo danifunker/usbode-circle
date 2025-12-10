@@ -11,6 +11,31 @@ LOGMODULE("configservice");
 
 ConfigService *ConfigService::s_pThis = nullptr;
 
+const char* ConfigService::USBTargetOSToString(USBTargetOS os)
+{
+    switch (os) {
+        case USBTargetOS::DosWin:
+            return "doswin";
+        case USBTargetOS::Apple:
+            return "apple";
+        default:
+            return "doswin";
+    }
+}
+
+USBTargetOS ConfigService::StringToUSBTargetOS(const char* str)
+{
+    if (str == nullptr)
+        return USBTargetOS::DosWin;
+    
+    if (strcmp(str, "apple") == 0)
+        return USBTargetOS::Apple;
+    else if (strcmp(str, "doswin") == 0)
+        return USBTargetOS::DosWin;
+    
+    return USBTargetOS::DosWin;
+}
+
 ConfigService::ConfigService() 
 :  m_cmdline(new CmdLine()),
  m_config(new Config())
@@ -53,14 +78,15 @@ void ConfigService::SetSoundDev(const char* value)
     m_cmdline->SetValue("sounddev", value);
 }
 
-const char* ConfigService::GetUSBTargetOS(const char* defaultValue)
+USBTargetOS ConfigService::GetUSBTargetOS(USBTargetOS defaultValue)
 {
-    return m_config->GetString("usbtargetos", defaultValue);
+    const char* str = m_config->GetString("usbtargetos", USBTargetOSToString(defaultValue));
+    return StringToUSBTargetOS(str);
 }
 
-void ConfigService::SetUSBTargetOS(const char* value)
+void ConfigService::SetUSBTargetOS(USBTargetOS value)
 {
-    m_config->SetString("usbtargetos", value);
+    m_config->SetString("usbtargetos", USBTargetOSToString(value));
 }
 
 const char* ConfigService::GetSoundDev(const char* defaultValue)

@@ -34,6 +34,7 @@
 #include <cueparser/cueparser.h>
 #include <discimage/imagedevice.h>
 #include <usbcdgadget/scsidefs.h>
+#include <configservice/configservice.h>
 
 #ifndef USB_GADGET_DEVICE_ID_CD
 #define USB_GADGET_DEVICE_ID_CD 0x1d6b
@@ -86,6 +87,7 @@ public:
 
     /// \brief Call this periodically from TASK_LEVEL to allow I/O operations!
     void Update(void);
+    boolean m_bNeedsAudioInit = FALSE;
 
 protected:
     // ========================================================================
@@ -138,8 +140,8 @@ private:
     void clearSenseData();
     void sendCheckCondition();
     void sendGoodStatus();
-    char m_USBTargetOS[16];
-
+    USBTargetOS m_USBTargetOS;
+    
     // Friend declarations for command classes and utilities
     friend class SCSIInquiry;
     friend class SCSIRead;
@@ -274,6 +276,23 @@ private:
         0x80,                                     // RMB set = removable media
         0x00,                                     // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
         0x32,                                     // Response Data Format = This response is SPC3 format
+        0x5B,                                     // Additional Length
+        0x00,                                     // SCCS ACC TPGS 3PC Reserved PROTECT
+        0x00,                                     // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
+        0x00,                                     // Obsolete Obsolete WBUS16a SYNCa LINKED Obsolete CMDQUE VS
+        {'U', 'S', 'B', 'O', 'D', 'E', ' ', ' '}, // Vendor Identification
+        {'C', 'D', 'R', 'O', 'M', ' ', 'E', 'M', 'U', 'L', 'A', 'T', 'O', 'R', ' ', ' '},
+        {'0', '0', '0', '1'}, // Product Revision
+        {0},                  // Vendor specific (20 bytes, all zeros)
+        {0},                  // Reserved (2 bytes)
+        {0},                  // Version descriptors (16 bytes, all zeros for now)
+        {0}                   // Reserved/padding (22 bytes)
+    };
+    TUSBCDInquiryReply m_InqReply_Apple{
+        0x05,                                     // Peripheral type = CD/DVD
+        0x80,                                     // RMB set = removable media
+        0x00,                                     // Version 0x00 = no standard (3 = SPC, 4 = SPC2, 5 = SPC3)
+        0x32,                                     // Response Data Format = This response is SPC3 format
         0x1F,                                     // Additional Length
         0x50,                                     // SCCS ACC TPGS 3PC Reserved PROTECT
         0x00,                                     // BQUE ENCSERV VS MULTIP MCHNGR Obsolete Obsolete ADDR16a
@@ -286,6 +305,7 @@ private:
         {0},                  // Version descriptors (16 bytes, all zeros for now)
         {0}                   // Reserved/padding (22 bytes)
     };
+	
     TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
 
     TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};
@@ -391,7 +411,7 @@ private:
     // Feature 0002h - Morphing Feature. The Drive is able to report operational changes
     TUSBCDMorphingFeatureReply morphing = {
         htons(0x0002), // featureCode
-        0x0b,          // VersionPersistentCurrent
+        0x07,          // VersionPersistentCurrent
         0x04,          // AdditionalLength
         0x02,          // OCEventASYNC
         0x00,          // reserved
