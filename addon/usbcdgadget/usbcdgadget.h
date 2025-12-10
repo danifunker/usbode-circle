@@ -34,6 +34,7 @@
 #include <cueparser/cueparser.h>
 #include <discimage/imagedevice.h>
 #include <usbcdgadget/scsidefs.h>
+#include <configservice/configservice.h>
 
 #ifndef USB_GADGET_DEVICE_ID_CD
 #define USB_GADGET_DEVICE_ID_CD 0x1d6b
@@ -138,8 +139,8 @@ private:
     void clearSenseData();
     void sendCheckCondition();
     void sendGoodStatus();
-    char m_USBTargetOS[16];
-
+    USBTargetOS m_USBTargetOS;
+    
     // Friend declarations for command classes and utilities
     friend class SCSIInquiry;
     friend class SCSIRead;

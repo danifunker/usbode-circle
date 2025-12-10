@@ -35,7 +35,6 @@
 #include <stddef.h>
 #include <filesystem>
 #include <circle/bcmpropertytags.h>
-#include <configservice/configservice.h>
 #include <circle/synchronize.h>
 
 #include <usbcdgadget/cd_utils.h>
@@ -244,21 +243,20 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
         {
             CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget", "CD-ROM debug logging enabled");
         }
+
         // Get target OS for platform-specific handling
-        CString targetOS = configService->GetProperty("usbtargetos", "");
-        strncpy(m_USBTargetOS, (const char *)targetOS, sizeof(m_USBTargetOS) - 1);
-        m_USBTargetOS[sizeof(m_USBTargetOS) - 1] = '\0'; // Ensure null termination
+        m_USBTargetOS = configService->GetUSBTargetOS();
 
         if (m_bDebugLogging)
         {
-            CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget", "Target OS set to: %s", m_USBTargetOS);
+            const char *osName = (m_USBTargetOS == USBTargetOS::Apple) ? "apple" : "doswin";
+            CDROM_DEBUG_LOG("CUSBCDGadget::CUSBCDGadget", "Target OS set to: %s", osName);
         }
     }
     else
     {
         m_bDebugLogging = false; // Default to disabled if config service not available
-        strncpy(m_USBTargetOS, "doswin", sizeof(m_USBTargetOS) - 1);
-        m_USBTargetOS[sizeof(m_USBTargetOS) - 1] = '\0';
+        m_USBTargetOS = USBTargetOS::DosWin;
     }
 
     // Initialize SCSI Handlers
@@ -367,7 +365,7 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
         if (!uchDescIndex)
         {
             *pLength = sizeof(TUSBMSTGadgetConfigurationDescriptor);
-            if (strcmp(m_USBTargetOS, "apple") == 0)
+            if (m_USBTargetOS == USBTargetOS::Apple)
             {
                 return &s_ConfigurationDescriptorMacOS9;
             }
@@ -421,7 +419,7 @@ void CUSBCDGadget::AddEndpoints(void)
     // Determine which descriptor set to use
     const TUSBMSTGadgetConfigurationDescriptor *configDesc;
 
-    if (strcmp(m_USBTargetOS, "apple") == 0)
+    if (m_USBTargetOS == USBTargetOS::Apple)
     {
         // Apple mode: always use Mac OS 9 descriptors (USB 1.1)
         MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Mac OS 9 descriptors");
@@ -496,7 +494,7 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     {
         m_bPendingDiscSwap = true;
         m_nDiscSwapStartTick = CTimer::Get()->GetTicks();
-        MLOGNOTE("CUSBCDGadget::SetDevice", 
+        MLOGNOTE("CUSBCDGadget::SetDevice",
                  "Disc swap: Staying in NO_MEDIUM, will transition to UNIT_ATTENTION after delay");
     }
     else
@@ -643,8 +641,8 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 break;
             }
             memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
-            //MLOGNOTE("ReceiveCBW", "*** CBW RECEIVED *** cmd=0x%02x, mediaState=%d, m_CDReady=%d", 
-            // m_CBW.CBWCB[0], (int)m_mediaState, m_CDReady);
+            // MLOGNOTE("ReceiveCBW", "*** CBW RECEIVED *** cmd=0x%02x, mediaState=%d, m_CDReady=%d",
+            //  m_CBW.CBWCB[0], (int)m_mediaState, m_CDReady);
             if (m_CBW.dCBWSignature != VALID_CBW_SIG)
             {
                 MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x",
@@ -828,10 +826,10 @@ void CUSBCDGadget::sendGoodStatus()
 
 void CUSBCDGadget::HandleSCSICommand()
 {
-if (m_CBW.CBWCB[0] != 0x00)  // Filter out TEST_UNIT_READY spam
-{
-    CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
-}
+    if (m_CBW.CBWCB[0] != 0x00) // Filter out TEST_UNIT_READY spam
+    {
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);
+    }
     // Centralized Unit Attention Check
     // Some commands (like INQUIRY) must work even if Unit Attention is pending.
     // Others (like READ) must fail so the host knows the media changed.

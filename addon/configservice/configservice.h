@@ -7,6 +7,12 @@
 class Config;
 class CmdLine;
 
+enum class USBTargetOS : unsigned {
+    DosWin = 0,
+    Apple = 1,
+    Unknown = 255
+};
+
 class ConfigService : public CTask 
 {
 public:
@@ -47,8 +53,10 @@ public:
 
     void SetUSBCDRomVendorId(u16 value);
     void SetUSBCDRomProductId(u16 value);
-    void SetUSBTargetOS(const char* value="doswin");
-    const char* GetUSBTargetOS(const char* value="doswin");
+    void SetUSBTargetOS(USBTargetOS value);
+    USBTargetOS GetUSBTargetOS(USBTargetOS value=USBTargetOS::DosWin);
+    static const char* USBTargetOSToString(USBTargetOS os);
+    static USBTargetOS StringToUSBTargetOS(const char* str);
 
     const char* GetProperty(const char* property, const char* defaultValue, const char* section="usbode");
     unsigned GetProperty(const char* property, unsigned defaultValue, const char* section="usbode");
@@ -60,7 +68,6 @@ public:
     void Run(void);
 
 private:
-
     CmdLine* m_cmdline;
     Config* m_config;
     static ConfigService *s_pThis;

@@ -252,7 +252,7 @@ int CDUtils::GetBlocksizeForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo)
 {
     CDROM_DEBUG_LOG("CDUtils::GetBlocksizeForTrack", "Called with mode=%d, target=%s", trackInfo.track_mode, gadget->m_USBTargetOS);
     // FORCE RAW MODE for compatibility with .bin files that include headers when targeting macOS
-    // if (strcmp(gadget->m_USBTargetOS, "apple") == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
+    // if (gadget->m_USBTargetOS == USBTargetOS::Apple) == 0 && trackInfo.track_mode == CUETrack_MODE1_2048)
     // {
     //     CDROM_DEBUG_LOG("CDUtils::GetBlocksizeForTrack", "FORCE RAW MODE (2352) for Apple target OS");
     //     return 2352;
@@ -310,20 +310,35 @@ int CDUtils::GetSkipbytesForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo)
 // Make an assumption about media type based on track 1 mode
 int CDUtils::GetMediumType(CUSBCDGadget* gadget)
 {
+    // Determine if we should use legacy or modern medium types
+    bool useLegacyTypes = (gadget->m_USBTargetOS == USBTargetOS::Apple);
+    
+    // Check if it's a DVD first
+    if (gadget->m_mediaType == MEDIA_TYPE::DVD)
+    {
+        return useLegacyTypes ? 0x01 : 0x40;  // Legacy: 0x01, Modern: DVD-ROM
+    }
+    
+    // Otherwise it's a CD - check track structure
     gadget->cueParser.restart();
     const CUETrackInfo *trackInfo = nullptr;
-    gadget->cueParser.restart();
+    
     while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
     {
         if (trackInfo->track_number == 1 && trackInfo->track_mode == CUETrack_AUDIO)
+        {
             // Audio CD
-            return 0x02;
+            return useLegacyTypes ? 0x02 : 0x72;
+        }
         else if (trackInfo->track_number > 1)
-            // Mixed mode
-            return 0x03;
+        {
+            // Mixed mode CD
+            return useLegacyTypes ? 0x03 : 0x73;
+        }
     }
-    // Must be a data cd
-    return 0x01;
+    
+    // Data CD
+    return useLegacyTypes ? 0x01 : 0x71;
 }
 
 int CDUtils::GetSectorLengthFromMCS(uint8_t mainChannelSelection)
