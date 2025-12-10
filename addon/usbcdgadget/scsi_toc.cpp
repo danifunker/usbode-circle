@@ -101,7 +101,7 @@ void SCSITOC::ReadTOC(CUSBCDGadget *gadget)
     case 5:
         CDROM_DEBUG_LOG("SCSITOC::ReadTOC", "Format 0x05: CD-TEXT");
         DoReadCDText(gadget, allocationLength);
-        break;        
+        break;
     default:
         CDROM_DEBUG_LOG("SCSITOC::ReadTOC", "INVALID FORMAT 0x%02x", format);
         gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
@@ -179,8 +179,8 @@ void SCSITOC::DoReadCDText(CUSBCDGadget *gadget, uint16_t allocationLength)
 
     // Since we don't have text data, we return a header indicating NO text packs.
     // Length is 2 (accounting for the two reserved bytes at offset 2 and 3).
-    
-    uint16_t dataLen = 2; 
+
+    uint16_t dataLen = 2;
 
     gadget->m_InBuffer[0] = (dataLen >> 8) & 0xFF;
     gadget->m_InBuffer[1] = dataLen & 0xFF;
@@ -189,7 +189,7 @@ void SCSITOC::DoReadCDText(CUSBCDGadget *gadget, uint16_t allocationLength)
 
     // Total bytes to send = 4 (Header)
     uint32_t len = 4;
-    
+
     if (len > allocationLength)
         len = allocationLength;
 
@@ -486,14 +486,14 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget *gadget, uint8_t session, uint16_t allo
 void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
 {
     CDROM_DEBUG_LOG("SCSITOC::ReadDiscInformation", "Read Disc Information");
-    
+
     // Update disc information with current media state
     gadget->m_DiscInfoReply.disc_status = 0x0E; // Complete disc, finalized, last session complete
     gadget->m_DiscInfoReply.first_track_number = 0x01;
     gadget->m_DiscInfoReply.number_of_sessions = 0x01; // Single session
     gadget->m_DiscInfoReply.first_track_last_session = 0x01;
     gadget->m_DiscInfoReply.last_track_last_session = CDUtils::GetLastTrackNumber(gadget);
-    
+
     // Set disc type based on track 1 mode
     CUETrackInfo trackInfo = CDUtils::GetTrackInfoForTrack(gadget, 1);
     if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
@@ -504,19 +504,19 @@ void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
     {
         gadget->m_DiscInfoReply.disc_type = 0x10; // CD-ROM (data)
     }
-    
+
     u32 leadoutLBA = CDUtils::GetLeadoutLBA(gadget);
     gadget->m_DiscInfoReply.last_lead_in_start_time = htonl(leadoutLBA);
     gadget->m_DiscInfoReply.last_possible_lead_out = htonl(leadoutLBA);
-    
+
     // Get allocation length from CDB
     u16 allocationLength = gadget->m_CBW.CBWCB[7] << 8 | (gadget->m_CBW.CBWCB[8]);
-    
+
     // Return FULL structure (24 bytes) to match LG behavior
     int length = sizeof(TUSBDiscInfoReply);
     if (allocationLength < length)
         length = allocationLength;
-    
+
     memcpy(gadget->m_InBuffer, &gadget->m_DiscInfoReply, length);
     gadget->m_nnumber_blocks = 0;
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
@@ -840,24 +840,16 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
 
     // CRITICAL: For CD media, ALL READ DISC STRUCTURE formats must FAIL
     // This tells Windows "not a DVD" so it sends READ TOC instead
-if (gadget->m_mediaType != MEDIA_TYPE::DVD)
-{
-    CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
-        "READ DISC STRUCTURE format 0x%02x: Returning minimal data for CD media", format);
-    
-    // Return 4 bytes of zeros (invalid structure)
-    u8 dummy[4] = {0};
-    memcpy(gadget->m_InBuffer, dummy, 4);
-    
-    gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-    gadget->m_CSW.dCSWDataResidue = gadget->m_CBW.dCBWDataTransferLength - 4;
-    
-    gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(
-        CUSBCDGadgetEndpoint::TransferDataIn,
-        gadget->m_InBuffer, 4);
-    return;
-}
+    if (gadget->m_mediaType != MEDIA_TYPE::DVD)
+    {
+        CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
+                        "READ DISC STRUCTURE format 0x%02x: Returning success with no data for CD media", format);
+
+        // Just send CSW with success, no data phase
+        gadget->setSenseData(0x05, 0x30, 0x02);
+        gadget->sendCheckCondition();
+        return;
+    }
     // Process DVD structures
     int dataLength = 0;
 
@@ -879,7 +871,7 @@ if (gadget->m_mediaType != MEDIA_TYPE::DVD)
 
         physInfo.bookTypePartVer = 0x01; // DVD-ROM, version 1.0
         physInfo.discSizeMaxRate = 0x20; // Max rate=2, disc size=0
-        physInfo.layersPathType = 0x01; // Single layer, parallel, embossed
+        physInfo.layersPathType = 0x01;  // Single layer, parallel, embossed
         physInfo.densities = 0x00;
 
         // Data start sector
