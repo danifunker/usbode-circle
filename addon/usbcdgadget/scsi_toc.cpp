@@ -838,46 +838,10 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
                     "READ DISC STRUCTURE: media=%d, format=0x%02x, layer=%d, address=0x%08x, alloc=%d, AGID=%d, mediaType=%d",
                     mediaType, format, layer, address, allocationLength, agid, (int)gadget->m_mediaType);
 
-    // CRITICAL: For CD media, DVD-specific formats must FAIL with proper sense code
+    // CRITICAL: For CD media, ALL READ DISC STRUCTURE formats must FAIL
     // This tells Windows "not a DVD" so it sends READ TOC instead
     if (gadget->m_mediaType != MEDIA_TYPE::DVD)
     {
-        // Format 0x01 (Copyright) is allowed for CDs
-        if (format == 0x01)
-        {
-            CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
-                            "READ DISC STRUCTURE format 0x01: Copyright Information (CSS=0)");
-
-            // Build response: Header + Copyright Info
-            TUSBCDReadDiscStructureHeader header;
-            DVDCopyrightInfo copyInfo;
-
-            memset(&header, 0, sizeof(header));
-            memset(&copyInfo, 0, sizeof(copyInfo));
-
-            copyInfo.copyrightProtectionType = 0x00; // No protection for CD
-            copyInfo.regionManagementInfo = 0x00;
-            copyInfo.reserved1 = 0x00;
-            copyInfo.reserved2 = 0x00;
-
-            header.dataLength = htons(sizeof(copyInfo));
-
-            memcpy(gadget->m_InBuffer, &header, sizeof(header));
-            int dataLength = sizeof(header);
-            memcpy(gadget->m_InBuffer + dataLength, &copyInfo, sizeof(copyInfo));
-            dataLength += sizeof(copyInfo);
-
-            if (allocationLength < dataLength)
-                dataLength = allocationLength;
-
-            gadget->m_nnumber_blocks = 0;
-            gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, dataLength);
-            gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
-            gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-            return;
-        }
-
-        // All DVD-specific formats (0x00, 0x02, 0x03, 0x04, etc.) must FAIL for CD media
         CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
                         "READ DISC STRUCTURE format 0x%02x: FAILING for CD media (Incompatible Medium)", format);
         
@@ -904,50 +868,37 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
         memset(&header, 0, sizeof(header));
         memset(&physInfo, 0, sizeof(physInfo));
 
-        // Calculate disc capacity (you may want to get this from your CUE parser)
-        u32 discCapacity = 2298496; // Default: ~4.7GB single-layer DVD-ROM (2,298,496 sectors)
+        u32 discCapacity = 2298496; // ~4.7GB single-layer DVD-ROM
 
-        // Byte 0: Book type and part version
         physInfo.bookTypePartVer = 0x01; // DVD-ROM, version 1.0
-
-        // Byte 1: Disc size and maximum rate
         physInfo.discSizeMaxRate = 0x20; // Max rate=2, disc size=0
-
-        // Byte 2: Layers, path, type
         physInfo.layersPathType = 0x01; // Single layer, parallel, embossed
-
-        // Byte 3: Densities
         physInfo.densities = 0x00;
 
-        // Bytes 4-6: Data start sector (24-bit big-endian)
+        // Data start sector
         u32 dataStart = 0x030000;
         physInfo.dataStartSector[0] = (dataStart >> 16) & 0xFF;
         physInfo.dataStartSector[1] = (dataStart >> 8) & 0xFF;
         physInfo.dataStartSector[2] = dataStart & 0xFF;
 
-        // Bytes 7-9: Data end sector (24-bit big-endian)
+        // Data end sector
         u32 dataEnd = dataStart + discCapacity;
         physInfo.dataEndSector[0] = (dataEnd >> 16) & 0xFF;
         physInfo.dataEndSector[1] = (dataEnd >> 8) & 0xFF;
         physInfo.dataEndSector[2] = dataEnd & 0xFF;
 
-        // Bytes 10-12: Layer 0 end (24-bit big-endian)
+        // Layer 0 end (single layer = 0)
         physInfo.layer0EndSector[0] = 0x00;
         physInfo.layer0EndSector[1] = 0x00;
         physInfo.layer0EndSector[2] = 0x00;
 
-        // Byte 13: BCA flag
         physInfo.bcaFlag = 0x00;
-
-        // Bytes 14-16: Reserved
         physInfo.reserved[0] = 0x00;
         physInfo.reserved[1] = 0x00;
         physInfo.reserved[2] = 0x00;
 
-        // Set header length
         header.dataLength = htons(sizeof(physInfo));
 
-        // Copy to buffer
         memcpy(gadget->m_InBuffer, &header, sizeof(header));
         dataLength += sizeof(header);
         memcpy(gadget->m_InBuffer + dataLength, &physInfo, sizeof(physInfo));
@@ -965,18 +916,16 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
                         "READ DISC STRUCTURE format 0x01: Copyright Information (CSS=%d)",
                         gadget->m_bReportDVDCSS);
 
-        // Build response: Header + Copyright Info
         TUSBCDReadDiscStructureHeader header;
         DVDCopyrightInfo copyInfo;
 
         memset(&header, 0, sizeof(header));
         memset(&copyInfo, 0, sizeof(copyInfo));
 
-        // Set copyright protection type
         if (gadget->m_bReportDVDCSS)
         {
             copyInfo.copyrightProtectionType = 0x01; // CSS/CPPM
-            copyInfo.regionManagementInfo = 0x00;    // All regions
+            copyInfo.regionManagementInfo = 0x00;
         }
         else
         {
@@ -987,10 +936,8 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
         copyInfo.reserved1 = 0x00;
         copyInfo.reserved2 = 0x00;
 
-        // Set header length
         header.dataLength = htons(sizeof(copyInfo));
 
-        // Copy to buffer
         memcpy(gadget->m_InBuffer, &header, sizeof(header));
         dataLength += sizeof(header);
         memcpy(gadget->m_InBuffer + dataLength, &copyInfo, sizeof(copyInfo));
@@ -1003,7 +950,6 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
         CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
                         "READ DISC STRUCTURE format 0x04: Manufacturing Information");
 
-        // Return 2048 bytes of zeroed manufacturing data
         TUSBCDReadDiscStructureHeader header;
         memset(&header, 0, sizeof(header));
         header.dataLength = htons(2048);
@@ -1011,7 +957,6 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
         memcpy(gadget->m_InBuffer, &header, sizeof(header));
         dataLength += sizeof(header);
 
-        // Add 2048 bytes of zeros
         memset(gadget->m_InBuffer + dataLength, 0, 2048);
         dataLength += 2048;
         break;
@@ -1022,11 +967,9 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
         CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
                         "READ DISC STRUCTURE format 0xFF: Disc Structure List");
 
-        // Build list of supported formats for DVD
         TUSBCDReadDiscStructureHeader header;
         memset(&header, 0, sizeof(header));
 
-        // DVD supports: 0x00 (Physical), 0x01 (Copyright), 0x04 (Manufacturing), 0xFF (List)
         u8 formatList[] = {
             0x00, 0x00, 0x00, 0x00, // Format 0x00: Physical Format
             0x01, 0x00, 0x00, 0x00, // Format 0x01: Copyright
