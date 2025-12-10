@@ -840,17 +840,24 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
 
     // CRITICAL: For CD media, ALL READ DISC STRUCTURE formats must FAIL
     // This tells Windows "not a DVD" so it sends READ TOC instead
-    if (gadget->m_mediaType != MEDIA_TYPE::DVD)
-    {
-        CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
-                        "READ DISC STRUCTURE format 0x%02x: FAILING for CD media (Incompatible Medium)", format);
-        
-        // Set sense: ILLEGAL REQUEST - Incompatible Medium Installed
-        gadget->setSenseData(0x05, 0x30, 0x02);
-        gadget->sendCheckCondition();
-        return;
-    }
-
+if (gadget->m_mediaType != MEDIA_TYPE::DVD)
+{
+    CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
+        "READ DISC STRUCTURE format 0x%02x: Returning minimal data for CD media", format);
+    
+    // Return 4 bytes of zeros (invalid structure)
+    u8 dummy[4] = {0};
+    memcpy(gadget->m_InBuffer, dummy, 4);
+    
+    gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+    gadget->m_CSW.dCSWDataResidue = gadget->m_CBW.dCBWDataTransferLength - 4;
+    
+    gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
+    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(
+        CUSBCDGadgetEndpoint::TransferDataIn,
+        gadget->m_InBuffer, 4);
+    return;
+}
     // Process DVD structures
     int dataLength = 0;
 

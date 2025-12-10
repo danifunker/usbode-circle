@@ -146,40 +146,40 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
 void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 {
     MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
-    
+
     // CRITICAL: Initialize the entire structure first!
     memset(&gadget->m_ReqSenseReply, 0, sizeof(TUSBCDRequestSenseReply));
-    gadget->m_ReqSenseReply.bErrCode = 0x70;        // Current error, fixed format
-    gadget->m_ReqSenseReply.bAddlSenseLen = 0x0A;   // 10 additional bytes
-    
+    gadget->m_ReqSenseReply.bErrCode = 0x70;      // Current error, fixed format
+    gadget->m_ReqSenseReply.bAddlSenseLen = 0x0A; // 10 additional bytes
+
     u8 blocks = (u8)(gadget->m_CBW.CBWCB[4]);
     u8 length = sizeof(TUSBCDRequestSenseReply);
     if (blocks < length)
         length = blocks;
-    
+
     gadget->m_ReqSenseReply.bSenseKey = gadget->m_SenseParams.bSenseKey;
     gadget->m_ReqSenseReply.bAddlSenseCode = gadget->m_SenseParams.bAddlSenseCode;
     gadget->m_ReqSenseReply.bAddlSenseCodeQual = gadget->m_SenseParams.bAddlSenseCodeQual;
-    
+
     CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
                     "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x, length=%d -> reporting to host",
                     (int)gadget->m_mediaState,
                     gadget->m_SenseParams.bSenseKey, gadget->m_SenseParams.bAddlSenseCode, gadget->m_SenseParams.bAddlSenseCodeQual,
                     length);
-    
+
     memcpy(gadget->m_InBuffer, &gadget->m_ReqSenseReply, length);
-    
+
     // Debug: dump first 8 bytes of buffer to verify format
     CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
                     "Buffer: %02x %02x %02x %02x %02x %02x %02x %02x",
                     gadget->m_InBuffer[0], gadget->m_InBuffer[1], gadget->m_InBuffer[2], gadget->m_InBuffer[3],
                     gadget->m_InBuffer[4], gadget->m_InBuffer[5], gadget->m_InBuffer[6], gadget->m_InBuffer[7]);
-    
+
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                                       gadget->m_InBuffer, length);
+                                                     gadget->m_InBuffer, length);
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     gadget->m_nState = CUSBCDGadget::TCDState::SendReqSenseReply;
-    
+
     if (gadget->m_mediaState == CUSBCDGadget::MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
     {
         gadget->clearSenseData();
@@ -363,19 +363,26 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
 
             // Capability bits (6 bytes) - dynamic based on media type
             // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
-            codepage.capabilityBits[0] = 0x3F; // Read: CD-R, CD-RW, Method 2
-            codepage.capabilityBits[1] = 0x37; // All writable types
-            codepage.capabilityBits[2] = 0xf1; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
+            if (gadget->m_mediaType == MEDIA_TYPE::CD)
+            {
+                codepage.capabilityBits[0] = 0x07; // Read: CD-R, CD-RW, Method 2
+            }
+            else
+            {
+                codepage.capabilityBits[0] = 0x3F; // Read: CD-R, CD-RW, Method 2
+            }
+            codepage.capabilityBits[1] = 0x00; // All writable types
+            codepage.capabilityBits[2] = 0xf3; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
             codepage.capabilityBits[3] = 0x77; // CD-DA Commands Supported, CD-DA Stream is accurate
             codepage.capabilityBits[4] = 0x29; // Tray loading mechanism, eject supported, lock supported
             codepage.capabilityBits[5] = 0x23; // No separate channel volume, no separate channel mute
 
             // Speed and buffer info
-            codepage.obsolete1 = htons(1378);          // Was Read Speed, set to 8x
+            codepage.obsolete1 = htons(1378);         // Was Read Speed, set to 8x
             codepage.numVolumeLevels = htons(0x0100); // 256 volume levels
             codepage.bufferSize = htons(0x0040);      // Set to 64 KB buffer size
-            codepage.obsolete2 = htons(1378);      // Was current speed
-            codepage.obsolete5 = htons(1378);      // Was max read speed
+            codepage.obsolete2 = htons(1378);         // Was current speed
+            codepage.obsolete5 = htons(1378);         // Was max read speed
 
             codepage.reserved1 = 0x00;
             codepage.bckFlags = 0x10;
@@ -686,26 +693,30 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     else
     {
         // RT!=2 means return ALL features starting from startFeature (full capability list)
-        
+
         if (startFeature <= 0x0000)
         {
             // Feature 0x0000: Profile List - Describes all media types this drive can handle
             TUSBCDProfileListFeatureReply dynProfileList = gadget->profile_list;
-            
+
             // CONDITIONAL: Only advertise DVD profile when DVD media is loaded
-            if (gadget->m_mediaType == MEDIA_TYPE::DVD) {
-                dynProfileList.AdditionalLength = 0x08;  // 2 profiles (CD + DVD)
-            } else {
-                dynProfileList.AdditionalLength = 0x04;  // 1 profile (CD only)
+            if (gadget->m_mediaType == MEDIA_TYPE::DVD)
+            {
+                dynProfileList.AdditionalLength = 0x08; // 2 profiles (CD + DVD)
             }
-            
+            else
+            {
+                dynProfileList.AdditionalLength = 0x04; // 1 profile (CD only)
+            }
+
             memcpy(gadget->m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
             dataLength += sizeof(dynProfileList);
 
             // CONDITIONAL: Only include DVD profile descriptor if DVD media is present
-            if (gadget->m_mediaType == MEDIA_TYPE::DVD) {
+            if (gadget->m_mediaType == MEDIA_TYPE::DVD)
+            {
                 TUSBCProfileDescriptorReply activeDVD = gadget->dvd_profile;
-                activeDVD.currentP = 0x01;  // Mark as current profile
+                activeDVD.currentP = 0x01; // Mark as current profile
                 memcpy(gadget->m_InBuffer + dataLength, &activeDVD, sizeof(activeDVD));
                 dataLength += sizeof(activeDVD);
             }
@@ -756,7 +767,7 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
         {
             // Feature 0x001E: CD Read - CD-specific structure reading (TOC, subcode, etc.)
             memcpy(gadget->m_InBuffer + dataLength, &gadget->cdread, sizeof(gadget->cdread));
-            gadget->m_InBuffer[dataLength + 5] &= ~0x01;  // Clear DAP bit
+            gadget->m_InBuffer[dataLength + 5] &= ~0x01; // Clear DAP bit
             dataLength += sizeof(gadget->cdread);
         }
 
@@ -808,7 +819,7 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     }
     else
     {
-        dynHeader.currentProfile = htons(PROFILE_CDROM); 
+        dynHeader.currentProfile = htons(PROFILE_CDROM);
         CDROM_DEBUG_LOG("SCSIInquiry::GetConfiguration", "GET CONFIGURATION: Returning PROFILE_CDROM (0x0008)");
     }
 

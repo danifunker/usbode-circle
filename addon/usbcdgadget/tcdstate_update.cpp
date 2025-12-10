@@ -28,9 +28,9 @@ void CUSBCDGadget::Update()
     if (m_bPendingDiscSwap)
     {
         unsigned elapsed = CTimer::Get()->GetTicks() - m_nDiscSwapStartTick;
-        // MLOGNOTE("CUSBCDGadget::Update", "Pending disc swap: elapsed=%u, threshold=%u", 
+        // MLOGNOTE("CUSBCDGadget::Update", "Pending disc swap: elapsed=%u, threshold=%u",
         //          elapsed, CLOCKHZ / 2000);
-        
+
         if (elapsed >= CLOCKHZ / 10000)
         {
             m_bPendingDiscSwap = false;
@@ -45,20 +45,20 @@ void CUSBCDGadget::Update()
             //           "Disc swap complete: Transitioned to UNIT_ATTENTION after %u ticks", elapsed);
         }
     }
-    // if (m_bNeedsAudioInit == TRUE)
-    // {
-    //     m_bNeedsAudioInit = FALSE;
-    //     CCDPlayer *cdplayer = (CCDPlayer *)CScheduler::Get()->GetTask("cdplayer");
-    //     if (cdplayer)
-    //     {
-    //         MLOGNOTE("CUSBCDGadget::Update", "Initializing I2S audio after pending flag");
-    //         cdplayer->EnsureAudioInitialized();
-    //     }
-    //     else
-    //     {
-    //         MLOGNOTE("CUSBCDGadget::Update", "WARNING: CD Player not found!");
-    //     }
-    // }
+    if (m_bNeedsAudioInit == TRUE)
+    {
+        m_bNeedsAudioInit = FALSE;
+        CCDPlayer *cdplayer = (CCDPlayer *)CScheduler::Get()->GetTask("cdplayer");
+        if (cdplayer)
+        {
+            MLOGNOTE("CUSBCDGadget::Update", "Initializing I2S audio after pending flag");
+            cdplayer->EnsureAudioInitialized();
+        }
+        else
+        {
+            MLOGNOTE("CUSBCDGadget::Update", "WARNING: CD Player not found!");
+        }
+    }
 
     switch (m_nState)
     {
