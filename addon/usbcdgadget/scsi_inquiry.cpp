@@ -808,7 +808,7 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     }
     else
     {
-        dynHeader.currentProfile = htons(PROFILE_CDROM; 
+        dynHeader.currentProfile = htons(PROFILE_CDROM); 
         CDROM_DEBUG_LOG("SCSIInquiry::GetConfiguration", "GET CONFIGURATION: Returning PROFILE_CDROM (0x0008)");
     }
 
