@@ -145,34 +145,41 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
 
 void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 {
-    // MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
-    memset(&gadget->m_ReqSenseReply, 0, sizeof(TUSBCDRequestSenseReply));
+    MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
     
-    gadget->m_ReqSenseReply.bErrCode = 0x70;        // Current error
+    // CRITICAL: Initialize the entire structure first!
+    memset(&gadget->m_ReqSenseReply, 0, sizeof(TUSBCDRequestSenseReply));
+    gadget->m_ReqSenseReply.bErrCode = 0x70;        // Current error, fixed format
     gadget->m_ReqSenseReply.bAddlSenseLen = 0x0A;   // 10 additional bytes
+    
     u8 blocks = (u8)(gadget->m_CBW.CBWCB[4]);
-
-    // CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
-    //                 "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x -> reporting to host",
-    //                 (int)gadget->m_mediaState,
-    //                 gadget->m_SenseParams.bSenseKey, gadget->m_SenseParams.bAddlSenseCode, gadget->m_SenseParams.bAddlSenseCodeQual);
-
     u8 length = sizeof(TUSBCDRequestSenseReply);
     if (blocks < length)
         length = blocks;
-
+    
     gadget->m_ReqSenseReply.bSenseKey = gadget->m_SenseParams.bSenseKey;
     gadget->m_ReqSenseReply.bAddlSenseCode = gadget->m_SenseParams.bAddlSenseCode;
     gadget->m_ReqSenseReply.bAddlSenseCodeQual = gadget->m_SenseParams.bAddlSenseCodeQual;
-
+    
+    CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
+                    "REQUEST SENSE: mediaState=%d, sense=%02x/%02x/%02x, length=%d -> reporting to host",
+                    (int)gadget->m_mediaState,
+                    gadget->m_SenseParams.bSenseKey, gadget->m_SenseParams.bAddlSenseCode, gadget->m_SenseParams.bAddlSenseCodeQual,
+                    length);
+    
     memcpy(gadget->m_InBuffer, &gadget->m_ReqSenseReply, length);
-
+    
+    // Debug: dump first 8 bytes of buffer to verify format
+    CDROM_DEBUG_LOG("SCSIInquiry::RequestSense",
+                    "Buffer: %02x %02x %02x %02x %02x %02x %02x %02x",
+                    gadget->m_InBuffer[0], gadget->m_InBuffer[1], gadget->m_InBuffer[2], gadget->m_InBuffer[3],
+                    gadget->m_InBuffer[4], gadget->m_InBuffer[5], gadget->m_InBuffer[6], gadget->m_InBuffer[7]);
+    
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
-                                                     gadget->m_InBuffer, length);
-
+                                                       gadget->m_InBuffer, length);
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     gadget->m_nState = CUSBCDGadget::TCDState::SendReqSenseReply;
-
+    
     if (gadget->m_mediaState == CUSBCDGadget::MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
     {
         gadget->clearSenseData();

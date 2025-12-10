@@ -85,7 +85,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1, // bNumInterfaces
             1,
             0,
-            0x80,   // bmAttributes (bus-powered)
+            0xa0,   // bmAttributes (bus-powered)
             500 / 2 // bMaxPower (500mA)
         },
         {
@@ -163,7 +163,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1, // bNumInterfaces
             1,
             0,
-            0x80,   // bmAttributes (bus-powered)
+            0xa0,   // bmAttributes (bus-powered)
             500 / 2 // bMaxPower (500mA)
         },
         {
@@ -204,6 +204,7 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed,
                            IImageDevice *pDevice, u16 usVendorId, u16 usProductId)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
+      m_bNeedsAudioInit(FALSE),
       m_pDevice(pDevice),
       m_pEP{nullptr, nullptr, nullptr}
 {
@@ -758,7 +759,7 @@ void CUSBCDGadget::OnActivate()
                     m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
                     m_CDReady, (int)m_mediaState);
 
-    CTimer::Get()->MsDelay(10);
+    //CTimer::Get()->MsDelay(10);
     // Set media ready NOW - USB endpoints are active
     if (m_pDevice && !m_CDReady)
     {
@@ -769,7 +770,7 @@ void CUSBCDGadget::OnActivate()
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
-        CTimer::Get()->MsDelay(100);
+        //CTimer::Get()->MsDelay(100);
         CDROM_DEBUG_LOG("CD OnActivate",
                         "Initial media ready: Set UNIT_ATTENTION, sense=06/28/00");
     }
@@ -860,7 +861,7 @@ void CUSBCDGadget::HandleSCSICommand()
                             "Command 0x%02x -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)", cmd);
             setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
             sendCheckCondition();
-            CTimer::Get()->MsDelay(100);
+            CTimer::Get()->MsDelay(10);
             return;
         }
     }

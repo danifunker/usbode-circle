@@ -4,9 +4,11 @@
 // Update Loop for Data Transfer
 //
 #include <usbcdgadget/usbcdgadget.h>
+#include <cdplayer/cdplayer.h>
 #include <usbcdgadget/cd_utils.h>
 #include <circle/logger.h>
 #include <circle/util.h>
+#include <circle/sched/scheduler.h>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...) // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
@@ -43,6 +45,20 @@ void CUSBCDGadget::Update()
             //           "Disc swap complete: Transitioned to UNIT_ATTENTION after %u ticks", elapsed);
         }
     }
+    // if (m_bNeedsAudioInit == TRUE)
+    // {
+    //     m_bNeedsAudioInit = FALSE;
+    //     CCDPlayer *cdplayer = (CCDPlayer *)CScheduler::Get()->GetTask("cdplayer");
+    //     if (cdplayer)
+    //     {
+    //         MLOGNOTE("CUSBCDGadget::Update", "Initializing I2S audio after pending flag");
+    //         cdplayer->EnsureAudioInitialized();
+    //     }
+    //     else
+    //     {
+    //         MLOGNOTE("CUSBCDGadget::Update", "WARNING: CD Player not found!");
+    //     }
+    // }
 
     switch (m_nState)
     {

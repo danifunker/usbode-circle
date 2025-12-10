@@ -87,6 +87,7 @@ public:
 
     /// \brief Call this periodically from TASK_LEVEL to allow I/O operations!
     void Update(void);
+    boolean m_bNeedsAudioInit = FALSE;
 
 protected:
     // ========================================================================
