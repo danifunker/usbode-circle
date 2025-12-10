@@ -348,7 +348,7 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
             ModePage0x2AData codepage;
             memset(&codepage, 0, sizeof(codepage));
             codepage.pageCodeAndPS = 0x2a;
-            codepage.pageLength = 0x0E;
+            codepage.pageLength = 0x42;
 
             // Capability bits (6 bytes) - dynamic based on media type
             // Byte 0: bit0=DVD-ROM, bit1=DVD-R, bit2=DVD-RAM, bit3=CD-R, bit4=CD-RW, bit5=Method2
@@ -357,14 +357,29 @@ void SCSIInquiry::FillModePage(CUSBCDGadget *gadget, u8 page, u8 *buffer, int &l
             codepage.capabilityBits[2] = 0xf3; // AudioPlay, composite audio/video, digital port 2, Mode 2 Form 2, Mode 2 Form 1
             codepage.capabilityBits[3] = 0x77; // CD-DA Commands Supported, CD-DA Stream is accurate
             codepage.capabilityBits[4] = 0x29; // Tray loading mechanism, eject supported, lock supported
-            codepage.capabilityBits[5] = 0x00; // No separate channel volume, no separate channel mute
+            codepage.capabilityBits[5] = 0x23; // No separate channel volume, no separate channel mute
 
             // Speed and buffer info
-            codepage.maxSpeed = htons(1378);          // 8x
+            codepage.obsolete1 = htons(1378);          // Was Read Speed, set to 8x
             codepage.numVolumeLevels = htons(0x0100); // 256 volume levels
             codepage.bufferSize = htons(0x0040);      // Set to 64 KB buffer size
-            codepage.currentSpeed = htons(1378);      // Current speed
-            codepage.maxReadSpeed = htons(1378);      // Some hosts check this field
+            codepage.obsolete2 = htons(1378);      // Was current speed
+            codepage.obsolete5 = htons(1378);      // Was max read speed
+
+            codepage.reserved1 = 0x00;
+            codepage.bckFlags = 0x10;
+
+            codepage.obsolete3 = htons(0x108a);
+            codepage.obsolete4 = htons(0x108a);
+            codepage.currentWriteSpeed = htons(0x0001);
+
+            codepage.reserved2 = 0x00;
+            codepage.reserved3 = 0x00;
+            codepage.reserved4 = 0x0000;
+
+            codepage.obsolete5 = htons(0x108a);
+            codepage.reserved5 = 0x00;
+            codepage.rotationControl = 0x03;
 
             memcpy(buffer + length, &codepage, sizeof(codepage));
             length += sizeof(codepage);
@@ -524,6 +539,7 @@ void SCSIInquiry::ModeSense6(CUSBCDGadget *gadget)
     ModeSense6Header reply_header;
     memset(&reply_header, 0, sizeof(reply_header));
     reply_header.mediumType = CDUtils::GetMediumType(gadget);
+    CDROM_DEBUG_LOG("SCSIInquiry::ModeSense6", "Medium Type: 0x%02x", reply_header.mediumType);
     length += sizeof(reply_header);
     memcpy(gadget->m_InBuffer, &reply_header, sizeof(reply_header));
 
@@ -592,6 +608,7 @@ void SCSIInquiry::ModeSense10(CUSBCDGadget *gadget)
     ModeSense10Header reply_header;
     memset(&reply_header, 0, sizeof(reply_header));
     reply_header.mediumType = CDUtils::GetMediumType(gadget);
+    CDROM_DEBUG_LOG("SCSIInquiry::ModeSense10", "Medium Type: 0x%02x", reply_header.mediumType);
     length += sizeof(reply_header);
     memcpy(gadget->m_InBuffer, &reply_header, sizeof(reply_header));
 
@@ -642,128 +659,107 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     int startFeature = (gadget->m_CBW.CBWCB[2] << 8) | gadget->m_CBW.CBWCB[3];
     u16 allocationLength = gadget->m_CBW.CBWCB[7] << 8 | (gadget->m_CBW.CBWCB[8]);
 
-    // If rt is 0 or 1, the starting feature field is ignored (effectively 0)
-    if (rt != 0x02)
-    {
-        startFeature = 0x0000;
-    }
-
     int dataLength = 0;
-
-    // Reserve space for the header
     dataLength += sizeof(gadget->header);
 
-    // Feature 0x0000: Profile List
-    if (0x0000 >= startFeature)
+    if (rt == 0x02)
     {
-        // Always report as a Combo Drive (DVD + CD)
-        TUSBCDProfileListFeatureReply dynProfileList = gadget->profile_list;
-        dynProfileList.AdditionalLength = 0x08; // 8 bytes following (DVD desc + CD desc)
-        memcpy(gadget->m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
-        dataLength += sizeof(dynProfileList);
+        if (startFeature == 0x0002)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->morphing, sizeof(gadget->morphing));
+            dataLength += sizeof(gadget->morphing);
+        }
+    }
+    else
+    {
+        if (startFeature <= 0x0000)
+        {
+            TUSBCDProfileListFeatureReply dynProfileList = gadget->profile_list;
+            dynProfileList.AdditionalLength = 0x08;
+            memcpy(gadget->m_InBuffer + dataLength, &dynProfileList, sizeof(dynProfileList));
+            dataLength += sizeof(dynProfileList);
 
-        // DVD Profile
-        TUSBCProfileDescriptorReply activeDVD = gadget->dvd_profile;
-        activeDVD.currentP = (gadget->m_mediaType == MEDIA_TYPE::DVD) ? 0x01 : 0x00;
-        memcpy(gadget->m_InBuffer + dataLength, &activeDVD, sizeof(activeDVD));
-        dataLength += sizeof(activeDVD);
+            TUSBCProfileDescriptorReply activeDVD = gadget->dvd_profile;
+            activeDVD.currentP = (gadget->m_mediaType == MEDIA_TYPE::DVD) ? 0x01 : 0x00;
+            memcpy(gadget->m_InBuffer + dataLength, &activeDVD, sizeof(activeDVD));
+            dataLength += sizeof(activeDVD);
 
-        // CD Profile
-        TUSBCProfileDescriptorReply activeCD = gadget->cdrom_profile;
-        activeCD.currentP = (gadget->m_mediaType != MEDIA_TYPE::DVD) ? 0x01 : 0x00;
-        memcpy(gadget->m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
-        dataLength += sizeof(activeCD);
+            TUSBCProfileDescriptorReply activeCD = gadget->cdrom_profile;
+            activeCD.currentP = (gadget->m_mediaType != MEDIA_TYPE::DVD) ? 0x01 : 0x00;
+            memcpy(gadget->m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
+            dataLength += sizeof(activeCD);
+        }
+
+        if (startFeature <= 0x0001)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->core, sizeof(gadget->core));
+            dataLength += sizeof(gadget->core);
+        }
+
+        if (startFeature <= 0x0002)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->morphing, sizeof(gadget->morphing));
+            dataLength += sizeof(gadget->morphing);
+        }
+
+        if (startFeature <= 0x0003)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->mechanism, sizeof(gadget->mechanism));
+            dataLength += sizeof(gadget->mechanism);
+        }
+
+        if (startFeature <= 0x0010)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->randomreadable, sizeof(gadget->randomreadable));
+            dataLength += sizeof(gadget->randomreadable);
+        }
+
+        if (startFeature <= 0x001D)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->multiread, sizeof(gadget->multiread));
+            dataLength += sizeof(gadget->multiread);
+        }
+
+        if (startFeature <= 0x001E)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->cdread, sizeof(gadget->cdread));
+            gadget->m_InBuffer[dataLength + 5] &= ~0x01;
+            dataLength += sizeof(gadget->cdread);
+        }
+
+        if (startFeature <= 0x001F)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->dvdread, sizeof(gadget->dvdread));
+            dataLength += sizeof(gadget->dvdread);
+        }
+
+        if (startFeature <= 0x0100)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->powermanagement, sizeof(gadget->powermanagement));
+            dataLength += sizeof(gadget->powermanagement);
+        }
+
+        if (startFeature <= 0x0103)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->audioplay, sizeof(gadget->audioplay));
+            dataLength += sizeof(gadget->audioplay);
+        }
+
+        if (startFeature <= 0x0106)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->dvdcss, sizeof(gadget->dvdcss));
+            dataLength += sizeof(gadget->dvdcss);
+        }
+
+        if (startFeature <= 0x0107)
+        {
+            memcpy(gadget->m_InBuffer + dataLength, &gadget->rtstreaming, sizeof(gadget->rtstreaming));
+            dataLength += sizeof(gadget->rtstreaming);
+        }
     }
 
-    // Feature 0x0001: Core
-    if (0x0001 >= startFeature)
-    {
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->core, sizeof(gadget->core));
-        dataLength += sizeof(gadget->core);
-    }
-
-    // Feature 0x0002: Morphing
-    if (0x0002 >= startFeature)
-    {
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->morphing, sizeof(gadget->morphing));
-        dataLength += sizeof(gadget->morphing);
-    }
-
-    // Feature 0x0003: Removable Medium
-    if (0x0003 >= startFeature)
-    {
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->mechanism, sizeof(gadget->mechanism));
-        dataLength += sizeof(gadget->mechanism);
-    }
-
-    // Feature 0x0010: Random Readable
-    if (0x0010 >= startFeature)
-    {
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->randomreadable, sizeof(gadget->randomreadable));
-        dataLength += sizeof(gadget->randomreadable);
-    }
-
-    // Feature 0x001D: Multi-Read
-    if (0x001D >= startFeature)
-    {
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->multiread, sizeof(gadget->multiread));
-        dataLength += sizeof(gadget->multiread);
-    }
-
-    // Feature 0x001E: CD Read
-    if (0x001E >= startFeature)
-    {
-        // Always advertise CD Read capability
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->cdread, sizeof(gadget->cdread));
-        // --- DISABLE CD-TEXT ---
-        // The CD-Text bit is Bit 0 of Byte 1 in the parameter payload.
-        // Structure: [Header: 4 bytes] [C2 Flags: 1 byte] [CD-Text Flags: 1 byte] ...
-        // Index: dataLength + 4 (Header) + 1 (Byte 1) = dataLength + 5
-        gadget->m_InBuffer[dataLength + 5] &= ~0x01; // Clear Bit 0 to disable CD-Text
-        dataLength += sizeof(gadget->cdread);
-    }
-
-    // Feature 0x001F: DVD Read
-    if (0x001F >= startFeature)
-    {
-        // Always advertise DVD Read capability
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->dvdread, sizeof(gadget->dvdread));
-        dataLength += sizeof(gadget->dvdread);
-    }
-
-    // Feature 0x0100: Power Management
-    if (0x0100 >= startFeature)
-    {
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->powermanagement, sizeof(gadget->powermanagement));
-        dataLength += sizeof(gadget->powermanagement);
-    }
-
-    // Feature 0x0103: Audio Play
-    if (0x0103 >= startFeature)
-    {
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->audioplay, sizeof(gadget->audioplay));
-        dataLength += sizeof(gadget->audioplay);
-    }
-
-    // Feature 0x0106: DVD CSS
-    if (0x0106 >= startFeature)
-    {
-        // Always advertise DVD CSS capability
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->dvdcss, sizeof(gadget->dvdcss));
-        dataLength += sizeof(gadget->dvdcss);
-    }
-
-    // Feature 0x0107: Real Time Streaming
-    if (0x0107 >= startFeature)
-    {
-        memcpy(gadget->m_InBuffer + dataLength, &gadget->rtstreaming, sizeof(gadget->rtstreaming));
-        dataLength += sizeof(gadget->rtstreaming);
-    }
-
-    // Set header profile and copy to buffer
     TUSBCDFeatureHeaderReply dynHeader = gadget->header;
 
-    // Set Current Profile based on media (State, not Capability)
     if (gadget->m_mediaType == MEDIA_TYPE::DVD)
     {
         dynHeader.currentProfile = htons(PROFILE_DVD_ROM);
@@ -778,11 +774,10 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     dynHeader.dataLength = htonl(dataLength - 4);
     memcpy(gadget->m_InBuffer, &dynHeader, sizeof(dynHeader));
 
-    // Set response length
     if (allocationLength < dataLength)
         dataLength = allocationLength;
 
-    gadget->m_nnumber_blocks = 0; // nothing more after this send
+    gadget->m_nnumber_blocks = 0;
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, dataLength);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;

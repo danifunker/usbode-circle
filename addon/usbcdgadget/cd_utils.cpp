@@ -307,40 +307,36 @@ int CDUtils::GetSkipbytesForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo)
     }
 }
 
-// Make an assumption about media type based on track 1 mode
 int CDUtils::GetMediumType(CUSBCDGadget* gadget)
 {
-    // Determine if we should use legacy or modern medium types
-    bool useLegacyTypes = (gadget->m_USBTargetOS == USBTargetOS::Apple);
-    
-    // Check if it's a DVD first
-    if (gadget->m_mediaType == MEDIA_TYPE::DVD)
+    // Modern MMC: Medium Type should be 0x00, rely on GET CONFIGURATION
+    if (gadget->m_USBTargetOS != USBTargetOS::Apple)
     {
-        return useLegacyTypes ? 0x01 : 0x40;  // Legacy: 0x01, Modern: DVD-ROM
+        return 0x00;  // Modern drives return 0x00
     }
     
-    // Otherwise it's a CD - check track structure
+    // Legacy Mac OS 9 needs actual detection
+    bool hasAudio = false;
+    bool hasData = false;
+    
     gadget->cueParser.restart();
     const CUETrackInfo *trackInfo = nullptr;
     
     while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
     {
-        if (trackInfo->track_number == 1 && trackInfo->track_mode == CUETrack_AUDIO)
-        {
-            // Audio CD
-            return useLegacyTypes ? 0x02 : 0x72;
-        }
-        else if (trackInfo->track_number > 1)
-        {
-            // Mixed mode CD
-            return useLegacyTypes ? 0x03 : 0x73;
-        }
+        if (trackInfo->track_mode == CUETrack_AUDIO)
+            hasAudio = true;
+        else
+            hasData = true;
     }
     
-    // Data CD
-    return useLegacyTypes ? 0x01 : 0x71;
+    if (hasAudio && hasData)
+        return 0x03;  // Mixed mode
+    else if (hasAudio)
+        return 0x02;  // Audio CD
+    else
+        return 0x01;  // Data CD
 }
-
 int CDUtils::GetSectorLengthFromMCS(uint8_t mainChannelSelection)
 {
     int total = 0;

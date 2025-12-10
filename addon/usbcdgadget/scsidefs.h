@@ -230,18 +230,61 @@ struct ModePage0x1AData
 // Mode Page 0x2A (MM Capabilities and Mechanical Status) Data
 struct ModePage0x2AData
 {
-    u8 pageCodeAndPS;
-    u8 pageLength;
-    u8 capabilityBits[6];
-    u16 maxSpeed;
-    u16 numVolumeLevels;
-    u16 bufferSize;
-    u16 currentSpeed;
-    u8 reserved1[4];
-    u16 maxReadSpeed;
-    u8 reserved2[2];
+    u8 pageCodeAndPS;              // 0x2a
+    u8 pageLength;                 // 0x42 (66 bytes)
+    
+    // Bytes 2-7: Capability bits (6 bytes)
+    u8 capabilityBits[6];          // 3f 37 f1 77 29 23
+    
+    // Bytes 8-9: Obsolete (was max read speed)
+    u16 obsolete1;                 // 10 89 = 4233
+    
+    // Bytes 10-11: Number of volume levels
+    u16 numVolumeLevels;           // 01 00 = 256
+    
+    // Bytes 12-13: Buffer size (in KB)
+    u16 bufferSize;                // 03 00 = 768 KB
+    
+    // Bytes 14-15: Obsolete (was current read speed)
+    u16 obsolete2;                 // 10 8a = 4234
+    
+    // Byte 16: Reserved
+    u8 reserved1;                  // 00
+    
+    // Byte 17: BCKF and RCK bits
+    u8 bckFlags;                   // 10
+    
+    // Bytes 18-19: Obsolete (was max read speed)
+    u16 obsolete3;                 // 10 8a
+    
+    // Bytes 20-21: Obsolete (was max write speed)
+    u16 obsolete4;                 // 10 8a
+    
+    // Bytes 22-23: Current write speed performance (LSB first)
+    u16 currentWriteSpeed;         // 00 01
+    
+    // Byte 24: Reserved
+    u8 reserved2;                  // 00
+    
+    // Byte 25: Reserved
+    u8 reserved3;                  // 00
+    
+    // Bytes 26-27: Reserved
+    u16 reserved4;                 // 00 00
+    
+    // Bytes 28-29: Obsolete
+    u16 obsolete5;                 // 10 8a
+    
+    // Byte 30: Reserved
+    u8 reserved5;                  // 00
+    
+    // Byte 31: Rotation control
+    u8 rotationControl;            // 03
+    
+    // Bytes 32-67: Remaining 36 bytes
+    u8 reserved6[36];              // Pad to total 68 bytes (2 header + 66 data)
 } PACKED;
-#define SIZE_MODE_SENSE10_PAGE_0X2A 20
+#define SIZE_MODE_SENSE10_PAGE_0X2A 0x42
 
 // Mode Page 0x2A for Apple (Matches Sony Spressa 22-byte layout)
 struct ModePage0x2AData_APPLE
