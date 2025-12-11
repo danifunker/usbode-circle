@@ -66,7 +66,7 @@ TUSBDeviceDescriptor CUSBCDGadget::s_DeviceDescriptor =
         0,     // bDeviceClass
         0,     // bDeviceSubClass
         0,     // bDeviceProtocol
-        64,    // bMaxPacketSize0
+        CUSBCDGadget::ControlEndpointMaxPacket,    // bMaxPacketSize0
         // 0x04da, // Panasonic
         // 0x0d01,	// CDROM
         USB_GADGET_VENDOR_ID,
@@ -103,7 +103,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             DESCRIPTOR_ENDPOINT,
             0x81, // IN number 1
             2,    // bmAttributes (Bulk)
-            64,   // wMaxPacketSize
+            CUSBCDGadget::FullSpeedMaxPacket,   // wMaxPacketSize
             0     // bInterval
         },
         {
@@ -111,7 +111,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             DESCRIPTOR_ENDPOINT,
             0x02, // OUT number 2
             2,    // bmAttributes (Bulk)
-            64,   // wMaxPacketSize
+            CUSBCDGadget::FullSpeedMaxPacket,   // wMaxPacketSize
             0     // bInterval
         }};
 
@@ -142,7 +142,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             DESCRIPTOR_ENDPOINT,
             0x81, // IN number 1
             2,    // bmAttributes (Bulk)
-            64,   // wMaxPacketSize
+            CUSBCDGadget::FullSpeedMaxPacket,   // wMaxPacketSize
             0     // bInterval
         },
         {
@@ -150,7 +150,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             DESCRIPTOR_ENDPOINT,
             0x02, // OUT number 2
             2,    // bmAttributes (Bulk)
-            64,   // wMaxPacketSize
+            CUSBCDGadget::FullSpeedMaxPacket,   // wMaxPacketSize
             0     // bInterval
         }};
 
@@ -181,7 +181,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             DESCRIPTOR_ENDPOINT,
             0x81, // IN number 1
             2,    // bmAttributes (Bulk)
-            512,  // wMaxPacketSize
+            CUSBCDGadget::HighSpeedMaxPacket,  // wMaxPacketSize
             0     // bInterval
         },
         {
@@ -189,7 +189,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             DESCRIPTOR_ENDPOINT,
             0x02, // OUT number 2
             2,    // bmAttributes (Bulk)
-            512,  // wMaxPacketSize
+            CUSBCDGadget::HighSpeedMaxPacket,  // wMaxPacketSize
             0     // bInterval
         }};
 
@@ -206,9 +206,14 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_bNeedsAudioInit(FALSE),
       m_pDevice(pDevice),
-      m_pEP{nullptr, nullptr, nullptr}
-{
-    MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
+      m_pEP{nullptr, nullptr, nullptr},
+      m_IsFullSpeed(isFullSpeed),
+      m_TransferMode(TransferMode::SIMPLE_COPY),
+      m_NeedsSubchannel(false),
+      m_MaxBlocksPerTransfer(isFullSpeed ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed),
+      m_MaxTransferSize(isFullSpeed ? MaxInMessageSizeFullSpeed : MaxInMessageSize)
+      {
+        MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
              "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
     s_DeviceDescriptor.idVendor = usVendorId;
@@ -722,7 +727,7 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
     case 0x0e:
     {
         ModePage0x0EData *modePage = (ModePage0x0EData *)(m_OutBuffer + 8);
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
         CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
         if (cdplayer)
         {
@@ -735,7 +740,7 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
             // Mode Select (10), Volume is 255,74
             // So, we'll pick the minimum of the two
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume");
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume");
             cdplayer->SetVolume(
                 modePage->Output0Volume < modePage->Output1Volume
                     ? modePage->Output0Volume

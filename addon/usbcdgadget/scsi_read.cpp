@@ -75,7 +75,7 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
         }
 
         // Get disc boundaries
-        u32 max_lba = CDUtils::GetLeadoutLBA(gadget); // Was GetMaxLBA() which just called GetLeadoutLBA()
+        u32 max_lba = CDUtils::GetLeadoutLBA(gadget);
 
         // CRITICAL: Validate LBA is within disc boundaries
         if (gadget->m_nblock_address >= max_lba)
@@ -95,7 +95,7 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
             u32 original_blocks = gadget->m_nnumber_blocks;
             gadget->m_nnumber_blocks = max_lba - gadget->m_nblock_address;
 
-            MLOGNOTE("SCSIRead::DoRead", "Read truncated: LBA=%u, requested=%u, max=%u, truncated to=%u",
+            CDROM_DEBUG_LOG("SCSIRead::DoRead", "Read truncated: LBA=%u, requested=%u, max=%u, truncated to=%u",
                      gadget->m_nblock_address, original_blocks, max_lba, gadget->m_nnumber_blocks);
         }
 
@@ -124,13 +124,18 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
         u32 expected_byte_count = gadget->m_nnumber_blocks * gadget->transfer_block_size;
         if (gadget->m_nbyteCount > expected_byte_count)
         {
-            MLOGNOTE("SCSIRead::DoRead", "Host requested %u bytes but only %u available",
+            CDROM_DEBUG_LOG("SCSIRead::DoRead", "Host requested %u bytes but only %u available",
                      gadget->m_nbyteCount, expected_byte_count);
             gadget->m_nbyteCount = expected_byte_count;
         }
 
         gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
-        gadget->m_nState = CUSBCDGadget::TCDState::DataInRead; // see Update() function
+        
+        // Set transfer mode for simple reads (always SIMPLE_COPY, no subchannel)
+        gadget->m_TransferMode = CUSBCDGadget::TransferMode::SIMPLE_COPY;
+        gadget->m_NeedsSubchannel = false;
+        
+        gadget->m_nState = CUSBCDGadget::TCDState::DataInRead;
     }
     else
     {
@@ -465,6 +470,33 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
     {
         gadget->m_nnumber_blocks = 1 + (gadget->m_nbyteCount) / gadget->transfer_block_size;
     }
+
+    // Determine transfer mode once based on transfer parameters
+    gadget->m_NeedsSubchannel = (subChannelSelection != 0 && gadget->m_pDevice->HasSubchannelData());
+    
+    if (gadget->transfer_block_size == gadget->block_size && gadget->skip_bytes == 0)
+    {
+        gadget->m_TransferMode = gadget->m_NeedsSubchannel ? 
+            CUSBCDGadget::TransferMode::SIMPLE_COPY_SUBCHAN : 
+            CUSBCDGadget::TransferMode::SIMPLE_COPY;
+    }
+    else if (gadget->transfer_block_size > gadget->block_size)
+    {
+        gadget->m_TransferMode = gadget->m_NeedsSubchannel ?
+            CUSBCDGadget::TransferMode::SECTOR_REBUILD_SUBCHAN :
+            CUSBCDGadget::TransferMode::SECTOR_REBUILD;
+    }
+    else
+    {
+        gadget->m_TransferMode = gadget->m_NeedsSubchannel ?
+            CUSBCDGadget::TransferMode::SKIP_COPY_SUBCHAN :
+            CUSBCDGadget::TransferMode::SKIP_COPY;
+    }
+
+    CDROM_DEBUG_LOG("SCSIRead::ReadCD", 
+                    "Transfer mode: %d, subchannel: %d, block_size: %d, transfer_size: %d, skip: %d",
+                    (int)gadget->m_TransferMode, gadget->m_NeedsSubchannel,
+                    gadget->block_size, gadget->transfer_block_size, gadget->skip_bytes);
 
     gadget->m_nState = CUSBCDGadget::TCDState::DataInRead;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;

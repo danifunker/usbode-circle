@@ -141,7 +141,7 @@ private:
     void sendCheckCondition();
     void sendGoodStatus();
     USBTargetOS m_USBTargetOS;
-    
+
     // Friend declarations for command classes and utilities
     friend class SCSIInquiry;
     friend class SCSIRead;
@@ -181,6 +181,17 @@ private:
         DataOutWrite
     };
 
+    // Transfer mode for optimized data path selection
+    enum class TransferMode
+    {
+        SIMPLE_COPY,           // Direct memcpy: transfer_block_size == block_size && skip_bytes == 0, no subchannel
+        SIMPLE_COPY_SUBCHAN,   // Direct copy + subchannel append
+        SKIP_COPY,             // Simple skip: transfer_block_size < block_size
+        SKIP_COPY_SUBCHAN,     // Skip copy + subchannel
+        SECTOR_REBUILD,        // Full reconstruction: transfer_block_size > block_size
+        SECTOR_REBUILD_SUBCHAN // Reconstruction + subchannel
+    };
+
     // Media state for proper MacOS Unit Attention handling
     enum class MediaState
     {
@@ -204,6 +215,17 @@ private:
     static TUSBDeviceDescriptor s_DeviceDescriptor;
     static TUSBDeviceDescriptor s_DeviceDescriptorMacOS9;
     static const char *const s_StringDescriptorTemplate[];
+
+    // Derive buffer sizes from USB descriptor packet sizes
+    static constexpr size_t FullSpeedMaxPacket = 64;  // From s_ConfigurationDescriptorFullSpeed
+    static constexpr size_t HighSpeedMaxPacket = 512; // From s_ConfigurationDescriptorHighSpeed
+    static constexpr size_t ControlEndpointMaxPacket = 64;
+    // Calculate maximum transfer sizes based on packet sizes
+    static constexpr size_t MaxInMessageSizeFullSpeed = FullSpeedMaxPacket * 128; // or whatever multiplier you use
+    static constexpr size_t MaxInMessageSize = HighSpeedMaxPacket * 128;
+
+    static constexpr size_t MaxBlocksToReadFullSpeed = MaxInMessageSizeFullSpeed / 2048;
+    static constexpr size_t MaxBlocksToReadHighSpeed = MaxInMessageSize / 2048;
 
     /// \brief USB configuration descriptor with interface and endpoints
     struct TUSBMSTGadgetConfigurationDescriptor
@@ -258,11 +280,7 @@ private:
 
     // Buffer size constants
     static const size_t MaxOutMessageSize = 2048;
-    static const size_t MaxBlocksToReadFullSpeed = 16; // USB 1.1: 16 blocks = 37,632 bytes max
-    static const size_t MaxBlocksToReadHighSpeed = 32; // USB 2.0: 32 blocks = 75,264 bytes max
     static const size_t MaxSectorSize = 2352;
-    static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize;          // 75,264 bytes
-    static const size_t MaxInMessageSizeFullSpeed = MaxBlocksToReadFullSpeed * MaxSectorSize; // 37,632 bytes
 
     alignas(64) DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // USB IN transfers
     alignas(64) DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // USB OUT transfers
@@ -305,7 +323,7 @@ private:
         {0},                  // Version descriptors (16 bytes, all zeros for now)
         {0}                   // Reserved/padding (22 bytes)
     };
-	
+
     TUSBUintSerialNumberPage m_InqSerialReply{0x80, 0x00, 0x0000, 0x04, {'0', '0', '0', '0'}};
 
     TUSBSupportedVPDPage m_InqVPDReply{0x00, 0x00, 0x0000, 0x01, 0x80};
@@ -518,7 +536,10 @@ private:
     const char *desc_name = "";
     u8 bmCSWStatus = 0;
     SenseParameters m_SenseParams; // Current sense data
-
+    TransferMode m_TransferMode;
+    bool m_NeedsSubchannel;
+    u32 m_MaxBlocksPerTransfer; // Pre-calculated: MaxBlocksToReadFullSpeed or MaxBlocksToReadHighSpeed
+    u32 m_MaxTransferSize;      // Pre-calculated: MaxInMessageSizeFullSpeed or MaxInMessageSize
     // Sector format parameters
     int data_skip_bytes = 0;        // Skip bytes for data track reads
     int data_block_size = 2048;     // Data block size
