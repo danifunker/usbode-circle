@@ -95,7 +95,7 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
             u32 original_blocks = gadget->m_nnumber_blocks;
             gadget->m_nnumber_blocks = max_lba - gadget->m_nblock_address;
 
-            MLOGNOTE("SCSIRead::DoRead", "Read truncated: LBA=%u, requested=%u, max=%u, truncated to=%u",
+            CDROM_DEBUG_LOG("SCSIRead::DoRead", "Read truncated: LBA=%u, requested=%u, max=%u, truncated to=%u",
                      gadget->m_nblock_address, original_blocks, max_lba, gadget->m_nnumber_blocks);
         }
 
@@ -124,7 +124,7 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
         u32 expected_byte_count = gadget->m_nnumber_blocks * gadget->transfer_block_size;
         if (gadget->m_nbyteCount > expected_byte_count)
         {
-            MLOGNOTE("SCSIRead::DoRead", "Host requested %u bytes but only %u available",
+            CDROM_DEBUG_LOG("SCSIRead::DoRead", "Host requested %u bytes but only %u available",
                      gadget->m_nbyteCount, expected_byte_count);
             gadget->m_nbyteCount = expected_byte_count;
         }
