@@ -70,7 +70,8 @@ USBODE_ADDONS = sdcardservice cdromservice scsitbservice usbcdgadget \
                 upgradestatus setupstatus
 
 # Only the Circle addons we actually need
-CIRCLE_ADDONS = linux Properties display fatfs SDCard wlan wlan/firmware
+# Note: wlan/firmware is handled specially in circle-deps to avoid re-downloading
+CIRCLE_ADDONS = linux Properties display fatfs SDCard wlan
 
 # Module-specific CPPFLAGS
 USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0x0d01
