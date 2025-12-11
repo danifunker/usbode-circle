@@ -204,15 +204,15 @@ const char *const CUSBCDGadget::s_StringDescriptorTemplate[] =
 CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpeed,
                            IImageDevice *pDevice, u16 usVendorId, u16 usProductId)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
+      m_bNeedsAudioInit(FALSE),
       m_pDevice(pDevice),
       m_pEP{nullptr, nullptr, nullptr},
       m_IsFullSpeed(isFullSpeed),
-      m_MaxBlocksPerTransfer(isFullSpeed ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed),
-      m_MaxTransferSize(isFullSpeed ? MaxInMessageSizeFullSpeed : MaxInMessageSize),
       m_TransferMode(TransferMode::SIMPLE_COPY),
       m_NeedsSubchannel(false),
-      m_bNeedsAudioInit(FALSE)
-{
+      m_MaxBlocksPerTransfer(isFullSpeed ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed),
+      m_MaxTransferSize(isFullSpeed ? MaxInMessageSizeFullSpeed : MaxInMessageSize)
+      {
         MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
              "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
     m_IsFullSpeed = isFullSpeed;

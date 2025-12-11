@@ -280,11 +280,7 @@ private:
 
     // Buffer size constants
     static const size_t MaxOutMessageSize = 2048;
-    static const size_t MaxBlocksToReadFullSpeed = 16; // USB 1.1: 16 blocks = 37,632 bytes max
-    static const size_t MaxBlocksToReadHighSpeed = 32; // USB 2.0: 32 blocks = 75,264 bytes max
     static const size_t MaxSectorSize = 2352;
-    static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize;          // 75,264 bytes
-    static const size_t MaxInMessageSizeFullSpeed = MaxBlocksToReadFullSpeed * MaxSectorSize; // 37,632 bytes
 
     alignas(64) DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // USB IN transfers
     alignas(64) DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // USB OUT transfers
