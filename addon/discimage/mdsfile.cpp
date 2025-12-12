@@ -28,23 +28,19 @@ bool CMDSFileDevice::Init() {
     LOGNOTE("=== MDS Parser Debug Info ===");
     LOGNOTE("Number of sessions: %d", m_parser->getNumSessions());
 
-    // Open MDF file
     const char* mdf_filename_from_mds = m_parser->getMDFilename();
     LOGNOTE("MDF filename from parser: %s", mdf_filename_from_mds);
     char mdf_path[255];
-    char mdf_filename[255];  // For CUE sheet - just the filename without path
+    char mdf_filename[255];
 
     if (strcmp(mdf_filename_from_mds, "*.mdf") == 0) {
-        // Handle wildcard filename - derive from MDS filename
         const char* extension = strrchr(m_mds_filename, '.');
         const char* last_slash = strrchr(m_mds_filename, '/');
         const char* basename_start = last_slash ? last_slash + 1 : m_mds_filename;
         
         if (extension && extension > basename_start) {
-            // Extract just the base filename for the CUE sheet
             snprintf(mdf_filename, sizeof(mdf_filename), "%.*s.mdf", 
                     (int)(extension - basename_start), basename_start);
-            // Full path for opening
             snprintf(mdf_path, sizeof(mdf_path), "%.*s.mdf", 
                     (int)(extension - m_mds_filename), m_mds_filename);
         } else {
@@ -52,7 +48,6 @@ bool CMDSFileDevice::Init() {
             snprintf(mdf_path, sizeof(mdf_path), "%s.mdf", m_mds_filename);
         }
     } else {
-        // Use the filename from MDS
         const char* last_slash = strrchr(m_mds_filename, '/');
         if (last_slash) {
             snprintf(mdf_path, sizeof(mdf_path), "%.*s%s", 
@@ -60,7 +55,6 @@ bool CMDSFileDevice::Init() {
         } else {
             snprintf(mdf_path, sizeof(mdf_path), "%s", mdf_filename_from_mds);
         }
-        // Just copy the filename for CUE
         snprintf(mdf_filename, sizeof(mdf_filename), "%s", mdf_filename_from_mds);
     }
 
@@ -89,17 +83,15 @@ bool CMDSFileDevice::Init() {
     if (m_pFile) {
         FatFsOptimizer::EnableFastSeek(m_pFile, &m_pCLMT, 256, "MDS: ");
     }
-    // Generate CUE sheet from MDS data
+
     char cue_buffer[4096];
     char* cue_ptr = cue_buffer;
     int remaining = sizeof(cue_buffer);
 
-    // Use the resolved filename (not wildcard) in the CUE sheet
     int len = snprintf(cue_ptr, remaining, "FILE \"%s\" BINARY\n", mdf_filename);
     cue_ptr += len;
     remaining -= len;
 
-    // Process all sessions
     for (int i = 0; i < m_parser->getNumSessions(); i++) {
         MDS_SessionBlock* session = m_parser->getSession(i);
         LOGNOTE("Session %d:", i);
@@ -107,7 +99,6 @@ bool CMDSFileDevice::Init() {
         LOGNOTE("  session_end: %d", session->session_end);
         LOGNOTE("  num_all_blocks: %d", session->num_all_blocks);
 
-        // Process all track blocks in this session
         for (int j = 0; j < session->num_all_blocks; j++) {
             MDS_TrackBlock* track = m_parser->getTrack(i, j);
             MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
@@ -120,19 +111,14 @@ bool CMDSFileDevice::Init() {
             LOGNOTE("    sector_size: %u", track->sector_size);
             LOGNOTE("    subchannel: 0x%02x", track->subchannel);
 
-            // Only process actual track entries (point is the track number)
-            // Skip lead-in entries (point 0xA0, 0xA1, 0xA2)
             if (track->point == 0 || track->point >= 0xA0) {
                 continue;
             }
 
-            // Determine track mode string
             const char* mode_str;
             if (track->mode == 0xA9) {
-                // Audio track
                 mode_str = "AUDIO";
             } else {
-                // Data track - use MODE1/2352 for raw sector data
                 mode_str = "MODE1/2352";
             }
 
@@ -140,23 +126,18 @@ bool CMDSFileDevice::Init() {
             cue_ptr += len;
             remaining -= len;
 
-            // Add PREGAP if present
             if (extra && extra->pregap > 0) {
                 LOGNOTE("    pregap: %u", extra->pregap);
                 LOGNOTE("    length: %u", extra->length);
-                int minutes = extra->pregap / (75 * 60);
-                int seconds = (extra->pregap / 75) % 60;
-                int frames = extra->pregap % 75;
-                len = snprintf(cue_ptr, remaining, "    PREGAP %02d:%02d:%02d\n", minutes, seconds, frames);
-                cue_ptr += len;
-                remaining -= len;
             }
 
-            // Add INDEX 01 with the track's start position
-            // start_sector is in LBA (logical block address) format
-            int minutes = track->start_sector / (75 * 60);
-            int seconds = (track->start_sector / 75) % 60;
-            int frames = track->start_sector % 75;
+            int index_lba = track->start_sector;
+            if (extra && extra->pregap > 0) {
+                index_lba += extra->pregap;
+            }
+            int minutes = index_lba / (75 * 60);
+            int seconds = (index_lba / 75) % 60;
+            int frames = index_lba % 75;
             len = snprintf(cue_ptr, remaining, "    INDEX 01 %02d:%02d:%02d\n", minutes, seconds, frames);
             cue_ptr += len;
             remaining -= len;
@@ -168,22 +149,16 @@ bool CMDSFileDevice::Init() {
     
     LOGNOTE("Generated CUE sheet:\n%s", m_cue_sheet);
     
-    // Detect if this image has subchannel data (SafeDisc support)
     m_hasSubchannels = false;
     for (int i = 0; i < m_parser->getNumSessions(); i++) {
         MDS_SessionBlock* session = m_parser->getSession(i);
         for (int j = 0; j < session->num_all_blocks; j++) {
             MDS_TrackBlock* track = m_parser->getTrack(i, j);
             
-            // Skip non-track entries
             if (track->point == 0 || track->point >= 0xA0) {
                 continue;
             }
             
-            // Check if ANY track has subchannel data
-            // MDS format: subchannel field indicates presence
-            // 0x00 = no subchannels
-            // 0x08 = PW subchannels (96 bytes)
             if (track->subchannel != 0) {
                 m_hasSubchannels = true;
                 LOGNOTE("Track %d has subchannel data (type: 0x%02x, sector_size: %u)", 
@@ -224,6 +199,9 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
         LOGERR("Read !m_pFile");
         return -1;
     }
+
+    LOGDBG("Read() called: size=%u, current logical position=%llu (LBA %u)", 
+           nSize, m_logicalPosition, (u32)(m_logicalPosition / 2352));
 
     // Calculate current LBA from logical position
     u32 lba = m_logicalPosition / 2352;
@@ -371,7 +349,8 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
         LOGERR("Seek !m_pFile");
         return static_cast<u64>(-1);
     }
-
+    LOGDBG("Seek() called: target offset=%llu (LBA %u), current position=%llu (LBA %u)", 
+       nOffset, (u32)(nOffset / 2352), m_logicalPosition, (u32)(m_logicalPosition / 2352));
     // Don't seek if we're already there
     if (m_logicalPosition == nOffset)
         return nOffset;
@@ -497,7 +476,13 @@ u32 CMDSFileDevice::GetTrackStart(int track) const {
             MDS_TrackBlock* trackBlock = m_parser->getTrack(i, j);
             if (trackBlock->point > 0 && trackBlock->point < 0xA0) {
                 if (current == track) {
-                    return trackBlock->start_sector;
+                    // Return logical track start (includes pregap)
+                    MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
+                    u32 pregap = extra ? extra->pregap : 0;
+                    u32 logical_start = trackBlock->start_sector + pregap;
+                    LOGDBG("GetTrackStart(%d): physical start=%u, pregap=%u, logical start=%u",
+                           track, trackBlock->start_sector, pregap, logical_start);
+                    return logical_start;
                 }
                 current++;
             }
@@ -517,7 +502,9 @@ u32 CMDSFileDevice::GetTrackLength(int track) const {
             if (trackBlock->point > 0 && trackBlock->point < 0xA0) {
                 if (current == track) {
                     MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
-                    return extra ? extra->length : 0;
+                    u32 length = extra ? extra->length : 0;
+                    LOGDBG("GetTrackLength(%d): length=%u (pregap not included)", track, length);
+                    return length;
                 }
                 current++;
             }
