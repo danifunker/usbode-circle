@@ -152,7 +152,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
 
 void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 {
-    MLOGNOTE("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
+    CDROM_DEBUG_LOG("SCSIInquiry::RequestSense", "*** CALLED *** mediaState=%d", (int)gadget->m_mediaState);
 
     // CRITICAL: Initialize the entire structure first!
     memset(&gadget->m_ReqSenseReply, 0, sizeof(TUSBCDRequestSenseReply));

@@ -146,7 +146,7 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget *gadget)
 
     if (notificationClass & (1 << 4))
     {
-        MLOGNOTE("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - media change event response");
+        CDROM_DEBUG_LOG("SCSIMisc::GetEventStatusNotification", "Get Event Status Notification - media change event response");
 
         header.eventDataLength = htons(0x06);
         header.notificationClass = 0x04;
