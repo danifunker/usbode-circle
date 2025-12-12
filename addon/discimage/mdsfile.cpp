@@ -13,7 +13,8 @@ LOGMODULE("CMDSFileDevice");
 CMDSFileDevice::CMDSFileDevice(const char* mds_filename, char *mds_str, MEDIA_TYPE mediaType) :
     m_mds_str(mds_str),
     m_mds_filename(mds_filename),
-    m_mediaType(mediaType)
+    m_mediaType(mediaType),
+    m_logicalPosition(0)  // ADD THIS
 {
 }
 
@@ -224,60 +225,131 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
         return -1;
     }
 
+    // Calculate current LBA from logical position
+    u32 lba = m_logicalPosition / 2352;
+    
+    // Find which track we're in
+    int session, trackIdx;
+    MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
+    
+    if (!track) {
+        LOGERR("Read: LBA %u not found in any track", lba);
+        return -1;
+    }
+    
+    // Get pregap for this track
+    MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(session, trackIdx);
+    u32 pregap = extra ? extra->pregap : 0;
+    u32 data_start_lba = track->start_sector + pregap;
+    
+    size_t sectors_to_read = nSize / 2352;
+    u8* dest = (u8*)pBuffer;
+    size_t total_read = 0;
+    
     // For images with subchannels, we need special handling
-    // The file has 2448-byte sectors (2352 + 96), but callers expect 2352
-    if (m_hasSubchannels) {
-        // Determine current position to find which track we're in
-        u64 current_pos = Tell();
-        u32 lba = current_pos / 2352;  // Logical sector number
+    if (m_hasSubchannels && track->sector_size == 2448) {
+        LOGDBG("Reading %u sectors with subchannel skipping from LBA %u", 
+               sectors_to_read, lba);
         
-        int session, trackIdx;
-        MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
+        bool need_seek = true;  // Track if we need to seek for first data sector
         
-        if (track && track->sector_size == 2448) {
-            // This track has subchannel data embedded
-            // We need to read only the user data (2352 bytes) and skip subchannel (96 bytes)
+        for (size_t i = 0; i < sectors_to_read; i++) {
+            u32 current_lba = lba + i;
             
-            size_t sectors_to_read = nSize / 2352;
-            u8* dest = (u8*)pBuffer;
-            size_t total_read = 0;
-            
-            LOGDBG("Reading %u sectors with subchannel skipping from LBA %u", 
-                   sectors_to_read, lba);
-            
-            for (size_t i = 0; i < sectors_to_read; i++) {
-                UINT bytes_read = 0;
-                
-                // Read 2352 bytes of user data
-                FRESULT result = f_read(m_pFile, dest, 2352, &bytes_read);
-                if (result != FR_OK || bytes_read != 2352) {
-                    LOGERR("Failed to read sector %u user data (got %u bytes)", i, bytes_read);
-                    return total_read > 0 ? total_read : -1;
-                }
-                
-                // Skip 96 bytes of subchannel data
-                result = f_lseek(m_pFile, f_tell(m_pFile) + 96);
-                if (result != FR_OK) {
-                    LOGERR("Failed to skip subchannel data at sector %u", i);
-                    return total_read > 0 ? total_read : -1;
-                }
-                
+            // If we're in pregap, return zeros
+            if (current_lba < data_start_lba) {
+                LOGDBG("Sector LBA %u is in pregap, returning zeros", current_lba);
+                memset(dest, 0, 2352);
                 dest += 2352;
                 total_read += 2352;
+                m_logicalPosition += 2352;
+                need_seek = true;  // Will need to seek when we hit data
+                continue;
             }
             
-            return total_read;
+            // We're at or past data start - seek if needed
+            if (need_seek) {
+                u32 sectors_from_data_start = current_lba - data_start_lba;
+                u64 file_offset = track->start_offset + (sectors_from_data_start * track->sector_size);
+                LOGDBG("Seeking to data at LBA %u, file offset %llu", current_lba, file_offset);
+                FRESULT result = f_lseek(m_pFile, file_offset);
+                if (result != FR_OK) {
+                    LOGERR("Failed to seek to data sector, err %d", result);
+                    return total_read > 0 ? total_read : -1;
+                }
+                need_seek = false;
+            }
+            
+            UINT bytes_read = 0;
+            
+            // Read 2352 bytes of user data
+            FRESULT result = f_read(m_pFile, dest, 2352, &bytes_read);
+            if (result != FR_OK || bytes_read != 2352) {
+                LOGERR("Failed to read sector %u user data (got %u bytes)", i, bytes_read);
+                return total_read > 0 ? total_read : -1;
+            }
+            
+            // Skip 96 bytes of subchannel data
+            result = f_lseek(m_pFile, f_tell(m_pFile) + 96);
+            if (result != FR_OK) {
+                LOGERR("Failed to skip subchannel data at sector %u", i);
+                return total_read > 0 ? total_read : -1;
+            }
+            
+            dest += 2352;
+            total_read += 2352;
+            m_logicalPosition += 2352;
+        }
+        
+        return total_read;
+    }
+    
+    // Handle non-subchannel images
+    bool need_seek = true;
+    
+    for (size_t i = 0; i < sectors_to_read; i++) {
+        u32 current_lba = lba + i;
+        
+        if (current_lba < data_start_lba) {
+            // Reading from pregap - return zeros
+            LOGDBG("Sector LBA %u is in pregap, returning zeros", current_lba);
+            memset(dest, 0, 2352);
+            dest += 2352;
+            total_read += 2352;
+            m_logicalPosition += 2352;
+            need_seek = true;  // Will need to seek when we hit data
+        } else {
+            // Reading actual data - seek if transitioning from pregap
+            if (need_seek) {
+                u32 sectors_from_data_start = current_lba - data_start_lba;
+                u64 file_offset = track->start_offset + (sectors_from_data_start * track->sector_size);
+                LOGDBG("Seeking to data at LBA %u, file offset %llu", current_lba, file_offset);
+                FRESULT result = f_lseek(m_pFile, file_offset);
+                if (result != FR_OK) {
+                    LOGERR("Failed to seek to data sector, err %d", result);
+                    return total_read > 0 ? total_read : -1;
+                }
+                need_seek = false;
+            }
+            
+            UINT nBytesRead = 0;
+            FRESULT result = f_read(m_pFile, dest, 2352, &nBytesRead);
+            if (result != FR_OK) {
+                LOGERR("Failed to read sector, err %d", result);
+                return total_read > 0 ? total_read : -1;
+            }
+            dest += nBytesRead;
+            total_read += nBytesRead;
+            m_logicalPosition += nBytesRead;
+            
+            if (nBytesRead < 2352) {
+                // Partial read, we're done
+                break;
+            }
         }
     }
     
-    // Standard read for images without subchannels or tracks with normal sector size
-    UINT nBytesRead = 0;
-    FRESULT result = f_read(m_pFile, pBuffer, nSize, &nBytesRead);
-    if (result != FR_OK) {
-        LOGERR("Failed to read %d bytes into memory, err %d", nSize, result);
-        return -1;
-    }
-    return nBytesRead;
+    return total_read;
 }
 
 int CMDSFileDevice::Write(const void *pBuffer, size_t nSize) {
@@ -291,7 +363,7 @@ u64 CMDSFileDevice::Tell() const {
         return static_cast<u64>(-1);
     }
 
-    return f_tell(m_pFile);
+    return m_logicalPosition;
 }
 
 u64 CMDSFileDevice::Seek(u64 nOffset) {
@@ -301,7 +373,7 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
     }
 
     // Don't seek if we're already there
-    if (Tell() == nOffset)
+    if (m_logicalPosition == nOffset)
         return nOffset;
 
     // Calculate which LBA is being requested
@@ -335,7 +407,8 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
             LOGERR("Seek to track start failed, err %d", result);
             return static_cast<u64>(-1);
         }
-        // Return the requested offset even though we're at start of file data
+        // Update logical position and return
+        m_logicalPosition = nOffset;
         return nOffset;
     }
     
@@ -355,7 +428,8 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
         return static_cast<u64>(-1);
     }
     
-    // Return the logical offset that was requested
+    // Update logical position and return
+    m_logicalPosition = nOffset;
     return nOffset;
 }
 

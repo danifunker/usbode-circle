@@ -66,7 +66,7 @@ class CMDSFileDevice : public IMDSDevice {
     MEDIA_TYPE m_mediaType;
     MDSParser* m_parser;
     bool m_hasSubchannels = false;
-    
+    u64 m_logicalPosition = 0;
     // Helper to find track containing an LBA
     MDS_TrackBlock* FindTrackForLBA(u32 lba, int* sessionOut, int* trackOut) const;
 };
