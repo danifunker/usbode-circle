@@ -722,7 +722,7 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
     case 0x0e:
     {
         ModePage0x0EData *modePage = (ModePage0x0EData *)(m_OutBuffer + 8);
-        MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
+        CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
         CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
         if (cdplayer)
         {
@@ -735,7 +735,7 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
             // Mode Select (10), Volume is 255,74
             // So, we'll pick the minimum of the two
 
-            MLOGNOTE("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume");
+            CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "CDPlayer set volume");
             cdplayer->SetVolume(
                 modePage->Output0Volume < modePage->Output1Volume
                     ? modePage->Output0Volume

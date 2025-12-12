@@ -10,7 +10,7 @@
 #include <circle/types.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
-
+#include "util.h"
 #include "filetype.h"
 #include "cuedevice.h"  // Now extends IImageDevice
 
@@ -59,7 +59,7 @@ class CCueBinFileDevice : public ICueDevice {
     FileType m_FileType = FileType::ISO;
     char* m_cue_str = nullptr;
     MEDIA_TYPE m_mediaType;
-    
+    DWORD *m_pCLMT;                       // NEW: Cluster link map table for fast seek
     // Track parsing state (lazy initialization)
     mutable bool m_tracksParsed = false;
     mutable int m_numTracks = 0;

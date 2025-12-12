@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-
+#include "util.h"
 #include "../mdsparser/mdsparser.h"
 
 LOGMODULE("CMDSFileDevice");
@@ -84,6 +84,9 @@ bool CMDSFileDevice::Init() {
             f_closedir(&dir);
         }
         return false;
+    }
+        if (m_pFile) {
+        FatFsOptimizer::EnableFastSeek(m_pFile, &m_pCLMT, 256, "MDS: ");
     }
 
     // Generate CUE sheet from MDS data
@@ -197,6 +200,7 @@ bool CMDSFileDevice::Init() {
 }
 
 CMDSFileDevice::~CMDSFileDevice(void) {
+    FatFsOptimizer::DisableFastSeek(&m_pCLMT);
     if (m_pFile) {
         f_close(m_pFile);
         delete m_pFile;
@@ -240,8 +244,8 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
             u8* dest = (u8*)pBuffer;
             size_t total_read = 0;
             
-            LOGDBG("Reading %u sectors with subchannel skipping from LBA %u", 
-                   sectors_to_read, lba);
+            // LOGDBG("Reading %u sectors with subchannel skipping from LBA %u", 
+            //        sectors_to_read, lba);
             
             for (size_t i = 0; i < sectors_to_read; i++) {
                 UINT bytes_read = 0;
@@ -321,8 +325,8 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
                              (sectors_from_track_start * track->sector_size) + 
                              offset_in_sector;
     
-    LOGDBG("Seek: LBA %u (offset %llu) -> track %d, file offset %llu", 
-           lba, nOffset, track->point, actual_file_offset);
+    // LOGDBG("Seek: LBA %u (offset %llu) -> track %d, file offset %llu", 
+    //        lba, nOffset, track->point, actual_file_offset);
     
     FRESULT result = f_lseek(m_pFile, actual_file_offset);
     if (result != FR_OK) {

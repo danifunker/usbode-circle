@@ -23,10 +23,14 @@
 #include <circle/util.h>
 #include <stdlib.h>
 #include <string.h>
+#include <circle/timer.h>
 
 LOGMODULE("CCueBinFileDevice");
 
-CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE mediaType) : m_mediaType(mediaType) {
+CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE mediaType) 
+    : m_mediaType(mediaType),
+      m_pCLMT(nullptr)
+{
     m_pFile = pFile;
     if (cue_str != nullptr) {
         // If we were given a cue sheet
@@ -43,12 +47,22 @@ CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE media
         strcpy(m_cue_str, default_cue_sheet);
         m_FileType = FileType::ISO;
     }
+    
+    // NEW: Use shared Fast Seek helper
+    if (m_pFile) {
+        FatFsOptimizer::EnableFastSeek(m_pFile, &m_pCLMT, 256, "BIN/ISO: ");
+    }
 }
 
 CCueBinFileDevice::~CCueBinFileDevice(void) {
-    f_close(m_pFile);
-    delete m_pFile;
-    m_pFile = nullptr;
+    // NEW: Use shared Fast Seek helper
+    FatFsOptimizer::DisableFastSeek(&m_pCLMT);
+    
+    if (m_pFile) {
+        f_close(m_pFile);
+        delete m_pFile;
+        m_pFile = nullptr;
+    }
 
     if (m_cue_str != nullptr) {
         delete[] m_cue_str;
