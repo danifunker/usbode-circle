@@ -279,6 +279,51 @@ IImageDevice* loadCHDFileDevice(const char* imageName) {
     return chdDevice;
 }
 
+boolean FatFsOptimizer::EnableFastSeek(FIL* pFile, DWORD** ppCLMT, size_t clmtSize, const char* logPrefix) {
+    if (!pFile || !ppCLMT) {
+        return false;
+    }
+    
+    // Allocate CLMT array
+    *ppCLMT = new DWORD[clmtSize];
+    if (!*ppCLMT) {
+        LOGERR("%sFast seek: Failed to allocate CLMT", logPrefix);
+        return false;
+    }
+    
+    // Set up CLMT in file handle
+    pFile->cltbl = *ppCLMT;
+    (*ppCLMT)[0] = clmtSize;
+    
+    // Create the cluster link map
+    FRESULT result = f_lseek(pFile, CREATE_LINKMAP);
+    
+    if (result == FR_OK) {
+        LOGNOTE("%sFast seek enabled, using %u CLMT entries", logPrefix, (*ppCLMT)[0]);
+        return true;
+    } 
+    else if (result == FR_NOT_ENOUGH_CORE) {
+        LOGERR("%sFast seek: CLMT too small, need %u entries (have %zu)", 
+                logPrefix, (*ppCLMT)[0], clmtSize);
+    } 
+    else {
+        LOGERR("%sFast seek: Creation failed with error %d", logPrefix, result);
+    }
+    
+    // Cleanup on failure
+    delete[] *ppCLMT;
+    *ppCLMT = nullptr;
+    pFile->cltbl = nullptr;
+    return false;
+}
+
+void FatFsOptimizer::DisableFastSeek(DWORD** ppCLMT) {
+    if (ppCLMT && *ppCLMT) {
+        delete[] *ppCLMT;
+        *ppCLMT = nullptr;
+    }
+}
+
 // ============================================================================
 // Main Entry Point - Plugin Selection
 // ============================================================================

@@ -23,32 +23,42 @@
 #include <circle/util.h>
 #include <stdlib.h>
 #include <string.h>
+#include <circle/timer.h>
 
 LOGMODULE("CCueBinFileDevice");
 
-CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE mediaType) : m_mediaType(mediaType) {
+CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE mediaType) 
+    : m_mediaType(mediaType),
+      m_pCLMT(nullptr)
+{
     m_pFile = pFile;
     if (cue_str != nullptr) {
-        // If we were given a cue sheet
-        // copy it and own it
         size_t len = strlen(cue_str);
         m_cue_str = new char[len + 1];
         strcpy(m_cue_str, cue_str);
         m_FileType = FileType::CUEBIN;
     } else {
-        // If we were not given a cue sheet
-        // make a copy of our default cue sheet
         size_t len = strlen(default_cue_sheet);
         m_cue_str = new char[len + 1];
         strcpy(m_cue_str, default_cue_sheet);
         m_FileType = FileType::ISO;
     }
+    
+    // NEW: Use shared Fast Seek helper
+    if (m_pFile) {
+        FatFsOptimizer::EnableFastSeek(m_pFile, &m_pCLMT, 256, "BIN/ISO: ");
+    }
 }
 
 CCueBinFileDevice::~CCueBinFileDevice(void) {
-    f_close(m_pFile);
-    delete m_pFile;
-    m_pFile = nullptr;
+    // NEW: Use shared Fast Seek helper
+    FatFsOptimizer::DisableFastSeek(&m_pCLMT);
+    
+    if (m_pFile) {
+        f_close(m_pFile);
+        delete m_pFile;
+        m_pFile = nullptr;
+    }
 
     if (m_cue_str != nullptr) {
         delete[] m_cue_str;
@@ -64,6 +74,7 @@ int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
 
     UINT nBytesRead = 0;
     FRESULT result = f_read(m_pFile, pBuffer, nSize, &nBytesRead);
+    
     if (result != FR_OK) {
         LOGERR("Failed to read %d bytes into memory, err %d", nSize, result);
         return -1;

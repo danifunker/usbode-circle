@@ -1,9 +1,11 @@
 // util.h
 #ifndef UTIL_H
 #define UTIL_H
+#include <circle/types.h>
+#include <fatfs/ff.h>
 #include <circle/util.h>
 #include "imagedevice.h" 
-#include "cuebinfile.h"
+#include "cuedevice.h"
 
 #define MAX_FILENAME 255
 
@@ -25,6 +27,23 @@ IImageDevice* loadImageDevice(const char* imageName);
 IImageDevice* loadMDSFileDevice(const char* imageName);
 IImageDevice* loadCueBinIsoFileDevice(const char* imageName);
 IImageDevice* loadCHDFileDevice(const char* imageName);
+
+class FatFsOptimizer {
+public:
+    /// Enable fast seek mode on a FatFs file handle
+    /// \param pFile FatFs file handle
+    /// \param ppCLMT Pointer to CLMT pointer (will be allocated)
+    /// \param clmtSize Size of CLMT array (default 256 entries)
+    /// \param logPrefix Prefix for log messages (e.g., "BIN", "MDS")
+    /// \return true if fast seek was enabled successfully
+    static boolean EnableFastSeek(FIL* pFile, DWORD** ppCLMT, size_t clmtSize = 256, const char* logPrefix = "");
+    
+    /// Disable fast seek and free CLMT memory
+    /// \param ppCLMT Pointer to CLMT pointer (will be freed and nulled)
+    static void DisableFastSeek(DWORD** ppCLMT);
+};
+
+
 // Legacy compatibility function
 // TODO: Remove once all code migrated to IImageDevice
 inline ICueDevice* loadCueBinFileDevice(const char* imageName) {

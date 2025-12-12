@@ -85,7 +85,9 @@ bool CMDSFileDevice::Init() {
         }
         return false;
     }
-
+    if (m_pFile) {
+        FatFsOptimizer::EnableFastSeek(m_pFile, &m_pCLMT, 256, "MDS: ");
+    }
     // Generate CUE sheet from MDS data
     char cue_buffer[4096];
     char* cue_ptr = cue_buffer;
@@ -100,8 +102,8 @@ bool CMDSFileDevice::Init() {
     for (int i = 0; i < m_parser->getNumSessions(); i++) {
         MDS_SessionBlock* session = m_parser->getSession(i);
         LOGNOTE("Session %d:", i);
-        LOGNOTE("  session_start: %llu", (unsigned long long)session->session_start);
-        LOGNOTE("  session_end: %llu", (unsigned long long)session->session_end);
+        LOGNOTE("  session_start: %d", session->session_start);
+        LOGNOTE("  session_end: %d", session->session_end);
         LOGNOTE("  num_all_blocks: %d", session->num_all_blocks);
 
         // Process all track blocks in this session
@@ -303,7 +305,7 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
         return nOffset;
 
     // Calculate which LBA is being requested
-    u32 lba = nOffset / 2352;  // Assuming 2352 bytes per sector
+    u32 lba = nOffset / 2352;
     u32 offset_in_sector = nOffset % 2352;
     
     // Find which track contains this LBA
@@ -315,10 +317,33 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
         return static_cast<u64>(-1);
     }
     
-    // Calculate offset into MDF file
-    u32 sectors_from_track_start = lba - track->start_sector;
+    // Get pregap for this track
+    MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(session, trackIdx);
+    u32 pregap = extra ? extra->pregap : 0;
+    
+    // Calculate the first LBA with actual file data
+    u32 data_start_lba = track->start_sector + pregap;
+    
+    // Check if we're seeking into the pregap (before actual file data)
+    if (lba < data_start_lba) {
+        // LBA is in pregap - no physical data in file for these sectors
+        // Position at start of actual data and let Read() handle returning zeros
+        LOGDBG("Seek: LBA %u is in pregap (data starts at %u)", lba, data_start_lba);
+        
+        FRESULT result = f_lseek(m_pFile, track->start_offset);
+        if (result != FR_OK) {
+            LOGERR("Seek to track start failed, err %d", result);
+            return static_cast<u64>(-1);
+        }
+        // Return the requested offset even though we're at start of file data
+        return nOffset;
+    }
+    
+    // Calculate offset into MDF file for actual data
+    // LBA is absolute, data_start_lba is where file data begins
+    u32 sectors_from_data_start = lba - data_start_lba;
     u64 actual_file_offset = track->start_offset + 
-                             (sectors_from_track_start * track->sector_size) + 
+                             (sectors_from_data_start * track->sector_size) + 
                              offset_in_sector;
     
     LOGDBG("Seek: LBA %u (offset %llu) -> track %d, file offset %llu", 
@@ -330,23 +355,45 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
         return static_cast<u64>(-1);
     }
     
-    // Return the logical offset that was requested (not the physical file offset)
+    // Return the logical offset that was requested
     return nOffset;
 }
 
 u64 CMDSFileDevice::GetSize(void) const {
-    if (!m_pFile) {
-        LOGERR("GetSize !m_pFile");
+    if (!m_pFile || !m_parser) {
+        LOGERR("GetSize !m_pFile or !m_parser");
         return 0;
     }
 
-    u64 size = f_size(m_pFile);
-    if (size < 0) {
-        LOGERR("GetSize f_size < 0");
-        return 0;
+    // Calculate total logical disc size from all tracks
+    // Note: We return LOGICAL size (what the OS sees), not physical file size
+    // Physical MDF files have 2448-byte sectors (2352 + 96 subchannel)
+    // but we report 2352-byte logical sectors to the OS
+    u64 total_sectors = 0;
+    
+    for (int i = 0; i < m_parser->getNumSessions(); i++) {
+        MDS_SessionBlock* session = m_parser->getSession(i);
+        for (int j = 0; j < session->num_all_blocks; j++) {
+            MDS_TrackBlock* track = m_parser->getTrack(i, j);
+            
+            // Skip non-track entries (lead-in, lead-out markers)
+            if (track->point == 0 || track->point >= 0xA0) {
+                continue;
+            }
+            
+            MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
+            if (extra) {
+                // Each track contributes its pregap + data length
+                total_sectors += extra->pregap + extra->length;
+            }
+        }
     }
-
-    return size;
+    
+    LOGDBG("GetSize: calculated %llu logical sectors, returning %llu bytes", 
+           (unsigned long long)total_sectors, (unsigned long long)(total_sectors * 2352));
+    
+    // Return size in bytes (sectors × 2352 bytes per logical sector)
+    return total_sectors * 2352;
 }
 
 int CMDSFileDevice::GetNumTracks() const {
@@ -438,9 +485,18 @@ MDS_TrackBlock* CMDSFileDevice::FindTrackForLBA(u32 lba, int* sessionOut, int* t
             }
             
             MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
+            u32 pregap = extra ? extra->pregap : 0;
             u32 track_length = extra ? extra->length : 0;
             
-            if (lba >= track->start_sector && lba < (track->start_sector + track_length)) {
+            // The track's logical extent includes both pregap and data
+            // For a track with start_sector=0, pregap=150, length=236198:
+            //   - Logical start: 0 (pregap begins)
+            //   - Data start: 150 (where file data begins) 
+            //   - Logical end: 0 + 150 + 236198 = 236348
+            u32 logical_start = track->start_sector;
+            u32 logical_end = track->start_sector + pregap + track_length;
+            
+            if (lba >= logical_start && lba < logical_end) {
                 if (sessionOut) *sessionOut = i;
                 if (trackOut) *trackOut = j;
                 return track;
@@ -468,9 +524,21 @@ int CMDSFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
         return -1;
     }
     
+    // Get pregap for this track
+    MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(session, trackIdx);
+    u32 pregap = extra ? extra->pregap : 0;
+    u32 data_start_lba = track->start_sector + pregap;
+    
+    // If LBA is in pregap, there's no physical subchannel data in the file
+    if (lba < data_start_lba) {
+        LOGDBG("ReadSubchannel: LBA %u is in pregap, no subchannel data", lba);
+        return -1;
+    }
+    
     // Calculate offset into the MDF file
-    u32 sectors_from_track_start = lba - track->start_sector;
-    u64 sector_offset = track->start_offset + (sectors_from_track_start * track->sector_size);
+    // LBA is absolute, data_start_lba is where file data begins
+    u32 sectors_from_data_start = lba - data_start_lba;
+    u64 sector_offset = track->start_offset + (sectors_from_data_start * track->sector_size);
     
     // Subchannel data is stored in the last 96 bytes of each raw sector
     // Raw sector format: 2352 bytes user data + 96 bytes subchannel

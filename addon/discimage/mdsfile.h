@@ -10,6 +10,7 @@
 #include <circle/types.h>
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
+#include "util.h"
 
 #include "filetype.h"
 #include "mdsdevice.h"
@@ -58,6 +59,7 @@ class CMDSFileDevice : public IMDSDevice {
 
    private:
     FIL* m_pFile;
+    DWORD* m_pCLMT;
     char* m_mds_str = nullptr;
     char* m_cue_sheet = nullptr;  // Generated for compatibility
     const char* m_mds_filename;
