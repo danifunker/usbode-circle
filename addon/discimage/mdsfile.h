@@ -62,7 +62,8 @@ class CMDSFileDevice : public IMDSDevice {
     char* m_cue_sheet = nullptr;  // Generated for compatibility
     const char* m_mds_filename;
     MEDIA_TYPE m_mediaType;
-    MDSParser* m_parser;
+    MDSParser* m_parser;    
+    DWORD* m_pCLMT;
     bool m_hasSubchannels = false;
     
     // Helper to find track containing an LBA

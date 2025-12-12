@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-
+#include "util.h"
 #include "../mdsparser/mdsparser.h"
 
 LOGMODULE("CMDSFileDevice");
@@ -84,6 +84,9 @@ bool CMDSFileDevice::Init() {
             f_closedir(&dir);
         }
         return false;
+    }
+        if (m_pFile) {
+        FatFsOptimizer::EnableFastSeek(m_pFile, &m_pCLMT, 256, "MDS: ");
     }
 
     // Generate CUE sheet from MDS data
@@ -197,6 +200,7 @@ bool CMDSFileDevice::Init() {
 }
 
 CMDSFileDevice::~CMDSFileDevice(void) {
+    FatFsOptimizer::DisableFastSeek(&m_pCLMT);
     if (m_pFile) {
         f_close(m_pFile);
         delete m_pFile;
