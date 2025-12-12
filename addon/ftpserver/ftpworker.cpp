@@ -29,7 +29,7 @@
 #include <circle/timer.h>
 #include <gitinfo/gitinfo.h>
 #include <scsitbservice/scsitbservice.h>
-
+#include <discimage/util.h>
 #include "ftpworker.h"
 #include "utility.h"
 
@@ -644,11 +644,14 @@ bool CFTPWorker::Retrieve(const char* pArgs) {
 
     FIL File;
     CString Path = RealPath(pArgs);
-
     if (f_open(&File, Path, FA_READ) != FR_OK) {
         SendStatus(TFTPStatus::FileActionNotTaken, "Could not open file for reading.");
         return false;
     }
+
+    // NEW: Enable Fast Seek for download
+    DWORD* pCLMT = nullptr;
+    FatFsOptimizer::EnableFastSeek(&File, &pCLMT, 256, "FTP Download: ");
 
     if (!SendStatus(TFTPStatus::FileStatusOk, "Command OK."))
         return false;
@@ -667,6 +670,7 @@ bool CFTPWorker::Retrieve(const char* pArgs) {
 #endif
         if (f_read(&File, m_DataBuffer, NETWORK_BUFFER_SIZE, &nBytesRead) != FR_OK || pDataSocket->Send(m_DataBuffer, nBytesRead, 0) < 0) {
             delete pDataSocket;
+            FatFsOptimizer::DisableFastSeek(&pCLMT);  // NEW: Cleanup on error
             f_close(&File);
             SendStatus(TFTPStatus::ActionAborted, "File action aborted, local error.");
             return false;
@@ -678,16 +682,18 @@ bool CFTPWorker::Retrieve(const char* pArgs) {
 
     // Clean up data socket
     delete pDataSocket;
-    
+
     // Clean up passive listening socket
     if (m_TransferMode == TTransferMode::Passive && m_pDataSocket != nullptr) {
         delete m_pDataSocket;
         m_pDataSocket = nullptr;
     }
-    
-    f_close(&File);
-    SendStatus(TFTPStatus::TransferComplete, "Transfer complete.");
 
+    // NEW: Cleanup Fast Seek before closing file
+    FatFsOptimizer::DisableFastSeek(&pCLMT);
+    f_close(&File);
+
+    SendStatus(TFTPStatus::TransferComplete, "Transfer complete.");
     return false;
 }
 
@@ -697,14 +703,16 @@ bool CFTPWorker::Store(const char* pArgs) {
 
     FIL File;
     CString Path = RealPath(pArgs);
-
     if (f_open(&File, Path, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK) {
         SendStatus(TFTPStatus::FileActionNotTaken, "Could not open file for writing.");
         return false;
     }
 
-    f_sync(&File);
+    // NEW: Enable Fast Seek for upload
+    DWORD* pCLMT = nullptr;
+    FatFsOptimizer::EnableFastSeek(&File, &pCLMT, 256, "FTP Upload: ");
 
+    f_sync(&File);
     if (!SendStatus(TFTPStatus::FileStatusOk, "Command OK."))
         return false;
 
@@ -713,7 +721,6 @@ bool CFTPWorker::Store(const char* pArgs) {
         return false;
 
     bool bSuccess = true;
-
     CTimer* const pTimer = CTimer::Get();
     unsigned int nTimeout = pTimer->GetTicks();
     unsigned int WriteBufferUsed = 0;
@@ -722,7 +729,6 @@ bool CFTPWorker::Store(const char* pArgs) {
 #ifdef FTPDAEMON_DEBUG
         LOGDBG("Waiting to receive");
 #endif
-
         int nReceiveResult = pDataSocket->Receive(m_DataBuffer, NETWORK_BUFFER_SIZE, MSG_DONTWAIT);
         FRESULT nWriteResult;
         UINT nWritten;
@@ -746,14 +752,12 @@ bool CFTPWorker::Store(const char* pArgs) {
 #ifdef FTPDAEMON_DEBUG
         // LOGDBG("Received %d bytes", nReceiveResult);
 #endif
-
         unsigned int remaining = nReceiveResult;
         BYTE* pSrc = (BYTE*)m_DataBuffer;
 
         while (remaining > 0) {
             unsigned int spaceLeft = WRITE_BUFFER_SIZE - WriteBufferUsed;
             unsigned int toCopy = (remaining < spaceLeft) ? remaining : spaceLeft;
-
             memcpy(&WriteBuffer[WriteBufferUsed], pSrc, toCopy);
             WriteBufferUsed += toCopy;
             pSrc += toCopy;
@@ -766,7 +770,7 @@ bool CFTPWorker::Store(const char* pArgs) {
                     break;
                 }
                 WriteBufferUsed = 0;
-        	CScheduler::Get()->Yield();
+                CScheduler::Get()->Yield();
             }
         }
 
@@ -796,24 +800,26 @@ bool CFTPWorker::Store(const char* pArgs) {
 #ifdef FTPDAEMON_DEBUG
     LOGDBG("Closing socket/file");
 #endif
-    
+
     // Clean up data socket
     if (pDataSocket != nullptr) {
         delete pDataSocket;
         pDataSocket = nullptr;
     }
-    
+
     // Clean up passive listening socket
     if (m_TransferMode == TTransferMode::Passive && m_pDataSocket != nullptr) {
         delete m_pDataSocket;
         m_pDataSocket = nullptr;
     }
 
+    // NEW: Cleanup Fast Seek before closing file
+    FatFsOptimizer::DisableFastSeek(&pCLMT);
     f_close(&File);
 
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     if (svc != nullptr)
-    	svc->RefreshCache();
+        svc->RefreshCache();
 
     return true;
 }
