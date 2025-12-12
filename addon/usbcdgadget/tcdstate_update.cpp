@@ -348,6 +348,49 @@ void CUSBCDGadget::Update()
 
                 CDROM_DEBUG_LOG("UpdateRead", "Transferred %u bytes, next_LBA=%u, remaining=%u",
                                 total_copied, m_nblock_address, m_nnumber_blocks);
+                
+                // Debug first read of LBA 16 to verify sector structure
+                if (m_bDebugLogging && (m_nblock_address - blocks_to_read_in_batch) == 16 && blocks_to_read_in_batch >= 1)
+                {
+                    CDROM_DEBUG_LOG("UpdateRead", "=== LBA 16 SECTOR STRUCTURE DEBUG ===");
+                    CDROM_DEBUG_LOG("UpdateRead", "block_size=%u, transfer_block_size=%u, skip_bytes=%u", 
+                                    block_size, transfer_block_size, skip_bytes);
+                    CDROM_DEBUG_LOG("UpdateRead", "First 32 bytes of transferred data:");
+                    for (int i = 0; i < 32 && i < (int)total_copied; i += 16)
+                    {
+                        CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                                        i,
+                                        m_InBuffer[i+0], m_InBuffer[i+1], m_InBuffer[i+2], m_InBuffer[i+3],
+                                        m_InBuffer[i+4], m_InBuffer[i+5], m_InBuffer[i+6], m_InBuffer[i+7],
+                                        m_InBuffer[i+8], m_InBuffer[i+9], m_InBuffer[i+10], m_InBuffer[i+11],
+                                        m_InBuffer[i+12], m_InBuffer[i+13], m_InBuffer[i+14], m_InBuffer[i+15]);
+                    }
+                }
+                
+                // Debug subchannel data for SafeDisc troubleshooting
+                if (need_subchannels && m_bDebugLogging && blocks_to_read_in_batch > 0)
+                {
+                    u32 start_lba = m_nblock_address - blocks_to_read_in_batch;
+                    CDROM_DEBUG_LOG("UpdateRead", "=== SUBCHANNEL DEBUG: LBA %u ===", start_lba);
+                    CDROM_DEBUG_LOG("UpdateRead", "transfer_block_size=%u, base_sector_size=%u, subchan_sel=0x%02x",
+                                    transfer_block_size, base_sector_size, subChannelSelection);
+
+                        
+                    if (total_copied >= base_sector_size + 96)
+                    {
+                        u8* subchan_ptr = m_InBuffer + base_sector_size;
+                        CDROM_DEBUG_LOG("UpdateRead", "First sector subchannel (96 bytes):");
+                        for (int i = 0; i < 96; i += 16)
+                        {
+                            CDROM_DEBUG_LOG("UpdateRead", "[%02x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                                            i,
+                                            subchan_ptr[i+0], subchan_ptr[i+1], subchan_ptr[i+2], subchan_ptr[i+3],
+                                            subchan_ptr[i+4], subchan_ptr[i+5], subchan_ptr[i+6], subchan_ptr[i+7],
+                                            subchan_ptr[i+8], subchan_ptr[i+9], subchan_ptr[i+10], subchan_ptr[i+11],
+                                            subchan_ptr[i+12], subchan_ptr[i+13], subchan_ptr[i+14], subchan_ptr[i+15]);
+                        }
+                    }
+                }
 
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
