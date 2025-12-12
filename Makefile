@@ -70,14 +70,15 @@ USBODE_ADDONS = sdcardservice cdromservice scsitbservice usbcdgadget \
                 upgradestatus setupstatus
 
 # Only the Circle addons we actually need
-CIRCLE_ADDONS = linux Properties display fatfs SDCard wlan wlan/firmware
+# Note: wlan/firmware is handled specially in circle-deps to avoid re-downloading
+CIRCLE_ADDONS = linux Properties display fatfs SDCard wlan
 
 # Module-specific CPPFLAGS
 USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0x0d01
 
 .PHONY: all clean-all clean-dist check-config check-vars configure circle-stdlib\
      circle-deps circle-addons usbode-addons kernel dist-files apply-patches reset-patches check-patches\
-     generate-buildinfo
+     generate-buildinfo cleanwlanfirmware
 
 .PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS) dist-single multi-arch package release\
 	 show-build-info rebuild show-config all-32 all-64 multi-arch-64 package-both
@@ -146,8 +147,11 @@ circle-stdlib: configure
 circle-deps: circle-stdlib
 	@echo "Building Circle dependencies..."
 	@if [ ! -f "$(CIRCLEHOME)/addon/wlan/firmware/LICENCE.broadcom_bcm43xx" ]; then \
-		echo "Building WLAN firmware..."; \
+		echo "WLAN firmware not found, downloading..."; \
 		cd $(CIRCLEHOME)/addon/wlan/firmware && $(MAKE); \
+	else \
+		echo "WLAN firmware already exists, skipping download"; \
+		cd $(CIRCLEHOME)/addon/wlan && $(MAKE) clean && $(MAKE); \
 	fi
 	@if [ ! -f "$(CIRCLEHOME)/boot/LICENCE.broadcom" ]; then \
 		echo "Building boot files..."; \
@@ -330,6 +334,12 @@ clean-imagesfolder:
 	@rm -rf ./dist64/cmdline.txt
 	@rm -rf ./dist/config.txt
 	@rm -rf ./dist64/config.txt
+
+# Clean WLAN firmware files (forces re-download on next build)
+cleanwlanfirmware:
+	@echo "Cleaning WLAN firmware files..."
+	@cd $(CIRCLEHOME)/addon/wlan/firmware && $(MAKE) clean
+	@echo "WLAN firmware cleaned. Next build will re-download firmware files."
 
 # 32-bit specific targets
 all-32: 
