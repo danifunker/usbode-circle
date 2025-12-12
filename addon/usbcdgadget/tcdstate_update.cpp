@@ -153,38 +153,38 @@ void CUSBCDGadget::Update()
 
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
 
-                if (m_bDebugLogging)
-                {
-                    u32 start_lba = m_nblock_address;
-                    u32 end_lba = m_nblock_address + blocks_to_read_in_batch;
+                // if (m_bDebugLogging)
+                // {
+                //     u32 start_lba = m_nblock_address;
+                //     u32 end_lba = m_nblock_address + blocks_to_read_in_batch;
 
-                    u32 target_lbas[] = {0, 1, 16};
+                //     u32 target_lbas[] = {0, 1, 16};
 
-                    for (u32 target : target_lbas)
-                    {
-                        if (target >= start_lba && target < end_lba)
-                        {
-                            u32 relative_lba_index = target - start_lba;
-                            u32 sector_start_offset = relative_lba_index * block_size;
-                            u32 user_data_offset = sector_start_offset + skip_bytes;
+                //     for (u32 target : target_lbas)
+                //     {
+                //         if (target >= start_lba && target < end_lba)
+                //         {
+                //             u32 relative_lba_index = target - start_lba;
+                //             u32 sector_start_offset = relative_lba_index * block_size;
+                //             u32 user_data_offset = sector_start_offset + skip_bytes;
 
-                            if (user_data_offset + 64 <= (u32)readCount)
-                            {
-                                CDROM_DEBUG_LOG("UpdateRead", "=== RAW USER DATA for LBA %u (first 64 bytes) ===", target);
-                                for (int i = 0; i < 64; i += 16)
-                                {
-                                    u8 *p = m_FileChunk + user_data_offset;
-                                    CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                                                    i,
-                                                    p[i + 0], p[i + 1], p[i + 2], p[i + 3],
-                                                    p[i + 4], p[i + 5], p[i + 6], p[i + 7],
-                                                    p[i + 8], p[i + 9], p[i + 10], p[i + 11],
-                                                    p[i + 12], p[i + 13], p[i + 14], p[i + 15]);
-                                }
-                            }
-                        }
-                    }
-                }
+                //             if (user_data_offset + 64 <= (u32)readCount)
+                //             {
+                //                 CDROM_DEBUG_LOG("UpdateRead", "=== RAW USER DATA for LBA %u (first 64 bytes) ===", target);
+                //                 for (int i = 0; i < 64; i += 16)
+                //                 {
+                //                     u8 *p = m_FileChunk + user_data_offset;
+                //                     CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                //                                     i,
+                //                                     p[i + 0], p[i + 1], p[i + 2], p[i + 3],
+                //                                     p[i + 4], p[i + 5], p[i + 6], p[i + 7],
+                //                                     p[i + 8], p[i + 9], p[i + 10], p[i + 11],
+                //                                     p[i + 12], p[i + 13], p[i + 14], p[i + 15]);
+                //                 }
+                //             }
+                //         }
+                //     }
+                // }
 
                 if (readCount <= 0)
                 {
@@ -277,23 +277,23 @@ void CUSBCDGadget::Update()
                 m_nbyteCount -= total_copied;
                 m_nState = TCDState::DataIn;
 
-                if (m_bDebugLogging)
-                {
-                    u32 start_lba = m_nblock_address - blocks_to_read_in_batch;
-                    if (start_lba == 0 || start_lba == 1)
-                    {
-                        CDROM_DEBUG_LOG("UpdateRead", "=== LBA %u DATA DUMP (first 128 bytes) ===", start_lba);
-                        for (int i = 0; i < 128 && i < (int)total_copied; i += 16)
-                        {
-                            CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                                            i,
-                                            m_InBuffer[i], m_InBuffer[i + 1], m_InBuffer[i + 2], m_InBuffer[i + 3],
-                                            m_InBuffer[i + 4], m_InBuffer[i + 5], m_InBuffer[i + 6], m_InBuffer[i + 7],
-                                            m_InBuffer[i + 8], m_InBuffer[i + 9], m_InBuffer[i + 10], m_InBuffer[i + 11],
-                                            m_InBuffer[i + 12], m_InBuffer[i + 13], m_InBuffer[i + 14], m_InBuffer[i + 15]);
-                        }
-                    }
-                }
+                // if (m_bDebugLogging)
+                // {
+                //     u32 start_lba = m_nblock_address - blocks_to_read_in_batch;
+                //     if (start_lba == 0 || start_lba == 1)
+                //     {
+                //         CDROM_DEBUG_LOG("UpdateRead", "=== LBA %u DATA DUMP (first 128 bytes) ===", start_lba);
+                //         for (int i = 0; i < 128 && i < (int)total_copied; i += 16)
+                //         {
+                //             CDROM_DEBUG_LOG("UpdateRead", "[%04x] %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                //                             i,
+                //                             m_InBuffer[i], m_InBuffer[i + 1], m_InBuffer[i + 2], m_InBuffer[i + 3],
+                //                             m_InBuffer[i + 4], m_InBuffer[i + 5], m_InBuffer[i + 6], m_InBuffer[i + 7],
+                //                             m_InBuffer[i + 8], m_InBuffer[i + 9], m_InBuffer[i + 10], m_InBuffer[i + 11],
+                //                             m_InBuffer[i + 12], m_InBuffer[i + 13], m_InBuffer[i + 14], m_InBuffer[i + 15]);
+                //         }
+                //     }
+                // }
 
                 uintptr_t buffer_start = (uintptr_t)m_InBuffer;
                 uintptr_t buffer_end = buffer_start + total_copied;
