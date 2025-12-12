@@ -217,12 +217,22 @@ void CUSBCDGadget::Update()
                 u8 *dest_ptr = m_InBuffer;
                 u32 total_copied = 0;
 
-                if (transfer_block_size == block_size && skip_bytes == 0)
+                // Check if we need subchannel data interleaved with sectors
+                u8 subChannelSelection = mcs & 0x07;
+                bool need_subchannels = (subChannelSelection != 0 && m_pDevice->HasSubchannelData());
+                
+                // Calculate base sector size (without subchannel)
+                u32 base_sector_size = transfer_block_size;
+                if (need_subchannels && subChannelSelection == 0x01) {
+                    base_sector_size -= 96; // Remove subchannel size to get just sector data
+                }
+
+                if (transfer_block_size == block_size && skip_bytes == 0 && !need_subchannels)
                 {
                     memcpy(dest_ptr, m_FileChunk, total_transfer_size);
                     total_copied = total_transfer_size;
                 }
-                else if (transfer_block_size > block_size)
+                else if (transfer_block_size > block_size && !need_subchannels)
                 {
                     for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
                     {
@@ -264,12 +274,36 @@ void CUSBCDGadget::Update()
                 }
                 else
                 {
+                    // Standard copy with optional subchannel interleaving
                     for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
                     {
+                        u32 current_lba = m_nblock_address + i;
+                        
+                        // Copy sector data
                         memcpy(dest_ptr, m_FileChunk + (i * block_size) + skip_bytes,
-                               transfer_block_size);
-                        dest_ptr += transfer_block_size;
-                        total_copied += transfer_block_size;
+                               base_sector_size);
+                        dest_ptr += base_sector_size;
+                        total_copied += base_sector_size;
+                        
+                        // Immediately follow with subchannel data if requested
+                        if (need_subchannels && subChannelSelection == 0x01)
+                        {
+                            u8 subchannel_buf[96];
+                            int sc_result = m_pDevice->ReadSubchannel(current_lba, subchannel_buf);
+                            
+                            if (sc_result == 96)
+                            {
+                                memcpy(dest_ptr, subchannel_buf, 96);
+                            }
+                            else
+                            {
+                                CDROM_DEBUG_LOG("UpdateRead", "Subchannel read failed for LBA %u, zero-filling",
+                                                current_lba);
+                                memset(dest_ptr, 0, 96);
+                            }
+                            dest_ptr += 96;
+                            total_copied += 96;
+                        }
                     }
                 }
 
@@ -314,40 +348,6 @@ void CUSBCDGadget::Update()
 
                 CDROM_DEBUG_LOG("UpdateRead", "Transferred %u bytes, next_LBA=%u, remaining=%u",
                                 total_copied, m_nblock_address, m_nnumber_blocks);
-
-                if (mcs != 0 && m_pDevice->HasSubchannelData())
-                {
-                    u8 subChannelSelection = mcs & 0x07;
-
-                    if (subChannelSelection != 0)
-                    {
-                        CDROM_DEBUG_LOG("UpdateRead", "Appending subchannel data for %u blocks",
-                                        blocks_to_read_in_batch);
-
-                        for (u32 i = 0; i < blocks_to_read_in_batch; i++)
-                        {
-                            u32 current_lba = m_nblock_address - blocks_to_read_in_batch + i;
-                            u8 subchannel_buf[96];
-
-                            int sc_result = m_pDevice->ReadSubchannel(current_lba, subchannel_buf);
-
-                            if (sc_result == 96)
-                            {
-                                u32 offset = total_copied + (i * 96);
-                                memcpy(m_InBuffer + offset, subchannel_buf, 96);
-                                total_copied += 96;
-                            }
-                            else
-                            {
-                                CDROM_DEBUG_LOG("UpdateRead", "Subchannel read failed for LBA %u, zero-filling",
-                                                current_lba);
-                                u32 offset = total_copied + (i * 96);
-                                memset(m_InBuffer + offset, 0, 96);
-                                total_copied += 96;
-                            }
-                        }
-                    }
-                }
 
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
