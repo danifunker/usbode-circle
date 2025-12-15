@@ -781,6 +781,25 @@ void CUSBCDGadget::OnActivate()
                     m_CDReady, (int)m_mediaState);
 }
 
+void CUSBCDGadget::OnDeactivate()
+{
+    MLOGNOTE("CUSBCDGadget::OnDeactivate", "state = %i", m_nState);
+    
+    m_CDReady = false;
+    m_nState = TCDState::Init;
+    
+    // Cancel any pending transfers on both endpoints
+    if (m_pEP[EPOut])
+    {
+        m_pEP[EPOut]->CancelTransfer();
+    }
+    
+    if (m_pEP[EPIn])
+    {
+        m_pEP[EPIn]->CancelTransfer();
+    }
+}
+
 void CUSBCDGadget::SendCSW()
 {
     // CDROM_DEBUG_LOG ("CUSBCDGadget::SendCSW", "entered");

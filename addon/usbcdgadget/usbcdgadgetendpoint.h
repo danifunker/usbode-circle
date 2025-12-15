@@ -36,8 +36,8 @@ public:
 	CUSBCDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc, CUSBCDGadget *pGadget);
 	~CUSBCDGadgetEndpoint (void);
 
-	void OnActivate (void) override;
-
+	virtual void OnActivate (void) override;
+	virtual void OnDeactivate (void) override;
 	void OnTransferComplete (boolean bIn, size_t nLength) override;
 
 private:

@@ -57,6 +57,15 @@ void CUSBCDGadgetEndpoint::OnActivate (void)
     m_pGadget->m_bNeedsAudioInit = TRUE;
 }
 
+void CUSBCDGadgetEndpoint::OnDeactivate (void)
+{
+	if (GetDirection () == DirectionOut)
+	{
+		m_pGadget->OnDeactivate();
+	}
+}
+
+
 void CUSBCDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 {
 	MLOGNOTE("CDEndpoint","Transfer complete nlen= %i",nLength);

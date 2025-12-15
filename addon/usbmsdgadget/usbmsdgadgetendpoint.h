@@ -35,7 +35,8 @@ public:
 	CUSBMMSDGadgetEndpoint (const TUSBEndpointDescriptor *pDesc, CUSBMMSDGadget *pGadget);
 	~CUSBMMSDGadgetEndpoint (void);
 
-	void OnActivate (void) override;
+	virtual void OnActivate (void) override;
+	virtual void OnDeactivate (void) override;
 
 	void OnTransferComplete (boolean bIn, size_t nLength) override;
 

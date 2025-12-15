@@ -50,6 +50,15 @@ void CUSBMMSDGadgetEndpoint::OnActivate (void)
 	}
 }
 
+// Will figure this out later, just trying to get it to compile again
+void CUSBMMSDGadgetEndpoint::OnDeactivate()
+{
+	MLOGNOTE("MMS Gadget OnDeactivate", "state = %i",m_nState);
+	// m_MSDReady=false;
+	// m_nState=TMSDState::Init;
+	// m_pGadget->m_pEP[EPOut]->CancelTransfer();
+}
+
 void CUSBMMSDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 {
 	MLOGNOTE("MMSDEndpoint","Transfer complete nlen= %i",nLength);
