@@ -370,7 +370,19 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
             {
                 return &s_ConfigurationDescriptorMacOS9;
             }
-            return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
+            
+            // Return descriptor based on NEGOTIATED speed, not constructor parameter
+            TDeviceSpeed negotiated = GetNegotiatedUSBSpeed();
+            if (m_IsFullSpeed || negotiated == FullSpeed)
+            {
+                CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "Returning Full-Speed config descriptor");
+                return &s_ConfigurationDescriptorFullSpeed;
+            }
+            else
+            {
+                CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "Returning High-Speed config descriptor");
+                return &s_ConfigurationDescriptorHighSpeed;
+            }
         }
         break;
 
@@ -540,6 +552,33 @@ void CUSBCDGadget::OnSuspend(void)
     m_pEP[EPIn] = nullptr;
 
     m_nState = TCDState::Init;
+}
+
+void CUSBCDGadget::OnNegotiatedSpeed(TDeviceSpeed Speed)
+{
+    const char* speedStr = (Speed == FullSpeed) ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)";
+    MLOGNOTE("CUSBCDGadget::OnNegotiatedSpeed", "Speed negotiated: %s", speedStr);
+    
+    if (Speed == FullSpeed)
+    {
+        // Adjust endpoints for USB 1.1 Full-Speed (64 byte max packets for bulk endpoints)
+        if (m_pEP[EPIn])
+        {
+            m_pEP[EPIn]->SetMaxPacketSize(64);
+            MLOGNOTE("CUSBCDGadget::OnNegotiatedSpeed", "Set EP IN packet size to 64 bytes");
+        }
+        
+        if (m_pEP[EPOut])
+        {
+            m_pEP[EPOut]->SetMaxPacketSize(64);
+            MLOGNOTE("CUSBCDGadget::OnNegotiatedSpeed", "Set EP OUT packet size to 64 bytes");
+        }
+    }
+    else
+    {
+        // High-Speed: 512 byte packets (already set in descriptors)
+        MLOGNOTE("CUSBCDGadget::OnNegotiatedSpeed", "Using High-Speed 512-byte packets");
+    }
 }
 
 const void *CUSBCDGadget::ToStringDescriptor(const char *pString, size_t *pLength)

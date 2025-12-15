@@ -111,6 +111,7 @@ private:
     void AddEndpoints(void) override;
     void CreateDevice(void) override;
     void OnSuspend(void) override;
+    void OnNegotiatedSpeed(TDeviceSpeed Speed) override;
     int OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData) override;
     // ========================================================================
     // USB Transfer Callbacks (called from IRQ level via CUSBCDGadgetEndpoint)

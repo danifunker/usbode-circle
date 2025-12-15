@@ -45,6 +45,17 @@ CUSBCDGadgetEndpoint::~CUSBCDGadgetEndpoint (void)
 
 }
 
+void CUSBCDGadgetEndpoint::OnUSBReset (void)
+{
+	MLOGNOTE("CDEndpoint", "OnUSBReset called for EP%u, direction=%s",
+	         GetEPNumber(), GetDirection() == DirectionIn ? "IN" : "OUT");
+	
+	// Call base class to configure hardware
+	CDWUSBGadgetEndpoint::OnUSBReset();
+	
+	MLOGNOTE("CDEndpoint", "OnUSBReset complete for EP%u", GetEPNumber());
+}
+
 //the following methods forward to the gadget class to facilitate
 //unified state management of the device
 
@@ -59,10 +70,15 @@ void CUSBCDGadgetEndpoint::OnActivate (void)
 
 void CUSBCDGadgetEndpoint::OnDeactivate (void)
 {
+	MLOGNOTE("CDEndpoint", "OnActivate called for EP%u, direction=%s",
+	         GetEPNumber(), GetDirection() == DirectionIn ? "IN" : "OUT");
+	
 	if (GetDirection () == DirectionOut)
 	{
-		m_pGadget->OnDeactivate();
+		m_pGadget->OnActivate ();
 	}
+	
+	MLOGNOTE("CDEndpoint", "OnActivate complete for EP%u", GetEPNumber());
 }
 
 

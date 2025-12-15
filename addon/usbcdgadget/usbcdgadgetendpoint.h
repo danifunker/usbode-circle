@@ -38,6 +38,7 @@ public:
 
 	virtual void OnActivate (void) override;
 	virtual void OnDeactivate (void) override;
+	void OnUSBReset (void) override;
 	void OnTransferComplete (boolean bIn, size_t nLength) override;
 
 private:
