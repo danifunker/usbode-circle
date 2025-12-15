@@ -417,8 +417,10 @@ void CUSBCDGadget::AddEndpoints(void)
     assert(!m_pEP[EPOut]);
     assert(!m_pEP[EPIn]);
 
-    // Determine which descriptor set to use
+    // Determine which descriptor set to use based on NEGOTIATED speed
+    // This is called AFTER enumeration, so we know the actual speed
     const TUSBMSTGadgetConfigurationDescriptor *configDesc;
+    TDeviceSpeed negotiated = GetNegotiatedUSBSpeed();
 
     if (m_USBTargetOS == USBTargetOS::Apple)
     {
@@ -426,14 +428,16 @@ void CUSBCDGadget::AddEndpoints(void)
         MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Mac OS 9 descriptors");
         configDesc = &s_ConfigurationDescriptorMacOS9;
     }
-    else if (m_IsFullSpeed || GetNegotiatedUSBSpeed() == FullSpeed)
+    else if (m_IsFullSpeed || negotiated == FullSpeed)
     {
-        // Standard full-speed mode
+        // Full-Speed mode (forced or negotiated)
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Full-Speed endpoints (negotiated=%d)", negotiated == FullSpeed);
         configDesc = &s_ConfigurationDescriptorFullSpeed;
     }
     else
     {
-        // High-speed mode
+        // High-Speed mode
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using High-Speed endpoints");
         configDesc = &s_ConfigurationDescriptorHighSpeed;
     }
 
@@ -450,7 +454,6 @@ void CUSBCDGadget::AddEndpoints(void)
 
     m_nState = TCDState::Init;
 }
-
 // must set device before usb activation
 void CUSBCDGadget::SetDevice(IImageDevice *dev)
 {
@@ -753,11 +756,15 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate()
 {
-    CDROM_DEBUG_LOG("CD OnActivate",
-                    "=== ENTRY === state=%d, USB=%s, m_CDReady=%d, mediaState=%d",
-                    (int)m_nState,
-                    m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
-                    m_CDReady, (int)m_mediaState);
+    TDeviceSpeed negotiated = GetNegotiatedUSBSpeed();
+    const char* speedStr = (negotiated == HighSpeed) ? "High-Speed (USB 2.0)" : "Full-Speed (USB 1.1)";
+    
+    MLOGNOTE("CD OnActivate",
+             "=== ENTRY === state=%d, USB=%s, m_CDReady=%d, mediaState=%d",
+             (int)m_nState, speedStr, m_CDReady, (int)m_mediaState);
+
+    // Endpoints were created with correct packet sizes in AddEndpoints()
+    // based on negotiated speed, so no recreation needed
 
     // Set media ready NOW - USB endpoints are active
     if (m_pDevice && !m_CDReady)
