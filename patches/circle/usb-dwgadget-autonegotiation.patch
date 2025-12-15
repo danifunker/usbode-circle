@@ -1,0 +1,102 @@
+diff --git a/lib/usb/gadget/dwusbgadget.cpp b/lib/usb/gadget/dwusbgadget.cpp
+index 0efdda78..d18ca30f 100644
+--- a/lib/usb/gadget/dwusbgadget.cpp
++++ b/lib/usb/gadget/dwusbgadget.cpp
+@@ -42,6 +42,7 @@ LOGMODULE ("dwgadget");
+ CDWUSBGadget::CDWUSBGadget (CInterruptSystem *pInterruptSystem, TDeviceSpeed DeviceSpeed)
+ :	m_pInterruptSystem (pInterruptSystem),
+ 	m_DeviceSpeed (DeviceSpeed),
++	m_NegotiatedSpeed (HighSpeed),
+ 	m_State (StatePowered),
+ 	m_bPnPEvent {FALSE, FALSE}
+ {
+@@ -616,32 +617,65 @@ void CDWUSBGadget::HandleUSBReset (void)
+ void CDWUSBGadget::HandleEnumerationDone (void)
+ {
+ #ifdef USB_GADGET_DEBUG
+-	LOGDBG ("Enumeration done");
++    LOGDBG ("Enumeration done");
+ #endif
+ 
+-	if (m_State == StateSuspended)
+-	{
+-		HandleUSBReset ();
+-	}
+-
+-	if (m_State == StateResetDone)
+-	{
+-		CDWHCIRegister USBConfig (DWHCI_CORE_USB_CFG);
+-		USBConfig.Read ();
+-		USBConfig.And (~DWHCI_CORE_USB_CFG_TURNAROUND_TIME__MASK);
+-		USBConfig.Or (9 << DWHCI_CORE_USB_CFG_TURNAROUND_TIME__SHIFT);
+-		USBConfig.Write ();
+-
+-		assert (m_pEP[0]);
+-		m_pEP[0]->OnActivate ();
+-
+-		m_State = StateEnumDone;
+-	}
+-
+-	assert (m_State == StateEnumDone);
+-
+-	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_ENUM_DONE);
+-	IntStatus.Write ();
++    if (m_State == StateSuspended)
++    {
++        HandleUSBReset ();
++    }
++
++    if (m_State == StateResetDone)
++    {
++        CDWHCIRegister USBConfig (DWHCI_CORE_USB_CFG);
++        USBConfig.Read ();
++        USBConfig.And (~DWHCI_CORE_USB_CFG_TURNAROUND_TIME__MASK);
++        USBConfig.Or (9 << DWHCI_CORE_USB_CFG_TURNAROUND_TIME__SHIFT);
++        USBConfig.Write ();
++
++        CDWHCIRegister DeviceStatus (DWHCI_DEV_STAT);
++        DeviceStatus.Read ();
++        unsigned nEnumSpeed = (DeviceStatus.Get () & DWHCI_DEV_STAT_ENUM_SPD__MASK)
++                              >> DWHCI_DEV_STAT_ENUM_SPD__SHIFT;
++
++        // ADD THIS SECTION - Set negotiated speed based on hardware enumeration
++        switch (nEnumSpeed)
++        {
++        case 0: // 00: High Speed (PHY clock is 30MHz or 60MHz)
++            m_NegotiatedSpeed = HighSpeed;
++			LOGNOTE("CDWUSBGadget","Negotiated USB High Speed");
++            break;
++
++        case 1: // 01: Full Speed (PHY clock is 30MHz or 60MHz)
++			LOGNOTE("CDWUSBGadget","Negotiated USB Full Speed 30/60MHz");
++	        m_NegotiatedSpeed = FullSpeed;
++			break;
++
++        case 2: // 10: Low Speed (PHY clock is 6MHz) - operate as Full Speed
++			LOGNOTE("CDWUSBGadget","Negotiated USB Low Speed 6MHz, operating as Full Speed");
++			m_NegotiatedSpeed = FullSpeed;
++			break;
++
++        case 3: // 11: Full Speed (PHY clock is 48MHz)
++			LOGNOTE("CDWUSBGadget","Negotiated USB Full Speed 48MHz");
++			m_NegotiatedSpeed = FullSpeed;
++			break;
++        default:
++            m_NegotiatedSpeed = FullSpeed;
++			LOGNOTE("CDWUSBGadget","Negotiated Unknown USB Speed, setting to Full Speed");
++            break;
++        }
++
++        assert (m_pEP[0]);
++        m_pEP[0]->OnActivate ();
++
++        m_State = StateEnumDone;
++    }
++
++    assert (m_State == StateEnumDone);
++
++    CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_ENUM_DONE);
++    IntStatus.Write ();
+ }
+ 
+ void CDWUSBGadget::HandleInEPInterrupt (void)
