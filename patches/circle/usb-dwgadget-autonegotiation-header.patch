@@ -13,7 +13,7 @@ index bff54a95..50463618 100644
  {
  public:
 diff --git a/include/circle/usb/gadget/dwusbgadget.h b/include/circle/usb/gadget/dwusbgadget.h
-index 1c9cbf43..b96d4826 100644
+index 1c9cbf43..0db8f762 100644
 --- a/include/circle/usb/gadget/dwusbgadget.h
 +++ b/include/circle/usb/gadget/dwusbgadget.h
 @@ -74,6 +74,8 @@ public:
@@ -21,7 +21,7 @@ index 1c9cbf43..b96d4826 100644
  	/// \note By default host-to-device requests will be ignored and other requests will be STALLed
  	virtual int OnClassOrVendorRequest (const TSetupData *pSetupData, u8 *pData);
 +	/// \return Negotiated USB speed after enumeration
-+	TDeviceSpeed GetSpeed (void) const { return m_NegotiatedSpeed; }
++	TDeviceSpeed GetNegotiatedUSBSpeed (void) const { return m_NegotiatedSpeed; }
  
  private:
  	boolean PowerOn (void);
