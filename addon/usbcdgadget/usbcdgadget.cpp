@@ -371,9 +371,17 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
                 return &s_ConfigurationDescriptorMacOS9;
             }
             
-            // Return descriptor based on NEGOTIATED speed, not constructor parameter
-            TDeviceSpeed negotiated = GetNegotiatedUSBSpeed();
-            if (m_IsFullSpeed || negotiated == FullSpeed)
+            // Use m_NegotiatedSpeed if set, otherwise fall back to GetNegotiatedUSBSpeed()
+            TDeviceSpeed currentNegotiated = GetNegotiatedUSBSpeed();
+            TDeviceSpeed effectiveSpeed = (m_NegotiatedSpeed != DeviceSpeedUnknown) 
+                ? m_NegotiatedSpeed 
+                : currentNegotiated;
+            
+            CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", 
+                "m_IsFullSpeed=%d, m_NegotiatedSpeed=%d, GetNegotiatedUSBSpeed()=%d, effective=%d",
+                m_IsFullSpeed, m_NegotiatedSpeed, currentNegotiated, effectiveSpeed);
+            
+            if (m_IsFullSpeed || effectiveSpeed == FullSpeed)
             {
                 CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "Returning Full-Speed config descriptor");
                 return &s_ConfigurationDescriptorFullSpeed;
@@ -429,10 +437,18 @@ void CUSBCDGadget::AddEndpoints(void)
     assert(!m_pEP[EPOut]);
     assert(!m_pEP[EPIn]);
 
-    // Determine which descriptor set to use based on NEGOTIATED speed
-    // This is called AFTER enumeration, so we know the actual speed
+    // Determine endpoint configuration based on speed
     const TUSBMSTGadgetConfigurationDescriptor *configDesc;
-    TDeviceSpeed negotiated = GetNegotiatedUSBSpeed();
+    TDeviceSpeed currentNegotiated = GetNegotiatedUSBSpeed();
+    
+    // Use m_NegotiatedSpeed if set, otherwise fall back to GetNegotiatedUSBSpeed()
+    TDeviceSpeed effectiveSpeed = (m_NegotiatedSpeed != DeviceSpeedUnknown) 
+        ? m_NegotiatedSpeed 
+        : currentNegotiated;
+    
+    MLOGNOTE("CUSBCDGadget::AddEndpoints", 
+        "m_IsFullSpeed=%d, m_NegotiatedSpeed=%d, GetNegotiatedUSBSpeed()=%d, effective=%d",
+        m_IsFullSpeed, m_NegotiatedSpeed, currentNegotiated, effectiveSpeed);
 
     if (m_USBTargetOS == USBTargetOS::Apple)
     {
@@ -440,10 +456,10 @@ void CUSBCDGadget::AddEndpoints(void)
         MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Mac OS 9 descriptors");
         configDesc = &s_ConfigurationDescriptorMacOS9;
     }
-    else if (m_IsFullSpeed || negotiated == FullSpeed)
+    else if (m_IsFullSpeed || effectiveSpeed == FullSpeed)
     {
         // Full-Speed mode (forced or negotiated)
-        MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Full-Speed endpoints (negotiated=%d)", negotiated == FullSpeed);
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Full-Speed endpoints");
         configDesc = &s_ConfigurationDescriptorFullSpeed;
     }
     else
@@ -551,6 +567,11 @@ void CUSBCDGadget::OnSuspend(void)
     delete m_pEP[EPIn];
     m_pEP[EPIn] = nullptr;
 
+    // Reset negotiated speed to allow host to renegotiate to different speed
+    // (e.g., BIOS upgrading from Full-Speed to High-Speed)
+    m_NegotiatedSpeed = DeviceSpeedUnknown;
+    CDROM_DEBUG_LOG("CUSBCDGadget::OnSuspend", "Reset negotiated speed for re-enumeration");
+
     m_nState = TCDState::Init;
 }
 
@@ -558,6 +579,9 @@ void CUSBCDGadget::OnNegotiatedSpeed(TDeviceSpeed Speed)
 {
     const char* speedStr = (Speed == FullSpeed) ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)";
     MLOGNOTE("CUSBCDGadget::OnNegotiatedSpeed", "Speed negotiated: %s", speedStr);
+    
+    // Store negotiated speed for use during re-enumeration
+    m_NegotiatedSpeed = Speed;
     
     if (Speed == FullSpeed)
     {
