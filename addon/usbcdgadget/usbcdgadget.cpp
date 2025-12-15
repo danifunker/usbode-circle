@@ -370,6 +370,7 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
             {
                 return &s_ConfigurationDescriptorMacOS9;
             }
+
             return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
         }
         break;
@@ -418,6 +419,20 @@ void CUSBCDGadget::AddEndpoints(void)
     assert(!m_pEP[EPIn]);
 
     // Determine which descriptor set to use
+    TDeviceSpeed negotiatedSpeed = GetSpeed();
+    if (negotiatedSpeed != USBSpeedUnknown)
+    {
+        m_IsFullSpeed = (negotiatedSpeed == FullSpeed);
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", 
+                 "Negotiated speed: %s (updating m_IsFullSpeed=%d)",
+                 m_IsFullSpeed ? "Full-Speed" : "High-Speed", m_IsFullSpeed);
+    }
+    else
+    {
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", 
+                 "Speed unknown, using initial setting: m_IsFullSpeed=%d", m_IsFullSpeed);
+    }
+
     const TUSBMSTGadgetConfigurationDescriptor *configDesc;
 
     if (m_USBTargetOS == USBTargetOS::Apple)
@@ -426,7 +441,7 @@ void CUSBCDGadget::AddEndpoints(void)
         MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Mac OS 9 descriptors");
         configDesc = &s_ConfigurationDescriptorMacOS9;
     }
-    else if (m_IsFullSpeed)
+    else if (m_IsFullSpeed || negotiatedSpeed == USBSpeedFull)
     {
         // Standard full-speed mode
         configDesc = &s_ConfigurationDescriptorFullSpeed;
@@ -758,6 +773,14 @@ void CUSBCDGadget::OnActivate()
                     (int)m_nState,
                     m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
                     m_CDReady, (int)m_mediaState);
+    // Determine negotiated USB speed
+    TDeviceSpeed negotiatedSpeed = GetSpeed(); // This calls CDWUSBGadget::GetSpeed()
+    m_IsFullSpeed = (negotiatedSpeed == FullSpeed);
+
+    CDROM_DEBUG_LOG("CD OnActivate",
+                    "Negotiated speed: %s (m_IsFullSpeed=%d)",
+                    m_IsFullSpeed ? "Full-Speed" : "High-Speed",
+                    m_IsFullSpeed);
 
     // Set media ready NOW - USB endpoints are active
     if (m_pDevice && !m_CDReady)

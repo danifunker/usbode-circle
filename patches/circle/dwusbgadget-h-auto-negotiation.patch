@@ -1,0 +1,33 @@
+diff --git a/include/circle/usb/gadget/dwusbgadget.h b/include/circle/usb/gadget/dwusbgadget.h
+index 1c9cbf43..39fd15e2 100644
+--- a/include/circle/usb/gadget/dwusbgadget.h
++++ b/include/circle/usb/gadget/dwusbgadget.h
+@@ -33,7 +33,10 @@ public:
+ 	enum TDeviceSpeed
+ 	{
+ 		FullSpeed,
+-		HighSpeed
++		HighSpeed,
++		LowSpeed,
++		SuperSpeed,
++		UnknownSpeed
+ 	};
+ 
+ public:
+@@ -74,6 +77,7 @@ public:
+ 	/// \return Number of bytes in pData to be sent, or < 0 on error (STALL the request)
+ 	/// \note By default host-to-device requests will be ignored and other requests will be STALLed
+ 	virtual int OnClassOrVendorRequest (const TSetupData *pSetupData, u8 *pData);
++	TDeviceSpeed GetSpeed (void) const { return m_NegotiatedSpeed; }
+ 
+ private:
+ 	boolean PowerOn (void);
+@@ -93,7 +97,7 @@ private:
+ 	void HandleOutEPInterrupt (void);
+ 	void InterruptHandler (void);
+ 	static void InterruptStub (void *pParam);
+-
++	TDeviceSpeed m_NegotiatedSpeed;
+ 	boolean WaitForBit (CDWHCIRegister *pRegister, u32 nMask, boolean bWaitUntilSet,
+ 			    unsigned nMsTimeout);
+ 

@@ -1,0 +1,32 @@
+diff --git a/lib/usb/gadget/dwusbgadgetendpoint0.cpp b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
+index 3a70f3d3..3f436d59 100644
+--- a/lib/usb/gadget/dwusbgadgetendpoint0.cpp
++++ b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
+@@ -141,7 +141,7 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
+ 		switch (pSetupData->bRequest)
+ 		{
+ 		case SET_ADDRESS:
+-			m_pGadget->SetDeviceAddress (pSetupData->wValue & 0xFF);
++			// m_pGadget->SetDeviceAddress (pSetupData->wValue & 0xFF);
+ 
+ 			m_State = StateInStatusPhase;
+ 
+@@ -230,13 +230,17 @@ void CDWUSBGadgetEndpoint0::OnTransferComplete (boolean bIn, size_t nLength)
+ 		BeginTransfer (TransferDataIn, nullptr, 0);
+ 		break;
+ 
+-	case StateInStatusPhase:
++case StateInStatusPhase:
+ 		assert (m_pGadget);
+ 		if (   m_SetupData.bmRequestType & (REQUEST_CLASS | REQUEST_VENDOR)
+ 		    && m_pGadget->OnClassOrVendorRequest (&m_SetupData, m_OutBuffer) < 0)
+ 		{
+ 			Stall (TRUE);
+ 		}
++		if (m_SetupData.bRequest == SET_ADDRESS)
++		{
++			m_pGadget->SetDeviceAddress (m_SetupData.wValue & 0xFF);
++		}
+ 		// fall through
+ 
+ 	case StateOutStatusPhase:
