@@ -420,7 +420,7 @@ void CUSBCDGadget::AddEndpoints(void)
 
     // Determine which descriptor set to use
     TDeviceSpeed negotiatedSpeed = GetSpeed();
-    if (negotiatedSpeed != USBSpeedUnknown)
+    if (negotiatedSpeed != UnknownSpeed)
     {
         m_IsFullSpeed = (negotiatedSpeed == FullSpeed);
         MLOGNOTE("CUSBCDGadget::AddEndpoints", 
@@ -441,7 +441,7 @@ void CUSBCDGadget::AddEndpoints(void)
         MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Mac OS 9 descriptors");
         configDesc = &s_ConfigurationDescriptorMacOS9;
     }
-    else if (m_IsFullSpeed || negotiatedSpeed == USBSpeedFull)
+    else if (m_IsFullSpeed || negotiatedSpeed == FullSpeed)
     {
         // Standard full-speed mode
         configDesc = &s_ConfigurationDescriptorFullSpeed;

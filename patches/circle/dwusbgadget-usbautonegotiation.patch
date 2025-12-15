@@ -1,5 +1,5 @@
 diff --git a/lib/usb/gadget/dwusbgadget.cpp b/lib/usb/gadget/dwusbgadget.cpp
-index dc3f93cd..824a46db 100644
+index dc3f93cd..508db18d 100644
 --- a/lib/usb/gadget/dwusbgadget.cpp
 +++ b/lib/usb/gadget/dwusbgadget.cpp
 @@ -40,10 +40,11 @@
@@ -7,14 +7,13 @@ index dc3f93cd..824a46db 100644
  
  CDWUSBGadget::CDWUSBGadget (CInterruptSystem *pInterruptSystem, TDeviceSpeed DeviceSpeed)
 -:	m_pInterruptSystem (pInterruptSystem),
--	m_DeviceSpeed (DeviceSpeed),
++:   m_pInterruptSystem (pInterruptSystem),
+ 	m_DeviceSpeed (DeviceSpeed),
 -	m_State (StatePowered),
 -	m_bPnPEvent {FALSE, FALSE}
-+:   m_pInterruptSystem (pInterruptSystem),
-+    m_DeviceSpeed (DeviceSpeed),
-+    m_NegotiatedSpeed (UnknownSpeed),
 +    m_State (StatePowered),
-+    m_bPnPEvent {FALSE, FALSE}
++    m_bPnPEvent {FALSE, FALSE},
++	m_NegotiatedSpeed (UnknownSpeed)
  {
  	for (unsigned i = 0; i <= NumberOfEPs; i++)
  	{
