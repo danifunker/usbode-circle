@@ -72,8 +72,10 @@ void CUSBCDGadgetEndpoint::OnDeactivate (void)
 {
 	MLOGNOTE("CDEndpoint", "OnActivate called for EP%u, direction=%s",
 	         GetEPNumber(), GetDirection() == DirectionIn ? "IN" : "OUT");
-	
-	if (GetDirection () == DirectionOut)
+		// Cancel any pending transfers before reactivating
+	// This is critical for handling USB re-enumeration mid-transfer
+	CancelTransfer();
+		if (GetDirection () == DirectionOut)
 	{
 		m_pGadget->OnActivate ();
 	}
