@@ -137,6 +137,11 @@ configure: check-vars check-config
 	else \
 		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" -o OPTIMIZE=O3 -o KERNEL_MAX_SIZE=0x400000 -o MAX_TASKS=40  -o SCREEN_HEADLESS ; \
 	fi
+	@if [ -n "$(DEBUG_FLAGS)" ]; then \
+		echo "Adding debug flags to Config.mk: $(DEBUG_FLAGS)"; \
+		echo "DEFINE += $(foreach flag,$(DEBUG_FLAGS),-D$(flag))" >> $(STDLIBHOME)/Config.mk; \
+		echo "DEFINE += $(foreach flag,$(DEBUG_FLAGS),-D$(flag))" >> $(CIRCLEHOME)/Config.mk; \
+	fi
 
 # Build Circle stdlib
 circle-stdlib: configure
