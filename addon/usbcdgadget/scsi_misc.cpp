@@ -80,7 +80,7 @@ void SCSIMisc::ReadCapacity(CUSBCDGadget *gadget)
     gadget->m_ReadCapReply.nLastBlockAddr = htonl(CDUtils::GetLeadoutLBA(gadget) - 1); // this value is the Start address of last recorded lead-out minus 1
     memcpy(gadget->m_InBuffer, &gadget->m_ReadCapReply, SIZE_READCAPREP);
     gadget->m_nnumber_blocks = 0; // nothing more after this send
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                      gadget->m_InBuffer, SIZE_READCAPREP);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
@@ -117,7 +117,7 @@ void SCSIMisc::MechanismStatus(CUSBCDGadget *gadget)
         length = allocationLength;
 
     memcpy(gadget->m_InBuffer, &status, length);
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                      gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -200,7 +200,7 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget *gadget)
         length = allocationLength;
 
     gadget->m_nnumber_blocks = 0;
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
@@ -219,7 +219,7 @@ void SCSIMisc::GetPerformance(CUSBCDGadget *gadget)
 
     memcpy(gadget->m_InBuffer, getPerformanceStub, sizeof(getPerformanceStub));
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                      gadget->m_InBuffer, sizeof(getPerformanceStub));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
@@ -235,7 +235,7 @@ void SCSIMisc::CommandA4(CUSBCDGadget *gadget)
 
     memcpy(gadget->m_InBuffer, response, sizeof(response));
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                      gadget->m_InBuffer, sizeof(response));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;

@@ -46,28 +46,35 @@ CDROMService::CDROMService(u16 vid, u16 pid)
     assert(ok == true);
 }
 
+// In cdromservice.cpp
 void CDROMService::SetDevice(IImageDevice *pDevice)
-{ // Changed from ICueDevice*
+{
     LOGNOTE("CDROM setting device (type: %d)", (int)pDevice->GetFileType());
 
-    // Log if this device has subchannel support
     if (pDevice->HasSubchannelData())
     {
         LOGNOTE("Device has subchannel data");
     }
 
-    // We defer initialization of the CD Gadget until the first CD image is loaded
+    // Set device FIRST - this arms the image without USB activity
+    m_CDGadget->SetDevice(pDevice);
+
+    // NOW initialize USB hardware on first device load
+    // The gadget will wait for host reset before enumerating
     if (!isInitialized)
     {
+        LOGNOTE("Image loaded - activating USB hardware");
         bool ok = m_CDGadget->Initialize();
         assert(ok && "Failed to initialize CD Gadget");
-        LOGNOTE("Initialized USB CD gadget");
+        LOGNOTE("USB hardware active - device will enumerate when host connects");
         isInitialized = true;
 
         CScheduler::Get()->MsSleep(100);
     }
-
-    m_CDGadget->SetDevice(pDevice);
+    else
+    {
+        LOGNOTE("USB already active - disc swap ready");
+    }
 }
 
 boolean CDROMService::Initialize()

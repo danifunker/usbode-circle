@@ -29,7 +29,7 @@ void SCSIToolbox::ListDevices(CUSBCDGadget* gadget)
 
     memcpy(gadget->m_InBuffer, devices, sizeof(devices));
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                gadget->m_InBuffer, sizeof(devices));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -53,7 +53,7 @@ void SCSIToolbox::NumberOfFiles(CUSBCDGadget* gadget)
 
     memcpy(gadget->m_InBuffer, &num, sizeof(num));
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                gadget->m_InBuffer, sizeof(num));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -98,7 +98,7 @@ void SCSIToolbox::ListFiles(CUSBCDGadget* gadget)
 
     memcpy(gadget->m_InBuffer, entries, count * sizeof(TUSBCDToolboxFileEntry));
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                gadget->m_InBuffer, count * sizeof(TUSBCDToolboxFileEntry));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;

@@ -393,7 +393,7 @@ void CUSBCDGadget::Update()
                 }
 
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-                m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+                m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                            m_InBuffer, total_copied);
             }
         }

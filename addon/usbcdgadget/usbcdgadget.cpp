@@ -205,9 +205,8 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
                            IImageDevice *pDevice, u16 usVendorId, u16 usProductId)
     : CDWUSBGadget(pInterruptSystem, isFullSpeed ? FullSpeed : HighSpeed),
       m_bNeedsAudioInit(FALSE),
-      m_pDevice(pDevice),
-      m_pEP{nullptr, nullptr, nullptr}
-{
+      m_pDevice(pDevice)
+    {
     MLOGNOTE("CUSBCDGadget::CUSBCDGadget",
              "=== CONSTRUCTOR === pDevice=%p, isFullSpeed=%d", pDevice, isFullSpeed);
     m_IsFullSpeed = isFullSpeed;
@@ -371,17 +370,9 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
                 return &s_ConfigurationDescriptorMacOS9;
             }
             
-            // Use m_NegotiatedSpeed if set, otherwise fall back to GetNegotiatedUSBSpeed()
-            TDeviceSpeed currentNegotiated = GetNegotiatedUSBSpeed();
-            TDeviceSpeed effectiveSpeed = (m_NegotiatedSpeed != DeviceSpeedUnknown) 
-                ? m_NegotiatedSpeed 
-                : currentNegotiated;
-            
-            CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", 
-                "m_IsFullSpeed=%d, m_NegotiatedSpeed=%d, GetNegotiatedUSBSpeed()=%d, effective=%d",
-                m_IsFullSpeed, m_NegotiatedSpeed, currentNegotiated, effectiveSpeed);
-            
-            if (m_IsFullSpeed || effectiveSpeed == FullSpeed)
+            // Return descriptor based on NEGOTIATED speed, not constructor parameter
+            TDeviceSpeed negotiated = GetNegotiatedUSBSpeed();
+            if (m_IsFullSpeed || negotiated == FullSpeed)
             {
                 CDROM_DEBUG_LOG("CUSBCDGadget::GetDescriptor", "Returning Full-Speed config descriptor");
                 return &s_ConfigurationDescriptorFullSpeed;
@@ -434,54 +425,45 @@ void CUSBCDGadget::AddEndpoints(void)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::AddEndpoints", "entered");
 
-    assert(!m_pEP[EPOut]);
-    assert(!m_pEP[EPIn]);
+    // EP0 is already created by parent - DON'T touch m_pEP[0]!
+    assert(!m_pEPOut);  // Verify OUT endpoint not yet created
+    assert(!m_pEPIn);   // Verify IN endpoint not yet created
 
-    // Determine endpoint configuration based on speed
+    // Determine which descriptor set to use
     const TUSBMSTGadgetConfigurationDescriptor *configDesc;
-    TDeviceSpeed currentNegotiated = GetNegotiatedUSBSpeed();
-    
-    // Use m_NegotiatedSpeed if set, otherwise fall back to GetNegotiatedUSBSpeed()
-    TDeviceSpeed effectiveSpeed = (m_NegotiatedSpeed != DeviceSpeedUnknown) 
-        ? m_NegotiatedSpeed 
-        : currentNegotiated;
-    
-    MLOGNOTE("CUSBCDGadget::AddEndpoints", 
-        "m_IsFullSpeed=%d, m_NegotiatedSpeed=%d, GetNegotiatedUSBSpeed()=%d, effective=%d",
-        m_IsFullSpeed, m_NegotiatedSpeed, currentNegotiated, effectiveSpeed);
+    TDeviceSpeed negotiated = GetNegotiatedUSBSpeed();
 
     if (m_USBTargetOS == USBTargetOS::Apple)
     {
-        // Apple mode: always use Mac OS 9 descriptors (USB 1.1)
         MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Mac OS 9 descriptors");
         configDesc = &s_ConfigurationDescriptorMacOS9;
     }
-    else if (m_IsFullSpeed || effectiveSpeed == FullSpeed)
+    else if (m_IsFullSpeed || negotiated == FullSpeed)
     {
-        // Full-Speed mode (forced or negotiated)
-        MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Full-Speed endpoints");
+        MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using Full-Speed endpoints (negotiated=%d)", negotiated == FullSpeed);
         configDesc = &s_ConfigurationDescriptorFullSpeed;
     }
     else
     {
-        // High-Speed mode
         MLOGNOTE("CUSBCDGadget::AddEndpoints", "Using High-Speed endpoints");
         configDesc = &s_ConfigurationDescriptorHighSpeed;
     }
 
-    // Create endpoints using selected descriptor
-    m_pEP[EPOut] = new CUSBCDGadgetEndpoint(
+    // Create OUT endpoint (EP2) - stored in parent's m_pEP[2]
+    m_pEPOut = new CUSBCDGadgetEndpoint(
         reinterpret_cast<const TUSBEndpointDescriptor *>(&configDesc->EndpointOut),
         this);
-    assert(m_pEP[EPOut]);
+    assert(m_pEPOut);
 
-    m_pEP[EPIn] = new CUSBCDGadgetEndpoint(
+    // Create IN endpoint (EP1) - stored in parent's m_pEP[1]
+    m_pEPIn = new CUSBCDGadgetEndpoint(
         reinterpret_cast<const TUSBEndpointDescriptor *>(&configDesc->EndpointIn),
         this);
-    assert(m_pEP[EPIn]);
+    assert(m_pEPIn);
 
     m_nState = TCDState::Init;
 }
+
 // must set device before usb activation
 void CUSBCDGadget::SetDevice(IImageDevice *dev)
 {
@@ -561,16 +543,18 @@ void CUSBCDGadget::CreateDevice(void)
 void CUSBCDGadget::OnSuspend(void)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::OnSuspend", "entered");
-    delete m_pEP[EPOut];
-    m_pEP[EPOut] = nullptr;
+    if (m_pEPIn)
+    {
+        delete m_pEPIn;
+        m_pEPIn = nullptr;
+    }
 
-    delete m_pEP[EPIn];
-    m_pEP[EPIn] = nullptr;
+    if (m_pEPOut)
+    {
+        delete m_pEPOut;
+        m_pEPOut = nullptr;
+    }
 
-    // Reset negotiated speed to allow host to renegotiate to different speed
-    // (e.g., BIOS upgrading from Full-Speed to High-Speed)
-    m_NegotiatedSpeed = DeviceSpeedUnknown;
-    CDROM_DEBUG_LOG("CUSBCDGadget::OnSuspend", "Reset negotiated speed for re-enumeration");
 
     m_nState = TCDState::Init;
 }
@@ -580,21 +564,18 @@ void CUSBCDGadget::OnNegotiatedSpeed(TDeviceSpeed Speed)
     const char* speedStr = (Speed == FullSpeed) ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)";
     MLOGNOTE("CUSBCDGadget::OnNegotiatedSpeed", "Speed negotiated: %s", speedStr);
     
-    // Store negotiated speed for use during re-enumeration
-    m_NegotiatedSpeed = Speed;
-    
     if (Speed == FullSpeed)
     {
         // Adjust endpoints for USB 1.1 Full-Speed (64 byte max packets for bulk endpoints)
-        if (m_pEP[EPIn])
+        if (m_pEPIn)
         {
-            m_pEP[EPIn]->SetMaxPacketSize(64);
+            m_pEPIn->SetMaxPacketSize(64);
             MLOGNOTE("CUSBCDGadget::OnNegotiatedSpeed", "Set EP IN packet size to 64 bytes");
         }
         
-        if (m_pEP[EPOut])
+        if (m_pEPOut)
         {
-            m_pEP[EPOut]->SetMaxPacketSize(64);
+            m_pEPOut->SetMaxPacketSize(64);
             MLOGNOTE("CUSBCDGadget::OnNegotiatedSpeed", "Set EP OUT packet size to 64 bytes");
         }
     }
@@ -653,7 +634,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         case TCDState::SentCSW:
         {
             m_nState = TCDState::ReceiveCBW;
-            m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+            m_pEPOut->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
                                         m_OutBuffer, SIZE_CBW);
             break;
         }
@@ -704,7 +685,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
             if (nLength != SIZE_CBW)
             {
                 MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
-                m_pEP[EPIn]->StallRequest(true);
+                m_pEPIn->StallRequest(true);
                 break;
             }
             memcpy(&m_CBW, m_OutBuffer, SIZE_CBW);
@@ -714,7 +695,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
             {
                 MLOGERR("ReceiveCBW", "Invalid CBW sig = 0x%x",
                         m_CBW.dCBWSignature);
-                m_pEP[EPIn]->StallRequest(true);
+                m_pEPIn->StallRequest(true);
                 break;
             }
             m_CSW.dCSWTag = m_CBW.dCBWTag;
@@ -844,7 +825,7 @@ void CUSBCDGadget::OnActivate()
     }
 
     m_nState = TCDState::ReceiveCBW;
-    m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
+    m_pEPOut->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
 
     CDROM_DEBUG_LOG("CD OnActivate",
                     "=== EXIT === Waiting for CBW, m_CDReady=%d, mediaState=%d",
@@ -859,14 +840,14 @@ void CUSBCDGadget::OnDeactivate()
     m_nState = TCDState::Init;
     
     // Cancel any pending transfers on both endpoints
-    if (m_pEP[EPOut])
+    if (m_pEPOut)
     {
-        m_pEP[EPOut]->CancelTransfer();
+        m_pEPOut->CancelTransfer();
     }
     
-    if (m_pEP[EPIn])
+    if (m_pEPIn)
     {
-        m_pEP[EPIn]->CancelTransfer();
+        m_pEPIn->CancelTransfer();
     }
 }
 
@@ -874,7 +855,7 @@ void CUSBCDGadget::SendCSW()
 {
     // CDROM_DEBUG_LOG ("CUSBCDGadget::SendCSW", "entered");
     memcpy(&m_InBuffer, &m_CSW, SIZE_CSW);
-    m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn, m_InBuffer, SIZE_CSW);
+    m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn, m_InBuffer, SIZE_CSW);
     m_nState = TCDState::SentCSW;
 }
 

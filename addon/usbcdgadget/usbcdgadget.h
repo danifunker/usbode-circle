@@ -194,10 +194,14 @@ private:
     /// \brief USB endpoint numbers
     enum TEPNumber
     {
+        EPControl = 0, // Control endpoint (EP0)
         EPIn = 1,  // Bulk IN endpoint
         EPOut = 2, // Bulk OUT endpoint
-        NumEPs     // Total number of endpoints
+        NumEPs = 3    // Total number of endpoints
     };
+
+    CUSBCDGadgetEndpoint *m_pEPIn;
+    CUSBCDGadgetEndpoint *m_pEPOut;
 
     // ========================================================================
     // Static Configuration Data
@@ -241,7 +245,7 @@ private:
     // ========================================================================
 
     IImageDevice *m_pDevice;             // Image device (Plugin System)
-    CUSBCDGadgetEndpoint *m_pEP[NumEPs]; // Endpoint objects
+    //CUSBCDGadgetEndpoint *m_pEP[NumEPs]; // Endpoint objects
 
     TCDState m_nState = Init; // SCSI command state machine
     MediaState m_mediaState = MediaState::NO_MEDIUM;

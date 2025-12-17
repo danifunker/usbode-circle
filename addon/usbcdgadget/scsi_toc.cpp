@@ -92,7 +92,7 @@ void SCSITOC::ReadTOC(CUSBCDGadget *gadget)
                 len = allocationLength;
 
             memcpy(gadget->m_InBuffer, atip, len);
-            gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
+            gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
             gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
             gadget->m_nnumber_blocks = 0;
             gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -195,7 +195,7 @@ void SCSITOC::DoReadCDText(CUSBCDGadget *gadget, uint16_t allocationLength)
 
     CDROM_DEBUG_LOG("SCSITOC::DoReadCDText", "Sending empty CD-Text header (%d bytes)", len);
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_nnumber_blocks = 0;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -307,7 +307,7 @@ void SCSITOC::DoReadTOC(CUSBCDGadget *gadget, bool msf, uint8_t startingTrack, u
         }
     }
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_nnumber_blocks = 0;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -352,7 +352,7 @@ void SCSITOC::DoReadSessionInfo(CUSBCDGadget *gadget, bool msf, uint16_t allocat
 
     CDROM_DEBUG_LOG("SCSITOC::DoReadSessionInfo", "Sending %d bytes", len);
     memcpy(gadget->m_InBuffer, sessionTOC, len);
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_nnumber_blocks = 0;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -477,7 +477,7 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget *gadget, uint8_t session, uint16_t allo
         }
     }
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_nnumber_blocks = 0;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -519,7 +519,7 @@ void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
 
     memcpy(gadget->m_InBuffer, &gadget->m_DiscInfoReply, length);
     gadget->m_nnumber_blocks = 0;
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
@@ -636,7 +636,7 @@ void SCSITOC::DoReadTrackInformation(CUSBCDGadget *gadget, u8 addressType, u32 a
         length = allocationLength;
 
     memcpy(gadget->m_InBuffer, &response, length);
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_nnumber_blocks = 0;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -704,7 +704,7 @@ void SCSITOC::DoReadHeader(CUSBCDGadget *gadget, bool MSF, uint32_t lba, uint16_
     if (len > allocationLength)
         len = allocationLength;
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, len);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_nnumber_blocks = 0;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -816,7 +816,7 @@ void SCSITOC::ReadSubChannel(CUSBCDGadget *gadget)
     if (allocationLength < length)
         length = allocationLength;
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                      gadget->m_InBuffer, length);
 
     gadget->m_nnumber_blocks = 0; // nothing more after this send
@@ -1001,7 +1001,7 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
 
     // Send response
     gadget->m_nnumber_blocks = 0;
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, dataLength);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, dataLength);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }

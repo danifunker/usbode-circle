@@ -43,7 +43,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
         {
             memcpy(gadget->m_InBuffer, &gadget->m_InqReply, datalen);
         }
-        gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, datalen);
+        gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, datalen);
         gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
         gadget->m_nnumber_blocks = 0; // nothing more after this send
         gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
@@ -74,7 +74,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
                 datalen = allocationLength;
 
             memcpy(gadget->m_InBuffer, &SupportedVPDPageReply, sizeof(SupportedVPDPageReply));
-            gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+            gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                              gadget->m_InBuffer, datalen);
             gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
             gadget->m_nnumber_blocks = 0; // nothing more after this send
@@ -100,7 +100,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
                 datalen = allocationLength;
 
             memcpy(gadget->m_InBuffer, &UnitSerialNumberReply, sizeof(UnitSerialNumberReply));
-            gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+            gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                              gadget->m_InBuffer, datalen);
             gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
             gadget->m_nnumber_blocks = 0; // nothing more after this send
@@ -132,7 +132,7 @@ void SCSIInquiry::Inquiry(CUSBCDGadget *gadget)
                 datalen = allocationLength;
 
             memcpy(gadget->m_InBuffer, &DeviceIdentificationReply, sizeof(DeviceIdentificationReply));
-            gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+            gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                              gadget->m_InBuffer, datalen);
             gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
             gadget->m_nnumber_blocks = 0; // nothing more after this send
@@ -182,7 +182,7 @@ void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
                     gadget->m_InBuffer[0], gadget->m_InBuffer[1], gadget->m_InBuffer[2], gadget->m_InBuffer[3],
                     gadget->m_InBuffer[4], gadget->m_InBuffer[5], gadget->m_InBuffer[6], gadget->m_InBuffer[7]);
 
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                                      gadget->m_InBuffer, length);
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     gadget->m_nState = CUSBCDGadget::TCDState::SendReqSenseReply;
@@ -611,7 +611,7 @@ void SCSIInquiry::ModeSense6(CUSBCDGadget *gadget)
     CDROM_DEBUG_LOG("SCSIInquiry::ModeSense6", "Mode Sense (%d), Sending response with length %d", cdbSize, length);
 
     gadget->m_nnumber_blocks = 0; // nothing more after this send
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
@@ -680,7 +680,7 @@ void SCSIInquiry::ModeSense10(CUSBCDGadget *gadget)
     CDROM_DEBUG_LOG("SCSIInquiry::ModeSense10", "Mode Sense (%d), Sending response with length %d", cdbSize, length);
 
     gadget->m_nnumber_blocks = 0; // nothing more after this send
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, length);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
@@ -845,7 +845,7 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
         dataLength = allocationLength;
 
     gadget->m_nnumber_blocks = 0;
-    gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, dataLength);
+    gadget->m_pEPIn->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn, gadget->m_InBuffer, dataLength);
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
 }
@@ -857,7 +857,7 @@ void SCSIInquiry::ModeSelect10(CUSBCDGadget *gadget)
 
     // Read the data from the host but don't do anything with it (yet!)
     gadget->m_nState = CUSBCDGadget::TCDState::DataOut;
-    gadget->m_pEP[CUSBCDGadget::EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataOut,
+    gadget->m_pEPOut->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataOut,
                                                       gadget->m_OutBuffer, transferLength);
 
     // Unfortunately the payload doesn't arrive here. Check out the
