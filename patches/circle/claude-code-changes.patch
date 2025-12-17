@@ -1,5 +1,5 @@
 diff --git a/include/circle/usb/dwhci.h b/include/circle/usb/dwhci.h
-index b094a37a..91731628 100644
+index b094a37a..90641837 100644
 --- a/include/circle/usb/dwhci.h
 +++ b/include/circle/usb/dwhci.h
 @@ -255,6 +255,13 @@
@@ -16,8 +16,17 @@ index b094a37a..91731628 100644
  #define DWHCI_DEV_IN_EP_COMMON_INT_MASK			(ARM_USB_DEV_BASE + 0x010)
  	#define DWHCI_DEV_IN_EP_COMMON_INT_MASK_FIFO_UNDERRUN	(1 << 10)
  #define DWHCI_DEV_OUT_EP_COMMON_INT_MASK		(ARM_USB_DEV_BASE + 0x014)
+@@ -363,7 +370,7 @@
+ #define DWHCI_DEV_OUT_EP_XFER_SIZ(ep)			(ARM_USB_DEV_BASE + 0x310 + (ep)*0x20)
+ 	// see: DWHCI_DEV_IN_EP_XFER_SIZ(ep)
+ #define DWHCI_DEV_OUT_EP_DMA_ADDR(ep)			(ARM_USB_DEV_BASE + 0x314 + (ep)*0x20)
+-
++#define DWHCI_DEV_CTRL_CLEAR_GLOBAL_NON_PER_IN_NAK  (1 << 8)
+ //
+ // Data FIFOs (non-DMA mode only)
+ //
 diff --git a/include/circle/usb/gadget/dwusbgadget.h b/include/circle/usb/gadget/dwusbgadget.h
-index 1c9cbf43..703bdf1b 100644
+index 1c9cbf43..64f7d288 100644
 --- a/include/circle/usb/gadget/dwusbgadget.h
 +++ b/include/circle/usb/gadget/dwusbgadget.h
 @@ -33,7 +33,8 @@ public:
@@ -46,6 +55,16 @@ index 1c9cbf43..703bdf1b 100644
  	/// \brief Device connection has been suspended / removed
  	/// \note Have to undo AddEndpoints() and CreateDevice() here.
  	virtual void OnSuspend (void) = 0;
+@@ -79,7 +89,8 @@ private:
+ 	boolean PowerOn (void);
+ 	boolean InitCore (void);
+ 	void InitCoreDevice (void);
+-
++	void InitializeEP0 (void);
++	
+ 	boolean Reset (void);
+ 	void EnableCommonInterrupts (void);
+ 	void EnableDeviceInterrupts (void);
 diff --git a/include/circle/usb/gadget/dwusbgadgetendpoint.h b/include/circle/usb/gadget/dwusbgadgetendpoint.h
 index 896b8c38..fd7a98b5 100644
 --- a/include/circle/usb/gadget/dwusbgadgetendpoint.h
@@ -344,34 +363,283 @@ index d91de161..00d10e2d 100644
  };
  
  #endif
-diff --git a/lib/usb/dwhcidevice.cpp b/lib/usb/dwhcidevice.cpp
-index f501ce1c..52be187d 100644
---- a/lib/usb/dwhcidevice.cpp
-+++ b/lib/usb/dwhcidevice.cpp
-@@ -2,7 +2,7 @@
- // dwhcidevice.cpp
- //
- // Circle - A C++ bare metal environment for Raspberry Pi
--// Copyright (C) 2014-2025  R. Stange <rsta2@o2online.de>
-+// Copyright (C) 2014-2025  R. Stange <rsta2@gmx.net>
- // 
- // This program is free software: you can redistribute it and/or modify
- // it under the terms of the GNU General Public License as published by
-@@ -151,7 +151,8 @@ boolean CDWHCIDevice::Initialize (boolean bScanDevices)
- 	assert (m_pTimer != 0);
- 
- 	CDWHCIRegister VendorId (DWHCI_CORE_VENDOR_ID);
--	if (VendorId.Read () != 0x4F54280A)
-+	if (   VendorId.Read () != 0x4F54280A
-+	    && VendorId.Get ()  != 0x4F54294A)		// QEMU
- 	{
- 		LOGERR ("Unknown vendor 0x%0X", VendorId.Get ());
- 		return FALSE;
 diff --git a/lib/usb/gadget/dwusbgadget.cpp b/lib/usb/gadget/dwusbgadget.cpp
-index dc3f93cd..658c232e 100644
+index dc3f93cd..b5ea3872 100644
 --- a/lib/usb/gadget/dwusbgadget.cpp
 +++ b/lib/usb/gadget/dwusbgadget.cpp
-@@ -506,14 +506,24 @@ void CDWUSBGadget::HandleUSBSuspend (void)
+@@ -120,6 +120,10 @@ boolean CDWUSBGadget::Initialize (boolean bScanDevices)
+ 
+ 	AddEndpoints ();
+ 
++	// *** CRITICAL: Initialize EP0 NOW, after EP is created but before interrupts enabled ***
++	// This matches Linux kernel pattern where EP0 setup happens in dwc2_hsotg_core_init_disconnected()
++	InitializeEP0 ();
++
+ 	m_State = StateSuspended;
+ 
+ 	// Enable all interrupts
+@@ -132,6 +136,124 @@ boolean CDWUSBGadget::Initialize (boolean bScanDevices)
+ 	return TRUE;
+ }
+ 
++void CDWUSBGadget::InitializeEP0 (void)
++{
++	// Guard: EP0 must exist before we can initialize it
++	if (!m_pEP[0])
++	{
++#ifdef USB_GADGET_DEBUG
++		LOGDBG ("InitializeEP0 called but EP0 doesn't exist yet - skipping");
++#endif
++		return;
++	}
++
++	// Enable common OUT EP interrupts (BCM2835 rejects SETUP_RCVD bit 15)
++	u32 nOutMaskValue = DWHCI_DEV_OUT_EP_INT_SETUP_DONE
++			  | DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE
++			  | DWHCI_DEV_OUT_EP_INT_AHB_ERROR
++			  | DWHCI_DEV_OUT_EP_INT_EP_DISABLED;
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Setting OUT EP common mask to 0x0000000F (SETUP_RCVD excluded per BCM2835 quirk)", nOutMaskValue);
++#endif
++	CDWHCIRegister OutEPCommonIntMask (DWHCI_DEV_OUT_EP_COMMON_INT_MASK, nOutMaskValue);
++	OutEPCommonIntMask.Write ();
++#ifdef USB_GADGET_DEBUG
++	u32 nReadBack = OutEPCommonIntMask.Read ();
++	LOGDBG ("OUT EP common mask readback: 0x%08X (expected 0x%08X)", nReadBack, nOutMaskValue);
++#endif
++
++	// Enable common IN EP interrupts
++	CDWHCIRegister InEPCommonIntMask (DWHCI_DEV_IN_EP_COMMON_INT_MASK,
++					    DWHCI_DEV_IN_EP_INT_XFER_COMPLETE
++					  | DWHCI_DEV_IN_EP_INT_TIMEOUT
++					  | DWHCI_DEV_IN_EP_INT_AHB_ERROR
++					  | DWHCI_DEV_IN_EP_INT_EP_DISABLED);
++	InEPCommonIntMask.Write ();
++
++	// Get EP0 max packet size
++	size_t nEP0MaxPacket = m_pEP[0]->m_nMaxPacketSize;
++	u32 nEP0MPS;
++	switch (nEP0MaxPacket)
++	{
++	case 64:	nEP0MPS = 0;	break;  // D0EPCTL_MPS_64 = 0
++	case 32:	nEP0MPS = 1;	break;  // D0EPCTL_MPS_32 = 1
++	case 16:	nEP0MPS = 2;	break;  // D0EPCTL_MPS_16 = 2
++	case 8:		nEP0MPS = 3;	break;  // D0EPCTL_MPS_8  = 3
++	default:
++		LOGERR ("Invalid EP0 max packet size: %u", nEP0MaxPacket);
++		nEP0MPS = 0;  // Default to 64
++		break;
++	}
++
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("EP0 direct initialization: MPS=%u (encoded value 0x%X)", nEP0MaxPacket, nEP0MPS);
++#endif
++
++	// Set up EP0 OUT transfer size for 1 SETUP packet of 8 bytes
++	CDWHCIRegister OutEP0XferSize (DWHCI_DEV_OUT_EP_XFER_SIZ (0), 0);
++	OutEP0XferSize.Or (1 << DWHCI_DEV_EP_XFER_SIZ_PKT_CNT__SHIFT);
++	OutEP0XferSize.Or (8 << DWHCI_DEV_EP_XFER_SIZ_XFER_SIZ__SHIFT);
++	OutEP0XferSize.Write ();
++
++	// Direct write to DOEPCTL0 (not read-modify-write!)
++	// EP0 registers were just cleared in InitCoreDevice(), so we can write directly
++	u32 nOutEP0Ctrl = nEP0MPS  // MPS in bits [1:0]
++			| DWHCI_DEV_EP_CTRL_ACTIVE_EP
++			| DWHCI_DEV_EP_CTRL_EP_ENABLE;
++
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Writing DOEPCTL0 = 0x%08X (MPS=%u | ACTIVE | EPENA)", nOutEP0Ctrl, nEP0MPS);
++#endif
++
++	CDWHCIRegister OutEP0Ctrl (DWHCI_DEV_OUT_EP_CTRL (0), nOutEP0Ctrl);
++	OutEP0Ctrl.Write ();
++	DataMemBarrier ();
++
++#ifdef USB_GADGET_DEBUG
++	u32 nOutEP0CtrlReadback = OutEP0Ctrl.Read ();
++	LOGDBG ("DOEPCTL0 readback = 0x%08X", nOutEP0CtrlReadback);
++#endif
++
++	// Set up EP0 IN - just set MPS and ACTIVE (no EPENA yet)
++	u32 nInEP0Ctrl = nEP0MPS  // MPS in bits [1:0]
++		       | DWHCI_DEV_EP_CTRL_ACTIVE_EP;
++
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Writing DIEPCTL0 = 0x%08X (MPS=%u | ACTIVE)", nInEP0Ctrl, nEP0MPS);
++#endif
++
++	CDWHCIRegister InEP0CtrlWrite (DWHCI_DEV_IN_EP_CTRL (0), nInEP0Ctrl);
++	InEP0CtrlWrite.Write ();
++
++	// Enable EP0 in DAINT mask
++	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK);
++	AllEPsIntMask.Read ();
++	AllEPsIntMask.Or (DWHCI_DEV_ALL_EPS_INT_MASK_IN_EP (0));
++	AllEPsIntMask.Or (DWHCI_DEV_ALL_EPS_INT_MASK_OUT_EP (0));
++	AllEPsIntMask.Write ();
++
++	// Clear global NAKs
++	CDWHCIRegister DeviceControl (DWHCI_DEV_CTRL);
++	DeviceControl.Read ();
++	DeviceControl.Set (DWHCI_DEV_CTRL_CLEAR_GLOBAL_OUT_NAK);
++	DeviceControl.Set (DWHCI_DEV_CTRL_CLEAR_GLOBAL_NON_PER_IN_NAK);
++	DeviceControl.Write ();
++	DataMemBarrier ();
++
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Global NAKs cleared, EP0 ready for SETUP packets");
++	
++	// Dump critical register states
++	CDWHCIRegister DumpDOEPCTL0 (DWHCI_DEV_OUT_EP_CTRL (0));
++	CDWHCIRegister DumpDIEPCTL0 (DWHCI_DEV_IN_EP_CTRL (0));
++	CDWHCIRegister DumpDAINTMSK (DWHCI_DEV_ALL_EPS_INT_MASK);
++	CDWHCIRegister DumpDOEPMSK (DWHCI_DEV_OUT_EP_COMMON_INT_MASK);
++	
++	LOGDBG ("InitializeEP0 exit: DOEPCTL0=0x%08X DIEPCTL0=0x%08X DAINTMSK=0x%08X DOEPMSK=0x%08X",
++		DumpDOEPCTL0.Read(), DumpDIEPCTL0.Read(), DumpDAINTMSK.Read(), DumpDOEPMSK.Read());
++#endif
++}
++
+ boolean CDWUSBGadget::UpdatePlugAndPlay (void)
+ {
+ 	boolean bResult = FALSE;
+@@ -167,6 +289,9 @@ boolean CDWUSBGadget::UpdatePlugAndPlay (void)
+ 
+ 		AddEndpoints ();
+ 
++		// *** ADD THIS: Initialize EP0 after recreating it ***
++		InitializeEP0 ();
++
+ 		m_State = StateSuspended;
+ 
+ 		// Enable all interrupts
+@@ -394,6 +519,117 @@ void CDWUSBGadget::InitCoreDevice (void)
+ 	InEPCommonIntMask.Read ();
+ 	InEPCommonIntMask.Or (DWHCI_DEV_IN_EP_COMMON_INT_MASK_FIFO_UNDERRUN);
+ 	InEPCommonIntMask.Write ();
++
++	// *** CRITICAL: Initialize EP0 immediately after core/EP setup ***
++	// EP0 must be configured NOW, after registers are cleared but before any USB activity
++	// This matches Linux kernel pattern where EP0 is set up during dwc2_hsotg_core_init_disconnected()
++	
++	// Enable common OUT EP interrupts (BCM2835 rejects SETUP_RCVD bit 15)
++	u32 nOutMaskValue = DWHCI_DEV_OUT_EP_INT_SETUP_DONE
++			  | DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE
++			  | DWHCI_DEV_OUT_EP_INT_AHB_ERROR
++			  | DWHCI_DEV_OUT_EP_INT_EP_DISABLED;
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Setting OUT EP common mask to 0x%08X (SETUP_RCVD excluded per BCM2835 quirk)", nOutMaskValue);
++#endif
++	CDWHCIRegister OutEPCommonIntMask (DWHCI_DEV_OUT_EP_COMMON_INT_MASK, nOutMaskValue);
++	OutEPCommonIntMask.Write ();
++#ifdef USB_GADGET_DEBUG
++	u32 nReadBack = OutEPCommonIntMask.Read ();
++	LOGDBG ("OUT EP common mask readback: 0x%08X (expected 0x%08X)", nReadBack, nOutMaskValue);
++#endif
++
++	// Enable common IN EP interrupts
++	CDWHCIRegister InEPCommonIntMaskEP0 (DWHCI_DEV_IN_EP_COMMON_INT_MASK,
++					    DWHCI_DEV_IN_EP_INT_XFER_COMPLETE
++					  | DWHCI_DEV_IN_EP_INT_TIMEOUT
++					  | DWHCI_DEV_IN_EP_INT_AHB_ERROR
++					  | DWHCI_DEV_IN_EP_INT_EP_DISABLED);
++	InEPCommonIntMaskEP0.Write ();
++
++	// Get EP0 max packet size - EP0 must already be created at this point
++	assert (m_pEP[0]);
++	size_t nEP0MaxPacket = m_pEP[0]->m_nMaxPacketSize;
++	u32 nEP0MPS;
++	switch (nEP0MaxPacket)
++	{
++	case 64:	nEP0MPS = 0;	break;  // D0EPCTL_MPS_64 = 0
++	case 32:	nEP0MPS = 1;	break;  // D0EPCTL_MPS_32 = 1
++	case 16:	nEP0MPS = 2;	break;  // D0EPCTL_MPS_16 = 2
++	case 8:		nEP0MPS = 3;	break;  // D0EPCTL_MPS_8  = 3
++	default:
++		LOGERR ("Invalid EP0 max packet size: %u", nEP0MaxPacket);
++		nEP0MPS = 0;  // Default to 64
++		break;
++	}
++
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("EP0 direct initialization: MPS=%u (encoded value 0x%X)", nEP0MaxPacket, nEP0MPS);
++#endif
++
++	// Set up EP0 OUT transfer size for 1 SETUP packet of 8 bytes
++	CDWHCIRegister OutEP0XferSize (DWHCI_DEV_OUT_EP_XFER_SIZ (0), 0);
++	OutEP0XferSize.Or (1 << DWHCI_DEV_EP_XFER_SIZ_PKT_CNT__SHIFT);
++	OutEP0XferSize.Or (8 << DWHCI_DEV_EP_XFER_SIZ_XFER_SIZ__SHIFT);
++	OutEP0XferSize.Write ();
++
++	// Direct write to DOEPCTL0 (not read-modify-write!)
++	// EP0 is freshly cleared from loop above, so we can write directly
++	u32 nOutEP0Ctrl = nEP0MPS  // MPS in bits [1:0]
++			| DWHCI_DEV_EP_CTRL_ACTIVE_EP
++			| DWHCI_DEV_EP_CTRL_EP_ENABLE;
++
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Writing DOEPCTL0 = 0x%08X (MPS=%u | ACTIVE | EPENA)", nOutEP0Ctrl, nEP0MPS);
++#endif
++
++	CDWHCIRegister OutEP0Ctrl (DWHCI_DEV_OUT_EP_CTRL (0), nOutEP0Ctrl);
++	OutEP0Ctrl.Write ();
++	DataMemBarrier ();
++
++#ifdef USB_GADGET_DEBUG
++	u32 nOutEP0CtrlReadback = OutEP0Ctrl.Read ();
++	LOGDBG ("DOEPCTL0 readback = 0x%08X", nOutEP0CtrlReadback);
++#endif
++
++	// Set up EP0 IN - just set MPS and ACTIVE (no EPENA yet)
++	u32 nInEP0Ctrl = nEP0MPS  // MPS in bits [1:0]
++		       | DWHCI_DEV_EP_CTRL_ACTIVE_EP;
++
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Writing DIEPCTL0 = 0x%08X (MPS=%u | ACTIVE)", nInEP0Ctrl, nEP0MPS);
++#endif
++
++	CDWHCIRegister InEP0CtrlWrite (DWHCI_DEV_IN_EP_CTRL (0), nInEP0Ctrl);
++	InEP0CtrlWrite.Write ();
++
++	// Enable EP0 in DAINT mask
++	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK);
++	AllEPsIntMask.Read ();
++	AllEPsIntMask.Or (DWHCI_DEV_ALL_EPS_INT_MASK_IN_EP (0));
++	AllEPsIntMask.Or (DWHCI_DEV_ALL_EPS_INT_MASK_OUT_EP (0));
++	AllEPsIntMask.Write ();
++
++	// Clear global NAKs
++	CDWHCIRegister DeviceControl (DWHCI_DEV_CTRL);
++	DeviceControl.Read ();
++	DeviceControl.Set (DWHCI_DEV_CTRL_CLEAR_GLOBAL_OUT_NAK);
++	DeviceControl.Set (DWHCI_DEV_CTRL_CLEAR_GLOBAL_NON_PER_IN_NAK);
++	DeviceControl.Write ();
++	DataMemBarrier ();
++
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Global NAKs cleared, EP0 ready for SETUP packets");
++	
++	// Dump critical register states
++	CDWHCIRegister DumpDOEPCTL0 (DWHCI_DEV_OUT_EP_CTRL (0));
++	CDWHCIRegister DumpDIEPCTL0 (DWHCI_DEV_IN_EP_CTRL (0));
++	CDWHCIRegister DumpDAINTMSK (DWHCI_DEV_ALL_EPS_INT_MASK);
++	CDWHCIRegister DumpDOEPMSK (DWHCI_DEV_OUT_EP_COMMON_INT_MASK);
++	
++	LOGDBG ("InitCoreDevice exit: DOEPCTL0=0x%08X DIEPCTL0=0x%08X DAINTMSK=0x%08X DOEPMSK=0x%08X",
++		DumpDOEPCTL0.Read(), DumpDIEPCTL0.Read(), DumpDAINTMSK.Read(), DumpDOEPMSK.Read());
++#endif
+ }
+ 
+ boolean CDWUSBGadget::Reset (void)
+@@ -435,6 +671,7 @@ void CDWUSBGadget::EnableDeviceInterrupts (void)
+ 	IntStatus.Write ();
+ 
+ 	// Enable interrupts
++	IntMask.Or (DWHCI_CORE_INT_MASK_RX_STS_Q_LVL);	// Required for SETUP packets in slave mode
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_USB_SUSPEND);
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_USB_RESET_INTR);
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_ENUM_DONE);
+@@ -506,14 +743,24 @@ void CDWUSBGadget::HandleUSBSuspend (void)
  	LOGDBG ("USB suspend");
  #endif
  
@@ -401,7 +669,7 @@ index dc3f93cd..658c232e 100644
  	}
  
  	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_USB_SUSPEND);
-@@ -526,6 +536,24 @@ void CDWUSBGadget::HandleUSBReset (void)
+@@ -526,6 +773,24 @@ void CDWUSBGadget::HandleUSBReset (void)
  	LOGDBG ("USB reset");
  #endif
  
@@ -426,7 +694,7 @@ index dc3f93cd..658c232e 100644
  	// Set NAK for all OUT EPs
  	for (unsigned i = 0; i <= NumberOfOutEPs; i++)
  	{
-@@ -534,7 +562,31 @@ void CDWUSBGadget::HandleUSBReset (void)
+@@ -534,7 +799,31 @@ void CDWUSBGadget::HandleUSBReset (void)
  		OutEPCtrl.Write ();
  	}
  
@@ -458,27 +726,106 @@ index dc3f93cd..658c232e 100644
  
  	// Flush learning queue
  	CDWHCIRegister Reset (DWHCI_CORE_RESET, DWHCI_CORE_RESET_IN_TOKEN_QUEUE_FLUSH);
-@@ -571,8 +623,6 @@ void CDWUSBGadget::HandleUSBReset (void)
- 					  | DWHCI_DEV_IN_EP_INT_EP_DISABLED);
- 	InEPCommonIntMask.Write ();
+@@ -555,24 +844,6 @@ void CDWUSBGadget::HandleUSBReset (void)
+ 	DeviceConfig.Or (2 << DWHCI_DEV_CFG_EP_MISMATCH_COUNT__SHIFT);
+ 	DeviceConfig.Write ();
  
+-	// Enable common OUT EP interrupts
+-	CDWHCIRegister OutEPCommonIntMask (DWHCI_DEV_OUT_EP_COMMON_INT_MASK,
+-					     DWHCI_DEV_OUT_EP_INT_SETUP_DONE
+-					   | DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE
+-					   | DWHCI_DEV_OUT_EP_INT_AHB_ERROR
+-					   | DWHCI_DEV_OUT_EP_INT_EP_DISABLED);
+-	OutEPCommonIntMask.Write ();
+-
+-	// Enable common IN EP interrupts
+-	CDWHCIRegister InEPCommonIntMask (DWHCI_DEV_IN_EP_COMMON_INT_MASK,
+-					    DWHCI_DEV_IN_EP_INT_XFER_COMPLETE
+-					  | DWHCI_DEV_IN_EP_INT_TIMEOUT
+-					  | DWHCI_DEV_IN_EP_INT_AHB_ERROR
+-					  | DWHCI_DEV_IN_EP_INT_EP_DISABLED);
+-	InEPCommonIntMask.Write ();
+-
 -	SetDeviceAddress (0);
 -
  	// Notify all EPs about USB reset
  	for (unsigned i = 0; i <= NumberOfEPs; i++)
  	{
-@@ -607,6 +657,9 @@ void CDWUSBGadget::HandleEnumerationDone (void)
+@@ -582,6 +853,18 @@ void CDWUSBGadget::HandleUSBReset (void)
+ 		}
+ 	}
+ 
++	// Re-arm EP0 OUT for SETUP reception after USB reset
++	// EP0 is already configured from InitCoreDevice(), we just need to reset the transfer size
++	CDWHCIRegister OutEP0XferSize (DWHCI_DEV_OUT_EP_XFER_SIZ (0), 0);
++	OutEP0XferSize.Or (1 << DWHCI_DEV_EP_XFER_SIZ_PKT_CNT__SHIFT);
++	OutEP0XferSize.Or (8 << DWHCI_DEV_EP_XFER_SIZ_XFER_SIZ__SHIFT);
++	OutEP0XferSize.Write ();
++
++#ifdef USB_GADGET_DEBUG
++	CDWHCIRegister DumpDOEPCTL0 (DWHCI_DEV_OUT_EP_CTRL (0));
++	LOGDBG ("USB reset complete: DOEPCTL0=0x%08X (should still be enabled)", DumpDOEPCTL0.Read());
++#endif
++
+ 	m_State = StateResetDone;
+ 
+ 	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_USB_RESET_INTR);
+@@ -607,12 +890,17 @@ void CDWUSBGadget::HandleEnumerationDone (void)
  		USBConfig.Or (9 << DWHCI_CORE_USB_CFG_TURNAROUND_TIME__SHIFT);
  		USBConfig.Write ();
  
+-		assert (m_pEP[0]);
+-		m_pEP[0]->OnActivate ();
 +		TDeviceSpeed Speed = GetNegotiatedUSBSpeed ();
 +		OnNegotiatedSpeed (Speed);
-+
- 		assert (m_pEP[0]);
- 		m_pEP[0]->OnActivate ();
  
-@@ -649,7 +702,8 @@ void CDWUSBGadget::HandleOutEPInterrupt (void)
- 	LOGDBG ("Out EP interrupt");
+ 		m_State = StateEnumDone;
+ 	}
+ 
++	// Always re-arm EP0 after enumeration done, even if already in StateEnumDone
++	// (handles cases where host resets during enumeration)
++	assert (m_pEP[0]);
++	m_pEP[0]->OnActivate ();
++
+ 	assert (m_State == StateEnumDone);
+ 
+ 	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_ENUM_DONE);
+@@ -621,17 +909,18 @@ void CDWUSBGadget::HandleEnumerationDone (void)
+ 
+ void CDWUSBGadget::HandleInEPInterrupt (void)
+ {
++	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
++	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK);
++	u32 nInEPStat = (AllEPsIntStat.Read () & AllEPsIntMask.Read ()) & 0xFFFF;
++
+ #ifdef USB_GADGET_DEBUG
+-	LOGDBG ("In EP interrupt");
++	LOGDBG ("In EP interrupt: stat=0x%08X mask=0x%08X filtered=0x%04X",
++		AllEPsIntStat.Read(), AllEPsIntMask.Read(), nInEPStat);
+ #endif
+ 
+ 	assert (   m_State == StateEnumDone
+ 		|| m_State == StateConfigured);
+ 
+-	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
+-	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK);
+-	u32 nInEPStat = (AllEPsIntStat.Read () & AllEPsIntMask.Read ()) & 0xFFFF;
+-
+ 	for (unsigned nEP = 0; nInEPStat; nInEPStat >>= 1, nEP++)
+ 	{
+ 		if (nInEPStat & 1)
+@@ -645,24 +934,36 @@ void CDWUSBGadget::HandleInEPInterrupt (void)
+ 
+ void CDWUSBGadget::HandleOutEPInterrupt (void)
+ {
++	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
++	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK);
++	u32 nOutEPStat = (AllEPsIntStat.Read () & AllEPsIntMask.Read ()) >> 16;
++
+ #ifdef USB_GADGET_DEBUG
+-	LOGDBG ("Out EP interrupt");
++	LOGDBG ("Out EP interrupt: stat=0x%08X mask=0x%08X filtered=0x%04X", 
++		AllEPsIntStat.Read(), AllEPsIntMask.Read(), nOutEPStat);
  #endif
  
 -	assert (   m_State == StateEnumDone
@@ -486,8 +833,11 @@ index dc3f93cd..658c232e 100644
 +		|| m_State == StateEnumDone
  		|| m_State == StateConfigured);
  
- 	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
-@@ -660,9 +714,19 @@ void CDWUSBGadget::HandleOutEPInterrupt (void)
+-	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
+-	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK);
+-	u32 nOutEPStat = (AllEPsIntStat.Read () & AllEPsIntMask.Read ()) >> 16;
+-
+ 	for (unsigned nEP = 0; nOutEPStat; nOutEPStat >>= 1, nEP++)
  	{
  		if (nOutEPStat & 1)
  		{
@@ -510,14 +860,51 @@ index dc3f93cd..658c232e 100644
  		}
  	}
  }
-@@ -676,12 +740,14 @@ void CDWUSBGadget::InterruptHandler (void)
+@@ -676,12 +977,51 @@ void CDWUSBGadget::InterruptHandler (void)
  	u32 nIntStatus = IntStatus.Read () & IntMask.Read ();
  
  #ifdef USB_GADGET_DEBUG
 -	LOGDBG ("IRQ (status 0x%08X)", nIntStatus);
-+	LOGDBG ("IRQ (status 0x%08X, state %u)", nIntStatus, (unsigned) m_State);
++	// Debug: Check all relevant registers when any interrupt fires
++	if (nIntStatus)
++	{
++		CDWHCIRegister EP0OutInt (DWHCI_DEV_OUT_EP_INT (0));
++		u32 nEP0OutInt = EP0OutInt.Read ();
++		CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
++		u32 nAllEPs = AllEPsIntStat.Read ();
++		CDWHCIRegister OutEPMask (DWHCI_DEV_OUT_EP_COMMON_INT_MASK);
++		u32 nOutEPMask = OutEPMask.Read ();
++		
++		LOGDBG ("IRQ: core=0x%08X allEPs=0x%08X ep0Out=0x%08X outMask=0x%08X state=%u",
++			nIntStatus, nAllEPs, nEP0OutInt, nOutEPMask, (unsigned) m_State);
++	}
  #endif
  
++	if (nIntStatus & DWHCI_CORE_INT_MASK_RX_STS_Q_LVL)
++	{
++#ifdef USB_GADGET_DEBUG
++		CDWHCIRegister RxStatus (DWHCI_CORE_RX_STAT_RD);
++		u32 nRxStat = RxStatus.Read ();
++		u32 nEPNum = nRxStat & DWHCI_CORE_RX_STAT_CHAN_NUMBER__MASK;
++		u32 nByteCount = (nRxStat & DWHCI_CORE_RX_STAT_BYTE_COUNT__MASK) >> DWHCI_CORE_RX_STAT_BYTE_COUNT__SHIFT;
++		u32 nPktStat = (nRxStat & DWHCI_CORE_RX_STAT_PACKET_STATUS__MASK) >> DWHCI_CORE_RX_STAT_PACKET_STATUS__SHIFT;
++		
++		LOGDBG ("  RX FIFO: ep=%u bytes=%u pktstat=%u (0x%08X)", nEPNum, nByteCount, nPktStat, nRxStat);
++		
++		// Log specific packet status types
++		if (nPktStat == 6) {
++			LOGDBG ("    -> SETUP packet received on EP%u", nEPNum);
++		} else if (nPktStat == 2) {
++			LOGDBG ("    -> OUT data packet received on EP%u", nEPNum);
++		} else if (nPktStat == 3) {
++			LOGDBG ("    -> OUT transfer complete on EP%u", nEPNum);
++		} else if (nPktStat == 4) {
++			LOGDBG ("    -> SETUP transaction complete on EP%u", nEPNum);
++		}
++#endif
++		// TODO: Implement RX FIFO handling if needed for slave mode
++	}
++
  	if (nIntStatus & DWHCI_CORE_INT_MASK_USB_SUSPEND)
  	{
  		HandleUSBSuspend ();
@@ -526,7 +913,7 @@ index dc3f93cd..658c232e 100644
  	}
  
  	if (nIntStatus & DWHCI_CORE_INT_MASK_USB_RESET_INTR)
-@@ -748,10 +814,35 @@ void CDWUSBGadget::SetDeviceAddress (u8 uchAddress)
+@@ -748,10 +1088,35 @@ void CDWUSBGadget::SetDeviceAddress (u8 uchAddress)
  	DeviceConfig.And (~DWHCI_DEV_CFG_DEV_ADDR__MASK);
  	DeviceConfig.Or (uchAddress << DWHCI_DEV_CFG_DEV_ADDR__SHIFT);
  	DeviceConfig.Write ();
@@ -562,7 +949,7 @@ index dc3f93cd..658c232e 100644
  	if (uchConfiguration != 1)
  	{
  		return FALSE;
-@@ -782,3 +873,22 @@ boolean CDWUSBGadget::SetConfiguration (u8 uchConfiguration)
+@@ -782,3 +1147,22 @@ boolean CDWUSBGadget::SetConfiguration (u8 uchConfiguration)
  
  	return TRUE;
  }
@@ -585,8 +972,9 @@ index dc3f93cd..658c232e 100644
 +		return DeviceSpeedUnknown;
 +	}
 +}
+\ No newline at end of file
 diff --git a/lib/usb/gadget/dwusbgadgetendpoint.cpp b/lib/usb/gadget/dwusbgadgetendpoint.cpp
-index d71abd08..1e343be9 100644
+index d71abd08..f2f15fd5 100644
 --- a/lib/usb/gadget/dwusbgadgetendpoint.cpp
 +++ b/lib/usb/gadget/dwusbgadgetendpoint.cpp
 @@ -2,7 +2,7 @@
@@ -598,7 +986,7 @@ index d71abd08..1e343be9 100644
  //
  // This program is free software: you can redistribute it and/or modify
  // it under the terms of the GNU General Public License as published by
-@@ -65,6 +65,22 @@ CDWUSBGadgetEndpoint::~CDWUSBGadgetEndpoint (void)
+@@ -65,101 +65,117 @@ CDWUSBGadgetEndpoint::~CDWUSBGadgetEndpoint (void)
  	m_pGadget->RemoveEndpoint (m_nEP);
  }
  
@@ -621,7 +1009,39 @@ index d71abd08..1e343be9 100644
  void CDWUSBGadgetEndpoint::OnUSBReset (void)
  {
  	InitTransfer ();
-@@ -98,63 +114,77 @@ void CDWUSBGadgetEndpoint::OnUSBReset (void)
+ 
+ 	if (!m_nEP)
+ 	{
+-		u32 nValue = 0;
+-		switch (m_nMaxPacketSize)
+-		{
+-		case 8:		nValue = DWHCI_DEV_EP0_CTRL_MAX_PACKET_SIZ_8;	break;
+-		case 16:	nValue = DWHCI_DEV_EP0_CTRL_MAX_PACKET_SIZ_16;	break;
+-		case 32:	nValue = DWHCI_DEV_EP0_CTRL_MAX_PACKET_SIZ_32;	break;
+-		case 64:	nValue = DWHCI_DEV_EP0_CTRL_MAX_PACKET_SIZ_64;	break;
+-
+-		default:
+-			assert (0);
+-			break;
+-		}
+-
+-		CDWHCIRegister InEP0Ctrl (DWHCI_DEV_IN_EP_CTRL (0));
+-		InEP0Ctrl.Read ();
+-		InEP0Ctrl.And (~DWHCI_DEV_EP0_CTRL_MAX_PACKET_SIZ__MASK);
+-		InEP0Ctrl.Or (nValue << DWHCI_DEV_EP_CTRL_MAX_PACKET_SIZ__SHIFT);
+-		InEP0Ctrl.Write ();
+-
+-		CDWHCIRegister OutEP0Ctrl (DWHCI_DEV_OUT_EP_CTRL (0));
+-		OutEP0Ctrl.Read ();
+-		OutEP0Ctrl.And (~DWHCI_DEV_EP0_CTRL_MAX_PACKET_SIZ__MASK);
+-		OutEP0Ctrl.Or (nValue << DWHCI_DEV_EP_CTRL_MAX_PACKET_SIZ__SHIFT);
+-		OutEP0Ctrl.Write ();
++		// EP0: Max packet size is set during direct initialization in HandleUSBReset()
++		// We don't touch DOEPCTL0/DIEPCTL0 here to avoid interfering with the
++		// critical direct write that was done in CDWUSBGadget::HandleUSBReset()
++#ifdef USB_GADGET_DEBUG
++		LOGDBG ("EP0 OnUSBReset: Skipping control register writes (already initialized)");
++#endif
  	}
  	else
  	{
@@ -740,10 +1160,124 @@ index d71abd08..1e343be9 100644
  	}
  
  	// Enable EP interrupt
-@@ -255,6 +285,30 @@ void CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode Mode, void *pBuffer, siz
+ 	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK);
++#ifdef USB_GADGET_DEBUG
++	u32 nOldMask = AllEPsIntMask.Read ();
++#else
+ 	AllEPsIntMask.Read ();
++#endif
+ 	switch (m_Direction)
+ 	{
+ 	case DirectionInOut:
+@@ -176,6 +192,9 @@ void CDWUSBGadgetEndpoint::OnUSBReset (void)
+ 		break;
  	}
+ 	AllEPsIntMask.Write ();
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("EP%u OnUSBReset: mask 0x%08X -> 0x%08X", m_nEP, nOldMask, AllEPsIntMask.Read());
++#endif
  }
  
+ void CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode Mode, void *pBuffer, size_t nLength)
+@@ -224,21 +243,46 @@ void CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode Mode, void *pBuffer, siz
+ 		InEPCtrl.Or (s_NextEPSeq[m_nEP] << DWHCI_DEV_IN_EP_CTRL_NEXT_EP__SHIFT);
+ 		InEPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_ENABLE);
+ 		InEPCtrl.Or (DWHCI_DEV_EP_CTRL_CLEAR_NAK);
++	
++		// For EP0 zero-length STATUS stage, use DATA1 PID
++		if (m_nEP == 0 && nLength == 0) {
++			InEPCtrl.Or (DWHCI_DEV_EP_CTRL_SETDPID_D1);
++		}
++	
+ 		InEPCtrl.Write ();
++		DataMemBarrier(); // Ensure write completes before hardware processes
+ 	}
+-	else
++	else if (Mode == TransferSetupOut)
+ 	{
+-		CDWHCIRegister OutEPXferSize (DWHCI_DEV_OUT_EP_XFER_SIZ (m_nEP), 0);
++		// EP0 SETUP transfer - EP0 OUT was already initialized during HandleUSBReset()
++		// We only need to update DMA address, transfer size already set during init
++		assert (m_nEP == 0);
++		assert (nLength == sizeof (TSetupData));
+ 
+-		if (Mode == TransferSetupOut)
+-		{
+-			assert (m_nEP == 0);
+-			assert (nLength == sizeof (TSetupData));
++#ifdef USB_GADGET_DEBUG
++		LOGDBG ("EP0 SETUP transfer: updating DMA address only (EP already initialized)");
++#endif
+ 
+-			OutEPXferSize.Or (   nPacketCount
+-					  << DWHCI_DEV_EP0_XFER_SIZ_SETUP_PKT_CNT__SHIFT);
+-		}
++		// Update DMA address for SETUP packet
++		CDWHCIRegister OutEPDMAAddress (DWHCI_DEV_OUT_EP_DMA_ADDR (0),
++						BUS_ADDRESS ((uintptr) pBuffer));
++		OutEPDMAAddress.Write ();
++		DataMemBarrier ();
++
++		// EP0 OUT is already enabled and armed from HandleUSBReset()
++		// Don't touch DOEPCTL0 - it's already in the correct state
+ 
++#ifdef USB_GADGET_DEBUG
++		// Verify EP0 state
++		CDWHCIRegister OutEP0Ctrl (DWHCI_DEV_OUT_EP_CTRL (0));
++		u32 nCtrl = OutEP0Ctrl.Read ();
++		LOGDBG ("EP0 SETUP: DOEPCTL0=0x%08X (should have EP_ENABLE+ACTIVE_EP)", nCtrl);
++#endif
++	}
++	else
++	{
++		// TransferDataOut for non-SETUP transfers
++		CDWHCIRegister OutEPXferSize (DWHCI_DEV_OUT_EP_XFER_SIZ (m_nEP), 0);
+ 		OutEPXferSize.Or (nPacketCount << DWHCI_DEV_EP_XFER_SIZ_PKT_CNT__SHIFT);
+ 		OutEPXferSize.Or (nLength << DWHCI_DEV_EP_XFER_SIZ_XFER_SIZ__SHIFT);
+ 		OutEPXferSize.Write ();
+@@ -247,12 +291,67 @@ void CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode Mode, void *pBuffer, siz
+ 						BUS_ADDRESS ((uintptr) pBuffer));
+ 		OutEPDMAAddress.Write ();
+ 
++		CDWHCIRegister OutEPCtrl (DWHCI_DEV_OUT_EP_CTRL (m_nEP), 0);
++		u32 nCtrlBefore = OutEPCtrl.Read ();
++		
++		// Only set EP_ENABLE if not already enabled
++		if (!(nCtrlBefore & DWHCI_DEV_EP_CTRL_EP_ENABLE)) {
++			OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_ENABLE);
++		}
++		
++		// Set ACTIVE_EP if not already set
++		if (!(nCtrlBefore & DWHCI_DEV_EP_CTRL_ACTIVE_EP)) {
++			OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_ACTIVE_EP);
++		}
++		
++		// Always clear NAK to start/continue transfer
++		OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_CLEAR_NAK);
++		
++		// For EP0, ensure data toggle for control endpoint operation
++		if (m_nEP == 0) {
++			OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_SETDPID_D0);
++		}
++		
++#ifdef USB_GADGET_DEBUG
++		u32 nCtrlValue = OutEPCtrl.Get();
++		LOGDBG ("EP%u BeginTransfer OUT: before=0x%08X, writing=0x%08X", 
++			m_nEP, nCtrlBefore, nCtrlValue);
++#endif
++		
++		OutEPCtrl.Write ();
++		DataMemBarrier(); // Ensure write completes before hardware processes
++		
++#ifdef USB_GADGET_DEBUG
++		DataSyncBarrier();
++		u32 nCtrlAfter = OutEPCtrl.Read();
++		LOGDBG ("EP%u BeginTransfer OUT: after readback=0x%08X, mode=%d, len=%u",
++			m_nEP, nCtrlAfter, Mode, nLength);
++#endif
++	}
++}
++
 +void CDWUSBGadgetEndpoint::CancelTransfer (void)
 +{
 +	if (m_TransferMode == TransferDataIn)
@@ -757,21 +1291,21 @@ index d71abd08..1e343be9 100644
 +	}
 +	else if (m_TransferMode != TransferUnknown)
 +	{
-+		CDWHCIRegister OutEPCtrl (DWHCI_DEV_OUT_EP_CTRL (m_nEP));
-+		OutEPCtrl.Read ();
+ 		CDWHCIRegister OutEPCtrl (DWHCI_DEV_OUT_EP_CTRL (m_nEP));
+ 		OutEPCtrl.Read ();
+-		OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_ENABLE);
+-		OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_CLEAR_NAK);
 +		OutEPCtrl.And (~DWHCI_DEV_EP_CTRL_EP_ENABLE);
 +		OutEPCtrl.And (~DWHCI_DEV_EP_CTRL_CLEAR_NAK);
 +		OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_DISABLE);
-+		OutEPCtrl.Write ();
-+	}
+ 		OutEPCtrl.Write ();
+ 	}
 +
 +	InitTransfer ();
-+}
-+
+ }
+ 
  size_t CDWUSBGadgetEndpoint::FinishTransfer (void)
- {
- 	assert (m_TransferMode < TransferUnknown);
-@@ -275,7 +329,12 @@ size_t CDWUSBGadgetEndpoint::FinishTransfer (void)
+@@ -275,7 +374,12 @@ size_t CDWUSBGadgetEndpoint::FinishTransfer (void)
  
  	if (nXferSize)
  	{
@@ -785,7 +1319,7 @@ index d71abd08..1e343be9 100644
  	}
  #endif
  
-@@ -301,6 +360,13 @@ void CDWUSBGadgetEndpoint::Stall (boolean bIn)
+@@ -301,6 +405,13 @@ void CDWUSBGadgetEndpoint::Stall (boolean bIn)
  	EPCtrl.Or (DWHCI_DEV_EP_CTRL_STALL);
  	EPCtrl.Or (DWHCI_DEV_EP_CTRL_CLEAR_NAK);
  	EPCtrl.Write ();
@@ -799,8 +1333,74 @@ index d71abd08..1e343be9 100644
  }
  
  void CDWUSBGadgetEndpoint::OnControlMessage (void)
+@@ -313,16 +424,22 @@ void CDWUSBGadgetEndpoint::HandleOutInterrupt (void)
+ 	CDWHCIRegister OutEPCommonIntMask (DWHCI_DEV_OUT_EP_COMMON_INT_MASK);
+ 	CDWHCIRegister OutEPInt (DWHCI_DEV_OUT_EP_INT (m_nEP));
+ 	OutEPCommonIntMask.Read ();
+-	OutEPInt.Read ();
++	u32 nIntStatus = OutEPInt.Read ();
+ 	OutEPInt.And (OutEPCommonIntMask.Get ());
+ 
+ #ifdef USB_GADGET_DEBUG
+-	LOGDBG ("EP%u: Interrupt status is 0x%08X", m_nEP, OutEPInt.Get ());
++	LOGDBG ("EP%u OUT: raw_int=0x%08X mask=0x%08X filtered=0x%08X", 
++		m_nEP, nIntStatus, OutEPCommonIntMask.Get(), OutEPInt.Get());
+ #endif
+ 
+ 	if (OutEPInt.Get () & DWHCI_DEV_OUT_EP_INT_SETUP_DONE)
+ 	{
+ 		assert (m_nEP == 0);
++		
++#ifdef USB_GADGET_DEBUG
++		LOGDBG ("EP0: SETUP_DONE interrupt");
++#endif
++		
+ 		CDWHCIRegister OutEPIntAck (DWHCI_DEV_OUT_EP_INT (m_nEP));
+ 		OutEPIntAck.Set (DWHCI_DEV_OUT_EP_INT_SETUP_DONE);
+ 		OutEPIntAck.Write ();
+@@ -340,6 +457,10 @@ void CDWUSBGadgetEndpoint::HandleOutInterrupt (void)
+ 
+ 	if (OutEPInt.Get () & DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE)
+ 	{
++#ifdef USB_GADGET_DEBUG
++		LOGDBG ("EP%u: XFER_COMPLETE", m_nEP);
++#endif
++		
+ 		CDWHCIRegister OutEPIntAck (DWHCI_DEV_OUT_EP_INT (m_nEP));
+ 		OutEPIntAck.Set (DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE);
+ 		OutEPIntAck.Write ();
+@@ -365,15 +486,20 @@ void CDWUSBGadgetEndpoint::HandleInInterrupt (void)
+ 	CDWHCIRegister InEPCommonIntMask (DWHCI_DEV_IN_EP_COMMON_INT_MASK);
+ 	CDWHCIRegister InEPInt (DWHCI_DEV_IN_EP_INT (m_nEP));
+ 	InEPCommonIntMask.Read ();
+-	InEPInt.Read ();
++	u32 nIntStatus = InEPInt.Read ();
+ 	InEPInt.And (InEPCommonIntMask.Get ());
+ 
+ #ifdef USB_GADGET_DEBUG
+-	LOGDBG ("EP%u: Interrupt status is 0x%08X", m_nEP, InEPInt.Get ());
++	LOGDBG ("EP%u IN: raw_int=0x%08X mask=0x%08X filtered=0x%08X",
++		m_nEP, nIntStatus, InEPCommonIntMask.Get(), InEPInt.Get());
+ #endif
+ 
+ 	if (InEPInt.Get () & DWHCI_DEV_IN_EP_INT_XFER_COMPLETE)
+ 	{
++#ifdef USB_GADGET_DEBUG
++		LOGDBG ("EP%u: XFER_COMPLETE", m_nEP);
++#endif
++		
+ 		CDWHCIRegister InEPIntAck (DWHCI_DEV_IN_EP_INT (m_nEP));
+ 		InEPIntAck.Set (DWHCI_DEV_IN_EP_INT_XFER_COMPLETE);
+ 		InEPIntAck.Write ();
+@@ -404,4 +530,4 @@ void CDWUSBGadgetEndpoint::HandleUSBReset (void)
+ 	memset (s_NextEPSeq, 0xFF, sizeof s_NextEPSeq);
+ 	s_NextEPSeq[0] = 0;
+ 	s_uchFirstInNextEPSeq = 0;
+-}
++}
+\ No newline at end of file
 diff --git a/lib/usb/gadget/dwusbgadgetendpoint0.cpp b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
-index 3a70f3d3..0c775235 100644
+index 3a70f3d3..8f5ebd3c 100644
 --- a/lib/usb/gadget/dwusbgadgetendpoint0.cpp
 +++ b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
 @@ -2,7 +2,7 @@
@@ -812,7 +1412,7 @@ index 3a70f3d3..0c775235 100644
  //
  // This program is free software: you can redistribute it and/or modify
  // it under the terms of the GNU General Public License as published by
-@@ -21,8 +21,14 @@
+@@ -21,8 +21,13 @@
  #include <circle/usb/gadget/dwusbgadget.h>
  #include <circle/usb/dwhci.h>
  #include <circle/util.h>
@@ -821,27 +1421,63 @@ index 3a70f3d3..0c775235 100644
  
 +#ifdef USB_GADGET_DEBUG
 +	static const char From[] = "ep0";
-+	#define LOGDBG(...)	CLogger::Get()->Write(From, LogDebug, __VA_ARGS__)
 +#endif
 +
  CDWUSBGadgetEndpoint0::CDWUSBGadgetEndpoint0 (size_t nMaxPacketSize, CDWUSBGadget *pGadget)
  :	CDWUSBGadgetEndpoint (nMaxPacketSize, pGadget),
  	m_State (StateDisconnect)
-@@ -40,6 +46,13 @@ void CDWUSBGadgetEndpoint0::OnActivate (void)
- 	BeginTransfer (TransferSetupOut, m_OutBuffer, sizeof (TSetupData));
- }
+@@ -35,9 +40,36 @@ CDWUSBGadgetEndpoint0::~CDWUSBGadgetEndpoint0 (void)
  
+ void CDWUSBGadgetEndpoint0::OnActivate (void)
+ {
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("OnActivate called - arming EP0 for SETUP");
++	
++	// Verify EP0 state before arming
++	CDWHCIRegister OutEP0Ctrl (DWHCI_DEV_OUT_EP_CTRL (0));
++	CDWHCIRegister OutEP0XferSize (DWHCI_DEV_OUT_EP_XFER_SIZ (0));
++	CDWHCIRegister OutEP0DMA (DWHCI_DEV_OUT_EP_DMA_ADDR (0));
++	
++	LOGDBG ("Pre-activate: DOEPCTL0=0x%08X DOEPTSIZ0=0x%08X DOEPDMA0=0x%08X",
++		OutEP0Ctrl.Read(), OutEP0XferSize.Read(), OutEP0DMA.Read());
++#endif
++	
+ 	m_State = StateIdle;
+ 
+ 	BeginTransfer (TransferSetupOut, m_OutBuffer, sizeof (TSetupData));
++	
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("OnActivate complete - EP0 armed for SETUP reception");
++	
++	// Verify state after arming
++	LOGDBG ("Post-activate: DOEPCTL0=0x%08X DOEPTSIZ0=0x%08X DOEPDMA0=0x%08X",
++		OutEP0Ctrl.Read(), OutEP0XferSize.Read(), OutEP0DMA.Read());
++#endif
++}
++
 +void CDWUSBGadgetEndpoint0::OnDeactivate (void)
 +{
 +	m_State = StateDisconnect;
 +
 +	CancelTransfer ();
-+}
-+
+ }
+ 
  void CDWUSBGadgetEndpoint0::OnControlMessage (void)
- {
- 	assert (m_pGadget);
-@@ -141,11 +154,21 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
+@@ -46,6 +78,13 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
+ 
+ 	const TSetupData *pSetupData = reinterpret_cast<TSetupData *> (m_OutBuffer);
+ 
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("OnControlMessage: bmRequestType=0x%02x, bRequest=0x%02x, wValue=0x%04x, wLength=%u, state=%d",
++		pSetupData->bmRequestType, pSetupData->bRequest, pSetupData->wValue, 
++		pSetupData->wLength, m_State);
++	//debug_hexdump (m_OutBuffer, sizeof(TSetupData), From);
++#endif
++
+ 	// copy setup packet to be used in OnTransferComplete()
+ 	memcpy (&m_SetupData, pSetupData, sizeof m_SetupData);
+ 
+@@ -141,11 +180,21 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
  		switch (pSetupData->bRequest)
  		{
  		case SET_ADDRESS:
@@ -865,7 +1501,7 @@ index 3a70f3d3..0c775235 100644
  			break;
  
  		case SET_CONFIGURATION:
-@@ -166,15 +189,25 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
+@@ -166,15 +215,25 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
  		default:
  			if (pSetupData->wLength)
  			{
@@ -894,7 +1530,7 @@ index 3a70f3d3..0c775235 100644
  				BeginTransfer (TransferDataOut, m_pBufPtr,
  						 m_nBytesLeft <= m_nMaxPacketSize
  					       ? m_nBytesLeft : m_nMaxPacketSize);
-@@ -231,6 +264,16 @@ void CDWUSBGadgetEndpoint0::OnTransferComplete (boolean bIn, size_t nLength)
+@@ -231,6 +290,16 @@ void CDWUSBGadgetEndpoint0::OnTransferComplete (boolean bIn, size_t nLength)
  		break;
  
  	case StateInStatusPhase:
@@ -911,6 +1547,13 @@ index 3a70f3d3..0c775235 100644
  		assert (m_pGadget);
  		if (   m_SetupData.bmRequestType & (REQUEST_CLASS | REQUEST_VENDOR)
  		    && m_pGadget->OnClassOrVendorRequest (&m_SetupData, m_OutBuffer) < 0)
+@@ -248,4 +317,4 @@ void CDWUSBGadgetEndpoint0::OnTransferComplete (boolean bIn, size_t nLength)
+ 		assert (0);
+ 		break;
+ 	}
+-}
++}
+\ No newline at end of file
 diff --git a/lib/usb/gadget/usbcdcgadget.cpp b/lib/usb/gadget/usbcdcgadget.cpp
 index 26a08b34..3bd6db3e 100644
 --- a/lib/usb/gadget/usbcdcgadget.cpp
@@ -1161,174 +1804,3 @@ index 222d4de9..78d111b1 100644
  void CUSBMSDGadgetEndpoint::StallRequest(boolean bIn)
  {
  	CDWUSBGadgetEndpoint::Stall(bIn);
-diff --git a/lib/usb/usbcdcethernet.cpp b/lib/usb/usbcdcethernet.cpp
-index 5144e37c..88b3a352 100644
---- a/lib/usb/usbcdcethernet.cpp
-+++ b/lib/usb/usbcdcethernet.cpp
-@@ -23,6 +23,7 @@
- #include <circle/usb/usb.h>
- #include <circle/logger.h>
- #include <circle/macros.h>
-+#include <circle/util.h>
- #include <assert.h>
- 
- #define SET_ETHERNET_PACKET_FILTER		0x43
-@@ -52,7 +53,9 @@ CUSBCDCEthernetDevice::CUSBCDCEthernetDevice (CUSBFunction *pFunction)
- 	m_iMACAddress (GetMACAddressStringIndex ()),
- 	m_bInterfaceOK (SelectInterfaceByClass (10, 0, 0, 2)),
- 	m_pEndpointBulkIn (0),
--	m_pEndpointBulkOut (0)
-+	m_pEndpointBulkOut (0),
-+	m_pURB (0),
-+	m_nRxLength (0)
- {
- }
- 
-@@ -153,27 +156,55 @@ boolean CUSBCDCEthernetDevice::SendFrame (const void *pBuffer, unsigned nLength)
- 
- boolean CUSBCDCEthernetDevice::ReceiveFrame (void *pBuffer, unsigned *pResultLength)
- {
--	assert (m_pEndpointBulkIn != 0);
--	assert (pBuffer != 0);
--	CUSBRequest URB (m_pEndpointBulkIn, pBuffer, FRAME_BUFFER_SIZE);
-+	boolean bResult = FALSE;
-+
-+	if (m_nRxLength != 0)
-+	{
-+		assert (pBuffer != 0);
-+		assert (m_nRxLength <= FRAME_BUFFER_SIZE);
-+		memcpy (pBuffer, m_RxBuffer, m_nRxLength);
- 
--	URB.SetCompleteOnNAK ();
-+		assert (pResultLength != 0);
-+		*pResultLength = m_nRxLength;
- 
--	if (!GetHost ()->SubmitBlockingRequest (&URB))
-+		m_nRxLength = 0;
-+
-+		bResult = TRUE;
-+	}
-+
-+	if (m_pURB == 0)
- 	{
--		return FALSE;
-+		assert (m_pEndpointBulkIn != 0);
-+		m_pURB = new CUSBRequest (m_pEndpointBulkIn, m_RxBuffer, FRAME_BUFFER_SIZE);
-+		assert (m_pURB != 0);
-+
-+		m_pURB->SetCompletionRoutine (CompletionRoutine, 0, this);
-+
-+		m_pURB->SetCompleteOnNAK ();
-+
-+		GetHost ()->SubmitAsyncRequest (m_pURB);
- 	}
- 
--	u32 nResultLength = URB.GetResultLength ();
--	if (nResultLength == 0)
-+	return bResult;
-+}
-+
-+void CUSBCDCEthernetDevice::CompletionRoutine (CUSBRequest *pURB, void *pParam, void *pContext)
-+{
-+	CUSBCDCEthernetDevice *pThis = (CUSBCDCEthernetDevice *) pContext;
-+	assert (pThis != 0);
-+
-+	assert (pThis->m_pURB == pURB);
-+
-+	if (pURB->GetStatus () != 0)
- 	{
--		return FALSE;
-+		assert (pThis->m_nRxLength == 0);
-+		pThis->m_nRxLength = pURB->GetResultLength ();
-+		assert (pThis->m_nRxLength <= FRAME_BUFFER_SIZE);
- 	}
- 
--	assert (pResultLength != 0);
--	*pResultLength = nResultLength;
-+	delete pURB;
- 
--	return TRUE;
-+	pThis->m_pURB = 0;
- }
- 
- boolean CUSBCDCEthernetDevice::SetMulticastFilter (const u8 Groups[][MAC_ADDRESS_SIZE])
-diff --git a/lib/usb/usbdevicefactory.cpp b/lib/usb/usbdevicefactory.cpp
-index 099f8a98..75210581 100644
---- a/lib/usb/usbdevicefactory.cpp
-+++ b/lib/usb/usbdevicefactory.cpp
-@@ -2,7 +2,7 @@
- // usbdevicefactory.cpp
- //
- // Circle - A C++ bare metal environment for Raspberry Pi
--// Copyright (C) 2014-2024  R. Stange <rsta2@o2online.de>
-+// Copyright (C) 2014-2025  R. Stange <rsta2@gmx.net>
- //
- // This program is free software: you can redistribute it and/or modify
- // it under the terms of the GNU General Public License as published by
-@@ -173,7 +173,8 @@ CUSBFunction *CUSBDeviceFactory::GetDevice (CUSBFunction *pParent, CString *pNam
- #endif
- #ifndef EXCLUDE_USB_MIDI
- 	else if (   pName->Compare ("int1-3-0") == 0
--		 || pName->Compare ("ven582-12a") == 0)		// Roland UM-ONE MIDI interface
-+		 || pName->Compare ("ven582-12a") == 0		// Roland UM-ONE MIDI interface
-+		 || pName->Compare ("ven582-28c") == 0)		// Roland JD-08
- 	{
- 		pResult = new CUSBMIDIHostDevice (pParent);
- 	}
-diff --git a/lib/usb/usbmidihost.cpp b/lib/usb/usbmidihost.cpp
-index 1d1f19b5..75f7e542 100644
---- a/lib/usb/usbmidihost.cpp
-+++ b/lib/usb/usbmidihost.cpp
-@@ -5,7 +5,7 @@
- // 	Copyright (C) 2016  J. Otto <joshua.t.otto@gmail.com>
- //
- // Circle - A C++ bare metal environment for Raspberry Pi
--// Copyright (C) 2017-2023  R. Stange <rsta2@o2online.de>
-+// Copyright (C) 2017-2025  R. Stange <rsta2@gmx.net>
- //
- // This program is free software: you can redistribute it and/or modify
- // it under the terms of the GNU General Public License as published by
-@@ -43,6 +43,18 @@ CUSBMIDIHostDevice::CUSBMIDIHostDevice (CUSBFunction *pFunction)
- 	m_pPacketBuffer (0),
- 	m_hTimer (0)
- {
-+	const TUSBDeviceDescriptor *pDeviceDesc = GetDevice ()->GetDeviceDescriptor ();
-+	assert (pDeviceDesc != 0);
-+
-+	// special handling for Roland JD-08
-+	if (   pDeviceDesc->idVendor  == 0x0582
-+	    && pDeviceDesc->idProduct == 0x028C)
-+	{
-+		if (!SelectInterfaceByClass (255, 3, 0))
-+		{
-+			CLogger::Get ()->Write (FromMIDI, LogError, "Cannot select interface");
-+		}
-+	}
- }
- 
- CUSBMIDIHostDevice::~CUSBMIDIHostDevice (void)
-@@ -75,11 +87,12 @@ boolean CUSBMIDIHostDevice::Configure (void)
- 		return FALSE;
- 	}
- 
--	// special handling for Roland UM-ONE MIDI interface
-+	// special handling for Roland UM-ONE and JD-08
- 	const TUSBDeviceDescriptor *pDeviceDesc = GetDevice ()->GetDeviceDescriptor ();
- 	assert (pDeviceDesc != 0);
--	boolean bIsRolandUMOne =    pDeviceDesc->idVendor  == 0x0582
--				 && pDeviceDesc->idProduct == 0x012A;
-+	boolean bIsRoland =    pDeviceDesc->idVendor == 0x0582
-+			    && (   pDeviceDesc->idProduct == 0x012A
-+			        || pDeviceDesc->idProduct == 0x028C);
- 
- 	// Our strategy for now is simple: we'll take the first MIDI streaming
- 	// bulk-in endpoint on this interface we can find.  To distinguish
-@@ -96,7 +109,7 @@ boolean CUSBMIDIHostDevice::Configure (void)
- 			continue;
- 		}
- 
--		if (!bIsRolandUMOne)
-+		if (!bIsRoland)
- 		{
- 			TUSBMIDIStreamingEndpointDescriptor *pMIDIDesc =
- 				(TUSBMIDIStreamingEndpointDescriptor *) GetDescriptor (DESCRIPTOR_CS_ENDPOINT);
