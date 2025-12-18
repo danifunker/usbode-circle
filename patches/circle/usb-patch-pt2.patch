@@ -1,0 +1,1529 @@
+diff --git a/include/circle/usb/dwhci.h b/include/circle/usb/dwhci.h
+index b094a37a..8fbe4c9a 100644
+--- a/include/circle/usb/dwhci.h
++++ b/include/circle/usb/dwhci.h
+@@ -53,6 +53,7 @@
+ 	#define DWHCI_CORE_INT_STAT_CUR_MODE_HOST	(1 << 0)
+ 	#define DWHCI_CORE_INT_STAT_SOF_INTR		(1 << 3)
+ 	#define DWHCI_CORE_INT_STAT_GLOBAL_OUT_NAK_EFF	(1 << 7)
++	#define DWHCI_DEV_CTRL_CLEAR_GLOBAL_NON_PER_IN_NAK  (1 << 8)
+ 	#define DWHCI_CORE_INT_STAT_PORT_INTR		(1 << 24)
+ 	#define DWHCI_CORE_INT_STAT_HC_INTR		(1 << 25)
+ #define DWHCI_CORE_INT_MASK		(ARM_USB_CORE_BASE + 0x018)
+@@ -255,6 +256,13 @@
+ 	#define DWHCI_DEV_CTRL_SET_GLOBAL_OUT_NAK		(1 << 9)
+ 	#define DWHCI_DEV_CTRL_CLEAR_GLOBAL_OUT_NAK		(1 << 10)
+ 	#define DWHCI_DEV_CTRL_NAK_ON_BABBLE			(1 << 16)
++#define DWHCI_DEV_STS					(ARM_USB_DEV_BASE + 0x008)
++	#define DWHCI_DEV_STS_ENUM_SPEED__SHIFT			1
++	#define DWHCI_DEV_STS_ENUM_SPEED__MASK			(3 << 1)
++		#define DWHCI_DEV_STS_ENUM_SPEED_HS_30_60	0
++		#define DWHCI_DEV_STS_ENUM_SPEED_FS_30_60	1
++		#define DWHCI_DEV_STS_ENUM_SPEED_LS		2
++		#define DWHCI_DEV_STS_ENUM_SPEED_FS_48		3
+ #define DWHCI_DEV_IN_EP_COMMON_INT_MASK			(ARM_USB_DEV_BASE + 0x010)
+ 	#define DWHCI_DEV_IN_EP_COMMON_INT_MASK_FIFO_UNDERRUN	(1 << 10)
+ #define DWHCI_DEV_OUT_EP_COMMON_INT_MASK		(ARM_USB_DEV_BASE + 0x014)
+diff --git a/include/circle/usb/gadget/dwusbgadget.h b/include/circle/usb/gadget/dwusbgadget.h
+index 1c9cbf43..703bdf1b 100644
+--- a/include/circle/usb/gadget/dwusbgadget.h
++++ b/include/circle/usb/gadget/dwusbgadget.h
+@@ -33,7 +33,8 @@ public:
+ 	enum TDeviceSpeed
+ 	{
+ 		FullSpeed,
+-		HighSpeed
++		HighSpeed,
++		DeviceSpeedUnknown
+ 	};
+ 
+ public:
+@@ -64,6 +65,15 @@ public:
+ 	/// \brief Create application interface device (API)
+ 	virtual void CreateDevice (void) = 0;
+ 
++	/// \brief Get negotiated USB speed
++	/// \return Negotiated speed (FullSpeed or HighSpeed) or DeviceSpeedUnknown
++	TDeviceSpeed GetNegotiatedUSBSpeed (void) const;
++
++	/// \brief A new speed has been negotiated
++	/// \param Speed Negotiated speed (FullSpeed or HighSpeed)
++	/// \note May override this to update EP parameters.
++	virtual void OnNegotiatedSpeed (TDeviceSpeed Speed) {}
++
+ 	/// \brief Device connection has been suspended / removed
+ 	/// \note Have to undo AddEndpoints() and CreateDevice() here.
+ 	virtual void OnSuspend (void) = 0;
+diff --git a/include/circle/usb/gadget/dwusbgadgetendpoint.h b/include/circle/usb/gadget/dwusbgadgetendpoint.h
+index 896b8c38..fd7a98b5 100644
+--- a/include/circle/usb/gadget/dwusbgadgetendpoint.h
++++ b/include/circle/usb/gadget/dwusbgadgetendpoint.h
+@@ -2,7 +2,7 @@
+ // dwusbgadgetendpoint.h
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -51,6 +51,10 @@ public:
+ 	/// \note Override this to start first transfer.
+ 	virtual void OnActivate (void) = 0;
+ 
++	/// \brief Called to deactivate/stop EP processing.
++	/// \note Override this to stop first transfer.
++	virtual void OnDeactivate (void) = 0;
++
+ 	/// \brief Called, when the current transfer completes.
+ 	/// \param bIn Was it an IN transfer?
+ 	/// \param nLength Number of transferred bytes
+@@ -61,6 +65,10 @@ public:
+ 	/// \note Override this to abort pending transfers.
+ 	virtual void OnSuspend (void) {}
+ 
++	/// \brief Set maximum packet size
++	/// \param nMaxPacketSize New maximum packet size
++	void SetMaxPacketSize (size_t nMaxPacketSize);
++
+ protected:
+ 	/// \return Endpoint number (0-15)
+ 	unsigned GetEPNumber (void) const
+@@ -111,6 +119,9 @@ protected:
+ 	/// \note The buffer must be declared as DMA_BUFFER
+ 	void BeginTransfer (TTransferMode Mode, void *pBuffer, size_t nLength);
+ 
++	/// \brief Cancel a began transfer
++	void CancelTransfer (void);
++
+ 	/// \brief Send STALL response
+ 	/// \param bIn STALL next IN request, or OUT otherwise?
+ 	void Stall (boolean bIn);
+diff --git a/include/circle/usb/gadget/dwusbgadgetendpoint0.h b/include/circle/usb/gadget/dwusbgadgetendpoint0.h
+index 51f8a6e2..a777355e 100644
+--- a/include/circle/usb/gadget/dwusbgadgetendpoint0.h
++++ b/include/circle/usb/gadget/dwusbgadgetendpoint0.h
+@@ -2,7 +2,7 @@
+ // dwusbgadgetendpoint0.h
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -32,6 +32,7 @@ public:
+ 	~CDWUSBGadgetEndpoint0 (void);
+ 
+ 	void OnActivate (void) override;
++	void OnDeactivate (void) override;
+ 
+ 	void OnControlMessage (void) override;
+ 
+diff --git a/include/circle/usb/gadget/usbcdcgadget.h b/include/circle/usb/gadget/usbcdcgadget.h
+index db5bc736..9728158a 100644
+--- a/include/circle/usb/gadget/usbcdcgadget.h
++++ b/include/circle/usb/gadget/usbcdcgadget.h
+@@ -27,6 +27,7 @@
+ #include <circle/usb/usbserial.h>
+ #include <circle/usb/usb.h>
+ #include <circle/interrupt.h>
++#include <circle/sysconfig.h>
+ #include <circle/macros.h>
+ #include <circle/types.h>
+ 
+@@ -61,7 +62,11 @@ class CUSBCDCGadget : public CDWUSBGadget	/// USB serial CDC gadget
+ {
+ public:
+ 	/// \param pInterruptSystem Pointer to the interrupt system object
+-	CUSBCDCGadget (CInterruptSystem *pInterruptSystem);
++	/// \param usVendorID USB vendor ID of the gadget
++	/// \param usProductID USB product ID of the gadget
++	CUSBCDCGadget (CInterruptSystem *pInterruptSystem,
++		       u16 usVendorID = USB_GADGET_VENDOR_ID,
++		       u16 usProductID = USB_GADGET_DEVICE_ID_SERIAL_CDC);
+ 
+ 	~CUSBCDCGadget (void);
+ 
+@@ -103,7 +108,7 @@ private:
+ 	u8 m_StringDescriptorBuffer[80];
+ 
+ private:
+-	static const TUSBDeviceDescriptor s_DeviceDescriptor;
++	static TUSBDeviceDescriptor s_DeviceDescriptor;
+ 
+ 	struct TUSBCDCGadgetConfigurationDescriptor
+ 	{
+diff --git a/include/circle/usb/gadget/usbcdcgadgetendpoint.h b/include/circle/usb/gadget/usbcdcgadgetendpoint.h
+index 57dcb7d5..9f3f3805 100644
+--- a/include/circle/usb/gadget/usbcdcgadgetendpoint.h
++++ b/include/circle/usb/gadget/usbcdcgadgetendpoint.h
+@@ -4,7 +4,7 @@
+ // This file by Sebastien Nicolas <seba1978@gmx.de>
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -41,6 +41,7 @@ public:
+ 	void AttachInterface (CUSBSerialDevice *pInterface);
+ 
+ 	void OnActivate (void) override;
++	void OnDeactivate (void) override;
+ 
+ 	void OnTransferComplete (boolean bIn, size_t nLength) override;
+ 
+diff --git a/include/circle/usb/gadget/usbmidigadget.h b/include/circle/usb/gadget/usbmidigadget.h
+index b563aa90..cce45b6f 100644
+--- a/include/circle/usb/gadget/usbmidigadget.h
++++ b/include/circle/usb/gadget/usbmidigadget.h
+@@ -26,6 +26,7 @@
+ #include <circle/usb/usb.h>
+ #include <circle/usb/usbaudio.h>
+ #include <circle/interrupt.h>
++#include <circle/sysconfig.h>
+ #include <circle/macros.h>
+ #include <circle/types.h>
+ 
+@@ -33,7 +34,11 @@ class CUSBMIDIGadget : public CDWUSBGadget	/// USB MIDI (v1.0) gadget
+ {
+ public:
+ 	/// \param pInterruptSystem Pointer to the interrupt system object
+-	CUSBMIDIGadget (CInterruptSystem *pInterruptSystem);
++	/// \param usVendorID USB vendor ID of the gadget
++	/// \param usProductID USB product ID of the gadget
++	CUSBMIDIGadget (CInterruptSystem *pInterruptSystem,
++			u16 usVendorID = USB_GADGET_VENDOR_ID,
++			u16 usProductID = USB_GADGET_DEVICE_ID_MIDI);
+ 
+ 	~CUSBMIDIGadget (void);
+ 
+@@ -74,7 +79,7 @@ private:
+ 	u8 m_StringDescriptorBuffer[80];
+ 
+ private:
+-	static const TUSBDeviceDescriptor s_DeviceDescriptor;
++	static TUSBDeviceDescriptor s_DeviceDescriptor;
+ 
+ 	struct TUSBMIDIGadgetConfigurationDescriptor
+ 	{
+diff --git a/include/circle/usb/gadget/usbmidigadgetendpoint.h b/include/circle/usb/gadget/usbmidigadgetendpoint.h
+index e7609f26..73c46749 100644
+--- a/include/circle/usb/gadget/usbmidigadgetendpoint.h
++++ b/include/circle/usb/gadget/usbmidigadgetendpoint.h
+@@ -2,7 +2,7 @@
+ // usbmidigadgetendpoint.h
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -38,6 +38,7 @@ public:
+ 	void AttachInterface (CUSBMIDIDevice *pInterface);
+ 
+ 	void OnActivate (void) override;
++	void OnDeactivate (void) override;
+ 
+ 	void OnTransferComplete (boolean bIn, size_t nLength) override;
+ 
+diff --git a/include/circle/usb/gadget/usbmsdgadget.h b/include/circle/usb/gadget/usbmsdgadget.h
+index 1ad7f357..a83df9e0 100644
+--- a/include/circle/usb/gadget/usbmsdgadget.h
++++ b/include/circle/usb/gadget/usbmsdgadget.h
+@@ -4,7 +4,7 @@
+ // USB Mass Storage Gadget by Mike Messinides
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -28,6 +28,7 @@
+ #include <circle/interrupt.h>
+ #include <circle/device.h>
+ #include <circle/synchronize.h>
++#include <circle/sysconfig.h>
+ #include <circle/macros.h>
+ #include <circle/types.h>
+ 
+@@ -141,9 +142,13 @@ class CUSBMSDGadget : public CDWUSBGadget	/// USB mass storage device gadget
+ public:
+ 	/// \param pInterruptSystem Pointer to the interrupt system object
+ 	/// \param pDevice Pointer to the block device, to be controlled by this gadget
++	/// \param usVendorID USB vendor ID of the gadget
++	/// \param usProductID USB product ID of the gadget
+ 	/// \note pDevice must be initialized yet, when it is specified here.
+ 	/// \note SetDevice() has to be called later, when pDevice is not specified here.
+-	CUSBMSDGadget (CInterruptSystem *pInterruptSystem, CDevice *pDevice = nullptr);
++	CUSBMSDGadget (CInterruptSystem *pInterruptSystem, CDevice *pDevice = nullptr,
++		       u16 usVendorID = USB_GADGET_VENDOR_ID,
++		       u16 usProductID = USB_GADGET_DEVICE_ID_MSD);
+ 
+ 	~CUSBMSDGadget (void);
+ 
+@@ -184,12 +189,15 @@ private:
+ 
+ 	int OnClassOrVendorRequest (const TSetupData *pSetupData, u8 *pData) override;
+ 
++	void OnNegotiatedSpeed (TDeviceSpeed Speed) override;
++
+ private:
+ 	friend class CUSBMSDGadgetEndpoint;
+ 
+ 	void OnTransferComplete (boolean bIn, size_t nLength);
+ 
+ 	void OnActivate(); //called from OUT ep
++	void OnDeactivate();
+ 
+ private:
+ 	void HandleSCSICommand();
+@@ -213,7 +221,7 @@ private:
+ 	u8 m_StringDescriptorBuffer[80];
+ 
+ private:
+-	static const TUSBDeviceDescriptor s_DeviceDescriptor;
++	static TUSBDeviceDescriptor s_DeviceDescriptor;
+ 
+ 	struct TUSBMSTGadgetConfigurationDescriptor
+ 	{
+diff --git a/include/circle/usb/gadget/usbmsdgadgetendpoint.h b/include/circle/usb/gadget/usbmsdgadgetendpoint.h
+index 0cc2bb9f..b13642e2 100644
+--- a/include/circle/usb/gadget/usbmsdgadgetendpoint.h
++++ b/include/circle/usb/gadget/usbmsdgadgetendpoint.h
+@@ -4,7 +4,7 @@
+ // USB Mass Storage Gadget by Mike Messinides
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -36,6 +36,7 @@ public:
+ 	~CUSBMSDGadgetEndpoint (void);
+ 
+ 	void OnActivate (void) override;
++	void OnDeactivate (void) override;
+ 
+ 	void OnTransferComplete (boolean bIn, size_t nLength) override;
+ 
+@@ -51,6 +52,7 @@ private:
+ 	};
+ 
+ 	void BeginTransfer (TMSDTransferMode Mode, void *pBuffer, size_t nLength);
++	void CancelTransfer (void);
+ 
+ 	void StallRequest(boolean bIn);
+ 
+diff --git a/include/circle/usb/usbcdcethernet.h b/include/circle/usb/usbcdcethernet.h
+index d91de161..00d10e2d 100644
+--- a/include/circle/usb/usbcdcethernet.h
++++ b/include/circle/usb/usbcdcethernet.h
+@@ -25,6 +25,7 @@
+ #include <circle/usb/usbendpoint.h>
+ #include <circle/usb/usbrequest.h>
+ #include <circle/macaddress.h>
++#include <circle/synchronize.h>
+ #include <circle/types.h>
+ 
+ class CUSBCDCEthernetDevice : public CUSBFunction, CNetDevice
+@@ -45,6 +46,8 @@ public:
+ 	boolean SetMulticastFilter (const u8 Groups[][MAC_ADDRESS_SIZE]);
+ 
+ private:
++	static void CompletionRoutine (CUSBRequest *pURB, void *pParam, void *pContext);
++
+ 	u8 GetMACAddressStringIndex (void);	// returns 0 on error
+ 
+ 	boolean InitMACAddress (u8 iMACAddress);
+@@ -58,6 +61,10 @@ private:
+ 	CUSBEndpoint *m_pEndpointBulkOut;
+ 
+ 	CMACAddress m_MACAddress;
++
++	CUSBRequest *volatile m_pURB;
++	DMA_BUFFER (u8, m_RxBuffer, FRAME_BUFFER_SIZE);
++	volatile unsigned m_nRxLength;
+ };
+ 
+ #endif
+diff --git a/lib/usb/dwhcidevice.cpp b/lib/usb/dwhcidevice.cpp
+index f501ce1c..52be187d 100644
+--- a/lib/usb/dwhcidevice.cpp
++++ b/lib/usb/dwhcidevice.cpp
+@@ -2,7 +2,7 @@
+ // dwhcidevice.cpp
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2014-2025  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2014-2025  R. Stange <rsta2@gmx.net>
+ // 
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -151,7 +151,8 @@ boolean CDWHCIDevice::Initialize (boolean bScanDevices)
+ 	assert (m_pTimer != 0);
+ 
+ 	CDWHCIRegister VendorId (DWHCI_CORE_VENDOR_ID);
+-	if (VendorId.Read () != 0x4F54280A)
++	if (   VendorId.Read () != 0x4F54280A
++	    && VendorId.Get ()  != 0x4F54294A)		// QEMU
+ 	{
+ 		LOGERR ("Unknown vendor 0x%0X", VendorId.Get ());
+ 		return FALSE;
+diff --git a/lib/usb/gadget/dwusbgadget.cpp b/lib/usb/gadget/dwusbgadget.cpp
+index dc3f93cd..a4eb45f2 100644
+--- a/lib/usb/gadget/dwusbgadget.cpp
++++ b/lib/usb/gadget/dwusbgadget.cpp
+@@ -216,8 +216,14 @@ boolean CDWUSBGadget::InitCore (void)
+ 		return FALSE;
+ 	}
+ 
++	// Configure USB core - matching Linux dwc2 gadget.c:dwc2_hsotg_core_init_disconnected
+ 	CDWHCIRegister USBConfig (DWHCI_CORE_USB_CFG);
+ 	USBConfig.Read ();
++	
++	// Set timeout calibration - Linux line 3416-3417
++	USBConfig.And (~DWHCI_CORE_USB_CFG_TURNAROUND_TIME__MASK);
++	USBConfig.Or (7 << DWHCI_CORE_USB_CFG_TURNAROUND_TIME__SHIFT);
++	
+ 	USBConfig.And (~DWHCI_CORE_USB_CFG_ULPI_UTMI_SEL);	// select UTMI+
+ 	USBConfig.And (~DWHCI_CORE_USB_CFG_PHYIF);		// UTMI width is 8
+ 	USBConfig.Write ();
+@@ -252,7 +258,7 @@ boolean CDWUSBGadget::InitCore (void)
+ 
+ void CDWUSBGadget::InitCoreDevice (void)
+ {
+-	// Restart the PHY clock
++	// Restart the PHY clock - matches Linux dwc2_phy_init
+ 	CDWHCIRegister Power (ARM_USB_POWER, 0);
+ 	Power.Write ();
+ 
+@@ -262,17 +268,7 @@ void CDWUSBGadget::InitCoreDevice (void)
+ 	CTimer::Get ()->MsDelay (40);
+ #endif
+ 
+-	// Set device speed
+-	CDWHCIRegister DeviceConfig (DWHCI_DEV_CFG);
+-	DeviceConfig.Read ();
+-	DeviceConfig.And (~DWHCI_DEV_CFG_DEV_SPEED__MASK);
+-	DeviceConfig.Or (   (  m_DeviceSpeed == FullSpeed
+-			     ? DWHCI_DEV_CFG_DEV_SPEED_FS
+-			     : DWHCI_DEV_CFG_DEV_SPEED_HS)
+-			 << DWHCI_DEV_CFG_DEV_SPEED__SHIFT);
+-	DeviceConfig.Write ();
+-
+-	// Configure data FIFO sizes (dynamic FIFO sizing enabled)
++	// Configure data FIFO sizes (dynamic FIFO sizing enabled) - matches Linux dwc2_hsotg_init_fifo
+ 	ASSERT_STATIC (   RX_FIFO_SIZE + NPER_TX_FIFO_SIZE + DEDICATED_TX_FIFO_SIZE*NumberOfInEPs
+ 		       <= TOTAL_FIFO_SIZE);
+ 
+@@ -300,30 +296,78 @@ void CDWUSBGadget::InitCoreDevice (void)
+ 			   << DWHCI_CORE_DFIFO_CFG_EPINFO_BASE__SHIFT);
+ 	DataFIFOConfig.Write ();
+ 
++	// Flush FIFOs - matches Linux sequence
+ 	FlushTxFIFO (0x10);	 	// Flush all TX FIFOs
+ 	FlushRxFIFO ();
+ 
+-	// Flush the learning queue
+-	CDWHCIRegister Reset (DWHCI_CORE_RESET, DWHCI_CORE_RESET_IN_TOKEN_QUEUE_FLUSH);
+-	Reset.Write ();
++	// CRITICAL FIX #1: DO NOT flush token queue here!
++	// Linux does NOT flush the token queue during init - only during USB reset.
++	// Flushing the token queue here was clearing DCFG register, losing device speed setting.
++	// The token queue flush belongs ONLY in HandleUSBReset().
+ 
+-	// Clear all device interrupts (multiprocessing support is not used)
+-	for (unsigned i = 0; i < NumberOfInEPs; i++)
+-	{
+-		CDWHCIRegister EachInEPIntMask (DWHCI_DEV_EACH_IN_EP_INT_MASK (i), 0);
+-		EachInEPIntMask.Write ();
+-	}
++	// Set device speed BEFORE clearing soft disconnect - matching Linux exactly
++	CDWHCIRegister DeviceConfig (DWHCI_DEV_CFG);
++	DeviceConfig.Read ();
++	DeviceConfig.And (~DWHCI_DEV_CFG_DEV_SPEED__MASK);
++	
++	// TESTING: Try forcing Full Speed to see if BIOS handles it better
++	// Uncomment one of these two lines:
++	DeviceConfig.Or (DWHCI_DEV_CFG_DEV_SPEED_HS << DWHCI_DEV_CFG_DEV_SPEED__SHIFT);  // High Speed
++	// DeviceConfig.Or (DWHCI_DEV_CFG_DEV_SPEED_FS << DWHCI_DEV_CFG_DEV_SPEED__SHIFT);  // Full Speed (for testing)
++	
++	// Also set EP mismatch count (for IN endpoints) - Linux sets this to 1
++	DeviceConfig.And (~DWHCI_DEV_CFG_EP_MISMATCH_COUNT__MASK);
++	DeviceConfig.Or (1 << DWHCI_DEV_CFG_EP_MISMATCH_COUNT__SHIFT);
++	DeviceConfig.Write ();
+ 
+-	for (unsigned i = 0; i < NumberOfOutEPs; i++)
+-	{
+-		CDWHCIRegister EachOutEPIntMask (DWHCI_DEV_EACH_OUT_EP_INT_MASK (i), 0);
+-		EachOutEPIntMask.Write ();
+-	}
++#ifdef USB_GADGET_DEBUG
++	// Verify DCFG persists after writing (should have EP mismatch count + device speed)
++	// For HighSpeed: EPMISCNT(1) = 0x00040000, DEVSPD_HS = 0, so DCFG = 0x00040000
++	// For FullSpeed: EPMISCNT(1) = 0x00040000, DEVSPD_FS = 1, so DCFG = 0x00040001
++	CDWHCIRegister DeviceConfigCheck (DWHCI_DEV_CFG);
++	u32 nExpectedDCFG = (1 << 18) | (m_DeviceSpeed == HighSpeed ? 0 : 1);
++	LOGDBG ("After setting device speed, DCFG = 0x%08X (expected: 0x%08X)", 
++		DeviceConfigCheck.Read(), nExpectedDCFG);
++#endif
+ 
+-	CDWHCIRegister EachEPInterrupt (DWHCI_DEV_EACH_EP_INT, ~0U);
+-	EachEPInterrupt.Write ();
+-	CDWHCIRegister EachEPInterruptMask (DWHCI_DEV_EACH_EP_INT, 0);
+-	EachEPInterruptMask.Write ();
++	// Set DCTL.SftDiscon to keep device disconnected during init - matching Linux Section 1.2
++	CDWHCIRegister DeviceCtrl (DWHCI_DEV_CTRL);
++	DeviceCtrl.Read ();
++	DeviceCtrl.Or (DWHCI_DEV_CTRL_SOFT_DISCONNECT);
++	DeviceCtrl.Write ();
++
++#ifdef USB_GADGET_DEBUG
++	CDWHCIRegister DCFGCheck1 (DWHCI_DEV_CFG);
++	LOGDBG ("After setting SftDiscon, DCFG = 0x%08X", DCFGCheck1.Read());
++#endif
++
++	// CRITICAL FIX #3: DO NOT write to DWHCI_DEV_EACH_EP_INT registers!
++	// These registers overlap with or corrupt DCFG (0x800).
++	// Linux dwc2 does NOT use these "each EP" interrupt registers.
++	// Commenting out the code that was clearing DCFG:
++	
++	// Clear all device interrupts (multiprocessing support is not used)
++	// for (unsigned i = 0; i < NumberOfInEPs; i++)
++	// {
++	// 	CDWHCIRegister EachInEPIntMask (DWHCI_DEV_EACH_IN_EP_INT_MASK (i), 0);
++	// 	EachInEPIntMask.Write ();
++	// }
++	//
++	// for (unsigned i = 0; i < NumberOfOutEPs; i++)
++	// {
++	// 	CDWHCIRegister EachOutEPIntMask (DWHCI_DEV_EACH_OUT_EP_INT_MASK (i), 0);
++	// 	EachOutEPIntMask.Write ();
++	// }
++	//
++	// CDWHCIRegister EachEPInterrupt (DWHCI_DEV_EACH_EP_INT, ~0U);
++	// EachEPInterrupt.Write ();
++	// CDWHCIRegister EachEPInterruptMask (DWHCI_DEV_EACH_EP_INT, 0);
++	// EachEPInterruptMask.Write ();
++
++#ifdef USB_GADGET_DEBUG
++	CDWHCIRegister DCFGCheck2 (DWHCI_DEV_CFG);
++	LOGDBG ("After clearing Each EP masks, DCFG = 0x%08X", DCFGCheck2.Read());
++#endif
+ 
+ 	// Initialize all IN EP registers
+ 	for (unsigned i = 0; i <= NumberOfInEPs; i++)
+@@ -332,7 +376,10 @@ void CDWUSBGadget::InitCoreDevice (void)
+ 		if (InEPCtrl.Read () & DWHCI_DEV_EP_CTRL_EP_ENABLE)
+ 		{
+ 			InEPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_DISABLE);
+-			InEPCtrl.Or (DWHCI_DEV_EP_CTRL_SET_NAK);
++		}
++		else
++		{
++			InEPCtrl.ClearAll ();
+ 		}
+ 		InEPCtrl.Write ();
+ 
+@@ -342,39 +389,39 @@ void CDWUSBGadget::InitCoreDevice (void)
+ 		CDWHCIRegister InEPDMAAddress (DWHCI_DEV_IN_EP_DMA_ADDR (i), 0);
+ 		InEPDMAAddress.Write ();
+ 
+-		CDWHCIRegister InEPInterrupt (DWHCI_DEV_IN_EP_INT (i), 0xFF);
+-		InEPInterrupt.Write ();
++		CDWHCIRegister InEPInt (DWHCI_DEV_IN_EP_INT (i), ~0U);
++		InEPInt.Write ();
++	}
++
++#ifdef USB_GADGET_DEBUG
++	CDWHCIRegister DCFGCheck3 (DWHCI_DEV_CFG);
++	LOGDBG ("After IN EP init, DCFG = 0x%08X", DCFGCheck3.Read());
++#endif
++
++	// Set global OUT NAK
++	DeviceCtrl.Read ();
++	DeviceCtrl.Or (DWHCI_DEV_CTRL_SET_GLOBAL_OUT_NAK);
++	DeviceCtrl.Write ();
++
++	// Wait for global NAK to take effect
++	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT);
++	if (!WaitForBit (&IntStatus, DWHCI_CORE_INT_STAT_GLOBAL_OUT_NAK_EFF, TRUE, 100))
++	{
++		LOGWARN ("Global OUT NAK timeout");
+ 	}
+ 
+ 	// Initialize all OUT EP registers
+ 	for (unsigned i = 0; i <= NumberOfOutEPs; i++)
+ 	{
+-		CDWHCIRegister OutEPCtrl (DWHCI_DEV_OUT_EP_CTRL (i), 0);
++		CDWHCIRegister OutEPCtrl (DWHCI_DEV_OUT_EP_CTRL (i));
+ 		if (OutEPCtrl.Read () & DWHCI_DEV_EP_CTRL_EP_ENABLE)
+ 		{
+-			CDWHCIRegister DeviceCtrl (DWHCI_DEV_CTRL);
+-			DeviceCtrl.Read ();
+-			DeviceCtrl.Set (DWHCI_DEV_CTRL_SET_GLOBAL_OUT_NAK);
+-			DeviceCtrl.Write ();
+-
+-			CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT);
+-			WaitForBit (&IntStatus, DWHCI_CORE_INT_STAT_GLOBAL_OUT_NAK_EFF, TRUE, 1000);
+-			IntStatus.Set (DWHCI_CORE_INT_STAT_GLOBAL_OUT_NAK_EFF);
+-			IntStatus.Write ();
+-
+-			OutEPCtrl.ClearAll ();
+-			OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_DISABLE);
+ 			OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_SET_NAK);
+-			OutEPCtrl.Write ();
+-
+-			CDWHCIRegister OutEPInterrupt (DWHCI_DEV_OUT_EP_INT (i));
+-			WaitForBit (&OutEPInterrupt, DWHCI_DEV_OUT_EP_INT_EP_DISABLED, TRUE, 1000);
+-			OutEPInterrupt.Set (DWHCI_DEV_OUT_EP_INT_EP_DISABLED);
+-			OutEPInterrupt.Write ();
+-
+-			DeviceCtrl.Read ();
+-			DeviceCtrl.Set (DWHCI_DEV_CTRL_CLEAR_GLOBAL_OUT_NAK);
+-			DeviceCtrl.Write ();
++			OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_DISABLE);
++		}
++		else
++		{
++			OutEPCtrl.ClearAll ();
+ 		}
+ 		OutEPCtrl.Write ();
+ 
+@@ -384,44 +431,72 @@ void CDWUSBGadget::InitCoreDevice (void)
+ 		CDWHCIRegister OutEPDMAAddress (DWHCI_DEV_OUT_EP_DMA_ADDR (i), 0);
+ 		OutEPDMAAddress.Write ();
+ 
+-		CDWHCIRegister OutEPInterrupt (DWHCI_DEV_OUT_EP_INT (i), 0xFF);
+-		OutEPInterrupt.Write ();
++		CDWHCIRegister OutEPInt (DWHCI_DEV_OUT_EP_INT (i), ~0U);
++		OutEPInt.Write ();
+ 	}
+ 
+-	EnableDeviceInterrupts ();
+-
+-	CDWHCIRegister InEPCommonIntMask (DWHCI_DEV_IN_EP_COMMON_INT_MASK);
+-	InEPCommonIntMask.Read ();
+-	InEPCommonIntMask.Or (DWHCI_DEV_IN_EP_COMMON_INT_MASK_FIFO_UNDERRUN);
+-	InEPCommonIntMask.Write ();
+-}
+-
+-boolean CDWUSBGadget::Reset (void)
+-{
+-	CDWHCIRegister Reset (DWHCI_CORE_RESET, 0);
+-
+-	// wait for AHB master IDLE state
+-	if (!WaitForBit (&Reset, DWHCI_CORE_RESET_AHB_IDLE, TRUE, 100))
+-	{
+-		return FALSE;
+-	}
++#ifdef USB_GADGET_DEBUG
++	CDWHCIRegister DCFGCheck4 (DWHCI_DEV_CFG);
++	LOGDBG ("After OUT EP init, DCFG = 0x%08X", DCFGCheck4.Read());
++#endif
+ 
+-	// core soft reset
+-	Reset.Or (DWHCI_CORE_RESET_SOFT_RESET);
+-	Reset.Write ();
++	// Clear global OUT NAK
++	DeviceCtrl.Read ();
++	DeviceCtrl.Or (DWHCI_DEV_CTRL_CLEAR_GLOBAL_OUT_NAK);
++	DeviceCtrl.Write ();
++
++	// Clear all EP interrupts initially - matching Linux (DAINTMSK = 0)
++	CDWHCIRegister AllEPsInt (DWHCI_DEV_ALL_EPS_INT_STAT, ~0U);
++	AllEPsInt.Write ();
++	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK, 0);
++	AllEPsIntMask.Write ();
++
++	EnableCommonInterrupts ();
++	
++	// Clear Global NAKs while KEEPING SftDiscon set - matching Linux exactly
++	// Linux line 3570-3573: Sets CGOUTNAK | CGNPINNAK | SFTDISCON atomically
++	CDWHCIRegister DeviceCtrlNAK (DWHCI_DEV_CTRL);
++	DeviceCtrlNAK.Read ();
++	DeviceCtrlNAK.Or (DWHCI_DEV_CTRL_CLEAR_GLOBAL_OUT_NAK);  // Clear Global OUT NAK (bit 10)
++#ifdef DWHCI_DEV_CTRL_CLEAR_GLOBAL_NON_PER_IN_NAK
++	DeviceCtrlNAK.Or (DWHCI_DEV_CTRL_CLEAR_GLOBAL_NON_PER_IN_NAK);  // Clear Global NP IN NAK (bit 8)
++#else
++	DeviceCtrlNAK.Or (1 << 8);  // Clear Global NP IN NAK (bit 8) - fallback
++#endif
++	// Note: NOT clearing SftDiscon here - keeping device disconnected
++	DeviceCtrlNAK.Write ();
+ 
+-	if (!WaitForBit (&Reset, DWHCI_CORE_RESET_SOFT_RESET, FALSE, 10))
+-	{
+-		return FALSE;
+-	}
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Cleared Global NAKs, device still disconnected");
++#endif
+ 
++	// Must be at least 3ms to allow bus to see disconnect - Linux line 3582-3583
+ #ifdef NO_BUSY_WAIT
+-	CScheduler::Get ()->MsSleep (100);
++	CScheduler::Get ()->MsSleep (3);
+ #else
+-	CTimer::Get ()->MsDelay (100);
++	CTimer::Get ()->MsDelay (3);
+ #endif
+ 
+-	return TRUE;
++	EnableDeviceInterrupts ();
++}
++
++void CDWUSBGadget::EnableCommonInterrupts (void)
++{
++	// Set common IN EP interrupt mask - matching Linux DIEPMSK
++	CDWHCIRegister InEPCommonIntMask (DWHCI_DEV_IN_EP_COMMON_INT_MASK, 0);
++	InEPCommonIntMask.Or (DWHCI_DEV_IN_EP_INT_XFER_COMPLETE);
++	InEPCommonIntMask.Or (DWHCI_DEV_IN_EP_INT_TIMEOUT);
++	InEPCommonIntMask.Or (DWHCI_DEV_IN_EP_INT_AHB_ERROR);
++	InEPCommonIntMask.Or (DWHCI_DEV_IN_EP_INT_EP_DISABLED);
++	InEPCommonIntMask.Write ();
++
++	// Set common OUT EP interrupt mask - matching Linux DOEPMSK
++	CDWHCIRegister OutEPCommonIntMask (DWHCI_DEV_OUT_EP_COMMON_INT_MASK, 0);
++	OutEPCommonIntMask.Or (DWHCI_DEV_OUT_EP_INT_SETUP_DONE);
++	OutEPCommonIntMask.Or (DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE);
++	OutEPCommonIntMask.Or (DWHCI_DEV_OUT_EP_INT_AHB_ERROR);
++	OutEPCommonIntMask.Or (DWHCI_DEV_OUT_EP_INT_EP_DISABLED);
++	OutEPCommonIntMask.Write ();
+ }
+ 
+ void CDWUSBGadget::EnableDeviceInterrupts (void)
+@@ -434,7 +509,7 @@ void CDWUSBGadget::EnableDeviceInterrupts (void)
+ 	IntStatus.SetAll ();
+ 	IntStatus.Write ();
+ 
+-	// Enable interrupts
++	// Enable interrupts - matching Linux GINTMSK
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_USB_SUSPEND);
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_USB_RESET_INTR);
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_ENUM_DONE);
+@@ -442,6 +517,40 @@ void CDWUSBGadget::EnableDeviceInterrupts (void)
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_OUT_EP_INTR);
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_IN_EP_MISMATCH);
+ 	IntMask.Write ();
++
++	// CRITICAL FIX #2: Clear SftDiscon - matching Linux dwc2_hsotg_core_connect()
++	// NAKs were already cleared earlier with 3ms delay
++	// This simply enables the pull-up resistor to connect the device
++#ifdef USB_GADGET_DEBUG
++	CDWHCIRegister PreCheckDCFG (DWHCI_DEV_CFG);
++	LOGDBG ("Before clearing SftDiscon: DCFG = 0x%08X", PreCheckDCFG.Read());
++#endif
++
++	CDWHCIRegister DeviceCtrl (DWHCI_DEV_CTRL);
++	DeviceCtrl.Read ();
++	
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Current DCTL = 0x%08X (SftDiscon should be set)", DeviceCtrl.Get());
++#endif
++	
++	// Simply clear soft disconnect - Linux dwc2_clear_bit(hsotg, DCTL, DCTL_SFTDISCON)
++	DeviceCtrl.And (~DWHCI_DEV_CTRL_SOFT_DISCONNECT);
++
++#ifdef USB_GADGET_DEBUG
++	LOGDBG ("Writing DCTL = 0x%08X (clearing SftDiscon only)", DeviceCtrl.Get());
++#endif
++
++	DeviceCtrl.Write ();
++
++#ifdef USB_GADGET_DEBUG
++	// Check DCTL after write to verify SftDiscon is actually cleared
++	CDWHCIRegister PostCheckDCTL (DWHCI_DEV_CTRL);
++	LOGDBG ("After DCTL write, DCTL = 0x%08X (should be 0x00000000)", PostCheckDCTL.Read());
++	
++	CDWHCIRegister PostCheckDCFG (DWHCI_DEV_CFG);
++	LOGDBG ("After clearing SftDiscon: DCFG = 0x%08X", PostCheckDCFG.Read());
++	LOGDBG ("Pull-up enabled, device should now be visible on bus");
++#endif
+ }
+ 
+ void CDWUSBGadget::FlushTxFIFO (unsigned nFIFO)
+@@ -474,6 +583,35 @@ void CDWUSBGadget::FlushRxFIFO (void)
+ 	CTimer::Get ()->usDelay (1);		// Wait for 3 PHY clocks
+ }
+ 
++boolean CDWUSBGadget::Reset (void)
++{
++	CDWHCIRegister Reset (DWHCI_CORE_RESET, 0);
++
++	// wait for AHB master IDLE state
++	if (!WaitForBit (&Reset, DWHCI_CORE_RESET_AHB_IDLE, TRUE, 100))
++	{
++		return FALSE;
++	}
++
++	// core soft reset
++	Reset.Or (DWHCI_CORE_RESET_SOFT_RESET);
++	Reset.Write ();
++
++	if (!WaitForBit (&Reset, DWHCI_CORE_RESET_SOFT_RESET, FALSE, 10))
++	{
++		return FALSE;
++	}
++
++	// Delay after reset - matching Linux (100ms is used)
++#ifdef NO_BUSY_WAIT
++	CScheduler::Get ()->MsSleep (100);
++#else
++	CTimer::Get ()->MsDelay (100);
++#endif
++
++	return TRUE;
++}
++
+ boolean CDWUSBGadget::WaitForBit (CDWHCIRegister *pRegister,
+ 				  u32		  nMask,
+ 				  boolean	  bWaitUntilSet,
+@@ -506,18 +644,30 @@ void CDWUSBGadget::HandleUSBSuspend (void)
+ 	LOGDBG ("USB suspend");
+ #endif
+ 
+-	m_bPnPEvent[PnPEventSuspend] = TRUE;
+-
+-	for (unsigned i = 0; i <= NumberOfEPs; i++)
++	if (   m_State != StatePowered
++	    && m_State != StateSuspended)
+ 	{
+-		if (m_pEP[i])
++		m_bPnPEvent[PnPEventSuspend] = TRUE;
++
++		for (unsigned i = 0; i <= NumberOfEPs; i++)
+ 		{
+-			m_pEP[i]->OnSuspend ();
++			if (m_pEP[i])
++			{
++				m_pEP[i]->OnSuspend ();
++			}
+ 		}
++
++		// Disable all interrupts
++		CDWHCIRegister AHBConfig (DWHCI_CORE_AHB_CFG);
++		AHBConfig.Read ();
++		AHBConfig.And (~DWHCI_CORE_AHB_CFG_GLOBALINT_MASK);
++		AHBConfig.Write ();
+ 	}
+ 
+ 	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_USB_SUSPEND);
+ 	IntStatus.Write ();
++
++	m_State = StateSuspended;
+ }
+ 
+ void CDWUSBGadget::HandleUSBReset (void)
+@@ -526,6 +676,21 @@ void CDWUSBGadget::HandleUSBReset (void)
+ 	LOGDBG ("USB reset");
+ #endif
+ 
++	switch (m_State)
++	{
++	case StateConfigured:
++		SetConfiguration (0);
++		// fall through
++
++	case StateEnumDone:
++		assert (m_pEP[0]);
++		m_pEP[0]->OnDeactivate ();
++		break;
++
++	default:
++		break;
++	}
++
+ 	// Set NAK for all OUT EPs
+ 	for (unsigned i = 0; i <= NumberOfOutEPs; i++)
+ 	{
+@@ -536,7 +701,8 @@ void CDWUSBGadget::HandleUSBReset (void)
+ 
+ 	FlushTxFIFO (0x10);
+ 
+-	// Flush learning queue
++	// Flush token queue - THIS IS THE RIGHT PLACE FOR IT (not in InitCoreDevice!)
++	// Linux does this in USB reset handler, not during initial device setup
+ 	CDWHCIRegister Reset (DWHCI_CORE_RESET, DWHCI_CORE_RESET_IN_TOKEN_QUEUE_FLUSH);
+ 	Reset.Write ();
+ 
+@@ -607,6 +773,16 @@ void CDWUSBGadget::HandleEnumerationDone (void)
+ 		USBConfig.Or (9 << DWHCI_CORE_USB_CFG_TURNAROUND_TIME__SHIFT);
+ 		USBConfig.Write ();
+ 
++		TDeviceSpeed Speed = GetNegotiatedUSBSpeed ();
++		
++#ifdef USB_GADGET_DEBUG
++		const char *pSpeedStr = Speed == HighSpeed ? "High Speed" : 
++		                        Speed == FullSpeed ? "Full Speed" : "Unknown";
++		LOGDBG ("Negotiated USB speed: %s", pSpeedStr);
++#endif
++		
++		OnNegotiatedSpeed (Speed);
++
+ 		assert (m_pEP[0]);
+ 		m_pEP[0]->OnActivate ();
+ 
+@@ -649,7 +825,8 @@ void CDWUSBGadget::HandleOutEPInterrupt (void)
+ 	LOGDBG ("Out EP interrupt");
+ #endif
+ 
+-	assert (   m_State == StateEnumDone
++	assert (   m_State == StateSuspended
++		|| m_State == StateEnumDone
+ 		|| m_State == StateConfigured);
+ 
+ 	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
+@@ -660,9 +837,19 @@ void CDWUSBGadget::HandleOutEPInterrupt (void)
+ 	{
+ 		if (nOutEPStat & 1)
+ 		{
+-			assert (nEP <= NumberOfEPs);
+-			assert (m_pEP[nEP]);
+-			m_pEP[nEP]->HandleOutInterrupt ();
++			if (m_State != StateSuspended)
++			{
++				assert (nEP <= NumberOfEPs);
++				assert (m_pEP[nEP]);
++				m_pEP[nEP]->HandleOutInterrupt ();
++			}
++			else
++			{
++				CDWHCIRegister OutEPIntAck (DWHCI_DEV_OUT_EP_INT (nEP));
++				OutEPIntAck.Set (  DWHCI_DEV_OUT_EP_INT_SETUP_DONE
++						 | DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE);
++				OutEPIntAck.Write ();
++			}
+ 		}
+ 	}
+ }
+@@ -676,12 +863,14 @@ void CDWUSBGadget::InterruptHandler (void)
+ 	u32 nIntStatus = IntStatus.Read () & IntMask.Read ();
+ 
+ #ifdef USB_GADGET_DEBUG
+-	LOGDBG ("IRQ (status 0x%08X)", nIntStatus);
++	LOGDBG ("IRQ (status 0x%08X, state %u)", nIntStatus, (unsigned) m_State);
+ #endif
+ 
+ 	if (nIntStatus & DWHCI_CORE_INT_MASK_USB_SUSPEND)
+ 	{
+ 		HandleUSBSuspend ();
++
++		nIntStatus = 0;
+ 	}
+ 
+ 	if (nIntStatus & DWHCI_CORE_INT_MASK_USB_RESET_INTR)
+@@ -752,6 +941,26 @@ void CDWUSBGadget::SetDeviceAddress (u8 uchAddress)
+ 
+ boolean CDWUSBGadget::SetConfiguration (u8 uchConfiguration)
+ {
++	if (uchConfiguration == 0)
++	{
++		if (m_State == StateEnumDone)
++		{
++			return TRUE;
++		}
++
++		m_State = StateEnumDone;
++
++		for (unsigned i = 1; i <= NumberOfEPs; i++)
++		{
++			if (m_pEP[i])
++			{
++				m_pEP[i]->OnDeactivate ();
++			}
++		}
++
++		return TRUE;
++	}
++
+ 	if (uchConfiguration != 1)
+ 	{
+ 		return FALSE;
+@@ -782,3 +991,22 @@ boolean CDWUSBGadget::SetConfiguration (u8 uchConfiguration)
+ 
+ 	return TRUE;
+ }
++
++CDWUSBGadget::TDeviceSpeed CDWUSBGadget::GetNegotiatedUSBSpeed (void) const
++{
++	CDWHCIRegister DeviceStatus (DWHCI_DEV_STS);
++	u32 nEnumSpeed = (DeviceStatus.Read () & DWHCI_DEV_STS_ENUM_SPEED__MASK) >> DWHCI_DEV_STS_ENUM_SPEED__SHIFT;
++
++	switch (nEnumSpeed)
++	{
++	case DWHCI_DEV_STS_ENUM_SPEED_HS_30_60:
++		return HighSpeed;
++
++	case DWHCI_DEV_STS_ENUM_SPEED_FS_30_60:
++	case DWHCI_DEV_STS_ENUM_SPEED_FS_48:
++		return FullSpeed;
++
++	default:
++		return DeviceSpeedUnknown;
++	}
++}
+\ No newline at end of file
+diff --git a/lib/usb/gadget/dwusbgadgetendpoint.cpp b/lib/usb/gadget/dwusbgadgetendpoint.cpp
+index d71abd08..3b93a816 100644
+--- a/lib/usb/gadget/dwusbgadgetendpoint.cpp
++++ b/lib/usb/gadget/dwusbgadgetendpoint.cpp
+@@ -2,7 +2,7 @@
+ // dwusbgadgetendpoint.cpp
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -65,6 +65,22 @@ CDWUSBGadgetEndpoint::~CDWUSBGadgetEndpoint (void)
+ 	m_pGadget->RemoveEndpoint (m_nEP);
+ }
+ 
++void CDWUSBGadgetEndpoint::SetMaxPacketSize (size_t nMaxPacketSize)
++{
++	m_nMaxPacketSize = nMaxPacketSize;
++
++	if (m_nEP != 0)
++	{
++		CDWHCIRegister EPCtrl (  m_Direction == DirectionIn
++				       ? DWHCI_DEV_IN_EP_CTRL (m_nEP)
++				       : DWHCI_DEV_OUT_EP_CTRL (m_nEP));
++		EPCtrl.Read ();
++		EPCtrl.And (~DWHCI_DEV_EP_CTRL_MAX_PACKET_SIZ__MASK);
++		EPCtrl.Or (m_nMaxPacketSize << DWHCI_DEV_EP_CTRL_MAX_PACKET_SIZ__SHIFT);
++		EPCtrl.Write ();
++	}
++}
++
+ void CDWUSBGadgetEndpoint::OnUSBReset (void)
+ {
+ 	InitTransfer ();
+@@ -255,6 +271,30 @@ void CDWUSBGadgetEndpoint::BeginTransfer (TTransferMode Mode, void *pBuffer, siz
+ 	}
+ }
+ 
++void CDWUSBGadgetEndpoint::CancelTransfer (void)
++{
++	if (m_TransferMode == TransferDataIn)
++	{
++		CDWHCIRegister InEPCtrl (DWHCI_DEV_IN_EP_CTRL (m_nEP), 0);
++		InEPCtrl.Read ();
++		InEPCtrl.And (~DWHCI_DEV_EP_CTRL_EP_ENABLE);
++		InEPCtrl.And (~DWHCI_DEV_EP_CTRL_CLEAR_NAK);
++		InEPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_DISABLE);
++		InEPCtrl.Write ();
++	}
++	else if (m_TransferMode != TransferUnknown)
++	{
++		CDWHCIRegister OutEPCtrl (DWHCI_DEV_OUT_EP_CTRL (m_nEP));
++		OutEPCtrl.Read ();
++		OutEPCtrl.And (~DWHCI_DEV_EP_CTRL_EP_ENABLE);
++		OutEPCtrl.And (~DWHCI_DEV_EP_CTRL_CLEAR_NAK);
++		OutEPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_DISABLE);
++		OutEPCtrl.Write ();
++	}
++
++	InitTransfer ();
++}
++
+ size_t CDWUSBGadgetEndpoint::FinishTransfer (void)
+ {
+ 	assert (m_TransferMode < TransferUnknown);
+@@ -275,7 +315,12 @@ size_t CDWUSBGadgetEndpoint::FinishTransfer (void)
+ 
+ 	if (nXferSize)
+ 	{
+-		debug_hexdump (m_pTransferBuffer, nXferSize, From);
++		size_t nDumpSize = nXferSize > 16 ? 16 : nXferSize;  // Max 16 bytes
++		debug_hexdump (m_pTransferBuffer, nDumpSize, From);
++		if (nXferSize > 16)
++		{
++			LOGDBG ("... (%u more bytes not shown)", nXferSize - 16);
++		}
+ 	}
+ #endif
+ 
+diff --git a/lib/usb/gadget/dwusbgadgetendpoint0.cpp b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
+index 3a70f3d3..ba825668 100644
+--- a/lib/usb/gadget/dwusbgadgetendpoint0.cpp
++++ b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
+@@ -2,7 +2,7 @@
+ // dwusbgadgetendpoint0.cpp
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -40,6 +40,13 @@ void CDWUSBGadgetEndpoint0::OnActivate (void)
+ 	BeginTransfer (TransferSetupOut, m_OutBuffer, sizeof (TSetupData));
+ }
+ 
++void CDWUSBGadgetEndpoint0::OnDeactivate (void)
++{
++	m_State = StateDisconnect;
++
++	CancelTransfer ();
++}
++
+ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
+ {
+ 	assert (m_pGadget);
+@@ -166,15 +173,25 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
+ 		default:
+ 			if (pSetupData->wLength)
+ 			{
+-				m_State = StateOutDataPhase;
+-
+ 				// EP0 can transfer only up to 127 bytes at once. Therefore
+ 				// we split greater transfers into multiple transfers, with
+ 				// up to max. packet size each.
+-				assert (pSetupData->wLength <= sizeof m_OutBuffer);
++
++				if (pSetupData->wLength > sizeof m_OutBuffer)
++				{
++					Stall (FALSE);
++
++					BeginTransfer (TransferSetupOut, m_OutBuffer,
++						       sizeof (TSetupData));
++
++					return;
++				}
++
+ 				m_nBytesLeft = pSetupData->wLength;
+ 				m_pBufPtr = m_OutBuffer;
+ 
++				m_State = StateOutDataPhase;
++
+ 				BeginTransfer (TransferDataOut, m_pBufPtr,
+ 						 m_nBytesLeft <= m_nMaxPacketSize
+ 					       ? m_nBytesLeft : m_nMaxPacketSize);
+diff --git a/lib/usb/gadget/usbcdcgadget.cpp b/lib/usb/gadget/usbcdcgadget.cpp
+index 26a08b34..3bd6db3e 100644
+--- a/lib/usb/gadget/usbcdcgadget.cpp
++++ b/lib/usb/gadget/usbcdcgadget.cpp
+@@ -21,10 +21,9 @@
+ //
+ #include <circle/usb/gadget/usbcdcgadget.h>
+ #include <circle/usb/gadget/usbcdcgadgetendpoint.h>
+-#include <circle/sysconfig.h>
+ #include <assert.h>
+ 
+-const TUSBDeviceDescriptor CUSBCDCGadget::s_DeviceDescriptor =
++TUSBDeviceDescriptor CUSBCDCGadget::s_DeviceDescriptor =
+ {
+ 	sizeof (TUSBDeviceDescriptor),
+ 	DESCRIPTOR_DEVICE,
+@@ -131,11 +130,13 @@ const char *const CUSBCDCGadget::s_StringDescriptor[] =
+ 	"CDC Gadget"
+ };
+ 
+-CUSBCDCGadget::CUSBCDCGadget (CInterruptSystem *pInterruptSystem)
++CUSBCDCGadget::CUSBCDCGadget (CInterruptSystem *pInterruptSystem, u16 usVendorID, u16 usProductID)
+ :	CDWUSBGadget (pInterruptSystem, HighSpeed),
+ 	m_pInterface (nullptr),
+ 	m_pEP {nullptr, nullptr, nullptr, nullptr}
+ {
++	s_DeviceDescriptor.idVendor = usVendorID;
++	s_DeviceDescriptor.idProduct = usProductID;
+ }
+ 
+ CUSBCDCGadget::~CUSBCDCGadget (void)
+diff --git a/lib/usb/gadget/usbcdcgadgetendpoint.cpp b/lib/usb/gadget/usbcdcgadgetendpoint.cpp
+index e0b3186a..813198b6 100644
+--- a/lib/usb/gadget/usbcdcgadgetendpoint.cpp
++++ b/lib/usb/gadget/usbcdcgadgetendpoint.cpp
+@@ -4,7 +4,7 @@
+ // This file by Sebastien Nicolas <seba1978@gmx.de>
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -70,6 +70,14 @@ void CUSBCDCGadgetEndpoint::OnActivate (void)
+ 	}
+ }
+ 
++void CUSBCDCGadgetEndpoint::OnDeactivate (void)
++{
++	if (GetDirection () == DirectionOut)
++	{
++		CancelTransfer ();
++	}
++}
++
+ void CUSBCDCGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
+ {
+ 	if (!bIn)
+diff --git a/lib/usb/gadget/usbmidigadget.cpp b/lib/usb/gadget/usbmidigadget.cpp
+index d0aeb133..479e1e99 100644
+--- a/lib/usb/gadget/usbmidigadget.cpp
++++ b/lib/usb/gadget/usbmidigadget.cpp
+@@ -19,10 +19,9 @@
+ //
+ #include <circle/usb/gadget/usbmidigadget.h>
+ #include <circle/usb/gadget/usbmidigadgetendpoint.h>
+-#include <circle/sysconfig.h>
+ #include <assert.h>
+ 
+-const TUSBDeviceDescriptor CUSBMIDIGadget::s_DeviceDescriptor =
++TUSBDeviceDescriptor CUSBMIDIGadget::s_DeviceDescriptor =
+ {
+ 	sizeof (TUSBDeviceDescriptor),
+ 	DESCRIPTOR_DEVICE,
+@@ -166,11 +165,13 @@ const char *const CUSBMIDIGadget::s_StringDescriptor[] =
+ 	"MIDI Gadget"
+ };
+ 
+-CUSBMIDIGadget::CUSBMIDIGadget (CInterruptSystem *pInterruptSystem)
++CUSBMIDIGadget::CUSBMIDIGadget (CInterruptSystem *pInterruptSystem, u16 usVendorID, u16 usProductID)
+ :	CDWUSBGadget (pInterruptSystem, HighSpeed),
+ 	m_pInterface (nullptr),
+ 	m_pEP {nullptr, nullptr, nullptr}
+ {
++	s_DeviceDescriptor.idVendor = usVendorID;
++	s_DeviceDescriptor.idProduct = usProductID;
+ }
+ 
+ CUSBMIDIGadget::~CUSBMIDIGadget (void)
+diff --git a/lib/usb/gadget/usbmidigadgetendpoint.cpp b/lib/usb/gadget/usbmidigadgetendpoint.cpp
+index 040df576..f3a17711 100644
+--- a/lib/usb/gadget/usbmidigadgetendpoint.cpp
++++ b/lib/usb/gadget/usbmidigadgetendpoint.cpp
+@@ -2,7 +2,7 @@
+ // usbmidigadgetendpoint.cpp
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -69,6 +69,14 @@ void CUSBMIDIGadgetEndpoint::OnActivate (void)
+ 	}
+ }
+ 
++void CUSBMIDIGadgetEndpoint::OnDeactivate (void)
++{
++	if (GetDirection () == DirectionOut)
++	{
++		CancelTransfer ();
++	}
++}
++
+ void CUSBMIDIGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
+ {
+ 	if (!bIn)
+diff --git a/lib/usb/gadget/usbmsdgadget.cpp b/lib/usb/gadget/usbmsdgadget.cpp
+index 6ec80662..42dccfc8 100644
+--- a/lib/usb/gadget/usbmsdgadget.cpp
++++ b/lib/usb/gadget/usbmsdgadget.cpp
+@@ -4,7 +4,7 @@
+ // USB Mass Storage Gadget by Mike Messinides
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -31,7 +31,7 @@
+ #define MLOGERR(From,...)		CLogger::Get ()->Write (From, LogError,__VA_ARGS__)
+ #define DEFAULT_BLOCKS 16000
+ 
+-const TUSBDeviceDescriptor CUSBMSDGadget::s_DeviceDescriptor =
++TUSBDeviceDescriptor CUSBMSDGadget::s_DeviceDescriptor =
+ {
+ 	sizeof (TUSBDeviceDescriptor),
+ 	DESCRIPTOR_DEVICE,
+@@ -93,11 +93,14 @@ const char *const CUSBMSDGadget::s_StringDescriptor[] =
+ 	"Mass Storage Gadget"
+ };
+ 
+-CUSBMSDGadget::CUSBMSDGadget (CInterruptSystem *pInterruptSystem, CDevice *pDevice)
++CUSBMSDGadget::CUSBMSDGadget (CInterruptSystem *pInterruptSystem, CDevice *pDevice,
++			      u16 usVendorID, u16 usProductID)
+ :	CDWUSBGadget (pInterruptSystem, HighSpeed),
+ 	m_pDevice (pDevice),
+ 	m_pEP {nullptr, nullptr, nullptr}
+ {
++	s_DeviceDescriptor.idVendor = usVendorID;
++	s_DeviceDescriptor.idProduct = usProductID;
+ 	if(pDevice)SetDevice(pDevice);
+ }
+ 
+@@ -252,6 +255,38 @@ int CUSBMSDGadget::OnClassOrVendorRequest (const TSetupData *pSetupData, u8 *pDa
+ 	return -1;
+ }
+ 
++void CUSBMSDGadget::OnNegotiatedSpeed (TDeviceSpeed Speed)
++{
++	if (Speed == FullSpeed)
++	{
++		MLOGNOTE ("OnNegotiatedSpeed", "FullSpeed");
++
++		if (m_pEP[EPIn])
++		{
++			m_pEP[EPIn]->SetMaxPacketSize (64);
++		}
++
++		if (m_pEP[EPOut])
++		{
++			m_pEP[EPOut]->SetMaxPacketSize (64);
++		}
++	}
++	else
++	{
++		MLOGNOTE ("OnNegotiatedSpeed", "HighSpeed");
++
++		if (m_pEP[EPIn])
++		{
++			m_pEP[EPIn]->SetMaxPacketSize (512);
++		}
++
++		if (m_pEP[EPOut])
++		{
++			m_pEP[EPOut]->SetMaxPacketSize (512);
++		}
++	}
++}
++
+ void CUSBMSDGadget::OnTransferComplete (boolean bIn, size_t nLength)
+ {
+ 	MLOGDEBUG("OnXferComplete", "state = %i, dir = %s, len=%i ",m_nState,bIn?"IN":"OUT",nLength);
+@@ -371,6 +406,14 @@ void CUSBMSDGadget::OnActivate()
+ 	m_pEP[EPOut]->BeginTransfer(CUSBMSDGadgetEndpoint::TransferCBWOut,m_OutBuffer,SIZE_CBW);
+ }
+ 
++void CUSBMSDGadget::OnDeactivate()
++{
++	MLOGNOTE("MSD OnDeactivate", "state = %i",m_nState);
++	m_MSDReady=false;
++	m_nState=TMSDState::Init;
++	m_pEP[EPOut]->CancelTransfer();
++}
++
+ void CUSBMSDGadget::SendCSW()
+ {
+ 	memcpy(&m_InBuffer,&m_CSW,SIZE_CSW);
+diff --git a/lib/usb/gadget/usbmsdgadgetendpoint.cpp b/lib/usb/gadget/usbmsdgadgetendpoint.cpp
+index 222d4de9..78d111b1 100644
+--- a/lib/usb/gadget/usbmsdgadgetendpoint.cpp
++++ b/lib/usb/gadget/usbmsdgadgetendpoint.cpp
+@@ -4,7 +4,7 @@
+ // USB Mass Storage Gadget by Mike Messinides
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2023-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2023-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -50,6 +50,14 @@ void CUSBMSDGadgetEndpoint::OnActivate (void)
+ 	}
+ }
+ 
++void CUSBMSDGadgetEndpoint::OnDeactivate (void)
++{
++	if (GetDirection () == DirectionOut)
++	{
++		m_pGadget->OnDeactivate();
++	}
++}
++
+ void CUSBMSDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
+ {
+ 	MLOGNOTE("MSDEndpoint","Transfer complete nlen= %i",nLength);
+@@ -77,6 +85,11 @@ void CUSBMSDGadgetEndpoint::BeginTransfer (TMSDTransferMode Mode, void *pBuffer,
+ 	}
+ }
+ 
++void CUSBMSDGadgetEndpoint::CancelTransfer (void)
++{
++	CDWUSBGadgetEndpoint::CancelTransfer();
++}
++
+ void CUSBMSDGadgetEndpoint::StallRequest(boolean bIn)
+ {
+ 	CDWUSBGadgetEndpoint::Stall(bIn);
+diff --git a/lib/usb/usbcdcethernet.cpp b/lib/usb/usbcdcethernet.cpp
+index 5144e37c..88b3a352 100644
+--- a/lib/usb/usbcdcethernet.cpp
++++ b/lib/usb/usbcdcethernet.cpp
+@@ -23,6 +23,7 @@
+ #include <circle/usb/usb.h>
+ #include <circle/logger.h>
+ #include <circle/macros.h>
++#include <circle/util.h>
+ #include <assert.h>
+ 
+ #define SET_ETHERNET_PACKET_FILTER		0x43
+@@ -52,7 +53,9 @@ CUSBCDCEthernetDevice::CUSBCDCEthernetDevice (CUSBFunction *pFunction)
+ 	m_iMACAddress (GetMACAddressStringIndex ()),
+ 	m_bInterfaceOK (SelectInterfaceByClass (10, 0, 0, 2)),
+ 	m_pEndpointBulkIn (0),
+-	m_pEndpointBulkOut (0)
++	m_pEndpointBulkOut (0),
++	m_pURB (0),
++	m_nRxLength (0)
+ {
+ }
+ 
+@@ -153,27 +156,55 @@ boolean CUSBCDCEthernetDevice::SendFrame (const void *pBuffer, unsigned nLength)
+ 
+ boolean CUSBCDCEthernetDevice::ReceiveFrame (void *pBuffer, unsigned *pResultLength)
+ {
+-	assert (m_pEndpointBulkIn != 0);
+-	assert (pBuffer != 0);
+-	CUSBRequest URB (m_pEndpointBulkIn, pBuffer, FRAME_BUFFER_SIZE);
++	boolean bResult = FALSE;
++
++	if (m_nRxLength != 0)
++	{
++		assert (pBuffer != 0);
++		assert (m_nRxLength <= FRAME_BUFFER_SIZE);
++		memcpy (pBuffer, m_RxBuffer, m_nRxLength);
+ 
+-	URB.SetCompleteOnNAK ();
++		assert (pResultLength != 0);
++		*pResultLength = m_nRxLength;
+ 
+-	if (!GetHost ()->SubmitBlockingRequest (&URB))
++		m_nRxLength = 0;
++
++		bResult = TRUE;
++	}
++
++	if (m_pURB == 0)
+ 	{
+-		return FALSE;
++		assert (m_pEndpointBulkIn != 0);
++		m_pURB = new CUSBRequest (m_pEndpointBulkIn, m_RxBuffer, FRAME_BUFFER_SIZE);
++		assert (m_pURB != 0);
++
++		m_pURB->SetCompletionRoutine (CompletionRoutine, 0, this);
++
++		m_pURB->SetCompleteOnNAK ();
++
++		GetHost ()->SubmitAsyncRequest (m_pURB);
+ 	}
+ 
+-	u32 nResultLength = URB.GetResultLength ();
+-	if (nResultLength == 0)
++	return bResult;
++}
++
++void CUSBCDCEthernetDevice::CompletionRoutine (CUSBRequest *pURB, void *pParam, void *pContext)
++{
++	CUSBCDCEthernetDevice *pThis = (CUSBCDCEthernetDevice *) pContext;
++	assert (pThis != 0);
++
++	assert (pThis->m_pURB == pURB);
++
++	if (pURB->GetStatus () != 0)
+ 	{
+-		return FALSE;
++		assert (pThis->m_nRxLength == 0);
++		pThis->m_nRxLength = pURB->GetResultLength ();
++		assert (pThis->m_nRxLength <= FRAME_BUFFER_SIZE);
+ 	}
+ 
+-	assert (pResultLength != 0);
+-	*pResultLength = nResultLength;
++	delete pURB;
+ 
+-	return TRUE;
++	pThis->m_pURB = 0;
+ }
+ 
+ boolean CUSBCDCEthernetDevice::SetMulticastFilter (const u8 Groups[][MAC_ADDRESS_SIZE])
+diff --git a/lib/usb/usbdevicefactory.cpp b/lib/usb/usbdevicefactory.cpp
+index 099f8a98..75210581 100644
+--- a/lib/usb/usbdevicefactory.cpp
++++ b/lib/usb/usbdevicefactory.cpp
+@@ -2,7 +2,7 @@
+ // usbdevicefactory.cpp
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2014-2024  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2014-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -173,7 +173,8 @@ CUSBFunction *CUSBDeviceFactory::GetDevice (CUSBFunction *pParent, CString *pNam
+ #endif
+ #ifndef EXCLUDE_USB_MIDI
+ 	else if (   pName->Compare ("int1-3-0") == 0
+-		 || pName->Compare ("ven582-12a") == 0)		// Roland UM-ONE MIDI interface
++		 || pName->Compare ("ven582-12a") == 0		// Roland UM-ONE MIDI interface
++		 || pName->Compare ("ven582-28c") == 0)		// Roland JD-08
+ 	{
+ 		pResult = new CUSBMIDIHostDevice (pParent);
+ 	}
+diff --git a/lib/usb/usbmidihost.cpp b/lib/usb/usbmidihost.cpp
+index 1d1f19b5..75f7e542 100644
+--- a/lib/usb/usbmidihost.cpp
++++ b/lib/usb/usbmidihost.cpp
+@@ -5,7 +5,7 @@
+ // 	Copyright (C) 2016  J. Otto <joshua.t.otto@gmail.com>
+ //
+ // Circle - A C++ bare metal environment for Raspberry Pi
+-// Copyright (C) 2017-2023  R. Stange <rsta2@o2online.de>
++// Copyright (C) 2017-2025  R. Stange <rsta2@gmx.net>
+ //
+ // This program is free software: you can redistribute it and/or modify
+ // it under the terms of the GNU General Public License as published by
+@@ -43,6 +43,18 @@ CUSBMIDIHostDevice::CUSBMIDIHostDevice (CUSBFunction *pFunction)
+ 	m_pPacketBuffer (0),
+ 	m_hTimer (0)
+ {
++	const TUSBDeviceDescriptor *pDeviceDesc = GetDevice ()->GetDeviceDescriptor ();
++	assert (pDeviceDesc != 0);
++
++	// special handling for Roland JD-08
++	if (   pDeviceDesc->idVendor  == 0x0582
++	    && pDeviceDesc->idProduct == 0x028C)
++	{
++		if (!SelectInterfaceByClass (255, 3, 0))
++		{
++			CLogger::Get ()->Write (FromMIDI, LogError, "Cannot select interface");
++		}
++	}
+ }
+ 
+ CUSBMIDIHostDevice::~CUSBMIDIHostDevice (void)
+@@ -75,11 +87,12 @@ boolean CUSBMIDIHostDevice::Configure (void)
+ 		return FALSE;
+ 	}
+ 
+-	// special handling for Roland UM-ONE MIDI interface
++	// special handling for Roland UM-ONE and JD-08
+ 	const TUSBDeviceDescriptor *pDeviceDesc = GetDevice ()->GetDeviceDescriptor ();
+ 	assert (pDeviceDesc != 0);
+-	boolean bIsRolandUMOne =    pDeviceDesc->idVendor  == 0x0582
+-				 && pDeviceDesc->idProduct == 0x012A;
++	boolean bIsRoland =    pDeviceDesc->idVendor == 0x0582
++			    && (   pDeviceDesc->idProduct == 0x012A
++			        || pDeviceDesc->idProduct == 0x028C);
+ 
+ 	// Our strategy for now is simple: we'll take the first MIDI streaming
+ 	// bulk-in endpoint on this interface we can find.  To distinguish
+@@ -96,7 +109,7 @@ boolean CUSBMIDIHostDevice::Configure (void)
+ 			continue;
+ 		}
+ 
+-		if (!bIsRolandUMOne)
++		if (!bIsRoland)
+ 		{
+ 			TUSBMIDIStreamingEndpointDescriptor *pMIDIDesc =
+ 				(TUSBMIDIStreamingEndpointDescriptor *) GetDescriptor (DESCRIPTOR_CS_ENDPOINT);
