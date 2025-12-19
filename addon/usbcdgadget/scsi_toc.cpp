@@ -128,14 +128,14 @@ void SCSITOC::FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_
     if (use_MSF)
     {
         dest[4] = 0;
-        CDUtils::LBA2MSF(track->data_start, &dest[5], false);
+        CDUtils::LBA2MSF(track->track_start, &dest[5], false);
     }
     else
     {
-        dest[4] = (track->data_start >> 24) & 0xFF;
-        dest[5] = (track->data_start >> 16) & 0xFF;
-        dest[6] = (track->data_start >> 8) & 0xFF;
-        dest[7] = (track->data_start >> 0) & 0xFF;
+        dest[4] = (track->track_start >> 24) & 0xFF;
+        dest[5] = (track->track_start >> 16) & 0xFF;
+        dest[6] = (track->track_start >> 8) & 0xFF;
+        dest[7] = (track->track_start >> 0) & 0xFF;
     }
 }
 
@@ -160,11 +160,11 @@ void SCSITOC::FormatRawTOCEntry(CUSBCDGadget *gadget, const CUETrackInfo *track,
 
     if (useBCD)
     {
-        CDUtils::LBA2MSFBCD(track->data_start, &dest[8], false);
+        CDUtils::LBA2MSFBCD(track->track_start, &dest[8], false);
     }
     else
     {
-        CDUtils::LBA2MSF(track->data_start, &dest[8], false);
+        CDUtils::LBA2MSF(track->track_start, &dest[8], false);
     }
 }
 
