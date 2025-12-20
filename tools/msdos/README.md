@@ -9,7 +9,8 @@ This directory contains utilities to access USBODE from MS-DOS.
 ├── CDREADY.COM     # A small utility to check whether a CD-ROM drive has readable media
 └── cdready         # Source code for CDREADY.COM (see below for build instructions)
     ├── CDREADY.ASM
-    └── Makefile
+    ├── Makefile
+    └── Makefile.unix
 ```
 
 ### Prerequisites
