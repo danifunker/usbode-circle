@@ -52,6 +52,7 @@ ATTR_DIRECTORY          equ     0x10    ; Directory attribute
 
 ; Character constants
 CHAR_SPACE              equ     ' '     ; Space character
+CHAR_TAB                equ     0x09    ; Tab character
 CHAR_CR                 equ     0x0D    ; Carriage return
 CHAR_LF                 equ     0x0A    ; Line feed
 CHAR_DOLLAR             equ     '$'     ; String terminator for DOS
@@ -69,21 +70,39 @@ CRIT_ERR_FAIL           equ     3       ; Fail the operation
 ; MAIN CODE
 ;==============================================================================
 
-; Get drive letter from command line
+; Parse command line to get drive letter
         mov     si, 0x80        ; Point to command line length
         mov     cl, [si]        ; Get length
-        or      cl, cl          ; Check if empty
-        jz      usage           ; If no parameters, show usage
+        xor     ch, ch          ; CX = command line length
+        jcxz    empty_cmdline   ; If empty, show usage
+        jmp     parse_drive     ; Skip jump stub
 
+empty_cmdline:
+        jmp     usage           ; Jump to usage (out of short range)
+
+parse_drive:
         inc     si              ; Skip length byte
-        mov     al, [si+1]      ; Get first character (skip space)
 
-        ; Convert drive letter to drive number (A = 0, B = 1 etc.)
+        ; Skip leading whitespace (spaces and tabs)
+skip_ws:
+        lodsb                   ; AL = next char, SI++
+        loop    skip_ws_check   ; Decrement CX and check
+        jmp     show_usage      ; Ran out of chars
+
+skip_ws_check:
+        cmp     al, CHAR_SPACE  ; Space?
+        je      skip_ws
+        cmp     al, CHAR_TAB    ; Tab?
+        je      skip_ws
+        cmp     al, CHAR_CR     ; Carriage return?
+        je      show_usage      ; End of line with no argument
+
+        ; AL now contains the drive letter
         and     al, MASK_UPPERCASE ; Convert to uppercase
         sub     al, 'A'         ; Convert to drive number
-        jc      usage           ; Invalid if < 'A'
+        jc      show_usage      ; Invalid if < 'A'
         cmp     al, MAX_DRIVE   ; Check if > 'Z'
-        ja      usage
+        ja      show_usage
 
         mov     [drive_num], al ; Save drive number
 
@@ -163,6 +182,10 @@ not_cdrom:
         int     INT_DOS
         mov     al, EXIT_NOT_CDROM
         jmp     exit
+
+; Jump stub for out-of-range conditional jumps
+show_usage:
+        jmp     usage
 
 usage:
         mov     dx, usage_msg
