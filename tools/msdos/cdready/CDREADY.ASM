@@ -17,140 +17,152 @@
 ; The MSCDEX driver and CD-ROM checks were gleaned from the CD-ROM
 ; programming FAQ at <https://www.flipcode.com/documents/cdromfaq.txt>.
 
-ORG     100h            ; COM file format
+org     0x100           ; COM file format
+
+;==============================================================================
+; MAIN CODE
+;==============================================================================
 
 ; Get drive letter from command line
-MOV     SI, 80h         ; Point to command line length
-MOV     CL, [SI]        ; Get length
-OR      CL, CL          ; Check if empty
-JZ      Usage           ; If no parameters, show usage
+        mov     si, 0x80        ; Point to command line length
+        mov     cl, [si]        ; Get length
+        or      cl, cl          ; Check if empty
+        jz      usage           ; If no parameters, show usage
 
-INC     SI              ; Skip length byte
-MOV     AL, [SI+1]      ; Get first character (skip space)
+        inc     si              ; Skip length byte
+        mov     al, [si+1]      ; Get first character (skip space)
 
-; Convert drive letter to drive number (A = 0, B = 1 etc.)
-AND     AL, 0DFh        ; Convert to uppercase
-SUB     AL, 'A'         ; Convert to drive number
-JC      Usage           ; Invalid if < 'A'
-CMP     AL, 25          ; Check if > 'Z'
-JA      Usage
+        ; Convert drive letter to drive number (A = 0, B = 1 etc.)
+        and     al, 0xDF        ; Convert to uppercase
+        sub     al, 'A'         ; Convert to drive number
+        jc      usage           ; Invalid if < 'A'
+        cmp     al, 25          ; Check if > 'Z'
+        ja      usage
 
-MOV     [DriveNum], AL  ; Save drive number
+        mov     [drive_num], al ; Save drive number
 
-; Check if MSCDEX is installed
-MOV     AX, 1500h       ; MSCDEX installation check
-XOR     BX, BX          ; Clear BX
-INT     2Fh
-CMP     BX, 0           ; BX = 0 means not installed
-JE      NoMSCDEX        ; MSCDEX not installed
+        ; Check if MSCDEX is installed
+        mov     ax, 0x1500      ; MSCDEX installation check
+        xor     bx, bx          ; Clear BX
+        int     0x2F
+        cmp     bx, 0           ; BX = 0 means not installed
+        je      no_mscdex       ; MSCDEX not installed
 
-; Check if this drive is a CD-ROM drive
-MOV     AX, 150Bh       ; Check if drive is CD-ROM
-MOV     CL, [DriveNum]  ; CL = drive number (0-based)
-INT     2Fh
-CMP     BX, 0ADADh      ; Magic return value if it's a CD-ROM
-JNE     NotCDROM        ; Not a CD-ROM drive
-CMP     AX, 0           ; AX != 0 means it's a CD-ROM
-JE      NotCDROM
+        ; Check if this drive is a CD-ROM drive
+        mov     ax, 0x150B      ; Check if drive is CD-ROM
+        mov     cl, [drive_num] ; CL = drive number (0-based)
+        int     0x2F
+        cmp     bx, 0xADAD      ; Magic return value if it's a CD-ROM
+        jne     not_cdrom       ; Not a CD-ROM drive
+        cmp     ax, 0           ; AX != 0 means it's a CD-ROM
+        je      not_cdrom
 
-; Save old critical error handler
-MOV     AX, 3524h       ; Get INT 24h vector
-INT     21h
-MOV     [OldInt24], BX
-MOV     [OldInt24+2], ES
+        ; Save old critical error handler
+        mov     ax, 0x3524      ; Get INT 24h vector
+        int     0x21
+        mov     [old_int24], bx
+        mov     [old_int24+2], es
 
-; Install our critical error handler
-MOV     AX, 2524h       ; Set INT 24h vector
-MOV     DX, CritErrHandler
-INT     21h
+        ; Install our critical error handler
+        mov     ax, 0x2524      ; Set INT 24h vector
+        mov     dx, crit_err_handler
+        int     0x21
 
-; Build path string with actual drive letter
-MOV     AL, [DriveNum]
-ADD     AL, 'A'         ; Convert to letter
-MOV     [DrivePath], AL ; Set drive letter
+        ; Build path string with actual drive letter
+        mov     al, [drive_num]
+        add     al, 'A'         ; Convert to letter
+        mov     [drive_path], al ; Set drive letter
 
-; Try to access root directory via DOS
-MOV     AX, 4E00h       ; Find first file
-MOV     CX, 0010h       ; Directory attribute
-MOV     DX, DrivePath   ; Point to constructed path
-INT     21h
-PUSHF                   ; Save flags (carry indicates error)
+        ; Try to access root directory via DOS
+        mov     ax, 0x4E00      ; Find first file
+        mov     cx, 0x0010      ; Directory attribute
+        mov     dx, drive_path  ; Point to constructed path
+        int     0x21
+        pushf                   ; Save flags (carry indicates error)
 
-; Restore old critical error handler
-PUSH    DS
-MOV     AX, 2524h       ; Set INT 24h vector
-LDS     DX, [OldInt24]
-INT     21h
-POP     DS
+        ; Restore old critical error handler
+        push    ds
+        mov     ax, 0x2524      ; Set INT 24h vector
+        lds     dx, [old_int24]
+        int     0x21
+        pop     ds
 
-POPF                    ; Restore flags
-JC      NotReady        ; If error, drive not ready
-        
-Ready:
-MOV     DX, ReadyMsg
-MOV     AH, 09h         ; Print string
-INT     21h
-MOV     AL, 0           ; No error
-JMP     Exit
+        popf                    ; Restore flags
+        jc      not_ready       ; If error, drive not ready
 
-NoMSCDEX:
-MOV     DX, NoMSCDEXMsg
-MOV     AH, 09h         ; Print string
-INT     21h
-MOV     AL, 2           ; MSCDEX not installed
-JMP     Exit
+ready:
+        mov     dx, ready_msg
+        mov     ah, 0x09        ; Print string
+        int     0x21
+        mov     al, 0           ; No error
+        jmp     exit
 
-NotReady:
-MOV     DX, NotReadyMsg
-MOV     AH, 09h         ; Print string
-INT     21h
-MOV     AL, 3           ; Media not ready
-JMP     Exit
+no_mscdex:
+        mov     dx, no_mscdex_msg
+        mov     ah, 0x09        ; Print string
+        int     0x21
+        mov     al, 2           ; MSCDEX not installed
+        jmp     exit
 
-NotCDROM:
-MOV     DX, NotCDROMMsg
-MOV     AH, 09h         ; Print string
-INT     21h
-MOV     AL, 4           ; Not a CD-ROM drive
-JMP     Exit
-        
-Usage:
-MOV     DX, UsageMsg
-MOV     AH, 09h         ; Print string
-INT     21h
-MOV     AL, 1           ; Bad usage
-        
-Exit:
-MOV     AH, 4Ch         ; Terminate with return code
-INT     21h
+not_ready:
+        mov     dx, not_ready_msg
+        mov     ah, 0x09        ; Print string
+        int     0x21
+        mov     al, 3           ; Media not ready
+        jmp     exit
+
+not_cdrom:
+        mov     dx, not_cdrom_msg
+        mov     ah, 0x09        ; Print string
+        int     0x21
+        mov     al, 4           ; Not a CD-ROM drive
+        jmp     exit
+
+usage:
+        mov     dx, usage_msg
+        mov     ah, 0x09        ; Print string
+        int     0x21
+        mov     al, 1           ; Bad usage
+
+exit:
+        mov     ah, 0x4C        ; Terminate with return code
+        int     0x21
+
+;==============================================================================
+; INTERRUPT HANDLERS
+;==============================================================================
 
 ; Critical error handler - always return fail
-CritErrHandler:
-MOV     AL, 3           ; Fail
-IRET
+crit_err_handler:
+        mov     al, 3           ; Fail
+        iret
 
-UsageMsg:
-DB      'Usage: cdready <drive letter>', 0Dh, 0Ah
-DB      'Returns: 0 = Ready, 1 = Bad usage, 2 = No MSCDEX,', 0Dh, 0Ah
-DB      '         3 = Not ready, 4 = Not a CD-ROM', 0Dh, 0Ah, '$'
+;==============================================================================
+; DATA SECTION
+;==============================================================================
 
-NoMSCDEXMsg:
-DB      'Error: MSCDEX not installed', 0Dh, 0Ah, '$'
+usage_msg:
+        db      'Usage: cdready <drive letter>', 0x0D, 0x0A
+        db      'Returns: 0 = Ready, 1 = Bad usage, 2 = No MSCDEX,', 0x0D, 0x0A
+        db      '         3 = Not ready, 4 = Not a CD-ROM', 0x0D, 0x0A, '$'
 
-NotCDROMMsg:
-DB      'Error: Not a CD-ROM drive', 0Dh, 0Ah, '$'
+no_mscdex_msg:
+        db      'Error: MSCDEX not installed', 0x0D, 0x0A, '$'
 
-NotReadyMsg:
-DB      'Error: Media not ready', 0Dh, 0Ah, '$'
+not_cdrom_msg:
+        db      'Error: Not a CD-ROM drive', 0x0D, 0x0A, '$'
 
-ReadyMsg:
-DB      'Media ready', 0Dh, 0Ah, '$'
+not_ready_msg:
+        db      'Error: Media not ready', 0x0D, 0x0A, '$'
 
-DriveNum:
-DB      0
+ready_msg:
+        db      'Media ready', 0x0D, 0x0A, '$'
 
-DrivePath:
-DB      '?:\*.*', 0
+drive_num:
+        db      0
 
-OldInt24:
-DD      0
+drive_path:
+        db      '?:\*.*', 0
+
+old_int24:
+        dd      0
