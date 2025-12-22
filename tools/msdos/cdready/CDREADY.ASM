@@ -17,51 +17,51 @@
 ; The MSCDEX driver and CD-ROM checks were gleaned from the CD-ROM
 ; programming FAQ at <https://www.flipcode.com/documents/cdromfaq.txt>.
 
-org     0x100           ; COM file format
+org     0x100                   ; COM file format
 
 ;==============================================================================
 ; CONSTANTS
 ;==============================================================================
 
 ; MSCDEX API functions (INT 2Fh)
-MSCDEX_CHECK            equ     0x1500  ; Installation check
-MSCDEX_IS_CDROM         equ     0x150B  ; Check if drive is CD-ROM
-MSCDEX_CDROM_MAGIC      equ     0xADAD  ; Magic value returned for CD-ROM
+MSCDEX_CHECK            equ     0x1500          ; Installation check
+MSCDEX_IS_CDROM         equ     0x150B          ; Check if drive is CD-ROM
+MSCDEX_CDROM_MAGIC      equ     0xADAD          ; Magic value for CD-ROM
 
 ; DOS API functions (INT 21h)
-DOS_PRINT_STRING        equ     0x09    ; Print $-terminated string
-DOS_GET_INT_VECTOR      equ     0x35    ; Get interrupt vector
-DOS_SET_INT_VECTOR      equ     0x25    ; Set interrupt vector
-DOS_FIND_FIRST          equ     0x4E    ; Find first file
-DOS_TERMINATE           equ     0x4C    ; Terminate with exit code
+DOS_PRINT_STRING        equ     0x09            ; Print $-terminated string
+DOS_GET_INT_VECTOR      equ     0x35            ; Get interrupt vector
+DOS_SET_INT_VECTOR      equ     0x25            ; Set interrupt vector
+DOS_FIND_FIRST          equ     0x4E            ; Find first file
+DOS_TERMINATE           equ     0x4C            ; Terminate with exit code
 
 ; DOS interrupt vectors
-INT_DOS                 equ     0x21    ; DOS services
-INT_MULTIPLEX           equ     0x2F    ; Multiplex interrupt
-INT_CRIT_ERROR          equ     0x24    ; Critical error handler
+INT_DOS                 equ     0x21            ; DOS services
+INT_MULTIPLEX           equ     0x2F            ; Multiplex interrupt
+INT_CRIT_ERROR          equ     0x24            ; Critical error handler
 
 ; Exit codes
-EXIT_READY              equ     0       ; Media ready
-EXIT_USAGE              equ     1       ; Bad usage
-EXIT_NO_MSCDEX          equ     2       ; MSCDEX not installed
-EXIT_NOT_READY          equ     3       ; Media not ready
-EXIT_NOT_CDROM          equ     4       ; Not a CD-ROM drive
+EXIT_READY              equ     0               ; Media ready
+EXIT_USAGE              equ     1               ; Bad usage
+EXIT_NO_MSCDEX          equ     2               ; MSCDEX not installed
+EXIT_NOT_READY          equ     3               ; Media not ready
+EXIT_NOT_CDROM          equ     4               ; Not a CD-ROM drive
 
 ; File attributes
-ATTR_DIRECTORY          equ     0x10    ; Directory attribute
+ATTR_DIRECTORY          equ     0x10            ; Directory attribute
 
 ; Character constants
-CHAR_SPACE              equ     ' '     ; Space character
-CHAR_TAB                equ     0x09    ; Tab character
-CHAR_CR                 equ     0x0D    ; Carriage return
-CHAR_LF                 equ     0x0A    ; Line feed
-CHAR_DOLLAR             equ     '$'     ; String terminator for DOS
+CHAR_SPACE              equ     ' '             ; Space character
+CHAR_TAB                equ     0x09            ; Tab character
+CHAR_CR                 equ     0x0D            ; Carriage return
+CHAR_LF                 equ     0x0A            ; Line feed
+CHAR_DOLLAR             equ     '$'             ; String terminator for DOS
 
 ; Conversion masks
-MASK_UPPERCASE          equ     0xDF    ; AND mask to convert to uppercase
+MASK_UPPERCASE          equ     0xDF            ; AND mask for uppercase
 
 ; Drive constants
-MAX_DRIVE               equ     25      ; Maximum drive number (Z = 25)
+MAX_DRIVE               equ     25              ; Maximum drive number (Z = 25)
 
 ; Critical error handler codes
 CRIT_ERR_FAIL           equ     3       ; Fail the operation
@@ -83,7 +83,7 @@ empty_cmdline:
 parse_drive:
         inc     si              ; Skip length byte
 
-        ; Skip leading whitespace (spaces and tabs)
+; Skip leading whitespace (spaces and tabs)
 skip_ws:
         lodsb                   ; AL = next char, SI++
         loop    skip_ws_check   ; Decrement CX and check
@@ -99,27 +99,27 @@ skip_ws_check:
 
         ; AL now contains the drive letter
         and     al, MASK_UPPERCASE ; Convert to uppercase
-        sub     al, 'A'         ; Convert to drive number
-        jc      show_usage      ; Invalid if < 'A'
-        cmp     al, MAX_DRIVE   ; Check if > 'Z'
+        sub     al, 'A'            ; Convert to drive number
+        jc      show_usage         ; Invalid if < 'A'
+        cmp     al, MAX_DRIVE      ; Check if > 'Z'
         ja      show_usage
 
-        mov     [drive_num], al ; Save drive number
+        mov     [drive_num], al    ; Save drive number
 
         ; Check if MSCDEX is installed
         mov     ax, MSCDEX_CHECK ; MSCDEX installation check
-        xor     bx, bx          ; Clear BX
+        xor     bx, bx           ; Clear BX
         int     INT_MULTIPLEX
-        cmp     bx, 0           ; BX = 0 means not installed
-        je      no_mscdex       ; MSCDEX not installed
+        cmp     bx, 0            ; BX = 0 means not installed
+        je      no_mscdex        ; MSCDEX not installed
 
         ; Check if this drive is a CD-ROM drive
-        mov     ax, MSCDEX_IS_CDROM ; Check if drive is CD-ROM
-        mov     cl, [drive_num] ; CL = drive number (0-based)
+        mov     ax, MSCDEX_IS_CDROM    ; Check if drive is CD-ROM
+        mov     cl, [drive_num]        ; CL = drive number (0-based)
         int     INT_MULTIPLEX
         cmp     bx, MSCDEX_CDROM_MAGIC ; Magic return value if CD-ROM
-        jne     not_cdrom       ; Not a CD-ROM drive
-        cmp     ax, 0           ; AX != 0 means it's a CD-ROM
+        jne     not_cdrom              ; Not a CD-ROM drive
+        cmp     ax, 0                  ; AX != 0 means it's a CD-ROM
         je      not_cdrom
 
         ; Save old critical error handler
@@ -135,15 +135,15 @@ skip_ws_check:
 
         ; Build path string with actual drive letter
         mov     al, [drive_num]
-        add     al, 'A'         ; Convert to letter
+        add     al, 'A'          ; Convert to letter
         mov     [drive_path], al ; Set drive letter
 
         ; Try to access root directory via DOS
         mov     ax, DOS_FIND_FIRST << 8 ; Find first file
-        mov     cx, ATTR_DIRECTORY ; Directory attribute
-        mov     dx, drive_path  ; Point to constructed path
+        mov     cx, ATTR_DIRECTORY      ; Directory attribute
+        mov     dx, drive_path          ; Point to constructed path
         int     INT_DOS
-        pushf                   ; Save flags (carry indicates error)
+        pushf                           ; Save flags (carry indicates error)
 
         ; Restore old critical error handler
         push    ds
@@ -212,8 +212,9 @@ crit_err_handler:
 
 usage_msg:
         db      'Usage: cdready <drive letter>', CHAR_CR, CHAR_LF
-        db      'Returns: 0 = Ready, 1 = Bad usage, 2 = No MSCDEX,', CHAR_CR, CHAR_LF
-        db      '         3 = Not ready, 4 = Not a CD-ROM', CHAR_CR, CHAR_LF, CHAR_DOLLAR
+        db      'Returns: 0 = Ready, 1 = Bad usage,', CHAR_CR, CHAR_LF
+        db      '         2 = No MSCDEX, 3 = Not ready,', CHAR_CR, CHAR_LF
+        db      '         4 = Not a CD-ROM', CHAR_CR, CHAR_LF, CHAR_DOLLAR
 
 no_mscdex_msg:
         db      'Error: MSCDEX not installed', CHAR_CR, CHAR_LF, CHAR_DOLLAR
