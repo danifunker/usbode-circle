@@ -57,6 +57,10 @@ CHAR_CR                 equ     0x0D            ; Carriage return
 CHAR_LF                 equ     0x0A            ; Line feed
 CHAR_DOLLAR             equ     '$'             ; String terminator for DOS
 
+; String formatting helpers
+%define NEWLINE         CHAR_CR, CHAR_LF        ; End of line sequence
+%define STR_END         CHAR_DOLLAR             ; String terminator
+
 ; Conversion masks
 MASK_UPPERCASE          equ     0xDF            ; AND mask for uppercase
 
@@ -211,22 +215,22 @@ crit_err_handler:
 ;==============================================================================
 
 usage_msg:
-        db      'Usage: cdready <drive letter>', CHAR_CR, CHAR_LF
-        db      'Returns: 0 = Ready, 1 = Bad usage,', CHAR_CR, CHAR_LF
-        db      '         2 = No MSCDEX, 3 = Not ready,', CHAR_CR, CHAR_LF
-        db      '         4 = Not a CD-ROM', CHAR_CR, CHAR_LF, CHAR_DOLLAR
+        db      'Usage: cdready <drive letter>', NEWLINE
+        db      'Returns: 0 = Ready, 1 = Bad usage,', NEWLINE
+        db      '         2 = No MSCDEX, 3 = Not ready,', NEWLINE
+        db      '         4 = Not a CD-ROM', NEWLINE, STR_END
 
 no_mscdex_msg:
-        db      'Error: MSCDEX not installed', CHAR_CR, CHAR_LF, CHAR_DOLLAR
+        db      'Error: MSCDEX not installed', NEWLINE, STR_END
 
 not_cdrom_msg:
-        db      'Error: Not a CD-ROM drive', CHAR_CR, CHAR_LF, CHAR_DOLLAR
+        db      'Error: Not a CD-ROM drive', NEWLINE, STR_END
 
 not_ready_msg:
-        db      'Error: Media not ready', CHAR_CR, CHAR_LF, CHAR_DOLLAR
+        db      'Error: Media not ready', NEWLINE, STR_END
 
 ready_msg:
-        db      'Media ready', CHAR_CR, CHAR_LF, CHAR_DOLLAR
+        db      'Media ready', NEWLINE, STR_END
 
 drive_num:
         db      0
