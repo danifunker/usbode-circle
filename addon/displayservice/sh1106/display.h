@@ -77,6 +77,7 @@ class SH1106Display : public IDisplay {
 
     int backlightTimer;
     bool sleeping = false;
+    int display_rotation;
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };

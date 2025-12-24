@@ -11,6 +11,7 @@ struct DisplayConfig {
     unsigned spi_cpha;
     unsigned spi_clock_speed;
     unsigned spi_chip_select;
+    unsigned display_rotation;
 };
 
 // This interface represents all display. It exists so we

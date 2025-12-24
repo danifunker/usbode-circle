@@ -64,6 +64,7 @@ class ST7789Display : public IDisplay {
     bool pwm_configured = false;
     bool showingSleepWarning = false;
     unsigned sleepWarningStartTime = 0;
+    int display_rotation;
     
     void DrawSleepWarning();
 

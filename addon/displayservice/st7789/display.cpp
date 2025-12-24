@@ -41,7 +41,8 @@ ST7789Display::ST7789Display(DisplayConfig* config, ButtonConfig* buttons)
       up_pin(buttons->Up),
       down_pin(buttons->Down),
       ok_pin(buttons->Ok),
-      cancel_pin(buttons->Cancel)
+      cancel_pin(buttons->Cancel),
+      display_rotation(config->display_rotation)
 {
     // Obtain our config service
     configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
@@ -77,8 +78,7 @@ bool ST7789Display::Initialize() {
 
     if (bOK) {
         bOK = m_Display.Initialize();
-        // TODO: expose this as a config entry
-        m_Display.SetRotation(270);
+        m_Display.SetRotation(display_rotation);
         LOGNOTE("Initialized ST7789 Display");
     }
 
