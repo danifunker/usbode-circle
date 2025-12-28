@@ -37,8 +37,8 @@ SH1106Display::SH1106Display(DisplayConfig* config, ButtonConfig* buttons)
       left_pin(buttons->Left),
       right_pin(buttons->Right),
       center_pin(buttons->Center),
-      key3_pin(buttons->Key3)
-
+      key3_pin(buttons->Key3),
+      display_rotation(config->display_rotation)
 {
 
     // Obtain our config service
@@ -73,9 +73,8 @@ bool SH1106Display::Initialize() {
 
     if (bOK) {
         bOK = m_Display.Initialize();
-        // TODO: expose this as a config entry
-        //m_Display.SetRotation(270);
-        //LOGNOTE("Initialized SH1106 Display");
+        m_Display.InvertDisplay(display_rotation == 180);
+        LOGNOTE("Initialized SH1106 Display");
     }
 
     if (bOK) {

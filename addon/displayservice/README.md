@@ -48,6 +48,7 @@ spi_cpol=1
 spi_chpa=1
 spi_clock_speed=80000000
 spi_chip_select=0
+display_rotation=270
 ```
 
 In addition, four buttons can be mapped as follows. The default have been chosen to coincide with the Pirate Audio mappings but can be arbitrarily remapped to any GPIO according to the wiring. These should be configured under the same `[st7789]` section in config.txt
@@ -80,6 +81,7 @@ spi_cpol=0
 spi_chpa=0
 spi_clock_speed=24000000
 spi_chip_select=1
+display_rotation=0
 ```
 
 In addition, four buttons can be mapped as follows. The default have been chosen to coincide with the Waveshare mappings but can be arbitrarily remapped to any GPIO according to the wiring. These should be configured under the same `[sh1106]` section in config.txt

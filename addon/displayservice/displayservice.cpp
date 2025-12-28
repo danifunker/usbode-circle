@@ -58,7 +58,8 @@ void DisplayService::CreateDisplay(const char* displayType) {
 	    .spi_cpol = 0,
 	    .spi_cpha = 0,
 	    .spi_clock_speed = 80000000,
-	    .spi_chip_select = 1
+	    .spi_chip_select = 1,
+		.display_rotation = 270,
 	};
 
 	ButtonConfig buttons = {
@@ -82,7 +83,8 @@ void DisplayService::CreateDisplay(const char* displayType) {
 	    .spi_cpol = 1,
 	    .spi_cpha = 0,
 	    .spi_clock_speed = 80000000,
-	    .spi_chip_select = 1
+		.spi_chip_select = 1,
+		.display_rotation = 270,
 	};
 
 	ButtonConfig buttons = {
@@ -109,7 +111,8 @@ void DisplayService::CreateDisplay(const char* displayType) {
             .spi_cpol = config->GetProperty("spi_cpol", 1, section),
             .spi_cpha = config->GetProperty("spi_chpa", 1, section),
             .spi_clock_speed = config->GetProperty("spi_clock_speed", 80000000, section),
-            .spi_chip_select = config->GetProperty("spi_chip_select", 0u, section)
+            .spi_chip_select = config->GetProperty("spi_chip_select", 0u, section),
+            .display_rotation = config->GetProperty("display_rotation", 270, section)
 	};
 
 	ButtonConfig buttons = {
@@ -134,7 +137,8 @@ void DisplayService::CreateDisplay(const char* displayType) {
             .spi_cpol = config->GetProperty("spi_cpol", 0u, section),
             .spi_cpha = config->GetProperty("spi_chpa", 0u, section),
             .spi_clock_speed = config->GetProperty("spi_clock_speed", 24000000, section),
-            .spi_chip_select = config->GetProperty("spi_chip_select", 1, section)
+            .spi_chip_select = config->GetProperty("spi_chip_select", 1, section),
+            .display_rotation = config->GetProperty("display_rotation", 0u, section)
 	};
 
 	// Default to bare minimum button config
@@ -158,7 +162,8 @@ void DisplayService::CreateDisplay(const char* displayType) {
             .spi_cpol = 0,
             .spi_cpha = 0,
             .spi_clock_speed = 24000000,
-            .spi_chip_select = 0
+            .spi_chip_select = 0,
+			.display_rotation = 0,
 	};
 
     ButtonConfig buttons = {
