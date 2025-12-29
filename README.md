@@ -43,7 +43,7 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 
 ### Optional Stuff
 
-- USBODE supports the Waveshare OLED HAT and the PirateAudio Line Out/LCD HAT. The Pirate Audio HAT requires no configuration. The Waveshare requires that you change one line in the `config.txt` file. See Initial Setup below.
+- USBODE supports the Waveshare OLED HAT and the PirateAudio Line Out/LCD HAT. The Pirate Audio HAT requires no configuration. The Waveshare requires that you change one line in the `config.txt` file. See Initial Setup below. There are some new considerations for the Waveshare OLED HAT, please see details below.
 - The PirateAudio HAT also enables CD audio. An aux cable going into your sound card's Line In port will play that audio over your computer's speakers. Additionally, enterprising users have created 8mm-to-4-pin converter cables, allowing them to connect their Pi to their sound card's internal Line In port. You'll need to know your sound card's pinout to make one for yourself, as they vary between models.
 - For Audio setup via HDMI, a number of additional components (~$30 USD) is required in order for it to work, read below for further details
 
@@ -112,12 +112,12 @@ USBODE stores images on the MicroSD partition labeled IMGSTORE. You'll need to p
 
 If adding DVD images, (and the system needs to read the disc as "DVD"), add `.dvd` to the filename, so a file named MyMovie.iso would be named `MyMovie.dvd.iso`
 
-**DVD Support is still a work in progress**
+**DVD Support is still a work in progress, but mostly stable now**
 
 ## Using USBODE with a HAT
 
 1.  With the Pi off, plug the HAT onto the Pi's GPIO pins.
-2.  PirateAudio HAT users can move to step 3. Waveshare users first need to edit the file `config.txt` on the SD card. Under `[usbode]`, note the line reading `“displayhat=pirateaudiolineout”`. Change this to `“displayhat=waveshare”`.
+2.  PirateAudio HAT users can move to step 3. Waveshare users first need to edit the file `config.txt` on the SD card. Under `[usbode]`, note the line reading `“displayhat=pirateaudiolineout”`. Change this to `“displayhat=waveshare”`. This can also be set in the web interface once USBODE is up and running. When using the waveshare HAT, be aware there are some GPIO PIN conflicts with the I2S audio, so in order to resolve this conflict, either completely disable audio by editing `cmdline.txt` and removing the `sounddev=sndi2s` block, OR set it to HDMI either in the web interface or set `sounddev=sndhdmi`. Another option, if you actually have an i2s HAT with the waveshare is to override the default button layout for the waveshare. Look in [addon/displayservice/README.md](addon/displayservice/README.md) for specific instructions on how-to wire up your own SH1106 or ST7889 displays.
 3.  Plug the SD card into the Pi, and the Pi into the target computer. The screen on the HAT should turn on.
 4.  The display will turn on a second or two after plugging in the Pi. The display will say “Not connected yet” until it connects to your wifi network, then that line will display the device’s IP address. On the PirateAudio display, the bottom will indicate what the buttons do. On the Waveshare HAT, Key 1 enters Browsing Mode, where you can see what images are on your SD card. The directional stick on the left side can then be moved up and down to traverse the list of images. Moving it left or right skips 5 images, making it easier to get to the bottom of a long list. Pressing the directional stick or Key 1 here will select that image and load it. Key 2 will back out of that screen without changing the image, and Key 3 is not currently implemented.
 
@@ -184,7 +184,7 @@ I tried initially to get this to work in OS 9.1, however CD Audio games weren't 
 Feel free to test different combinations, and please report back earlier MacOS version support for mixed-mode discs!
 
 Current known-good working games:
-Age of Empires (Requires Patch 1.3)
+Age of Empires (Requires Patch 1.3) -- sometimes CD Audio doesn't start, restart the game to fix this
 MechWarrior 2
 
 Current known-bad games: (CD Audio doesn't work correctly):
@@ -193,6 +193,10 @@ Quake 2
 I have not been able to get Quake 2 CD Audio working on a physical USB CDROM drive either.
 
 If experiencing issues with games not listed on this list, please try to update to the latest patch version.
+
+I have been doing some deep research, it seems that many games use the AppleCD driver/API directly, and this might be a limiting factor for this implementation. If you have a SCSI to USB bridge adapter (particular one of interest to me is the Ratoc one) please reach out to me directly so maybe you can help me explore this option!
+
+Currently the CDROM drive we are emulating in classic mac mode is not compatible with MacOS 10.4 (possibly other MacOS versions as well) so I am also evaluating on how that works.
 
 ## Notes about version
 
