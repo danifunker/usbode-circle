@@ -22,6 +22,8 @@
 #include "powerpage.h"
 #include "usbconfigpage.h"
 #include "setuppage.h"
+#include "upgradepage.h"
+#include <upgradestatus/upgradestatus.h>
 
 LOGMODULE("sh1106display");
 
@@ -92,13 +94,19 @@ bool SH1106Display::Initialize() {
     m_PageManager.RegisterPage("timeoutconfigpage", new SH1106TimeoutConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("infopage", new SH1106InfoPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("setuppage", new SH1106SetupPage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("upgradepage", new SH1106UpgradePage(&m_Display, &m_Graphics));
 
     // Set the starting page
-    if (SetupStatus::Get() && SetupStatus::Get()->isSetupRequired())
-	    m_PageManager.SetActivePage("setuppage");
-    else
-    	m_PageManager.SetActivePage("homepage");
+    SetupStatus* setup = SetupStatus::Get();
+    UpgradeStatus* upgrade = UpgradeStatus::Get();
 
+    if (setup->isSetupRequired())
+        m_PageManager.SetActivePage("setuppage");
+    else if (upgrade->isUpgradeRequired()) 
+        m_PageManager.SetActivePage("upgradepage");
+    else
+        m_PageManager.SetActivePage("homepage");
+    
     LOGNOTE("Registered pages");
 
     // register buttons
@@ -171,7 +179,7 @@ void SH1106Display::Clear() {
 // Dim the screen or even turn it off
 void SH1106Display::Sleep() {
     // Do not sleep if we're in the First Boot Setup phase
-    if (SetupStatus::Get() && SetupStatus::Get()->isSetupInProgress())
+    if (SetupStatus::Get() && SetupStatus::Get()->isSetupInProgress() || UpgradeStatus::Get()->isUpgradeInProgress() )
         return;
 
     LOGNOTE("Sleep warning for %d ms", SLEEP_WARNING_DURATION);
@@ -244,12 +252,9 @@ void SH1106Display::Refresh() {
             if (now - backlightTimer > backlightTimeout)
                 Sleep();
         }
-
-	// This screen is switched off when we're sleeping
-	// so we only refresh the screen if we can see it
-        m_PageManager.Refresh();
     }
-
+    
+    m_PageManager.Refresh();
 }
 
 // Debounce the key presses
@@ -279,6 +284,13 @@ void SH1106Display::HandleButtonPress(void* pParam) {
         // If it was sleeping, swallow this keypress
         if (wasSleeping)
             return;
+
+        UpgradeStatus* upgrade = UpgradeStatus::Get();
+        if (upgrade->isUpgradeInProgress()) {
+            LOGNOTE("Button press ignored - upgrade in progress");
+            context->pin->EnableInterrupt(GPIOInterruptOnFallingEdge);
+            return;
+        }
 
         context->pin->DisableInterrupt();
         context->pageManager->HandleButtonPress(context->button);
