@@ -180,36 +180,26 @@ void CFTPWorker::Run() {
     CString motdBanner;
     LOGDBG("Attempting to get GitInfo");
     CGitInfo* pGitInfo = CGitInfo::Get();
-    if (pGitInfo != nullptr) {
-        LOGDBG("GitInfo obtained, formatting MOTD");
-        const char* versionStr = pGitInfo->GetFullVersionString();
-        const char* branchStr = pGitInfo->GetBranch();
-        const char* commitStr = pGitInfo->GetCommit();
-        
-        if (versionStr && branchStr && commitStr) {
-            motdBanner.Format("%s %s", MOTDBannerPrefix, versionStr);
-    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true);
-            motdBanner.Format("Branch/Commit: %s @ %s", branchStr, commitStr);
-    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true);
-            motdBanner.Format("Please navigate to /SD/images to place supported CD Image files.");
-    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, false);
-        } else {
-            LOGWARN("GitInfo strings re null, using fallback MOTD");
-            motdBanner.Format("%s", MOTDBannerPrefix);
-    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true);
-            motdBanner.Format("Please navigate to /SD/images to place supported CD Image files.");
-    	    SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, false);
-        }
+    const char* versionStr = pGitInfo ? pGitInfo->GetFullVersionString() : nullptr;
+    const char* branchStr = pGitInfo ? pGitInfo->GetBranch() : nullptr;
+    const char* commitStr = pGitInfo ? pGitInfo->GetCommit() : nullptr;
+
+    // Send banner (with or without version info)
+    if (versionStr && branchStr && commitStr) {
+        motdBanner.Format("%s %s", MOTDBannerPrefix, versionStr);
+        if (!SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true)) return;
+        motdBanner.Format("Branch/Commit: %s @ %s", branchStr, commitStr);
+        if (!SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true)) return;
     } else {
-        LOGWARN("GitInfo is null, using fallback MOTD");
         motdBanner.Format("%s", MOTDBannerPrefix);
-    	SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true);
-        motdBanner.Format("Please navigate to /SD/images to place supported CD Image files.");
-    	SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, false);
+        if (!SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, true)) return;
     }
 
-    LOGDBG("Welcome banner sent successfully");
+    // Always send help message as final line
+    motdBanner.Format("Please navigate to /SD/images to place supported CD Image files.");
+    if (!SendStatus(TFTPStatus::ReadyForNewUser, motdBanner, false)) return;
 
+    LOGDBG("Welcome banner sent successfully");
     // Try to change to images directory after successful connection
     DIR Dir;
     if (f_opendir(&Dir, "1:/") == FR_OK) {
@@ -652,7 +642,7 @@ bool CFTPWorker::Retrieve(const char* pArgs) {
     // NEW: Enable Fast Seek for download
     DWORD* pCLMT = nullptr;
     FatFsOptimizer::EnableFastSeek(&File, &pCLMT, 256, "FTP Download: ");
-
+    
     if (!SendStatus(TFTPStatus::FileStatusOk, "Command OK."))
         return false;
 
@@ -694,7 +684,7 @@ bool CFTPWorker::Retrieve(const char* pArgs) {
     f_close(&File);
 
     SendStatus(TFTPStatus::TransferComplete, "Transfer complete.");
-    return false;
+    return true;
 }
 
 bool CFTPWorker::Store(const char* pArgs) {
@@ -943,7 +933,7 @@ bool CFTPWorker::ChangeToParentDirectory(const char* pArgs) {
     } else
         SendStatus(TFTPStatus::FileNotFound, "Directory unavailable.");
 
-    return false;
+    return true;
 }
 
 bool CFTPWorker::PrintWorkingDirectory(const char* pArgs) {
@@ -1072,7 +1062,7 @@ bool CFTPWorker::RenameFrom(const char* pArgs) {
     m_RenameFrom = pArgs;
     SendStatus(TFTPStatus::PendingFurtherInfo, "Requested file action pending further information.");
 
-    return false;
+    return true;
 }
 
 bool CFTPWorker::RenameTo(const char* pArgs) {
@@ -1097,7 +1087,7 @@ bool CFTPWorker::RenameTo(const char* pArgs) {
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     svc->RefreshCache();
 
-    return false;
+    return true;
 }
 
 bool CFTPWorker::Bye(const char* pArgs) {

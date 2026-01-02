@@ -299,6 +299,7 @@ boolean FatFsOptimizer::EnableFastSeek(FIL* pFile, DWORD** ppCLMT, size_t clmtSi
     FRESULT result = f_lseek(pFile, CREATE_LINKMAP);
     
     if (result == FR_OK) {
+        f_lseek(pFile, 0);
         LOGNOTE("%sFast seek enabled, using %u CLMT entries", logPrefix, (*ppCLMT)[0]);
         return true;
     } 
