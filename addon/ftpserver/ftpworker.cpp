@@ -708,10 +708,6 @@ bool CFTPWorker::Store(const char* pArgs) {
         return false;
     }
 
-    // NEW: Enable Fast Seek for upload
-    DWORD* pCLMT = nullptr;
-    FatFsOptimizer::EnableFastSeek(&File, &pCLMT, 256, "FTP Upload: ");
-
     f_sync(&File);
     if (!SendStatus(TFTPStatus::FileStatusOk, "Command OK."))
         return false;
@@ -813,8 +809,6 @@ bool CFTPWorker::Store(const char* pArgs) {
         m_pDataSocket = nullptr;
     }
 
-    // NEW: Cleanup Fast Seek before closing file
-    FatFsOptimizer::DisableFastSeek(&pCLMT);
     f_close(&File);
 
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
