@@ -51,6 +51,7 @@ void SH1106LogConfigPage::OnButtonPress(Button button) {
             break;
 
         case Button::Ok:
+        case Button::Center:
             LOGNOTE("Set Log Level %d", m_SelectedIndex);
             config->SetLogLevel(m_SelectedIndex);
             SaveAndReboot();

@@ -111,9 +111,11 @@ const char* SH1106HomePage::GetCurrentImage() {
 }
 
 const char* SH1106HomePage::GetUSBSpeed() {
+    if (config->GetUSBTargetOS() == USBTargetOS::Apple)
+        return "Classic Mac (1.1)"; // Classic Mac mode is always FullSpeed
     if (config->GetUSBFullSpeed())
-        return "FullSpeed";
-    return "HighSpeed";
+        return "FullSpeed (1.1)";
+    return "HighSpeed (2.0)";
 }
 
 void SH1106HomePage::Draw() {

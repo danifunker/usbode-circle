@@ -153,18 +153,51 @@ boolean CKernel::Initialize(void)
     }
     if (bOK)
     {
-        // Don't start network if we're doing an upgrade, since this will cause a
+        // Don't start network if we're doing an upgrade
         UpgradeStatus *upgradeCheck = UpgradeStatus::Get();
 
-        if (!m_WLAN.Initialize() || upgradeCheck->isUpgradeRequired())
+        // Check if this Pi model has WiFi hardware
+        // Pi Zero W, Pi 3, Pi 4 have built-in WiFi
+        // Pi Zero (non-W), Pi 1, Pi 2 do not
+        CMachineInfo *pMachineInfo = CMachineInfo::Get();
+        TMachineModel boardModel = pMachineInfo->GetMachineModel();
+        
+        bool noWiFi = (boardModel == MachineModelZero );
+        if (noWiFi)
         {
-            LOGWARN("WLAN not available - continuing without network");
+            LOGNOTE("This Pi model does not have built-in WiFi - skipping network initialization");
+            m_bNetworkAvailable = FALSE;
+        }
+        else if (upgradeCheck->isUpgradeRequired())
+        {
+            LOGNOTE("Upgrade required - skipping network initialization");
             m_bNetworkAvailable = FALSE;
         }
         else
         {
-            LOGNOTE("Initialized WLAN");
-            m_bNetworkAvailable = TRUE;
+            // Try to initialize WiFi with retry logic
+            bool wlanOK = false;
+            for (int retry = 0; retry < 3 && !wlanOK; retry++)
+            {
+                if (retry > 0)
+                {
+                    LOGWARN("WLAN initialization failed, retry attempt %d/3", retry + 1);
+                    CScheduler::Get()->MsSleep(1000);  // Wait before retry
+                }
+                
+                wlanOK = m_WLAN.Initialize();
+            }
+
+            if (!wlanOK)
+            {
+                LOGWARN("WLAN not available after %d attempts - continuing without network", 3);
+                m_bNetworkAvailable = FALSE;
+            }
+            else
+            {
+                LOGNOTE("Initialized WLAN");
+                m_bNetworkAvailable = TRUE;
+            }
         }
     }
 

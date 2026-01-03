@@ -20,6 +20,8 @@ SH1106ClassicMacModePage::~SH1106ClassicMacModePage() {
 
 void SH1106ClassicMacModePage::OnEnter() {
     LOGNOTE("Drawing ClassicMacModePage");
+    USBTargetOS currentOS = config->GetUSBTargetOS();
+    m_SelectedIndex = (currentOS == USBTargetOS::Apple) ? 1 : 0;
     Draw();
 }
 

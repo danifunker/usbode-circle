@@ -20,6 +20,8 @@ SH1106USBConfigPage::~SH1106USBConfigPage() {
 
 void SH1106USBConfigPage::OnEnter() {
     LOGNOTE("Drawing USBConfigPage");
+    bool isFullSpeed = config->GetUSBFullSpeed();
+    m_SelectedIndex = isFullSpeed ? 1 : 0;
     Draw();
 }
 

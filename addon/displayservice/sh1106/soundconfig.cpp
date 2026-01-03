@@ -5,6 +5,7 @@
 #include <configservice/configservice.h>
 #include <gitinfo/gitinfo.h>
 #include <shutdown/shutdown.h>
+#include <cstring>
 
 LOGMODULE("soundconfig");
 
@@ -20,7 +21,16 @@ SH1106SoundConfigPage::~SH1106SoundConfigPage() {
 
 void SH1106SoundConfigPage::OnEnter() {
     LOGNOTE("Drawing SoundConfigPage");
-    m_SelectedIndex = config->GetLogLevel();
+    const char* currentSoundDev = config->GetSoundDev("none");
+    if (strcmp(currentSoundDev, "sndi2s") == 0) {
+        m_SelectedIndex = 0;
+    } else if (strcmp(currentSoundDev, "sndpwm") == 0) {
+        m_SelectedIndex = 1;
+    } else if (strcmp(currentSoundDev, "sndhdmi") == 0) {
+        m_SelectedIndex = 2;
+    } else {
+        m_SelectedIndex = 3;
+    }
     Draw();
 }
 
@@ -51,20 +61,21 @@ void SH1106SoundConfigPage::OnButtonPress(Button button) {
             break;
 
         case Button::Ok:
+        case Button::Center:
             switch (m_SelectedIndex) {
                 case 0:
-                    LOGNOTE("Enabling DosWin Mode");
+                    LOGNOTE("Setting i2s audio");
                     config->SetSoundDev("sndi2s");
                     LOGNOTE("Saved config");
                     SaveAndReboot();
                     break;
                 case 1:
-                    LOGNOTE("Enabling Classic Mac Mode");
+                    LOGNOTE("Setting PWM audio");
                     config->SetSoundDev("sndpwm");
                     SaveAndReboot();
                     break;
                 case 2:
-                    LOGNOTE("Enabling HDMI Audio");
+                    LOGNOTE("Setting HDMI audio");
                     config->SetSoundDev("sndhdmi");
                     SaveAndReboot();
                     break;
@@ -74,6 +85,7 @@ void SH1106SoundConfigPage::OnButtonPress(Button button) {
                     SaveAndReboot();
                     break;
             }
+        break;
 
         case Button::Cancel:
             LOGNOTE("Cancel");
