@@ -22,6 +22,8 @@ OBJS    = displayservice.o \
 	st7789/display.o \
 	st7789/upgradepage.o \
 	st7789/setuppage.o \
+	st7789/classicmacmodepage.o \
+	st7789/soundconfig.o \
 	sh1106/display.o \
 	sh1106/homepage.o \
 	sh1106/powerpage.o \

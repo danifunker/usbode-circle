@@ -1,43 +1,52 @@
-#include "usbconfigpage.h"
+#include "soundconfig.h"
 
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <configservice/configservice.h>
 #include <gitinfo/gitinfo.h>
 #include <shutdown/shutdown.h>
+#include <cstring>
 
-LOGMODULE("usbconfigpage");
+LOGMODULE("soundconfig");
 
-ST7789USBConfigPage::ST7789USBConfigPage(CST7789Display* display, C2DGraphics* graphics)
+ST7789SoundConfigPage::ST7789SoundConfigPage(CST7789Display* display, C2DGraphics* graphics)
     : m_Display(display),
       m_Graphics(graphics) {
     config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 }
 
-ST7789USBConfigPage::~ST7789USBConfigPage() {
-    LOGNOTE("USBConfigPage starting");
+ST7789SoundConfigPage::~ST7789SoundConfigPage() {
+    LOGNOTE("SoundConfigPage starting");
 }
 
-void ST7789USBConfigPage::OnEnter() {
-    LOGNOTE("Drawing USBConfigPage");
-    bool isFullSpeed = config->GetUSBFullSpeed();
-    m_SelectedIndex = isFullSpeed ? 1 : 0;
+void ST7789SoundConfigPage::OnEnter() {
+    LOGNOTE("Drawing SoundConfigPage");
+    const char* currentSoundDev = config->GetSoundDev("none");
+    if (strcmp(currentSoundDev, "sndi2s") == 0) {
+        m_SelectedIndex = 0;
+    } else if (strcmp(currentSoundDev, "sndpwm") == 0) {
+        m_SelectedIndex = 1;
+    } else if (strcmp(currentSoundDev, "sndhdmi") == 0) {
+        m_SelectedIndex = 2;
+    } else {
+        m_SelectedIndex = 3;
+    }
     Draw();
 }
 
-void ST7789USBConfigPage::OnExit() {
+void ST7789SoundConfigPage::OnExit() {
     m_ShouldChangePage = false;
 }
 
-bool ST7789USBConfigPage::shouldChangePage() {
+bool ST7789SoundConfigPage::shouldChangePage() {
     return m_ShouldChangePage;
 }
 
-const char* ST7789USBConfigPage::nextPageName() {
+const char* ST7789SoundConfigPage::nextPageName() {
     return "configpage";
 }
 
-void ST7789USBConfigPage::OnButtonPress(Button button) {
+void ST7789SoundConfigPage::OnButtonPress(Button button) {
     LOGNOTE("Button received by page %d", button);
 
     switch (button) {
@@ -52,21 +61,31 @@ void ST7789USBConfigPage::OnButtonPress(Button button) {
             break;
 
         case Button::Ok:
-            // TODO show an acknowledgement screen rather then just doing
+        case Button::Center:
             switch (m_SelectedIndex) {
                 case 0:
-                    LOGNOTE("High Speed");
-                    config->SetUSBFullSpeed(false);
+                    LOGNOTE("Setting i2s audio");
+                    config->SetSoundDev("sndi2s");
                     LOGNOTE("Saved config");
                     SaveAndReboot();
                     break;
                 case 1:
-                    LOGNOTE("Full Speed");
-                    config->SetUSBFullSpeed(true);
+                    LOGNOTE("Setting PWM audio");
+                    config->SetSoundDev("sndpwm");
+                    SaveAndReboot();
+                    break;
+                case 2:
+                    LOGNOTE("Setting HDMI audio");
+                    config->SetSoundDev("sndhdmi");
+                    SaveAndReboot();
+                    break;
+                case 3:
+                    LOGNOTE("Disabling Audio");
+                    config->SetSoundDev("none");
                     SaveAndReboot();
                     break;
             }
-            break;
+        break;
 
         case Button::Cancel:
             LOGNOTE("Cancel");
@@ -78,7 +97,7 @@ void ST7789USBConfigPage::OnButtonPress(Button button) {
     }
 }
 
-void ST7789USBConfigPage::MoveSelection(int delta) {
+void ST7789SoundConfigPage::MoveSelection(int delta) {
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
@@ -96,23 +115,22 @@ void ST7789USBConfigPage::MoveSelection(int delta) {
     }
 }
 
-void ST7789USBConfigPage::Refresh() {
+void ST7789SoundConfigPage::Refresh() {
     // Nothing to do here
 }
 
-void ST7789USBConfigPage::SaveAndReboot() {
+void ST7789SoundConfigPage::SaveAndReboot() {
     DrawConfirmation("Saved, rebooting...");
     // We have to assume the save operation worked. We can't trigger the save
     // from this interrupt. We have to finish the interrupt operation before the
     // file io can happen
     new CShutdown(ShutdownReboot, 1000);
 }
-
-void ST7789USBConfigPage::DrawConfirmation(const char* message) {
+void ST7789SoundConfigPage::DrawConfirmation(const char* message) {
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
-    const char* pTitle = "USB";
+    const char* pTitle = "Sound Config";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
@@ -120,19 +138,29 @@ void ST7789USBConfigPage::DrawConfirmation(const char* message) {
     m_Graphics->UpdateDisplay();
 }
 
-void ST7789USBConfigPage::Draw() {
+void ST7789SoundConfigPage::Draw() {
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
-    const char* pTitle = "USB Speed Config";
+    const char* pTitle = "Sound Config";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
-    const char* usbSpeed = config->GetUSBFullSpeed() ? "Current: FullSpeed" : "Current: HighSpeed";
-    m_Graphics->DrawText(10, 40, COLOR2D(0, 0, 0), usbSpeed, C2DGraphics::AlignLeft);
+    const char* currentSoundDev = config->GetSoundDev("none");
+    char currentText[64];
+    if (strcmp(currentSoundDev, "sndi2s") == 0) {
+        strcpy(currentText, "Current: I2S Audio");
+    } else if (strcmp(currentSoundDev, "sndpwm") == 0) {
+        strcpy(currentText, "Current: PWM Audio");
+    } else if (strcmp(currentSoundDev, "sndhdmi") == 0) {
+        strcpy(currentText, "Current: HDMI Audio");
+    } else {
+        strcpy(currentText, "Current: Disabled");
+    }
+    m_Graphics->DrawText(10, 40, COLOR2D(0, 0, 0), currentText, C2DGraphics::AlignLeft);
 
     size_t startIndex = 0;
     size_t endIndex = fileCount;
@@ -152,9 +180,8 @@ void ST7789USBConfigPage::Draw() {
     DrawNavigationBar("config");
     m_Graphics->UpdateDisplay();
 }
-
 // TODO: put in common place
-void ST7789USBConfigPage::DrawNavigationBar(const char* screenType) {
+void ST7789SoundConfigPage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom
     m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
 
@@ -197,7 +224,6 @@ void ST7789USBConfigPage::DrawNavigationBar(const char* screenType) {
         m_Graphics->DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
         m_Graphics->DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
     } else {
-        // On other screens, show up navigation arrow
         // Stem (3px thick)
         m_Graphics->DrawLine(arrow_x, arrow_y - 13, arrow_x, arrow_y, COLOR2D(255, 255, 255));
         m_Graphics->DrawLine(arrow_x - 1, arrow_y - 13, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));

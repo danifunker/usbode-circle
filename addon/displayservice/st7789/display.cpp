@@ -25,6 +25,8 @@
 #include "usbconfigpage.h"
 #include "setuppage.h"
 #include "upgradepage.h"
+#include "classicmacmodepage.h"
+#include "soundconfig.h"
 
 LOGMODULE("st7789display");
 
@@ -99,7 +101,10 @@ bool ST7789Display::Initialize() {
     m_PageManager.RegisterPage("infopage", new ST7789InfoPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("setuppage", new ST7789SetupPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("upgradepage", new ST7789UpgradePage(&m_Display, &m_Graphics));
-
+    m_PageManager.RegisterPage("classicmacmodepage", new ST7789ClassicMacModePage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("upgradepage", new ST7789UpgradePage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("soundconfigpage", new ST7789SoundConfigPage(&m_Display, &m_Graphics));
+    
     LOGNOTE("Registered pages");
 
     // Set the starting page

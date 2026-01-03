@@ -1,43 +1,44 @@
-#include "usbconfigpage.h"
+#include "classicmacmodepage.h"
 
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <configservice/configservice.h>
 #include <gitinfo/gitinfo.h>
 #include <shutdown/shutdown.h>
+#include <cstring>
 
-LOGMODULE("usbconfigpage");
+LOGMODULE("classicmacmodepage");
 
-ST7789USBConfigPage::ST7789USBConfigPage(CST7789Display* display, C2DGraphics* graphics)
+ST7789ClassicMacModePage::ST7789ClassicMacModePage(CST7789Display* display, C2DGraphics* graphics)
     : m_Display(display),
       m_Graphics(graphics) {
     config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 }
 
-ST7789USBConfigPage::~ST7789USBConfigPage() {
-    LOGNOTE("USBConfigPage starting");
+ST7789ClassicMacModePage::~ST7789ClassicMacModePage() {
+    LOGNOTE("ClassicMacModePage starting");
 }
 
-void ST7789USBConfigPage::OnEnter() {
-    LOGNOTE("Drawing USBConfigPage");
-    bool isFullSpeed = config->GetUSBFullSpeed();
-    m_SelectedIndex = isFullSpeed ? 1 : 0;
+void ST7789ClassicMacModePage::OnEnter() {
+    LOGNOTE("Drawing ClassicMacModePage");
+    USBTargetOS currentOS = config->GetUSBTargetOS();
+    m_SelectedIndex = (currentOS == USBTargetOS::Apple) ? 1 : 0;
     Draw();
 }
 
-void ST7789USBConfigPage::OnExit() {
+void ST7789ClassicMacModePage::OnExit() {
     m_ShouldChangePage = false;
 }
 
-bool ST7789USBConfigPage::shouldChangePage() {
+bool ST7789ClassicMacModePage::shouldChangePage() {
     return m_ShouldChangePage;
 }
 
-const char* ST7789USBConfigPage::nextPageName() {
+const char* ST7789ClassicMacModePage::nextPageName() {
     return "configpage";
 }
 
-void ST7789USBConfigPage::OnButtonPress(Button button) {
+void ST7789ClassicMacModePage::OnButtonPress(Button button) {
     LOGNOTE("Button received by page %d", button);
 
     switch (button) {
@@ -52,17 +53,19 @@ void ST7789USBConfigPage::OnButtonPress(Button button) {
             break;
 
         case Button::Ok:
+        case Button::Center:
             // TODO show an acknowledgement screen rather then just doing
             switch (m_SelectedIndex) {
                 case 0:
-                    LOGNOTE("High Speed");
-                    config->SetUSBFullSpeed(false);
+                    LOGNOTE("Enabling DosWin Mode");
+                    config->SetUSBTargetOS(USBTargetOS::DosWin);
                     LOGNOTE("Saved config");
                     SaveAndReboot();
                     break;
                 case 1:
-                    LOGNOTE("Full Speed");
-                    config->SetUSBFullSpeed(true);
+                    LOGNOTE("Enabling Classic Mac Mode");
+                    config->SetUSBTargetOS(USBTargetOS::Apple);
+                    LOGNOTE("Saved config");
                     SaveAndReboot();
                     break;
             }
@@ -78,7 +81,7 @@ void ST7789USBConfigPage::OnButtonPress(Button button) {
     }
 }
 
-void ST7789USBConfigPage::MoveSelection(int delta) {
+void ST7789ClassicMacModePage::MoveSelection(int delta) {
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
@@ -96,11 +99,11 @@ void ST7789USBConfigPage::MoveSelection(int delta) {
     }
 }
 
-void ST7789USBConfigPage::Refresh() {
+void ST7789ClassicMacModePage::Refresh() {
     // Nothing to do here
 }
 
-void ST7789USBConfigPage::SaveAndReboot() {
+void ST7789ClassicMacModePage::SaveAndReboot() {
     DrawConfirmation("Saved, rebooting...");
     // We have to assume the save operation worked. We can't trigger the save
     // from this interrupt. We have to finish the interrupt operation before the
@@ -108,11 +111,11 @@ void ST7789USBConfigPage::SaveAndReboot() {
     new CShutdown(ShutdownReboot, 1000);
 }
 
-void ST7789USBConfigPage::DrawConfirmation(const char* message) {
+void ST7789ClassicMacModePage::DrawConfirmation(const char* message) {
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
-    const char* pTitle = "USB";
+    const char* pTitle = "USB Target OS";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
@@ -120,19 +123,20 @@ void ST7789USBConfigPage::DrawConfirmation(const char* message) {
     m_Graphics->UpdateDisplay();
 }
 
-void ST7789USBConfigPage::Draw() {
+void ST7789ClassicMacModePage::Draw() {
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
-    const char* pTitle = "USB Speed Config";
+    const char* pTitle = "Set USB Target OS";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
-    const char* usbSpeed = config->GetUSBFullSpeed() ? "Current: FullSpeed" : "Current: HighSpeed";
-    m_Graphics->DrawText(10, 40, COLOR2D(0, 0, 0), usbSpeed, C2DGraphics::AlignLeft);
+    USBTargetOS currentOS = config->GetUSBTargetOS();
+    const char* osMode = (currentOS == USBTargetOS::Apple) ? "Current: Classic MacOS" : "Current: DOS/Win";
+    m_Graphics->DrawText(10, 40, COLOR2D(0, 0, 0), osMode, C2DGraphics::AlignLeft);
 
     size_t startIndex = 0;
     size_t endIndex = fileCount;
@@ -152,9 +156,8 @@ void ST7789USBConfigPage::Draw() {
     DrawNavigationBar("config");
     m_Graphics->UpdateDisplay();
 }
-
 // TODO: put in common place
-void ST7789USBConfigPage::DrawNavigationBar(const char* screenType) {
+void ST7789ClassicMacModePage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom
     m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
 
@@ -180,7 +183,7 @@ void ST7789USBConfigPage::DrawNavigationBar(const char* screenType) {
 
     // Middle bar of A
     m_Graphics->DrawLine(a_x - 2, a_y, a_x + 2, a_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0));  // Fixed: a_y+1 instead of a_x+1
+    m_Graphics->DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0));
 
     // UP arrow for navigation screens or custom icon for main screen
     unsigned arrow_x = 35;
@@ -197,7 +200,6 @@ void ST7789USBConfigPage::DrawNavigationBar(const char* screenType) {
         m_Graphics->DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
         m_Graphics->DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
     } else {
-        // On other screens, show up navigation arrow
         // Stem (3px thick)
         m_Graphics->DrawLine(arrow_x, arrow_y - 13, arrow_x, arrow_y, COLOR2D(255, 255, 255));
         m_Graphics->DrawLine(arrow_x - 1, arrow_y - 13, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));

@@ -71,15 +71,25 @@ void ST7789ConfigPage::OnButtonPress(Button button)
 			    m_ShouldChangePage = true;
 			    break;
             case 3:
-                LOGNOTE("Power Menu");
-                m_NextPageName = "powerpage";
+                LOGNOTE("Sound Configuration");
+                m_NextPageName = "soundconfigpage";
                 m_ShouldChangePage = true;
                 break;
             case 4:
+                LOGNOTE("Apple OS Mode");
+                m_NextPageName = "classicmacmodepage";
+                m_ShouldChangePage = true;
+                break;                
+            case 5:
                 LOGNOTE("Build Info");
                 m_NextPageName = "infopage";
                 m_ShouldChangePage = true;
                 break;
+            case 6:
+                LOGNOTE("Power Menu");
+                m_NextPageName = "powerpage";
+                m_ShouldChangePage = true;
+                break;                
 	    }
             break;
 

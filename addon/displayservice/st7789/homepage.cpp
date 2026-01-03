@@ -110,9 +110,11 @@ const char* ST7789HomePage::GetCurrentImage() {
 }
 
 const char* ST7789HomePage::GetUSBSpeed() {
+    if (config->GetUSBTargetOS() == USBTargetOS::Apple)
+        return "Classic Mac (1.1)"; // Classic Mac mode is always FullSpeed
     if (config->GetUSBFullSpeed())
-        return "FullSpeed (USB 1.1)";
-    return "HighSpeed (USB 2)";
+        return "FullSpeed (1.1)";
+    return "HighSpeed (2.0)";
 }
 
 void ST7789HomePage::Draw() {
