@@ -166,6 +166,7 @@ bool UpgradeStatus::extractFileFromTar(const char *tarPath, const char *wantedNa
             if (f_open(&outFile, destPath, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK) {
                 f_close(&tarFile);
 		LOGNOTE("Can't open output file %s", destPath);
+                m_statusMessage = "Can't write output file";
                 return false;
             }
 
@@ -223,6 +224,7 @@ bool UpgradeStatus::extractFileFromTar(const char *tarPath, const char *wantedNa
 bool UpgradeStatus::extractAllFromTar(const char *tarPath, const char *destDir) {
     FIL tarFile, outFile;
     if (f_open(&tarFile, tarPath, FA_READ) != FR_OK) {
+        m_statusMessage = "Could not open tar update file";
         LOGNOTE("Could not open tar file %s", tarPath);
         return false;
     }
@@ -238,6 +240,7 @@ bool UpgradeStatus::extractAllFromTar(const char *tarPath, const char *destDir) 
         CScheduler::Get()->Yield();
 
         if (f_read(&tarFile, header, 512, &br) != FR_OK || br != 512) {
+            m_statusMessage = "Could not read tar update file";
             LOGNOTE("Could not read tar file");
             f_close(&tarFile);
             return false;
@@ -281,7 +284,8 @@ bool UpgradeStatus::extractAllFromTar(const char *tarPath, const char *destDir) 
             // --- Regular file ---
             if (f_open(&outFile, fullPath, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK) {
                 f_close(&tarFile);
-		LOGNOTE("Can't open output file %s", fullPath);
+                m_statusMessage = "Can't write file required for upgrade";
+		LOGNOTE("Can't write output file %s", fullPath);
                 return false;
             }
 
@@ -294,14 +298,16 @@ bool UpgradeStatus::extractAllFromTar(const char *tarPath, const char *destDir) 
                 if (f_read(&tarFile, m_pTransferBuffer, chunk, &br) != FR_OK || br != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
-		    LOGNOTE("Can't read tar file");
+                    m_statusMessage = "Can't read tar update file";
+		    LOGNOTE("Can't read tar update file %s", fullPath);
                     return false;
                 }
                 
                 if (f_write(&outFile, m_pTransferBuffer, chunk, &bw) != FR_OK || bw != chunk) {
                     f_close(&outFile);
                     f_close(&tarFile);
-		    LOGNOTE("Can't write output file");
+		    LOGNOTE("Can't write output file %s", fullPath);
+                    m_statusMessage = "Can't write output file";
                     return false;
                 }
                 
@@ -323,6 +329,7 @@ bool UpgradeStatus::extractAllFromTar(const char *tarPath, const char *destDir) 
             if (skip > 0) {
                 if (f_lseek(&tarFile, f_tell(&tarFile) + skip) != FR_OK) {
                     LOGNOTE("Can't seek");
+                    m_statusMessage = "Can't seek in tar update file";
                     f_close(&tarFile);
                     return false;
                 }
@@ -342,6 +349,7 @@ bool UpgradeStatus::extractAllFromTar(const char *tarPath, const char *destDir) 
 	    if (!(res == FR_OK || res == FR_EXIST)) {
 		f_close(&tarFile);
 		LOGNOTE("Can't create directory %s, %d", fullPath, res);
+        	m_statusMessage = "Can't create directory required for upgrade";
 		return false;
 	    }
 
@@ -351,6 +359,7 @@ bool UpgradeStatus::extractAllFromTar(const char *tarPath, const char *destDir) 
             DWORD skip = ((filesize + 511) / 512) * 512;
             if (f_lseek(&tarFile, f_tell(&tarFile) + skip) != FR_OK) {
                 f_close(&tarFile);
+                m_statusMessage = "Can't skip unsupported file";
                 LOGNOTE("Can't see to skip content");
                 return false;
             }
