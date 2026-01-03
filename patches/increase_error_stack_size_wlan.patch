@@ -1,0 +1,13 @@
+diff --git a/addon/wlan/p9error.h b/addon/wlan/p9error.h
+index 162d6770..e5800d72 100644
+--- a/addon/wlan/p9error.h
++++ b/addon/wlan/p9error.h
+@@ -9,7 +9,7 @@ extern "C" {
+ 
+ struct error_stack_t
+ {
+-#define ERROR_STACK_SIZE	30
++#define ERROR_STACK_SIZE	64
+ 	jmp_buf stack[ERROR_STACK_SIZE];
+ 	volatile unsigned stackptr;
+ };
