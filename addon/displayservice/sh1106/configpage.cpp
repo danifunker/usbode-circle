@@ -4,6 +4,8 @@
 #include <gitinfo/gitinfo.h>
 #include <shutdown/shutdown.h>
 
+#define ITEMS_PER_PAGE 5
+
 LOGMODULE("configpage");
 
 SH1106ConfigPage::SH1106ConfigPage(CSH1106Display* display, C2DGraphics* graphics)
@@ -66,20 +68,30 @@ void SH1106ConfigPage::OnButtonPress(Button button)
 			    m_ShouldChangePage = true;
 			    break;
 		    case 2:
-			    LOGNOTE("Timeout Configuration");
+			    LOGNOTE("Screen Timeout Config");
 			    m_NextPageName = "timeoutconfigpage";
 			    m_ShouldChangePage = true;
 			    break;
             case 3:
-                LOGNOTE("Display Build Info");
-                m_NextPageName = "infopage";
+                LOGNOTE("Sound Configuration");
+                m_NextPageName = "soundconfigpage";
                 m_ShouldChangePage = true;
                 break;
             case 4:
+                LOGNOTE("Apple OS Mode");
+                m_NextPageName = "classicmacmodepage";
+                m_ShouldChangePage = true;
+                break;
+            case 5:
+                LOGNOTE("Display Build Info");
+                m_NextPageName = "infopage";
+                m_ShouldChangePage = true;
+                break;                
+            case 6:
                 LOGNOTE("Shutdown Menu");
                 m_NextPageName = "powerpage";
                 m_ShouldChangePage = true;
-                break;
+                break;                                
 	    }
             break;
 
@@ -120,7 +132,6 @@ void SH1106ConfigPage::Refresh()
 
 void SH1106ConfigPage::Draw()
 {
-
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
@@ -128,20 +139,44 @@ void SH1106ConfigPage::Draw()
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 10, COLOR2D(255, 255, 255));
     m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), "Config & System", C2DGraphics::AlignLeft, Font8x8);
 
-    size_t startIndex = 0;
-    size_t endIndex = fileCount;
+    // Calculate which "page" of items to show
+    size_t currentPage = m_SelectedIndex / ITEMS_PER_PAGE;
+    size_t startIndex = currentPage * ITEMS_PER_PAGE;
+    size_t endIndex = MIN(startIndex + ITEMS_PER_PAGE, fileCount);
 
     for (size_t i = startIndex; i < endIndex; ++i) {
         int y = static_cast<int>((i - startIndex) * 10);
         const char* name = options[i];
 
         if (i == m_SelectedIndex) {
-            m_Graphics->DrawRect(0, y + 15, m_Display->GetWidth(), 9, COLOR2D(255, 255, 255));
+            // Shorter highlight bar - leave space for arrow on right
+            m_Graphics->DrawRect(0, y + 15, m_Display->GetWidth() - 10, 9, COLOR2D(255, 255, 255));
             m_Graphics->DrawText(0, y + 16, COLOR2D(0,0,0), name, C2DGraphics::AlignLeft, Font6x7);
         } else {
             m_Graphics->DrawText(0, y + 16, COLOR2D(255,255,255), name, C2DGraphics::AlignLeft, Font6x7);
         }
     }
+
+    // Draw navigation arrows if there are more items
+    size_t totalPages = (fileCount + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
+
+    if (totalPages > 1) {
+        int arrowX = m_Display->GetWidth() - 8;
+        
+        // Show up arrow if there are previous pages
+        if (currentPage > 0) {
+            // Draw up arrow (^)
+            m_Graphics->DrawText(arrowX, 16, COLOR2D(255, 255, 255), "^", C2DGraphics::AlignLeft, Font6x7);
+        }
+        
+        // Show down arrow if there are next pages
+        if (currentPage < totalPages - 1) {
+            // Draw down arrow (v) - position it at the last visible item
+            int bottomY = static_cast<int>((endIndex - startIndex - 1) * 10) + 16;
+            m_Graphics->DrawText(arrowX, bottomY, COLOR2D(255, 255, 255), "v", C2DGraphics::AlignLeft, Font6x7);
+        }
+    }
+
     m_Graphics->UpdateDisplay();
 }
 

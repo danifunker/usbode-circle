@@ -469,7 +469,9 @@ bool UpgradeStatus::performUpgrade() {
         crc = crc32_update(crc, m_pTransferBuffer, br);
     }
     crc = crc32_final(crc);
+    CScheduler::Get()->MsSleep(100);  // Give system a moment before closing
     f_close(&tarFile);
+    CScheduler::Get()->MsSleep(50);   // Give logger time after close
     LOGNOTE("Calculated crc %u", crc);
 
     if (crc != expectedCrc) {

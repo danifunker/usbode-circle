@@ -169,3 +169,14 @@ int CmdLine::find_index(const char* key) const {
     return -1;
 }
 
+void CmdLine::DeleteValue(const char* key) {
+    int i = find_index(key);
+    if (i >= 0) {
+        // Shift all entries after this one down
+        for (int j = i; j < count - 1; ++j) {
+            pairs[j] = pairs[j + 1];
+        }
+        --count;
+        dirty = true;
+    }
+}

@@ -32,7 +32,9 @@ OBJS    = displayservice.o \
 	sh1106/imagespage.o \
 	sh1106/infopage.o \
 	sh1106/setuppage.o \
-	sh1106/upgradepage.o
+	sh1106/upgradepage.o \
+	sh1106/classicmacmodepage.o \
+	sh1106/soundconfig.o
 
 libdisplayservice.a: $(OBJS)
 	@echo "  AR    $@"

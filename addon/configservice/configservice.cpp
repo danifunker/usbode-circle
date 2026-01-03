@@ -75,9 +75,12 @@ void ConfigService::SetUSBFullSpeed(bool value)
 
 void ConfigService::SetSoundDev(const char* value)
 {
-    m_cmdline->SetValue("sounddev", value);
+    if (value != nullptr && strcmp(value, "none") == 0) {
+        m_cmdline->DeleteValue("sounddev");
+    } else {
+        m_cmdline->SetValue("sounddev", value);
+    }
 }
-
 USBTargetOS ConfigService::GetUSBTargetOS(USBTargetOS defaultValue)
 {
     const char* str = m_config->GetString("usbtargetos", USBTargetOSToString(defaultValue));

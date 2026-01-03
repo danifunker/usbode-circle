@@ -24,6 +24,8 @@
 #include "setuppage.h"
 #include "upgradepage.h"
 #include <upgradestatus/upgradestatus.h>
+#include "classicmacmodepage.h"
+#include "soundconfig.h"
 
 LOGMODULE("sh1106display");
 
@@ -95,6 +97,9 @@ bool SH1106Display::Initialize() {
     m_PageManager.RegisterPage("infopage", new SH1106InfoPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("setuppage", new SH1106SetupPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("upgradepage", new SH1106UpgradePage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("classicmacmodepage", new SH1106ClassicMacModePage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("soundconfigpage", new SH1106SoundConfigPage(&m_Display, &m_Graphics));
+
 
     // Set the starting page
     SetupStatus* setup = SetupStatus::Get();

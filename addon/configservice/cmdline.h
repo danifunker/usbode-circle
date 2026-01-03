@@ -23,6 +23,7 @@ public:
     const char* GetValue(const char* key) const;
     bool SetValue(const char* key, const char* value);
     bool IsDirty();
+    void DeleteValue(const char* key);
 
     /*
     int GetLogLevel() const;
@@ -33,7 +34,6 @@ private:
     Pair pairs[MAX_PAIRS];
     int count;
     bool dirty = false;
-
     int find_index(const char* key) const;
 };
 
