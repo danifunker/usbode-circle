@@ -31,31 +31,50 @@ THTTPStatus ListAPIHandler::GetJson(nlohmann::json& j,
     if (it != params.end()) {
         path = it->second;
         LOGNOTE("ListAPIHandler: path parameter = '%s'", path.c_str());
+        // Normalize: remove trailing slash
+        while (!path.empty() && path.back() == '/')
+            path.pop_back();
     }
 
-    // Refresh cache for the specified path (or root if empty)
-    LOGNOTE("ListAPIHandler: Calling RefreshCacheForPath");
-    svc->RefreshCacheForPath(path.c_str());
-    LOGNOTE("ListAPIHandler: RefreshCacheForPath returned, count = %zu", svc->GetCount());
+    bool isRoot = path.empty();
+    size_t pathLen = path.length();
 
     // Build response
     j["path"] = path;
-    j["isRoot"] = path.empty();
+    j["isRoot"] = isRoot;
 
     const char* currentPath = svc->GetCurrentCDPath();
     j["currentImage"] = currentPath ? currentPath : "";
 
-    // Build entries array with type information
+    // Build entries array - iterate and filter
     LOGNOTE("ListAPIHandler: Building entries array");
     nlohmann::json entries = nlohmann::json::array();
+    
     for (const FileEntry* entry = svc->begin(); entry != svc->end(); ++entry) {
-        if (entry == nullptr) continue;
+        const char* entryPath = entry->relativePath;
+        
+        // Filter logic
+        bool showEntry = false;
+        if (isRoot) {
+            showEntry = (strchr(entryPath, '/') == nullptr);
+        } else {
+            if (strncmp(entryPath, path.c_str(), pathLen) == 0 && entryPath[pathLen] == '/') {
+                const char* remainder = entryPath + pathLen + 1;
+                showEntry = (strchr(remainder, '/') == nullptr);
+            }
+        }
+        
+        if (!showEntry)
+            continue;
+        
         nlohmann::json item;
         item["name"] = entry->name;
+        item["relativePath"] = entry->relativePath;
         item["type"] = entry->isDirectory ? "directory" : "file";
         item["size"] = entry->size;
         entries.push_back(item);
     }
+    
     j["entries"] = entries;
 
     LOGNOTE("ListAPIHandler: GetJson completed successfully");

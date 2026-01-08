@@ -80,23 +80,43 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
 
     auto params = parse_query_params(pParams);
 
+    // Get current loaded image info first
+    const char* current_image_path = svc->GetCurrentCDPath();
+    std::string current_image_folder = "";
+    
+    if (current_image_path && current_image_path[0] != '\0') {
+        // Extract folder from current image path (e.g., "1:/Games/RPG/game.iso" -> "Games/RPG")
+        const char* pathStart = current_image_path;
+        if (strncmp(pathStart, "1:/", 3) == 0) {
+            pathStart += 3;  // Skip "1:/"
+        }
+        
+        const char* lastSlash = strrchr(pathStart, '/');
+        if (lastSlash != nullptr) {
+            // Has folder component
+            current_image_folder = std::string(pathStart, lastSlash - pathStart);
+        }
+    }
+
     // Get current browse path from ?path= parameter
     std::string current_path = "";
     auto path_it = params.find("path");
     if (path_it != params.end()) {
         current_path = path_it->second;
         LOGNOTE("HomePageHandler: path parameter = '%s'", current_path.c_str());
-        // Ensure trailing slash for non-empty paths
-        if (!current_path.empty() && current_path.back() != '/')
-            current_path += '/';
+        // Normalize: remove trailing slash
+        while (!current_path.empty() && current_path.back() == '/')
+            current_path.pop_back();
+    } else if (!current_image_folder.empty()) {
+        // No path parameter provided - auto-navigate to folder with current image
+        current_path = current_image_folder;
+        LOGNOTE("HomePageHandler: Auto-navigating to current image folder: '%s'", current_path.c_str());
     }
 
-    LOGNOTE("HomePageHandler: Calling RefreshCacheForPath with '%s'", current_path.c_str());
+    LOGNOTE("HomePageHandler: Filtering entries for path='%s'", current_path.c_str());
 
-    // Refresh cache for current path
-    svc->RefreshCacheForPath(current_path.c_str());
-
-    LOGNOTE("HomePageHandler: RefreshCacheForPath returned, count = %zu", svc->GetCount());
+    bool isRoot = current_path.empty();
+    size_t pathLen = current_path.length();
 
     // Set path-related context variables
     bool is_root = current_path.empty();
@@ -108,47 +128,63 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string parent_path = get_parent_path(current_path);
     context.set("parent_path", parent_path);
 
-    // Get current loaded image info
-    const char* current_image_path = svc->GetCurrentCDPath();
+    // Get current loaded image display name
     std::string current_image_name = "";
     if (current_image_path && current_image_path[0] != '\0') {
-        // Extract just filename from path for display
         const char* lastSlash = strrchr(current_image_path, '/');
         current_image_name = lastSlash ? (lastSlash + 1) : current_image_path;
     }
+    
     context.set("image_name", current_image_name);
     context.set("image_path", current_image_path ? current_image_path : "");
+    
+    // Check if we're browsing the folder that contains the current image
+    bool browsing_current_folder = (current_path == current_image_folder);
+    
+    LOGNOTE("HomePageHandler: current_image_folder='%s', browsing_current_folder=%d", 
+            current_image_folder.c_str(), browsing_current_folder);
 
     // Build all links with folder support
-    LOGNOTE("HomePageHandler: Building links, entry count = %zu", svc->GetCount());
+    LOGNOTE("HomePageHandler: Building links for path='%s'", current_path.c_str());
     std::vector<kainjow::mustache::data> all_links_vec;
 
-    size_t entryIndex = 0;
-    for (const FileEntry* entry = svc->begin(); entry != svc->end(); ++entry, ++entryIndex) {
-        if (entry == nullptr) {
-            LOGERR("HomePageHandler: null entry at index %zu", entryIndex);
-            continue;
+    // Iterate through all cached entries and filter
+    for (const FileEntry* entry = svc->begin(); entry != svc->end(); ++entry) {
+        const char* entryPath = entry->relativePath;
+        
+        // Filter logic: show only entries at current depth
+        bool showEntry = false;
+        if (isRoot) {
+            // Root: show entries with no '/' in their path
+            showEntry = (strchr(entryPath, '/') == nullptr);
+        } else {
+            // Subfolder: show entries that start with "path/" and have no additional '/'
+            if (strncmp(entryPath, current_path.c_str(), pathLen) == 0 && entryPath[pathLen] == '/') {
+                const char* remainder = entryPath + pathLen + 1;
+                showEntry = (strchr(remainder, '/') == nullptr);
+            }
         }
-
+        
+        if (!showEntry)
+            continue;
+        
         mustache::data link;
         std::string name(entry->name);
         link.set("file_name", name);
         link.set("is_folder", entry->isDirectory);
 
         if (entry->isDirectory) {
-            // Folder: link to /?path=current_path/folder_name
-            std::string folder_path = current_path + name + "/";
-            link.set("folder_path", folder_path);
+            // Folder: link to /?path=relativePath
+            link.set("folder_path", std::string(entry->relativePath));
             link.set("style", " folder");
             link.set("current", "");
         } else {
-            // File: check if it's the currently mounted image
-            std::string file_path = current_path + name;
-            std::string full_path = "1:/" + file_path;
+            // File: check if it's the currently mounted image (only if we're in the same folder)
+            std::string full_path = "1:/" + std::string(entry->relativePath);
 
             std::string current_marker = "";
             std::string style = "";
-            if (current_image_path && full_path == current_image_path) {
+            if (browsing_current_folder && current_image_path && full_path == current_image_path) {
                 current_marker = " (Current)";
                 style = " current";
             }
@@ -156,9 +192,9 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
             link.set("current", current_marker);
             link.set("style", style);
 
-            // URL-encode the path for mount link
-            link.set("file_path", file_path);
-            link.set("file_path_encoded", url_encode_path(file_path));
+            // URL-encode the relative path for mount link
+            link.set("file_path", std::string(entry->relativePath));
+            link.set("file_path_encoded", url_encode_path(entry->relativePath));
         }
 
         all_links_vec.push_back(link);
@@ -185,14 +221,23 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     if (total_pages == 0) total_pages = 1;
     if (page > total_pages) page = total_pages;
 
-    // Find page with current image (only if we're at root or in the same folder)
+    // Build path parameter string for pagination links
+    std::string path_param = "";
+    if (!current_path.empty()) {
+        path_param = "&path=" + url_encode_path(current_path);
+    }
+
+    // Find page with current image (only if we're browsing the folder containing it)
     int current_image_page = 0;
-    for (size_t i = 0; i < all_links_vec.size(); i++) {
-        auto& link = all_links_vec[i];
-        const auto* current_ptr = link.get("current");
-        if (current_ptr && !current_ptr->string_value().empty()) {
-            current_image_page = (i / ITEMS_PER_PAGE) + 1;
-            break;
+    if (browsing_current_folder) {
+        for (size_t i = 0; i < all_links_vec.size(); i++) {
+            auto& link = all_links_vec[i];
+            const auto* current_ptr = link.get("current");
+            if (current_ptr && !current_ptr->string_value().empty()) {
+                current_image_page = (i / ITEMS_PER_PAGE) + 1;
+                LOGNOTE("HomePageHandler: Found current image at index %d, page %d", (int)i, current_image_page);
+                break;
+            }
         }
     }
 

@@ -40,11 +40,16 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 	if (params.count("file") == 0)
 		return HTTPBadRequest;
 
-	std::string file_name = params["file"];
-	context.set("image_name", file_name);
+	// file parameter can be a relative path like "Games/RPG/game.iso"
+	std::string file_param = params["file"];
+	context.set("image_name", file_param);
 	context.set("meta_refresh_url", "/");
 
-	LOGDBG("Got filename %s from parameter", file_name.c_str());
+	// Construct full path: "1:/" + file_param
+	char fullPath[MAX_PATH_LEN];
+	snprintf(fullPath, sizeof(fullPath), "1:/%s", file_param.c_str());
+
+	LOGDBG("MountPage: Mounting image at path: %s", fullPath);
 
 	SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
 
@@ -53,7 +58,7 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
         return HTTPInternalServerError;
 	}
 
-	if (svc->SetNextCDByName(file_name.c_str())) {
+	if (svc->SetNextCDByPath(fullPath)) {
 		return HTTPOK;
 	}
 

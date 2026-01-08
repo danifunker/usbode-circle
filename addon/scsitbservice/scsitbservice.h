@@ -16,7 +16,8 @@
 
 struct FileEntry
 {
-    char name[MAX_FILENAME_LEN];
+    char name[MAX_FILENAME_LEN];          // Display name only (e.g., "game.iso")
+    char relativePath[MAX_PATH_LEN];     // Full path from root (e.g., "Games/RPG/game.iso" or "Games/RPG" for folders)
     DWORD size;
     bool isDirectory;
 };
@@ -44,8 +45,7 @@ public:
     void GetFullPath(size_t index, char* outPath, size_t maxLen, const char* basePath) const;
 
     // Modifiers
-    bool RefreshCache();
-    bool RefreshCacheForPath(const char* relativePath);  // List specific folder
+    bool RefreshCache();  // Scan entire tree once
     bool SetNextCD(size_t index);
     bool SetNextCDByName(const char* file_name);
     bool SetNextCDByPath(const char* fullPath);  // Mount by full path
@@ -71,7 +71,7 @@ private:
     mutable CGenericLock m_Lock;
 
     void ClearCache();
-    bool RefreshCacheInternal(const char* fullPath);  // Internal helper for path scanning
+    void ScanDirectoryRecursive(const char* fullPath, const char* relativePath);  // Recursive scanner
 };
 
 #endif
