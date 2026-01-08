@@ -16,9 +16,11 @@ THTTPStatus ListAPIHandler::GetJson(nlohmann::json& j,
                 const char *pParams,
                 const char *pFormData)
 {
+    LOGNOTE("ListAPIHandler::GetJson called");
+
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     if (!svc) {
-        LOGERR("Couldn't fetch SCSITB Service");
+        LOGERR("ListAPIHandler: Couldn't fetch SCSITB Service");
         return HTTPInternalServerError;
     }
 
@@ -28,19 +30,26 @@ THTTPStatus ListAPIHandler::GetJson(nlohmann::json& j,
     auto it = params.find("path");
     if (it != params.end()) {
         path = it->second;
+        LOGNOTE("ListAPIHandler: path parameter = '%s'", path.c_str());
     }
 
     // Refresh cache for the specified path (or root if empty)
+    LOGNOTE("ListAPIHandler: Calling RefreshCacheForPath");
     svc->RefreshCacheForPath(path.c_str());
+    LOGNOTE("ListAPIHandler: RefreshCacheForPath returned, count = %zu", svc->GetCount());
 
     // Build response
     j["path"] = path;
     j["isRoot"] = path.empty();
-    j["currentImage"] = svc->GetCurrentCDPath();
+
+    const char* currentPath = svc->GetCurrentCDPath();
+    j["currentImage"] = currentPath ? currentPath : "";
 
     // Build entries array with type information
+    LOGNOTE("ListAPIHandler: Building entries array");
     nlohmann::json entries = nlohmann::json::array();
     for (const FileEntry* entry = svc->begin(); entry != svc->end(); ++entry) {
+        if (entry == nullptr) continue;
         nlohmann::json item;
         item["name"] = entry->name;
         item["type"] = entry->isDirectory ? "directory" : "file";
@@ -49,5 +58,6 @@ THTTPStatus ListAPIHandler::GetJson(nlohmann::json& j,
     }
     j["entries"] = entries;
 
+    LOGNOTE("ListAPIHandler: GetJson completed successfully");
     return HTTPOK;
 }

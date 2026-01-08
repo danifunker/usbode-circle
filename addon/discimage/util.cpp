@@ -184,13 +184,13 @@ IImageDevice* loadMDSFileDevice(const char* imagePath) {
     // Create MDS device
     CMDSFileDevice* mdsDevice = new CMDSFileDevice(fullPath, mds_str, mediaType);
     if (!mdsDevice->Init()) {
-        LOGERR("Failed to initialize MDS device: %s", imageName);
+        LOGERR("Failed to initialize MDS device: %s", imagePath);
         delete mdsDevice;
         return nullptr;
     }
 
-    LOGNOTE("Successfully loaded MDS device: %s (has subchannels: %s)", 
-            imageName, 
+    LOGNOTE("Successfully loaded MDS device: %s (has subchannels: %s)",
+            imagePath,
             mdsDevice->HasSubchannelData() ? "yes" : "no");
     
     // Returns IMDSDevice*, which is an IImageDevice*
@@ -251,7 +251,7 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
     if (cue_str != nullptr)
         delete[] cue_str;
 
-    LOGNOTE("Successfully loaded CUE/BIN/ISO device: %s", imageName);
+    LOGNOTE("Successfully loaded CUE/BIN/ISO device: %s", imagePath);
     
     // Returns ICueDevice*, which is an IImageDevice*
     return device;
@@ -270,13 +270,13 @@ IImageDevice* loadCHDFileDevice(const char* imagePath) {
     // Create CHD device
     CCHDFileDevice* chdDevice = new CCHDFileDevice(fullPath, mediaType);
     if (!chdDevice->Init()) {
-        LOGERR("Failed to initialize CHD device: %s", imageName);
+        LOGERR("Failed to initialize CHD device: %s", imagePath);
         delete chdDevice;
-        return nullptr;  // This nullptr is causing the crash
+        return nullptr;
     }
-    
-    LOGNOTE("Successfully loaded CHD device: %s (has subchannels: %s)", 
-            imageName, 
+
+    LOGNOTE("Successfully loaded CHD device: %s (has subchannels: %s)",
+            imagePath,
             chdDevice->HasSubchannelData() ? "yes" : "no");
     
     return chdDevice;

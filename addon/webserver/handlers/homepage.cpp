@@ -6,6 +6,7 @@
 #include <circle/koptions.h>
 #include <vector>
 #include <string>
+#include <cstring>
 #include <algorithm>
 #include <gitinfo/gitinfo.h>
 #include "homepage.h"
@@ -69,11 +70,13 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
         const char  *pParams,
         const char  *pFormData)
 {
-    LOGDBG("Home page called");
+    LOGNOTE("HomePageHandler::PopulateContext called");
 
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
-    if (!svc)
+    if (!svc) {
+        LOGERR("HomePageHandler: scsitbservice is null!");
         return HTTPInternalServerError;
+    }
 
     auto params = parse_query_params(pParams);
 
@@ -82,13 +85,18 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     auto path_it = params.find("path");
     if (path_it != params.end()) {
         current_path = path_it->second;
+        LOGNOTE("HomePageHandler: path parameter = '%s'", current_path.c_str());
         // Ensure trailing slash for non-empty paths
         if (!current_path.empty() && current_path.back() != '/')
             current_path += '/';
     }
 
+    LOGNOTE("HomePageHandler: Calling RefreshCacheForPath with '%s'", current_path.c_str());
+
     // Refresh cache for current path
     svc->RefreshCacheForPath(current_path.c_str());
+
+    LOGNOTE("HomePageHandler: RefreshCacheForPath returned, count = %zu", svc->GetCount());
 
     // Set path-related context variables
     bool is_root = current_path.empty();
@@ -112,9 +120,16 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     context.set("image_path", current_image_path ? current_image_path : "");
 
     // Build all links with folder support
+    LOGNOTE("HomePageHandler: Building links, entry count = %zu", svc->GetCount());
     std::vector<kainjow::mustache::data> all_links_vec;
 
-    for (const FileEntry* entry = svc->begin(); entry != svc->end(); ++entry) {
+    size_t entryIndex = 0;
+    for (const FileEntry* entry = svc->begin(); entry != svc->end(); ++entry, ++entryIndex) {
+        if (entry == nullptr) {
+            LOGERR("HomePageHandler: null entry at index %zu", entryIndex);
+            continue;
+        }
+
         mustache::data link;
         std::string name(entry->name);
         link.set("file_name", name);
@@ -238,5 +253,6 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
         context.set("pagination", pagination);
     }
 
+    LOGNOTE("HomePageHandler: PopulateContext completed successfully");
     return HTTPOK;
 }

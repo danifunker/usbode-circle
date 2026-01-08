@@ -245,8 +245,19 @@ bool SCSITBService::RefreshCacheInternal(const char* fullPath) {
         if (strcmp(fno.fname, ".") == 0 || strcmp(fno.fname, "..") == 0)
             continue;
 
+        // Exclude hidden files/folders (starting with .)
+        if (fno.fname[0] == '.')
+            continue;
+
         // Exclude Mac cache files
-        if (strncmp(fno.fname, "._", 2) == 0 || strcmp(fno.fname, ".DS_Store") == 0)
+        if (strncmp(fno.fname, "._", 2) == 0)
+            continue;
+
+        // Exclude Windows/Linux system folders
+        if (strcasecmp(fno.fname, "System Volume Information") == 0 ||
+            strcasecmp(fno.fname, "$RECYCLE.BIN") == 0 ||
+            strcasecmp(fno.fname, "RECYCLER") == 0 ||
+            strcasecmp(fno.fname, "lost+found") == 0)
             continue;
 
         if (m_FileCount >= MAX_FILES)
@@ -289,6 +300,9 @@ bool SCSITBService::RefreshCacheInternal(const char* fullPath) {
 
 // List specific folder by relative path (e.g., "Games/RPG" or "" for root)
 bool SCSITBService::RefreshCacheForPath(const char* relativePath) {
+    LOGNOTE("SCSITBService::RefreshCacheForPath() called with: %s",
+            relativePath ? relativePath : "(null)");
+
     m_Lock.Acquire();
 
     char fullPath[MAX_PATH_LEN];
@@ -296,10 +310,11 @@ bool SCSITBService::RefreshCacheForPath(const char* relativePath) {
         snprintf(fullPath, sizeof(fullPath), "1:/");
     } else {
         // Skip leading slash if present
-        while (*relativePath == '/')
-            relativePath++;
+        const char* pathPtr = relativePath;
+        while (*pathPtr == '/')
+            pathPtr++;
 
-        snprintf(fullPath, sizeof(fullPath), "1:/%s", relativePath);
+        snprintf(fullPath, sizeof(fullPath), "1:/%s", pathPtr);
 
         // Ensure trailing slash for directory
         size_t len = strlen(fullPath);
@@ -309,8 +324,14 @@ bool SCSITBService::RefreshCacheForPath(const char* relativePath) {
         }
     }
 
+    LOGNOTE("SCSITBService::RefreshCacheForPath() full path: %s", fullPath);
+
     bool result = RefreshCacheInternal(fullPath);
     m_Lock.Release();
+
+    LOGNOTE("SCSITBService::RefreshCacheForPath() completed, result: %d, count: %zu",
+            result, m_FileCount);
+
     return result;
 }
 
