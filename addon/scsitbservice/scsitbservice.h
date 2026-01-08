@@ -48,7 +48,6 @@ public:
     bool RefreshCache();  // Scan entire tree once
     bool SetNextCD(size_t index);
     bool SetNextCDByName(const char* file_name);
-    bool SetNextCDByPath(const char* fullPath);  // Mount by full path
 
     // Task entry point
     void Run(void);

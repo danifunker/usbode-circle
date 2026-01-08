@@ -194,8 +194,9 @@ bool SCSITBService::SetNextCDByName(const char* file_name) {
 
 	int index = 0;
         for (const FileEntry* it = begin(); it != end(); ++it, ++index) {
-		//LOGNOTE("SCSITBService::SetNextCDByName testing %s", it->name);
-                if (strcmp(file_name, it->name) == 0) {
+		//LOGNOTE("SCSITBService::SetNextCDByName testing %s", it->relativePath);
+                // Compare against relativePath to support files in subfolders
+                if (strcmp(file_name, it->relativePath) == 0) {
                         return SetNextCD(index);
                 }
         }
@@ -203,24 +204,7 @@ bool SCSITBService::SetNextCDByName(const char* file_name) {
 	return false;
 }
 
-bool SCSITBService::SetNextCDByPath(const char* fullPath) {
-    LOGNOTE("SCSITBService::SetNextCDByPath called with: %s", fullPath);
-
-    if (fullPath == nullptr || fullPath[0] == '\0')
-        return false;
-
-    // Store the path - will be used to load the image
-    strncpy(m_CurrentImagePath, fullPath, sizeof(m_CurrentImagePath) - 1);
-    m_CurrentImagePath[sizeof(m_CurrentImagePath) - 1] = '\0';
-
-    // We don't actually look up the index in the current cache
-    // because the file might be in a different folder than what's cached.
-    // Instead, mark next_cd with a special value and handle in Run()
-    // For now, we use -2 to indicate "use m_CurrentImagePath directly"
-    next_cd = -2;
-
-    return true;
-}
+// SetNextCDByPath removed - use SetNextCDByName with relativePath instead
 
 
 // Recursive scanner that stores full relative paths
@@ -384,37 +368,8 @@ void SCSITBService::Run() {
     while (true) {
         m_Lock.Acquire();
 
-        // Handle load by full path (SetNextCDByPath was called)
-        if (next_cd == -2) {
-            LOGNOTE("Loading image by path: %s", m_CurrentImagePath);
-
-            IImageDevice* imageDevice = loadImageDevice(m_CurrentImagePath);
-
-            if (imageDevice == nullptr) {
-                LOGERR("Failed to load image: %s", m_CurrentImagePath);
-                next_cd = -1;
-                m_Lock.Release();
-                continue;
-            }
-
-            LOGNOTE("Loaded image: %s (format: %d, has subchannels: %s)",
-                    m_CurrentImagePath,
-                    (int)imageDevice->GetFileType(),
-                    imageDevice->HasSubchannelData() ? "yes" : "no");
-
-            cdromservice->SetDevice(imageDevice);
-
-            // Save to config - store path without "1:/" prefix for compatibility
-            const char* pathForConfig = m_CurrentImagePath;
-            if (strncmp(pathForConfig, "1:/", 3) == 0)
-                pathForConfig += 3;
-            configservice->SetCurrentImage(pathForConfig);
-
-            current_cd = -1;  // Index not meaningful for path-based load
-            next_cd = -1;
-        }
         // Handle load by index (SetNextCD or SetNextCDByName was called)
-        else if (next_cd > -1) {
+        if (next_cd > -1) {
             if ((size_t)next_cd >= m_FileCount) {
                 next_cd = -1;
                 m_Lock.Release();

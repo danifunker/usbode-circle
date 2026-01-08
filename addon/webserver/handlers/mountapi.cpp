@@ -21,7 +21,7 @@ THTTPStatus MountAPIHandler::GetJson(nlohmann::json& j,
     if (params.count("file") == 0)
         return HTTPBadRequest;
 
-    // file parameter can be a relative path like "Games/RPG/game.iso"
+    // file parameter is a relative path like "Games/RPG/game.iso" or just "game.iso"
     // URL decoding has already converted %2F to /
     std::string file_param = params["file"];
 
@@ -31,13 +31,10 @@ THTTPStatus MountAPIHandler::GetJson(nlohmann::json& j,
         return HTTPInternalServerError;
     }
 
-    // Construct full path: "1:/" + file_param
-    char fullPath[MAX_PATH_LEN];
-    snprintf(fullPath, sizeof(fullPath), "1:/%s", file_param.c_str());
+    LOGNOTE("MountAPI: Mounting image with relative path: %s", file_param.c_str());
 
-    LOGNOTE("MountAPI: Mounting image at path: %s", fullPath);
-
-    if (svc->SetNextCDByPath(fullPath)) {
+    // Use SetNextCDByName which now searches by relativePath in the cache
+    if (svc->SetNextCDByName(file_param.c_str())) {
         j = {{"status", "ok"}};
         return HTTPOK;
     }

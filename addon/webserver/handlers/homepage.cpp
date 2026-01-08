@@ -50,7 +50,7 @@ static std::string url_encode_path(const std::string& value) {
 
 // Helper to compute parent path from current path
 static std::string get_parent_path(const std::string& path) {
-    if (path.empty()) return "";
+    if (path.empty()) return "/";  // If at root, parent is still root
 
     // Remove trailing slash if present
     std::string p = path;
@@ -60,9 +60,12 @@ static std::string get_parent_path(const std::string& path) {
     // Find last slash
     size_t lastSlash = p.rfind('/');
     if (lastSlash == std::string::npos)
-        return "";  // No parent, we're at root level
+        return "/";  // No parent, go to root
 
-    return p.substr(0, lastSlash + 1);  // Include trailing slash
+    if (lastSlash == 0)
+        return "/";  // Parent is root
+
+    return p.substr(0, lastSlash);  // Return parent without trailing slash
 }
 
 THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
@@ -270,7 +273,10 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
 
         pagination.set("current_page", page_str);
         pagination.set("total_pages", total_pages_str);
-        pagination.set("path_param", current_path.empty() ? "" : "&path=" + url_encode_path(current_path));
+        
+        // Always include path parameter (use "/" for root)
+        std::string path_for_url = current_path.empty() ? "/" : current_path;
+        pagination.set("path_param", "&path=" + url_encode_path(path_for_url));
 
         pagination.set("has_first", page > 1);
 
