@@ -107,6 +107,12 @@ const char* SCSITBService::GetName(size_t index) const {
     return m_FileEntries[index].name;
 }
 
+const char* SCSITBService::GetRelativePath(size_t index) const {
+    if (index >= m_FileCount)
+        return nullptr;
+    return m_FileEntries[index].relativePath;
+}
+
 DWORD SCSITBService::GetSize(size_t index) const {
     if (index >= m_FileCount)
         return 0;

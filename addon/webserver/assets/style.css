@@ -133,6 +133,14 @@ a.button {
 	color: #996600;
 	font-weight: 500;
 }
+.file.parent-dir {
+	background-color: #F0F0F0;
+	border-left: 3px solid #999;
+}
+.file.parent-dir a {
+	color: #666;
+	font-weight: bold;
+}
 .header-bar {
 	background-color: #2C5F7C; 
 	color: #FFFFFF; 
@@ -223,21 +231,6 @@ a.button {
 .unavailable {
 	color: #666; 
 	font-style: italic;
-}
-.navigation {
-	margin: 10px 0;
-}
-.nav-up {
-	display: inline-block;
-	padding: 8px 15px;
-	background-color: #F0F0F0;
-	border: 1px solid #CCC;
-	text-decoration: none;
-	color: #333;
-	font-weight: bold;
-}
-.nav-up:hover {
-	background-color: #E0E0E0;
 }
 form {
 	margin-bottom: 20px;

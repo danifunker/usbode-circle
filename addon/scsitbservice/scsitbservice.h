@@ -31,6 +31,7 @@ public:
     // Accessors
     size_t GetCount() const;
     const char* GetName(size_t index) const;
+    const char* GetRelativePath(size_t index) const;
     DWORD GetSize(size_t index) const;
     const FileEntry* GetFileEntry(size_t index) const;
     FileEntry* begin();

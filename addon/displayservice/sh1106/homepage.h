@@ -27,9 +27,12 @@ class SH1106HomePage : public IPage {
     void SelectItem();
     void DrawNavigationBar(const char* screenType);
     void GetIPAddress(char* buffer, size_t size);
-    const char* GetCurrentImage();
+    const char* GetCurrentImagePath();
     const char* GetVersionString();
     const char* GetUSBSpeed();
+    void RefreshISOScroll();
+    void DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
+                          int pixelOffset, const TFont& rFont = Font6x7);
     const char* m_NextPageName;
     ConfigService* config;
 
@@ -39,8 +42,14 @@ class SH1106HomePage : public IPage {
     C2DGraphics* m_Graphics;
     SCSITBService* m_Service = nullptr;
     char pIPAddress[16];
-    const char* pISOName;
+    char pISOPath[MAX_PATH_LEN];  // Store full path for scrolling
     const char* pUSBSpeed;
     const char* pTitle;
+
+    // ISO name scrolling state
+    int m_ISOScrollOffsetPx = 0;
+    bool m_ISOScrollDirLeft = true;
+    int m_ISOCharWidth = 6;  // Font6x7 char width
+    int m_ISOMaxTextPx = 0;  // Max pixels for ISO display area
 };
 #endif
