@@ -26,6 +26,44 @@ std::string HomePageHandler::GetHTML()
     return std::string(s_Index);
 }
 
+// Helper to URL-encode a string (encode special chars for query params)
+static std::string url_encode_path(const std::string& value) {
+    std::string result;
+    for (char c : value) {
+        if (c == '/') {
+            result += "%2F";
+        } else if (c == ' ') {
+            result += "%20";
+        } else if (c == '&') {
+            result += "%26";
+        } else if (c == '?') {
+            result += "%3F";
+        } else if (c == '=') {
+            result += "%3D";
+        } else {
+            result += c;
+        }
+    }
+    return result;
+}
+
+// Helper to compute parent path from current path
+static std::string get_parent_path(const std::string& path) {
+    if (path.empty()) return "";
+
+    // Remove trailing slash if present
+    std::string p = path;
+    if (!p.empty() && p.back() == '/')
+        p.pop_back();
+
+    // Find last slash
+    size_t lastSlash = p.rfind('/');
+    if (lastSlash == std::string::npos)
+        return "";  // No parent, we're at root level
+
+    return p.substr(0, lastSlash + 1);  // Include trailing slash
+}
+
 THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
         const char *pPath,
         const char  *pParams,
@@ -33,44 +71,90 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
 {
     LOGDBG("Home page called");
 
-    // Ask scsitbservice for a list of filenames
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     if (!svc)
         return HTTPInternalServerError;
 
-    // Get current loaded image
-    std::string current_image = svc->GetCurrentCDName();
-    context.set("image_name", current_image);
+    auto params = parse_query_params(pParams);
 
+    // Get current browse path from ?path= parameter
+    std::string current_path = "";
+    auto path_it = params.find("path");
+    if (path_it != params.end()) {
+        current_path = path_it->second;
+        // Ensure trailing slash for non-empty paths
+        if (!current_path.empty() && current_path.back() != '/')
+            current_path += '/';
+    }
+
+    // Refresh cache for current path
+    svc->RefreshCacheForPath(current_path.c_str());
+
+    // Set path-related context variables
+    bool is_root = current_path.empty();
+    context.set("current_path", current_path);
+    context.set("is_root", is_root);
+    context.set("show_path", !is_root);
+
+    // Compute parent path for ".." navigation
+    std::string parent_path = get_parent_path(current_path);
+    context.set("parent_path", parent_path);
+
+    // Get current loaded image info
+    const char* current_image_path = svc->GetCurrentCDPath();
+    std::string current_image_name = "";
+    if (current_image_path && current_image_path[0] != '\0') {
+        // Extract just filename from path for display
+        const char* lastSlash = strrchr(current_image_path, '/');
+        current_image_name = lastSlash ? (lastSlash + 1) : current_image_path;
+    }
+    context.set("image_name", current_image_name);
+    context.set("image_path", current_image_path ? current_image_path : "");
+
+    // Build all links with folder support
     std::vector<kainjow::mustache::data> all_links_vec;
 
-    for (const FileEntry* it = svc->begin(); it != svc->end(); ++it) {
+    for (const FileEntry* entry = svc->begin(); entry != svc->end(); ++entry) {
+        mustache::data link;
+        std::string name(entry->name);
+        link.set("file_name", name);
+        link.set("is_folder", entry->isDirectory);
 
-        std::string full_name(it->name);
+        if (entry->isDirectory) {
+            // Folder: link to /?path=current_path/folder_name
+            std::string folder_path = current_path + name + "/";
+            link.set("folder_path", folder_path);
+            link.set("style", " folder");
+            link.set("current", "");
+        } else {
+            // File: check if it's the currently mounted image
+            std::string file_path = current_path + name;
+            std::string full_path = "1:/" + file_path;
 
-        //LOGDBG("Read directory index %s", full_name.c_str());
+            std::string current_marker = "";
+            std::string style = "";
+            if (current_image_path && full_path == current_image_path) {
+                current_marker = " (Current)";
+                style = " current";
+            }
 
-        std::string current = "";
-        std::string style = "";
-        if (full_name == current_image) {
-            current = " (Current)";
-            style = " current";
+            link.set("current", current_marker);
+            link.set("style", style);
+
+            // URL-encode the path for mount link
+            link.set("file_path", file_path);
+            link.set("file_path_encoded", url_encode_path(file_path));
         }
 
-        mustache::data link;
-        link.set("file_name", full_name);
-        link.set("current", current);
-        link.set("style", style);
         all_links_vec.push_back(link);
     }
 
     // Get the requested page number from parameters
     int page = 1;
-    auto params = parse_query_params(pParams);
-    auto it = params.find("page");
-    if (it != params.end()) {
+    auto page_it = params.find("page");
+    if (page_it != params.end()) {
         try {
-            int parsed = std::stoi(it->second);
+            int parsed = std::stoi(page_it->second);
             if (parsed > 0) {
                 page = parsed;
             }
@@ -86,21 +170,18 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     if (total_pages == 0) total_pages = 1;
     if (page > total_pages) page = total_pages;
 
-    // Find page with current image
+    // Find page with current image (only if we're at root or in the same folder)
     int current_image_page = 0;
     for (size_t i = 0; i < all_links_vec.size(); i++) {
-        auto link = all_links_vec[i];
-        const auto* file_name_ptr = link.get("file_name");
-        if (file_name_ptr && file_name_ptr->string_value() == current_image) {
+        auto& link = all_links_vec[i];
+        const auto* current_ptr = link.get("current");
+        if (current_ptr && !current_ptr->string_value().empty()) {
             current_image_page = (i / ITEMS_PER_PAGE) + 1;
             break;
         }
     }
 
     // If no page specified and we found current image, go to that page
-    // TODO: If the found image is not on page 1, we should redirect the browser
-    // to a different page so that the query param in the url reflects the page
-    // we want to be on. However, need to implement a way to return a redirect
     if (params.find("page") == params.end()) {
         if (current_image_page > 0) {
             page = current_image_page;
@@ -119,22 +200,20 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     }
     context.set("links", links);
 
-    // Only add pagination if we have more than one page
+    // Pagination - include path in page links
     if (total_pages > 1) {
         mustache::data pagination;
 
-        // Add page numbers as strings
         char page_str[16], total_pages_str[16];
         snprintf(page_str, sizeof(page_str), "%d", page);
         snprintf(total_pages_str, sizeof(total_pages_str), "%d", total_pages);
 
         pagination.set("current_page", page_str);
         pagination.set("total_pages", total_pages_str);
+        pagination.set("path_param", current_path.empty() ? "" : "&path=" + url_encode_path(current_path));
 
-        // First page link
         pagination.set("has_first", page > 1);
 
-        // Previous page link (only if not first page and not same as first)
         pagination.set("has_prev", page > 2);
         if (page > 2) {
             char prev_str[16];
@@ -142,7 +221,6 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
             pagination.set("prev_page", prev_str);
         }
 
-        // Next page link (only if not last page and not same as last)
         pagination.set("has_next", page < total_pages - 1);
         if (page < total_pages - 1) {
             char next_str[16];
@@ -150,7 +228,6 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
             pagination.set("next_page", next_str);
         }
 
-        // Last page link
         pagination.set("has_last", page < total_pages);
         if (page < total_pages) {
             char last_str[16];

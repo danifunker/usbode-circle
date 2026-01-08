@@ -12,11 +12,13 @@
 
 #define MAX_FILES 2048
 #define MAX_FILENAME_LEN 255
+#define MAX_PATH_LEN 512
 
 struct FileEntry
 {
     char name[MAX_FILENAME_LEN];
     DWORD size;
+    bool isDirectory;
 };
 
 class SCSITBService : public CTask
@@ -34,11 +36,19 @@ public:
     FileEntry* end();
     const char* GetCurrentCDName();
     size_t GetCurrentCD();
+    bool IsDirectory(size_t index) const;
+
+    // Path-aware accessors
+    const char* GetCurrentCDPath() const;    // Full path of mounted image
+    const char* GetCurrentCDFolder() const;  // Folder portion only (without "1:/")
+    void GetFullPath(size_t index, char* outPath, size_t maxLen, const char* basePath) const;
 
     // Modifiers
     bool RefreshCache();
+    bool RefreshCacheForPath(const char* relativePath);  // List specific folder
     bool SetNextCD(size_t index);
     bool SetNextCDByName(const char* file_name);
+    bool SetNextCDByPath(const char* fullPath);  // Mount by full path
 
     // Task entry point
     void Run(void);
@@ -55,9 +65,13 @@ private:
     int next_cd = -1;
     int current_cd = -1;
 
+    // Full path of currently mounted image (e.g., "1:/Games/game.iso")
+    char m_CurrentImagePath[MAX_PATH_LEN];
+
     mutable CGenericLock m_Lock;
 
     void ClearCache();
+    bool RefreshCacheInternal(const char* fullPath);  // Internal helper for path scanning
 };
 
 #endif

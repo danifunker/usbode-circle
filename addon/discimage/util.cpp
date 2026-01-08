@@ -164,14 +164,15 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
 // ============================================================================
 // MDS Plugin Loader
 // ============================================================================
-IImageDevice* loadMDSFileDevice(const char* imageName) {
-    LOGNOTE("Loading MDS image: %s", imageName);
-    
-    MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
-    
-    // Construct full path for MDS file
-    char fullPath[255];
-    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
+IImageDevice* loadMDSFileDevice(const char* imagePath) {
+    LOGNOTE("Loading MDS image: %s", imagePath);
+
+    MEDIA_TYPE mediaType = hasDvdHint(imagePath) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+
+    // imagePath is already a full path like "1:/Games/game.mds"
+    char fullPath[512];
+    strncpy(fullPath, imagePath, sizeof(fullPath) - 1);
+    fullPath[sizeof(fullPath) - 1] = '\0';
 
     // Read MDS file into memory
     char* mds_str = nullptr;
@@ -199,14 +200,15 @@ IImageDevice* loadMDSFileDevice(const char* imageName) {
 // ============================================================================
 // CUE/BIN/ISO Plugin Loader
 // ============================================================================
-IImageDevice* loadCueBinIsoFileDevice(const char* imageName) {
-    LOGNOTE("Loading CUE/BIN/ISO image: %s", imageName);
-    
-    MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
-    
-    // Construct full path
-    char fullPath[255];
-    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
+IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
+    LOGNOTE("Loading CUE/BIN/ISO image: %s", imagePath);
+
+    MEDIA_TYPE mediaType = hasDvdHint(imagePath) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+
+    // imagePath is already a full path like "1:/Games/game.iso"
+    char fullPath[512];
+    strncpy(fullPath, imagePath, sizeof(fullPath) - 1);
+    fullPath[sizeof(fullPath) - 1] = '\0';
 
     FIL* imageFile = new FIL();
     char* cue_str = nullptr;
@@ -255,14 +257,15 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imageName) {
     return device;
 }
 
-IImageDevice* loadCHDFileDevice(const char* imageName) {
-    LOGNOTE("Loading CHD image: %s", imageName);
-    
-    MEDIA_TYPE mediaType = hasDvdHint(imageName) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
-    
-    // Construct full path
-    char fullPath[255];
-    snprintf(fullPath, sizeof(fullPath), "1:/%s", imageName);
+IImageDevice* loadCHDFileDevice(const char* imagePath) {
+    LOGNOTE("Loading CHD image: %s", imagePath);
+
+    MEDIA_TYPE mediaType = hasDvdHint(imagePath) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+
+    // imagePath is already a full path like "1:/Games/game.chd"
+    char fullPath[512];
+    strncpy(fullPath, imagePath, sizeof(fullPath) - 1);
+    fullPath[sizeof(fullPath) - 1] = '\0';
     
     // Create CHD device
     CCHDFileDevice* chdDevice = new CCHDFileDevice(fullPath, mediaType);
@@ -328,23 +331,24 @@ void FatFsOptimizer::DisableFastSeek(DWORD** ppCLMT) {
 // ============================================================================
 // Main Entry Point - Plugin Selection
 // ============================================================================
-IImageDevice* loadImageDevice(const char* imageName) {
-    LOGNOTE("loadImageDevice called for: %s", imageName);
-    
-    if (hasMdsExtension(imageName)) {
+IImageDevice* loadImageDevice(const char* imagePath) {
+    // imagePath is a full path like "1:/Games/game.iso"
+    LOGNOTE("loadImageDevice called for: %s", imagePath);
+
+    if (hasMdsExtension(imagePath)) {
         LOGNOTE("Detected MDS format - using MDS plugin");
-        return loadMDSFileDevice(imageName);
-    } 
-    else if (hasChdExtension(imageName)) {
-        LOGNOTE("Detected CHD format - using CHD plugin");
-        return loadCHDFileDevice(imageName);
+        return loadMDSFileDevice(imagePath);
     }
-    else if (hasCueExtension(imageName) || hasBinExtension(imageName) || hasIsoExtension(imageName)) {
+    else if (hasChdExtension(imagePath)) {
+        LOGNOTE("Detected CHD format - using CHD plugin");
+        return loadCHDFileDevice(imagePath);
+    }
+    else if (hasCueExtension(imagePath) || hasBinExtension(imagePath) || hasIsoExtension(imagePath)) {
         LOGNOTE("Detected CUE/BIN/ISO format - using CUE plugin");
-        return loadCueBinIsoFileDevice(imageName);
+        return loadCueBinIsoFileDevice(imagePath);
     }
     else {
-        LOGERR("Unknown file format: %s", imageName);
+        LOGERR("Unknown file format: %s", imagePath);
         return nullptr;
     }
 }

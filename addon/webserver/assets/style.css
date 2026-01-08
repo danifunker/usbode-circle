@@ -120,7 +120,18 @@ a.button {
 	border:2px solid #4182C7;
 }
 .file.current a {
-	font-weight:bold; 
+	font-weight:bold;
+}
+.file.folder {
+	background-color: #FFF9E6;
+	border-left: 3px solid #FFA500;
+}
+.file.folder:nth-child(odd) {
+	background-color: #FFFBF0;
+}
+.file.folder a {
+	color: #996600;
+	font-weight: 500;
 }
 .header-bar {
 	background-color: #2C5F7C; 
@@ -214,7 +225,19 @@ a.button {
 	font-style: italic;
 }
 .navigation {
-	margin: 5px 0;
+	margin: 10px 0;
+}
+.nav-up {
+	display: inline-block;
+	padding: 8px 15px;
+	background-color: #F0F0F0;
+	border: 1px solid #CCC;
+	text-decoration: none;
+	color: #333;
+	font-weight: bold;
+}
+.nav-up:hover {
+	background-color: #E0E0E0;
 }
 form {
 	margin-bottom: 20px;

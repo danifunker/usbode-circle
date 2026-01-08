@@ -2,31 +2,46 @@
 	<h3>File Selection</h3>
 	<div class="info-box">
 		<p>Current File Loaded: <strong>{{image_name}}</strong></p>
+		{{#show_path}}
+		<p>Current Folder: <strong>/{{current_path}}</strong></p>
+		{{/show_path}}
 	</div>
+
+	{{^is_root}}
+	<div class="navigation">
+		<a class="nav-up" href="/?path={{parent_path}}">..</a>
+	</div>
+	{{/is_root}}
+
 	<h4>Available Files</h4>
 	<div class="files">
 		{{#links}}
-			<div class="file{{{style}}}"><a href="/mount?file={{file_name}}">{{file_name}}</a> {{current}}</div>
+			{{#is_folder}}
+			<div class="file folder"><a href="/?path={{folder_path}}">{{file_name}}/</a></div>
+			{{/is_folder}}
+			{{^is_folder}}
+			<div class="file{{{style}}}"><a href="/mount?file={{file_path_encoded}}">{{file_name}}</a>{{current}}</div>
+			{{/is_folder}}
 		{{/links}}
 	</div>
 	{{#pagination}}
 	<div class="pagination">
 		{{#has_first}}
-		<a href="/?page=1">1</a>
+		<a href="/?page=1{{{path_param}}}">1</a>
 		{{/has_first}}
-		
+
 		{{#has_prev}}
-		<a href="/?page={{prev_page}}">{{prev_page}}</a>
+		<a href="/?page={{prev_page}}{{{path_param}}}">{{prev_page}}</a>
 		{{/has_prev}}
-		
+
 		<span class="current">{{current_page}}</span>
-		
+
 		{{#has_next}}
-		<a href="/?page={{next_page}}">{{next_page}}</a>
+		<a href="/?page={{next_page}}{{{path_param}}}">{{next_page}}</a>
 		{{/has_next}}
-		
+
 		{{#has_last}}
-		<a href="/?page={{last_page}}">{{last_page}}</a>
+		<a href="/?page={{last_page}}{{{path_param}}}">{{last_page}}</a>
 		{{/has_last}}
 	</div>
 	{{/pagination}}
