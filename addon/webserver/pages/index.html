@@ -9,15 +9,22 @@
 
 	<h4>Available Files</h4>
 	<div class="files">
+		{{^flat_file_list}}
 		{{^is_root}}
 		<div class="file parent-dir"><a href="/?path={{parent_path}}">..</a></div>
 		{{/is_root}}
+		{{/flat_file_list}}
 		{{#links}}
 			{{#is_folder}}
 			<div class="file folder"><a href="/?path={{folder_path}}">{{file_name}}/</a></div>
 			{{/is_folder}}
 			{{^is_folder}}
+			{{#flat_display_path}}
+			<div class="file{{{style}}}"><a href="/mount?file={{file_path_encoded}}">{{file_path}}</a>{{current}}</div>
+			{{/flat_display_path}}
+			{{^flat_display_path}}
 			<div class="file{{{style}}}"><a href="/mount?file={{file_path_encoded}}">{{file_name}}</a>{{current}}</div>
+			{{/flat_display_path}}
 			{{/is_folder}}
 		{{/links}}
 	</div>

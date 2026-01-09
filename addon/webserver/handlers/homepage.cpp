@@ -3,6 +3,7 @@
 #include <circle/net/httpdaemon.h>
 #include <mustache/mustache.hpp>
 #include <scsitbservice/scsitbservice.h>
+#include <configservice/configservice.h>
 #include <circle/koptions.h>
 #include <vector>
 #include <string>
@@ -81,6 +82,9 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
         return HTTPInternalServerError;
     }
 
+    ConfigService* config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+    bool flatFileList = config ? config->GetFlatFileList() : false;
+
     auto params = parse_query_params(pParams);
 
     // Get current loaded image info first
@@ -125,7 +129,8 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     bool is_root = current_path.empty();
     context.set("current_path", current_path);
     context.set("is_root", is_root);
-    context.set("show_path", !is_root);
+    context.set("show_path", !is_root && !flatFileList);
+    context.set("flat_file_list", flatFileList);
 
     // Compute parent path for ".." navigation
     std::string parent_path = get_parent_path(current_path);
@@ -154,10 +159,13 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     // Iterate through all cached entries and filter
     for (const FileEntry* entry = svc->begin(); entry != svc->end(); ++entry) {
         const char* entryPath = entry->relativePath;
-        
-        // Filter logic: show only entries at current depth
+
+        // Filter logic: show only entries at current depth (unless flat mode is enabled)
         bool showEntry = false;
-        if (isRoot) {
+        if (flatFileList) {
+            // Flat mode: show all files (skip directories)
+            showEntry = !entry->isDirectory;
+        } else if (isRoot) {
             // Root: show entries with no '/' in their path
             showEntry = (strchr(entryPath, '/') == nullptr);
         } else {
@@ -167,14 +175,15 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
                 showEntry = (strchr(remainder, '/') == nullptr);
             }
         }
-        
+
         if (!showEntry)
             continue;
-        
+
         mustache::data link;
         std::string name(entry->name);
         link.set("file_name", name);
         link.set("is_folder", entry->isDirectory);
+        link.set("flat_display_path", flatFileList);
 
         if (entry->isDirectory) {
             // Folder: link to /?path=relativePath

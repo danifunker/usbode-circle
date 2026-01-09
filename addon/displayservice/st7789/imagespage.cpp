@@ -2,7 +2,7 @@
 
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
-#include <gitinfo/gitinfo.h>
+#include <configservice/configservice.h>
 #include <cstring>
 
 LOGMODULE("imagespage");
@@ -12,35 +12,32 @@ ST7789ImagesPage::ST7789ImagesPage(CST7789Display* display, C2DGraphics* graphic
       m_Graphics(graphics) {
     m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
 
-    // Initialize some variables
     CCharGenerator Font(DEFAULT_FONT, CCharGenerator::FontFlagsNone);
     charWidth = Font.GetCharWidth();
-    maxTextPx = m_Display->GetWidth() - 10;
+    maxTextPx = m_Display->GetWidth() - 20;
 
-    // Initialize folder state
     m_CurrentPath[0] = '\0';
-    m_FilteredCount = 0;
 }
 
 ST7789ImagesPage::~ST7789ImagesPage() {
-    LOGNOTE("Imagespage starting");
 }
 
 void ST7789ImagesPage::OnEnter() {
     LOGNOTE("Drawing imagespage");
 
-    // Determine initial folder from current mounted image
+    ConfigService* config = ConfigService::Get();
+    bool flatFileList = config ? config->GetFlatFileList() : false;
+
     const char* currentPath = m_Service->GetCurrentCDPath();
     m_CurrentPath[0] = '\0';
 
-    if (currentPath && currentPath[0] != '\0') {
-        // Skip "1:/" prefix if present
+    // In folder mode, navigate to the folder containing the current image
+    if (!flatFileList && currentPath && currentPath[0] != '\0') {
         const char* pathStart = currentPath;
         if (strncmp(pathStart, "1:/", 3) == 0) {
             pathStart += 3;
         }
 
-        // Extract folder part (everything before last '/')
         const char* lastSlash = strrchr(pathStart, '/');
         if (lastSlash != nullptr) {
             size_t folderLen = lastSlash - pathStart;
@@ -51,18 +48,25 @@ void ST7789ImagesPage::OnEnter() {
         }
     }
 
-    LOGNOTE("ST7789ImagesPage: Starting in folder '%s'", m_CurrentPath);
+    // Find the currently mounted image
+    m_SelectedIndex = 0;
+    m_MountedIndex = (size_t)-1;
 
-    BuildFilteredList();
+    const char* currentRelPath = nullptr;
+    if (currentPath && currentPath[0] != '\0') {
+        currentRelPath = currentPath;
+        if (strncmp(currentRelPath, "1:/", 3) == 0) {
+            currentRelPath += 3;
+        }
+    }
 
-    // Find mounted image in filtered list
-    m_MountedIndex = 0;
-    const char* currentName = m_Service->GetCurrentCDName();
-    if (currentName) {
-        for (size_t i = 0; i < m_FilteredCount; ++i) {
-            if (!m_FilteredList[i].isParentDir) {
-                const char* entryName = m_Service->GetName(m_FilteredList[i].cacheIndex);
-                if (strcmp(entryName, currentName) == 0) {
+    if (currentRelPath) {
+        size_t visibleCount = GetVisibleCount();
+        for (size_t i = 0; i < visibleCount; ++i) {
+            if (!IsParentDirEntry(i)) {
+                size_t cacheIdx = GetCacheIndex(i);
+                const char* entryPath = m_Service->GetRelativePath(cacheIdx);
+                if (entryPath && strcmp(entryPath, currentRelPath) == 0) {
                     m_MountedIndex = i;
                     m_SelectedIndex = i;
                     break;
@@ -88,50 +92,49 @@ const char* ST7789ImagesPage::nextPageName() {
 
 void ST7789ImagesPage::OnButtonPress(Button button) {
     LOGDBG("Button received by page %d", button);
+
+    ConfigService* config = ConfigService::Get();
+    bool flatFileList = config ? config->GetFlatFileList() : false;
+
     switch (button) {
         case Button::Up:
-            LOGDBG("Move Up");
             MoveSelection(-1);
             break;
 
         case Button::Down:
-            LOGDBG("Move Down");
             MoveSelection(+1);
             break;
 
-        case Button::Ok:
-            if (m_SelectedIndex < m_FilteredCount) {
-                ST7789FilteredEntry& entry = m_FilteredList[m_SelectedIndex];
+        case Button::Left:
+            MoveSelection(-5);
+            break;
 
-                if (entry.isParentDir) {
-                    // Navigate up to parent folder
-                    LOGDBG("Navigate to parent");
-                    NavigateUp();
+        case Button::Right:
+            MoveSelection(+5);
+            break;
+
+        case Button::Ok:
+        case Button::Center:
+            if (IsParentDirEntry(m_SelectedIndex)) {
+                NavigateUp();
+            } else {
+                size_t cacheIdx = GetCacheIndex(m_SelectedIndex);
+                bool isDir = m_Service->IsDirectory(cacheIdx);
+                if (isDir) {
+                    const char* relativePath = m_Service->GetRelativePath(cacheIdx);
+                    NavigateToFolder(relativePath);
                 } else {
-                    // Check if it's a folder or file
-                    bool isDir = m_Service->IsDirectory(entry.cacheIndex);
-                    if (isDir) {
-                        // Navigate into folder
-                        const char* relativePath = m_Service->GetRelativePath(entry.cacheIndex);
-                        LOGDBG("Navigate into folder: %s", relativePath);
-                        NavigateToFolder(relativePath);
-                    } else {
-                        // Mount the file using its relative path
-                        const char* relativePath = m_Service->GetRelativePath(entry.cacheIndex);
-                        LOGDBG("Mounting image: %s", relativePath);
-                        m_Service->SetNextCDByName(relativePath);
-                        m_MountedIndex = m_SelectedIndex;
-                        m_NextPageName = "homepage";
-                        m_ShouldChangePage = true;
-                    }
+                    const char* relativePath = m_Service->GetRelativePath(cacheIdx);
+                    m_Service->SetNextCDByName(relativePath);
+                    m_MountedIndex = m_SelectedIndex;
+                    m_NextPageName = "homepage";
+                    m_ShouldChangePage = true;
                 }
             }
             break;
 
         case Button::Cancel:
-            LOGDBG("Cancel");
-            // If not at root, go up one level; otherwise exit to homepage
-            if (m_CurrentPath[0] != '\0') {
+            if (!flatFileList && m_CurrentPath[0] != '\0') {
                 NavigateUp();
             } else {
                 m_NextPageName = "homepage";
@@ -144,36 +147,15 @@ void ST7789ImagesPage::OnButtonPress(Button button) {
     }
 }
 
-/*
-void ST7789ImagesPage::SetSelectedName(const char* name) {
-    if (!m_Service || !name) return;
-
-    size_t fileCount = m_Service->GetCount();
-    LOGNOTE("fileCount is %d", fileCount);
-    for (size_t i = 0; i < fileCount; ++i) {
-        const char* currentName = m_Service->GetName(i);
-        if (strcmp(currentName, name) == 0) {
-            m_SelectedIndex = i;
-            return;
-        }
-    }
-
-    // Optional: fallback to 0 if name not found
-    m_SelectedIndex = 0;
-}
-*/
-
-
 void ST7789ImagesPage::MoveSelection(int delta) {
-    if (!m_Service) return;
-
-    if (m_FilteredCount == 0) return;
+    size_t count = GetVisibleCount();
+    if (count == 0) return;
 
     int newIndex = static_cast<int>(m_SelectedIndex) + delta;
     if (newIndex < 0)
-        newIndex = static_cast<int>(m_FilteredCount - 1);  // Wrap to last item
-    else if (newIndex >= static_cast<int>(m_FilteredCount))
-        newIndex = 0;                                      // Wrap to first item
+        newIndex = static_cast<int>(count - 1);
+    else if (newIndex >= static_cast<int>(count))
+        newIndex = 0;
 
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
         m_SelectedIndex = static_cast<size_t>(newIndex);
@@ -181,20 +163,150 @@ void ST7789ImagesPage::MoveSelection(int delta) {
     }
 }
 
-void ST7789ImagesPage::DrawText(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
-                                const TFont& rFont,
-                                CCharGenerator::TFontFlags FontFlags) {
-    CCharGenerator Font(rFont, FontFlags);
+void ST7789ImagesPage::NavigateToFolder(const char* path) {
+    if (!path) return;
 
-    unsigned nWidth = 0;
-    for (const char* p = pText; *p != '\0'; ++p) {
-        nWidth += (*p == ' ') ? (Font.GetCharWidth() / 2) : Font.GetCharWidth();
+    strncpy(m_CurrentPath, path, MAX_PATH_LEN - 1);
+    m_CurrentPath[MAX_PATH_LEN - 1] = '\0';
+
+    m_SelectedIndex = 0;
+    m_MountedIndex = (size_t)-1;
+    dirty = true;
+}
+
+void ST7789ImagesPage::NavigateUp() {
+    if (m_CurrentPath[0] == '\0') return;
+
+    char* lastSlash = strrchr(m_CurrentPath, '/');
+    if (lastSlash != nullptr) {
+        *lastSlash = '\0';
+    } else {
+        m_CurrentPath[0] = '\0';
     }
+
+    m_SelectedIndex = 0;
+    m_MountedIndex = (size_t)-1;
+    dirty = true;
+}
+
+// Returns how many visible items there are in the current view
+size_t ST7789ImagesPage::GetVisibleCount() {
+    ConfigService* config = ConfigService::Get();
+    bool flatFileList = config ? config->GetFlatFileList() : false;
+    bool isRoot = (m_CurrentPath[0] == '\0');
+    size_t pathLen = strlen(m_CurrentPath);
+
+    size_t count = 0;
+
+    // Add ".." if not at root and not in flat mode
+    if (!flatFileList && !isRoot) {
+        count++;
+    }
+
+    size_t totalEntries = m_Service->GetCount();
+    for (size_t i = 0; i < totalEntries; ++i) {
+        const char* entryPath = m_Service->GetRelativePath(i);
+        if (!entryPath) continue;
+
+        bool showEntry = false;
+        if (flatFileList) {
+            showEntry = !m_Service->IsDirectory(i);
+        } else if (isRoot) {
+            showEntry = (strchr(entryPath, '/') == nullptr);
+        } else {
+            if (strncmp(entryPath, m_CurrentPath, pathLen) == 0 && entryPath[pathLen] == '/') {
+                const char* remainder = entryPath + pathLen + 1;
+                showEntry = (strchr(remainder, '/') == nullptr);
+            }
+        }
+
+        if (showEntry) count++;
+    }
+
+    return count;
+}
+
+// Returns true if the visible index is the ".." parent directory entry
+bool ST7789ImagesPage::IsParentDirEntry(size_t visibleIndex) {
+    ConfigService* config = ConfigService::Get();
+    bool flatFileList = config ? config->GetFlatFileList() : false;
+    bool isRoot = (m_CurrentPath[0] == '\0');
+
+    if (!flatFileList && !isRoot && visibleIndex == 0) {
+        return true;
+    }
+    return false;
+}
+
+// Returns the cache index for the given visible index
+size_t ST7789ImagesPage::GetCacheIndex(size_t visibleIndex) {
+    ConfigService* config = ConfigService::Get();
+    bool flatFileList = config ? config->GetFlatFileList() : false;
+    bool isRoot = (m_CurrentPath[0] == '\0');
+    size_t pathLen = strlen(m_CurrentPath);
+
+    // Account for ".." entry
+    size_t offset = 0;
+    if (!flatFileList && !isRoot) {
+        if (visibleIndex == 0) return (size_t)-1;
+        offset = 1;
+    }
+
+    size_t targetIndex = visibleIndex - offset;
+    size_t count = 0;
+
+    size_t totalEntries = m_Service->GetCount();
+    for (size_t i = 0; i < totalEntries; ++i) {
+        const char* entryPath = m_Service->GetRelativePath(i);
+        if (!entryPath) continue;
+
+        bool showEntry = false;
+        if (flatFileList) {
+            showEntry = !m_Service->IsDirectory(i);
+        } else if (isRoot) {
+            showEntry = (strchr(entryPath, '/') == nullptr);
+        } else {
+            if (strncmp(entryPath, m_CurrentPath, pathLen) == 0 && entryPath[pathLen] == '/') {
+                const char* remainder = entryPath + pathLen + 1;
+                showEntry = (strchr(remainder, '/') == nullptr);
+            }
+        }
+
+        if (showEntry) {
+            if (count == targetIndex) return i;
+            count++;
+        }
+    }
+
+    return (size_t)-1;
+}
+
+// Returns the display name for the given visible index
+const char* ST7789ImagesPage::GetDisplayName(size_t visibleIndex) {
+    if (IsParentDirEntry(visibleIndex)) {
+        return "..";
+    }
+
+    size_t cacheIdx = GetCacheIndex(visibleIndex);
+    if (cacheIdx == (size_t)-1) return "";
+
+    ConfigService* config = ConfigService::Get();
+    bool flatFileList = config ? config->GetFlatFileList() : false;
+
+    if (flatFileList) {
+        return m_Service->GetRelativePath(cacheIdx);
+    } else {
+        return m_Service->GetName(cacheIdx);
+    }
+}
+
+void ST7789ImagesPage::DrawText(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
+                                const TFont& rFont, CCharGenerator::TFontFlags FontFlags) {
+    CCharGenerator Font(rFont, FontFlags);
 
     for (; *pText != '\0'; ++pText) {
         for (unsigned y = 0; y < Font.GetUnderline(); y++) {
             CCharGenerator::TPixelLine Line = Font.GetPixelLine(*pText, y);
-
             for (unsigned x = 0; x < Font.GetCharWidth(); x++) {
                 if (Font.GetPixel(x, Line)) {
                     m_Graphics->DrawPixel(nX + x, nY + y, Color);
@@ -220,12 +332,11 @@ void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
     unsigned drawX = nX - pixelOffset;
 
     for (; *pText != '\0'; ++pText) {
-        // Draw character
         for (unsigned y = 0; y < Font.GetUnderline(); y++) {
             CCharGenerator::TPixelLine Line = Font.GetPixelLine(*pText, y);
             for (unsigned x = 0; x < Font.GetCharWidth(); x++) {
                 unsigned finalX = drawX + x;
-                if (finalX >= 0 && finalX < m_nWidth && (nY + y) < m_nHeight) {
+                if (finalX >= nX && finalX < m_nWidth && (nY + y) < m_nHeight) {
                     if (Font.GetPixel(x, Line)) {
                         m_Graphics->DrawPixel(finalX, nY + y, Color);
                     }
@@ -234,7 +345,7 @@ void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
         }
 
         if (*pText == ' ') {
-            drawX += Font.GetCharWidth() / 2;  // Try /2 or fixed value like 2
+            drawX += Font.GetCharWidth() / 2;
         } else {
             drawX += Font.GetCharWidth();
         }
@@ -242,20 +353,14 @@ void ST7789ImagesPage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color
 }
 
 void ST7789ImagesPage::RefreshScroll() {
-    if (m_SelectedIndex >= m_FilteredCount) return;
+    size_t visibleCount = GetVisibleCount();
+    if (m_SelectedIndex >= visibleCount) return;
 
-    const char* name;
-    if (m_FilteredList[m_SelectedIndex].isParentDir) {
-        name = "..";
-    } else {
-        name = m_Service->GetName(m_FilteredList[m_SelectedIndex].cacheIndex);
-    }
-
-    size_t nameLen = strlen(name);
+    const char* displayName = GetDisplayName(m_SelectedIndex);
+    size_t nameLen = strlen(displayName);
     int fullTextPx = ((int)nameLen + 2) * charWidth;
 
     if (fullTextPx > maxTextPx) {
-
         if (m_ScrollDirLeft) {
             m_ScrollOffsetPx += 5;
             if (m_ScrollOffsetPx >= (fullTextPx - maxTextPx)) {
@@ -275,7 +380,7 @@ void ST7789ImagesPage::RefreshScroll() {
         int y = static_cast<int>((m_SelectedIndex - startIndex) * 20);
 
         char extended[nameLen + 2];
-        snprintf(extended, sizeof(extended), "%s ", name);
+        snprintf(extended, sizeof(extended), "%s ", displayName);
 
         m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 0, 0));
         DrawTextScrolled(10, y + 30, COLOR2D(255, 255, 255), extended, m_ScrollOffsetPx);
@@ -284,22 +389,18 @@ void ST7789ImagesPage::RefreshScroll() {
 }
 
 void ST7789ImagesPage::Refresh() {
-
-
-    // Redraw the screen only when it's needed
     if (dirty) {
-	Draw();
-	return;
+        Draw();
+        return;
     }
-
-    // Scroll the current line if it needs it
     RefreshScroll();
 }
 
 void ST7789ImagesPage::Draw() {
     if (!m_Service) return;
 
-    if (m_FilteredCount == 0) return;
+    size_t visibleCount = GetVisibleCount();
+    if (visibleCount == 0) return;
 
     dirty = false;
 
@@ -309,8 +410,6 @@ void ST7789ImagesPage::Draw() {
 
     // Draw header bar with blue background
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
-
-    // Draw title text in white
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
     if (m_SelectedIndex != m_PreviousSelectedIndex) {
@@ -319,38 +418,64 @@ void ST7789ImagesPage::Draw() {
         m_PreviousSelectedIndex = m_SelectedIndex;
     }
 
-    size_t totalPages = (m_FilteredCount + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
+    size_t totalPages = (visibleCount + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
     size_t currentPage = m_SelectedIndex / ITEMS_PER_PAGE;
     size_t startIndex = currentPage * ITEMS_PER_PAGE;
-    size_t endIndex = MIN(startIndex + ITEMS_PER_PAGE, m_FilteredCount);
+    size_t endIndex = MIN(startIndex + ITEMS_PER_PAGE, visibleCount);
+
+    ConfigService* config = ConfigService::Get();
+    bool flatFileList = config ? config->GetFlatFileList() : false;
 
     for (size_t i = startIndex; i < endIndex; ++i) {
         int y = static_cast<int>((i - startIndex) * 20);
 
-        const char* name;
+        const char* displayName = GetDisplayName(i);
         bool isDir = false;
         bool isMounted = false;
 
-        if (m_FilteredList[i].isParentDir) {
-            name = "..";
-        } else {
-            size_t cacheIdx = m_FilteredList[i].cacheIndex;
-            name = m_Service->GetName(cacheIdx);
+        if (!IsParentDirEntry(i)) {
+            size_t cacheIdx = GetCacheIndex(i);
             isDir = m_Service->IsDirectory(cacheIdx);
             isMounted = (i == m_MountedIndex && !isDir);
         }
 
-        // Crop and format display name
         const int maxLen = maxTextPx / charWidth;
-        char cropped[maxLen + 2];
+        char cropped[maxLen + 4];
+
         if (isDir) {
-            // Show folder with trailing /
-            snprintf(cropped, sizeof(cropped), "%.*s/", maxLen - 1, name);
+            snprintf(cropped, sizeof(cropped), "%.*s/", maxLen - 1, displayName);
+        } else if (flatFileList && i != m_SelectedIndex) {
+            // In flat mode for non-selected items, prioritize filename over folder
+            size_t nameLen = strlen(displayName);
+            if ((int)nameLen > maxLen) {
+                // Find the last '/' to get filename
+                const char* lastSlash = strrchr(displayName, '/');
+                if (lastSlash) {
+                    const char* filename = lastSlash + 1;
+                    size_t filenameLen = strlen(filename);
+
+                    if ((int)filenameLen >= maxLen - 4) {
+                        // Filename alone is too long, show ".../filename" truncated
+                        snprintf(cropped, sizeof(cropped), ".../%.*s", maxLen - 4, filename);
+                    } else {
+                        // Show truncated folder + filename: "fold.../file.iso"
+                        int availForFolder = maxLen - (int)filenameLen - 4; // 4 = ".../".length
+                        if (availForFolder > 0) {
+                            snprintf(cropped, sizeof(cropped), "%.*s.../%s", availForFolder, displayName, filename);
+                        } else {
+                            snprintf(cropped, sizeof(cropped), ".../%s", filename);
+                        }
+                    }
+                } else {
+                    snprintf(cropped, sizeof(cropped), "%.*s", maxLen, displayName);
+                }
+            } else {
+                snprintf(cropped, sizeof(cropped), "%.*s", maxLen, displayName);
+            }
         } else {
-            snprintf(cropped, sizeof(cropped), "%.*s", maxLen, name);
+            snprintf(cropped, sizeof(cropped), "%.*s", maxLen, displayName);
         }
 
-        // Only scroll selected line and only if too long
         if (isMounted)
             m_Graphics->DrawRect(0, y + 28, m_Display->GetWidth(), 22, COLOR2D(0, 255, 0));
 
@@ -364,7 +489,6 @@ void ST7789ImagesPage::Draw() {
 
     RefreshScroll();
 
-    // Draw page indicator
     char pageText[16];
     snprintf(pageText, sizeof(pageText), "%d/%d", (short)currentPage + 1, (short)totalPages);
     m_Graphics->DrawText(180, 10, COLOR2D(255, 255, 255), pageText, C2DGraphics::AlignLeft);
@@ -373,266 +497,39 @@ void ST7789ImagesPage::Draw() {
     m_Graphics->UpdateDisplay();
 }
 
-// TODO: put in common place
 void ST7789ImagesPage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom
-    m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
+    unsigned int displayHeight = m_Display->GetHeight();
+    unsigned int displayWidth = m_Display->GetWidth();
 
-    // --- A BUTTON ---
-    // Draw a white button with dark border for better contrast
-    m_Graphics->DrawRect(5, 215, 18, 20, COLOR2D(255, 255, 255));
-    m_Graphics->DrawRectOutline(5, 215, 18, 20, COLOR2D(0, 0, 0));
+    m_Graphics->DrawRect(0, displayHeight - 30, displayWidth, 30, COLOR2D(58, 124, 165));
 
-    // Draw letter "A" using lines instead of text
-    unsigned a_x = 14;   // Center of A
-    unsigned a_y = 225;  // Center of button
+    // Left section - Cancel/Back
+    unsigned int section_width = displayWidth / 3;
 
-    // Draw A using thick lines (3px wide)
-    // Left diagonal of A
-    m_Graphics->DrawLine(a_x - 4, a_y + 6, a_x, a_y - 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(a_x - 5, a_y + 6, a_x - 1, a_y - 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(a_x - 3, a_y + 6, a_x + 1, a_y - 6, COLOR2D(0, 0, 0));
+    // Draw X icon for cancel
+    unsigned int x_icon_x = section_width / 2;
+    unsigned int x_icon_y = displayHeight - 15;
+    m_Graphics->DrawLine(x_icon_x - 5, x_icon_y - 5, x_icon_x + 5, x_icon_y + 5, COLOR2D(255, 0, 0));
+    m_Graphics->DrawLine(x_icon_x + 5, x_icon_y - 5, x_icon_x - 5, x_icon_y + 5, COLOR2D(255, 0, 0));
 
-    // Right diagonal of A
-    m_Graphics->DrawLine(a_x + 4, a_y + 6, a_x, a_y - 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(a_x + 5, a_y + 6, a_x + 1, a_y - 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(a_x + 3, a_y + 6, a_x - 1, a_y - 6, COLOR2D(0, 0, 0));
+    // Center section - OK/Select
+    unsigned int ok_icon_x = section_width + section_width / 2;
+    unsigned int ok_icon_y = displayHeight - 15;
 
-    // Middle bar of A
-    m_Graphics->DrawLine(a_x - 2, a_y, a_x + 2, a_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(a_x - 2, a_y + 1, a_x + 2, a_y + 1, COLOR2D(0, 0, 0));  // Fixed: a_y+1 instead of a_x+1
+    // Draw checkmark for OK
+    m_Graphics->DrawLine(ok_icon_x - 5, ok_icon_y, ok_icon_x - 2, ok_icon_y + 3, COLOR2D(0, 255, 0));
+    m_Graphics->DrawLine(ok_icon_x - 2, ok_icon_y + 3, ok_icon_x + 5, ok_icon_y - 4, COLOR2D(0, 255, 0));
 
-    // UP arrow for navigation screens or custom icon for main screen
-    unsigned arrow_x = 35;
-    unsigned arrow_y = 225;
+    // Right section - Up/Down navigation
+    unsigned int y_icon_x = 2 * section_width + section_width / 2;
+    unsigned int y_icon_y = displayHeight - 15;
 
-    if (strcmp(screenType, "main") == 0) {
-        // On main screen, show select icon
-        // Stem (3px thick)
-        m_Graphics->DrawLine(arrow_x, arrow_y - 13, arrow_x, arrow_y, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(arrow_x - 1, arrow_y - 13, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(arrow_x + 1, arrow_y - 13, arrow_x + 1, arrow_y, COLOR2D(255, 255, 255));
+    // Draw up arrow
+    m_Graphics->DrawLine(y_icon_x - 5, y_icon_y - 2, y_icon_x, y_icon_y - 7, COLOR2D(255, 255, 255));
+    m_Graphics->DrawLine(y_icon_x, y_icon_y - 7, y_icon_x + 5, y_icon_y - 2, COLOR2D(255, 255, 255));
 
-        // Arrow head
-        m_Graphics->DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
-    } else {
-        // On other screens, show up navigation arrow
-        // Stem (3px thick)
-        m_Graphics->DrawLine(arrow_x, arrow_y - 13, arrow_x, arrow_y, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(arrow_x - 1, arrow_y - 13, arrow_x - 1, arrow_y, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(arrow_x + 1, arrow_y - 13, arrow_x + 1, arrow_y, COLOR2D(255, 255, 255));
-
-        // Arrow head
-        m_Graphics->DrawLine(arrow_x - 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(arrow_x + 7, arrow_y - 6, arrow_x, arrow_y - 13, COLOR2D(255, 255, 255));
-    }
-    // --- B BUTTON ---
-    // Draw a white button with dark border for better contrast
-    m_Graphics->DrawRect(65, 215, 18, 20, COLOR2D(255, 255, 255));
-    m_Graphics->DrawRectOutline(65, 215, 18, 20, COLOR2D(0, 0, 0));
-
-    // Draw letter "B" using lines instead of text
-    unsigned b_x = 74;   // Center of B
-    unsigned b_y = 225;  // Center of button
-
-    // Draw B using thick lines
-    // Vertical line of B
-    m_Graphics->DrawLine(b_x - 3, b_y - 6, b_x - 3, b_y + 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(b_x - 2, b_y - 6, b_x - 2, b_y + 6, COLOR2D(0, 0, 0));
-
-    // Top curve of B
-    m_Graphics->DrawLine(b_x - 3, b_y - 6, b_x + 2, b_y - 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(b_x + 2, b_y - 6, b_x + 3, b_y - 5, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(b_x + 3, b_y - 5, b_x + 3, b_y - 1, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(b_x + 3, b_y - 1, b_x + 2, b_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(b_x + 2, b_y, b_x - 2, b_y, COLOR2D(0, 0, 0));
-
-    // Bottom curve of B
-    m_Graphics->DrawLine(b_x - 3, b_y + 6, b_x + 2, b_y + 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(b_x + 2, b_y + 6, b_x + 3, b_y + 5, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(b_x + 3, b_y + 5, b_x + 3, b_y + 1, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(b_x + 3, b_y + 1, b_x + 2, b_y, COLOR2D(0, 0, 0));
-
-    // Thicker parts - reinforce
-    m_Graphics->DrawLine(b_x - 1, b_y - 5, b_x + 1, b_y - 5, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(b_x - 1, b_y + 5, b_x + 1, b_y + 5, COLOR2D(0, 0, 0));
-
-    // Down arrow for all screens
-    arrow_x = 95;
-    arrow_y = 225;
-
-    // Stem (3px thick)
-    m_Graphics->DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
-    m_Graphics->DrawLine(arrow_x - 1, arrow_y, arrow_x - 1, arrow_y + 13, COLOR2D(255, 255, 255));
-    m_Graphics->DrawLine(arrow_x + 1, arrow_y, arrow_x + 1, arrow_y + 13, COLOR2D(255, 255, 255));
-
-    // Arrow head
-    m_Graphics->DrawLine(arrow_x - 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
-    m_Graphics->DrawLine(arrow_x + 7, arrow_y + 6, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));
-
-    // --- X BUTTON ---
-    // Draw a white button with dark border for better contrast
-    m_Graphics->DrawRect(125, 215, 18, 20, COLOR2D(255, 255, 255));
-    m_Graphics->DrawRectOutline(125, 215, 18, 20, COLOR2D(0, 0, 0));
-
-    // Draw letter "X" using lines instead of text
-    unsigned x_x = 134;  // Center of X
-    unsigned x_y = 225;  // Center of button
-
-    // Draw X using thick lines (3px wide)
-    // First diagonal of X (top-left to bottom-right)
-    m_Graphics->DrawLine(x_x - 4, x_y - 6, x_x + 4, x_y + 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(x_x - 5, x_y - 6, x_x + 3, x_y + 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(x_x - 3, x_y - 6, x_x + 5, x_y + 6, COLOR2D(0, 0, 0));
-
-    // Second diagonal of X (top-right to bottom-left)
-    m_Graphics->DrawLine(x_x + 4, x_y - 6, x_x - 4, x_y + 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(x_x + 5, x_y - 6, x_x - 3, x_y + 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(x_x + 3, x_y - 6, x_x - 5, x_y + 6, COLOR2D(0, 0, 0));
-
-    // Icon next to X button - different based on screen type
-    unsigned icon_x = 155;
-    unsigned icon_y = 225;
-
-    if (strcmp(screenType, "main") == 0) {
-        // Menu bars for main screen
-        // Thicker menu bars (2px)
-        m_Graphics->DrawLine(icon_x, icon_y - 5, icon_x + 15, icon_y - 5, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(icon_x, icon_y - 4, icon_x + 15, icon_y - 4, COLOR2D(255, 255, 255));
-
-        m_Graphics->DrawLine(icon_x, icon_y, icon_x + 15, icon_y, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(icon_x, icon_y + 1, icon_x + 15, icon_y + 1, COLOR2D(255, 255, 255));
-
-        m_Graphics->DrawLine(icon_x, icon_y + 5, icon_x + 15, icon_y + 5, COLOR2D(255, 255, 255));
-        m_Graphics->DrawLine(icon_x, icon_y + 6, icon_x + 15, icon_y + 6, COLOR2D(255, 255, 255));
-    } else {
-        // Red X icon for other screens (cancel)
-        m_Graphics->DrawLine(icon_x - 8, icon_y - 8, icon_x + 8, icon_y + 8, COLOR2D(255, 0, 0));
-        m_Graphics->DrawLine(icon_x + 8, icon_y - 8, icon_x - 8, icon_y + 8, COLOR2D(255, 0, 0));
-
-        // Make red X thicker
-        m_Graphics->DrawLine(icon_x - 7, icon_y - 8, icon_x + 7, icon_y + 8, COLOR2D(255, 0, 0));
-        m_Graphics->DrawLine(icon_x + 7, icon_y - 8, icon_x - 7, icon_y + 8, COLOR2D(255, 0, 0));
-        m_Graphics->DrawLine(icon_x - 8, icon_y - 7, icon_x + 8, icon_y + 7, COLOR2D(255, 0, 0));
-        m_Graphics->DrawLine(icon_x + 8, icon_y - 7, icon_x - 8, icon_y + 7, COLOR2D(255, 0, 0));
-    }
-
-    // --- Y BUTTON ---
-    // Draw a white button with dark border for better contrast
-    m_Graphics->DrawRect(185, 215, 18, 20, COLOR2D(255, 255, 255));
-    m_Graphics->DrawRectOutline(185, 215, 18, 20, COLOR2D(0, 0, 0));
-
-    // Draw letter "Y" using lines instead of text
-    unsigned y_x = 194;  // Center of Y
-    unsigned y_y = 225;  // Center of button
-
-    // Draw Y using thick lines (3px wide)
-    // Upper left diagonal of Y
-    m_Graphics->DrawLine(y_x - 4, y_y - 6, y_x, y_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(y_x - 5, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(y_x - 3, y_y - 6, y_x + 1, y_y, COLOR2D(0, 0, 0));
-
-    // Upper right diagonal of Y
-    m_Graphics->DrawLine(y_x + 4, y_y - 6, y_x, y_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(y_x + 5, y_y - 6, y_x + 1, y_y, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(y_x + 3, y_y - 6, y_x - 1, y_y, COLOR2D(0, 0, 0));
-
-    // Stem of Y
-    m_Graphics->DrawLine(y_x, y_y, y_x, y_y + 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(y_x - 1, y_y, y_x - 1, y_y + 6, COLOR2D(0, 0, 0));
-    m_Graphics->DrawLine(y_x + 1, y_y, y_x + 1, y_y + 6, COLOR2D(0, 0, 0));
-
-    // Icon next to Y button - different based on screen type
-    unsigned y_icon_x = 215;
-    unsigned y_icon_y = 225;
-
-    if (strcmp(screenType, "main") == 0) {
-        // Folder icon for main screen
-        m_Graphics->DrawRect(y_icon_x, y_icon_y - 2, 16, 11, COLOR2D(255, 255, 255));
-        m_Graphics->DrawRect(y_icon_x + 2, y_icon_y - 5, 8, 4, COLOR2D(255, 255, 255));
-    } else {
-        // GREEN CHECKMARK for all other screens
-        // Draw a green checkmark
-        // Shorter part of checkmark
-        m_Graphics->DrawLine(y_icon_x - 8, y_icon_y, y_icon_x - 3, y_icon_y + 5, COLOR2D(0, 255, 0));
-        m_Graphics->DrawLine(y_icon_x - 8, y_icon_y + 1, y_icon_x - 3, y_icon_y + 6, COLOR2D(0, 255, 0));
-        m_Graphics->DrawLine(y_icon_x - 7, y_icon_y, y_icon_x - 2, y_icon_y + 5, COLOR2D(0, 255, 0));
-
-        // Longer part of checkmark
-        m_Graphics->DrawLine(y_icon_x - 3, y_icon_y + 5, y_icon_x + 8, y_icon_y - 6, COLOR2D(0, 255, 0));
-        m_Graphics->DrawLine(y_icon_x - 3, y_icon_y + 6, y_icon_x + 8, y_icon_y - 5, COLOR2D(0, 255, 0));
-        m_Graphics->DrawLine(y_icon_x - 2, y_icon_y + 5, y_icon_x + 7, y_icon_y - 4, COLOR2D(0, 255, 0));
-    }
-}
-
-void ST7789ImagesPage::BuildFilteredList() {
-    m_FilteredCount = 0;
-
-    bool isRoot = (m_CurrentPath[0] == '\0');
-    size_t pathLen = strlen(m_CurrentPath);
-
-    // Add ".." entry if not at root
-    if (!isRoot && m_FilteredCount < MAX_FILTERED_ITEMS) {
-        m_FilteredList[m_FilteredCount].isParentDir = true;
-        m_FilteredList[m_FilteredCount].cacheIndex = 0;  // Not used for parent dir
-        m_FilteredCount++;
-    }
-
-    // Filter entries from cache
-    size_t totalEntries = m_Service->GetCount();
-    for (size_t i = 0; i < totalEntries && m_FilteredCount < MAX_FILTERED_ITEMS; ++i) {
-        const char* entryPath = m_Service->GetRelativePath(i);
-        if (!entryPath) continue;
-
-        bool showEntry = false;
-        if (isRoot) {
-            // Root: show entries with no '/' in their path
-            showEntry = (strchr(entryPath, '/') == nullptr);
-        } else {
-            // Subfolder: show entries that start with "path/" and have no additional '/'
-            if (strncmp(entryPath, m_CurrentPath, pathLen) == 0 && entryPath[pathLen] == '/') {
-                const char* remainder = entryPath + pathLen + 1;
-                showEntry = (strchr(remainder, '/') == nullptr);
-            }
-        }
-
-        if (showEntry) {
-            m_FilteredList[m_FilteredCount].isParentDir = false;
-            m_FilteredList[m_FilteredCount].cacheIndex = i;
-            m_FilteredCount++;
-        }
-    }
-
-    LOGNOTE("ST7789ImagesPage::BuildFilteredList() path='%s', count=%d", m_CurrentPath, (int)m_FilteredCount);
-}
-
-void ST7789ImagesPage::NavigateToFolder(const char* path) {
-    if (!path) return;
-
-    strncpy(m_CurrentPath, path, MAX_PATH_LEN - 1);
-    m_CurrentPath[MAX_PATH_LEN - 1] = '\0';
-
-    BuildFilteredList();
-    m_SelectedIndex = 0;
-    m_MountedIndex = (size_t)-1;  // No mounted item in this view
-    dirty = true;
-}
-
-void ST7789ImagesPage::NavigateUp() {
-    if (m_CurrentPath[0] == '\0') return;  // Already at root
-
-    // Find last '/' and truncate
-    char* lastSlash = strrchr(m_CurrentPath, '/');
-    if (lastSlash != nullptr) {
-        *lastSlash = '\0';
-    } else {
-        // No slash found, go to root
-        m_CurrentPath[0] = '\0';
-    }
-
-    BuildFilteredList();
-    m_SelectedIndex = 0;
-    m_MountedIndex = (size_t)-1;  // No mounted item in this view
-    dirty = true;
+    // Draw down arrow
+    m_Graphics->DrawLine(y_icon_x - 5, y_icon_y + 2, y_icon_x, y_icon_y + 7, COLOR2D(255, 255, 255));
+    m_Graphics->DrawLine(y_icon_x, y_icon_y + 7, y_icon_x + 5, y_icon_y + 2, COLOR2D(255, 255, 255));
 }

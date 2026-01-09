@@ -37,8 +37,10 @@ public:
     void SetSoundDev(const char* value);
     const char* GetSoundDev(const char* defaultValue="none");
     const char* GetTheme(const char *defaultValue="default");
+    bool GetFlatFileList(bool defaultValue = false);
 
     void SetLogfile(const char* value);
+    void SetFlatFileList(bool value);
     void SetCurrentImage(const char* value);
     void SetDefaultVolume(unsigned value);
     void SetDisplayHat(const char* value);

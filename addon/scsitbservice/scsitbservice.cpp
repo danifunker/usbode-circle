@@ -57,7 +57,7 @@ int compareFileEntries(const void* a, const void* b) {
     return strcasecmp(fa->name, fb->name);
 }
 
-// Sort directories first, then files alphabetically
+// Sort directories first, then files alphabetically by full path
 int compareFileEntriesDirectoriesFirst(const void* a, const void* b) {
     const FileEntry* fa = (const FileEntry*)a;
     const FileEntry* fb = (const FileEntry*)b;
@@ -66,8 +66,8 @@ int compareFileEntriesDirectoriesFirst(const void* a, const void* b) {
     if (fa->isDirectory && !fb->isDirectory) return -1;
     if (!fa->isDirectory && fb->isDirectory) return 1;
 
-    // Within same type, sort alphabetically (case-insensitive)
-    return strcasecmp(fa->name, fb->name);
+    // Within same type, sort alphabetically by full path (case-insensitive)
+    return strcasecmp(fa->relativePath, fb->relativePath);
 }
 
 SCSITBService *SCSITBService::s_pThis = 0;
