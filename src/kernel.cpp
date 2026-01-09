@@ -254,7 +254,9 @@ TShutdownMode CKernel::Run(void)
         }
         else
         {
-            LOGERR("Setup failed, shutting down");
+            LOGERR("Setup or Upgrade failed, shutting down");
+            // Give display time to show error message
+            CScheduler::Get()->MsSleep(15000);
             return ShutdownHalt;
         }
     }

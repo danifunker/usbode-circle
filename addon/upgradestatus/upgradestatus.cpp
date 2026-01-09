@@ -408,18 +408,20 @@ bool UpgradeStatus::performUpgrade() {
     UINT br;
     char buf[16];
     if (f_open(&crcFile, crcPath, FA_READ) != FR_OK) {
-        m_statusMessage = "Checksum file not found";
+        m_statusMessage = "FAILED: CRC file not found";
         LOGERR("Can't open %s", crcPath);
         CScheduler::Get()->Yield();
+        CScheduler::Get()->MsSleep(100);
         f_unlink(tarPath);
         f_unlink(crcPath);
         return false;
     }
 
     if (f_read(&crcFile, buf, sizeof(buf)-1, &br) != FR_OK) {
-        m_statusMessage = "Can't read checksum file";
+        m_statusMessage = "FAILED: Can't read checksum file";
         LOGERR("Can't read %s", crcPath);
         CScheduler::Get()->Yield();
+        CScheduler::Get()->MsSleep(100);
         f_close(&crcFile); 
         f_unlink(tarPath);
         f_unlink(crcPath);
@@ -441,6 +443,7 @@ bool UpgradeStatus::performUpgrade() {
         m_statusMessage = "Upgrade file not found";
         LOGERR("Can't open %s", tarPath);
         CScheduler::Get()->Yield();
+        CScheduler::Get()->MsSleep(100);
         f_unlink(tarPath);
         f_unlink(crcPath);
         return false;
@@ -454,8 +457,10 @@ bool UpgradeStatus::performUpgrade() {
         CScheduler::Get()->Yield();
 
         if (f_read(&tarFile, m_pTransferBuffer, BUFFER_SIZE, &br) != FR_OK) {
-            m_statusMessage = "Error reading upgrade file";
+            m_statusMessage = "FAILED: Error reading tar file";
             LOGERR("Can't read %s", tarPath);
+            CScheduler::Get()->Yield();
+            CScheduler::Get()->MsSleep(100);            
             f_close(&tarFile); 
             f_unlink(tarPath);
             f_unlink(crcPath);
@@ -476,8 +481,10 @@ bool UpgradeStatus::performUpgrade() {
 
     if (crc != expectedCrc) {
         // CRC mismatch!
-        m_statusMessage = "Checksum validation failed";
+        m_statusMessage = "FAILED: CRC mismatch";
         LOGERR("CRC %u does not match expected %u", crc, expectedCrc);
+        CScheduler::Get()->Yield();
+        CScheduler::Get()->MsSleep(100);
         f_unlink(tarPath);
         f_unlink(crcPath);
         return false;
@@ -489,9 +496,10 @@ bool UpgradeStatus::performUpgrade() {
     CScheduler::Get()->Yield();
     
     if (!extractAllFromTar(tarPath, "0:/")) {
-        m_statusMessage = "Extraction failed";
+        m_statusMessage = "FAILED: Cannot extract";
         LOGERR("Could not extract all files from %s", tarPath);
         CScheduler::Get()->Yield();
+        CScheduler::Get()->MsSleep(100);
         f_unlink(tarPath);
         f_unlink(crcPath);
         return false;
