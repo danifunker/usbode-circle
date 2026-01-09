@@ -11,6 +11,8 @@
 #include <displayservice/idisplay.h>
 #include <displayservice/pagemanager.h>
 
+class ST7789DiscArtPage;
+
 // Settings for the buttons
 #define DEBOUNCETICKS 20
 #define ST7789_BUTTONUP 5
@@ -71,8 +73,16 @@ class ST7789Display : public IDisplay {
     void DrawSleepWarning();
     void EnterLowPower();
     void EnterSleep();
+    void CheckDiscArtTimer();
+    void ShowDiscArt();
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
+
+    // Disc art support
+    ST7789DiscArtPage* m_DiscArtPage = nullptr;
+    char m_LastDiscPath[512] = {0};
+    unsigned m_DiscLoadTime = 0;
+    bool m_DiscArtPending = false;
 };
 
 #endif  // ST7789DISPLAY_H

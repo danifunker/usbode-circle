@@ -450,7 +450,6 @@ void SH1106ImagesPage::Draw() {
                 if (lastSlash) {
                     const char* filename = lastSlash + 1;
                     size_t filenameLen = strlen(filename);
-                    size_t folderLen = lastSlash - displayName;
 
                     if ((int)filenameLen >= maxLen - 3) {
                         // Filename alone is too long, just show "...filename" truncated
