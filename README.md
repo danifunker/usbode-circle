@@ -46,6 +46,7 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 - USBODE supports the Waveshare OLED HAT and the PirateAudio Line Out/LCD HAT. The Pirate Audio HAT requires no configuration. The Waveshare requires that you change one line in the `config.txt` file. See Initial Setup below. There are some new considerations for the Waveshare OLED HAT, please see details below.
 - The PirateAudio HAT also enables CD audio. An aux cable going into your sound card's Line In port will play that audio over your computer's speakers. Additionally, enterprising users have created 8mm-to-4-pin converter cables, allowing them to connect their Pi to their sound card's internal Line In port. You'll need to know your sound card's pinout to make one for yourself, as they vary between models.
 - For Audio setup via HDMI, a number of additional components (~$30 USD) is required in order for it to work, read below for further details
+- If using a Raspberry Pi 4, USB Audio might work, but this is untested (please provide comments in a new github issue!)
 
 ## Initial Setup
 
@@ -67,6 +68,23 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 9. Once the initial setup has completed, remove the MicroSD card from the Raspberry Pi and copy image files to the IMGSTORE volume on the SDCard. Remember to always Safely remove the MicroSD card from the computer, however it is safe to just pull the power from the Pi in most instances.
 
 Setup is now complete. See the instructions below to learn how to use the USBODE.
+
+## Upgrading USBODE Versions
+To upgrade USBODE without losing any of your disc images or settings, first make sure the version is at least 2.6.1 for PirateAudio, or 2.18.3 for Waveshare. ***Alternatively, you can set the screen to pirateaudio screen during the upgrade if you are on a version higher than 2.6.1 and are using the waveshare screen, but be aware the upgrade messages will not appear on the screen***. 
+
+Next, download the following files from the release you are trying to ugprade to:
+- sysupgrade.tar
+- sysupgrade.crc
+- sysupgrade64.tar
+- sysupgrade64.crc
+
+Place all of those files onto the root of the bootfs SDCard partition, and reboot the Pi. If you know which architecutre you are using, only copy that set of architecture files over. The update-service will detect which file should be extracted. Be aware the .crc file is not optional and is used to do a quick verification the of the tarball prior to installing the version.
+
+The update process should start and usually takes less than 5 minutes to complete. Some screen messages should appear, however failure messages don't seem to work properly so if you see it hanging after about 10 minutes, that probably means the update failed.
+
+It is also possible there might be additional files that have been added by Mac, if USBODE isn't starting correctly and the sdcard has recently been connected to a Mac, plug the SDCard back into the mac, then open a terminal on that mac and run the following command `find /Volumes/bootfs -iname '*._*' -exec rm -f {} \;` to cleanup any remnants of it. Be sure to eject the SDcard correctly by either using the eject button in finder, or if still in the shell `diskutil eject /Volumes/bootfs`. As long as no errors appear the disk will be ejected sucessfully so you can take it out from the Mac.
+
+Worst case, take a backup of the SDCard and re-flash the image using the Raspbery Pi Imager.
 
 ## Using USBODE
 
@@ -108,7 +126,7 @@ On the USBODE homepage, click *Shutdown USBODE*. The LED indicator on the Pi wil
 
 ## Copying Images onto USBODE
 
-USBODE stores images on the MicroSD partition labeled IMGSTORE. You'll need to put .ISO and .BIN/.CUE files directly onto this volume. This can be done by connecting the SD card to the setup computer and copying files, or by connecting to the Pi via FTP (see [Using FTP](#Using-FTP)). Mounting the card to the setup computer is the fastest method by a significant margin.
+USBODE stores images on the MicroSD partition labeled IMGSTORE. You'll need to put .ISO and .BIN/.CUE files directly onto this volume. This can be done by connecting the SD card to the setup computer and copying files, or by connecting to the Pi via FTP (see [Using FTP](#Using-FTP)). Mounting the card to the setup computer is the fastest method by a significant margin. As of 2.19.0 USBODE also supports folder structures, see the Folder Support section below for further details.
 
 If adding DVD images, (and the system needs to read the disc as "DVD"), add `.dvd` to the filename, so a file named MyMovie.iso would be named `MyMovie.dvd.iso`
 
@@ -167,6 +185,21 @@ usbcdrom_vid=0x0e8d
 usbcdrom_pid=0x1887
 ```
 be sure to include the preceeding `0x` to instruct USBODE this is a hex number, not a decimal number.
+
+## Folder Support
+Folder support was added in version 2.19.0. The max path is 512 characters, although this has not been full tested yet. I believe the max filename size is still 256 characters as well. 
+
+There is a toggle to enable flattened folders, which lists all of the available disc images on one screen. This might be helpful if you've forgotten where you put a disc image. Toggling this does not require a restart of USBODE. I have implemented this in lieu of search functionality.
+
+## 2-Stage Sleep Mode
+Some new functionality has been added in verion 2.20.0 where there is a 2 stage dimming mode for the Pirate Audio/ST7889 screen. The first stage is low-power mode, which will automatically set the screen to a brightness of 32 (so fairly dim), then the second phase is sleep mode, which turns off the display altogether.
+
+## Disc Artwork
+To use disc artwork, place a 240x240px JPG with the same basename of your disc image in the same folder as the disc image. e.g. if the disc image is called `mygame.iso` creating the `mygame.jpg` will be what discart expects. 
+
+The disc art is shown on the web interface, as well on the ST7889 screen after about 2 seconds from being on the homepage, as well as just before entering low-power mode.
+
+This is not configurable yet, but please open an issue if this should get adjusted.
 
 ## Classic MacOS 9.2.1 Mixed-Mode Disc Support
 To use USBODE with MacOS9, USBODE must be in "Classic Mac" mode. This is set either in `config.txt` with `usbtargetos=apple` or by going into the Web Interface configuration and selecting "Classic Mac" mode, which will set the `config.txt` manually for you.
