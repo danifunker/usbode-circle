@@ -20,6 +20,7 @@
 #include "infopage.h"
 #include "logconfigpage.h"
 #include "timeoutconfigpage.h"
+#include "lowpowertimeoutconfigpage.h"
 #include "powerpage.h"
 #include "splashpage.h"
 #include "usbconfigpage.h"
@@ -54,6 +55,7 @@ ST7789Display::ST7789Display(DisplayConfig* config, ButtonConfig* buttons)
         m_backlight_pin = config->backlight_pin;
 
     backlightTimer = CTimer::Get()->GetClockTicks();
+    lowPowerTimer = backlightTimer;
 
     LOGNOTE("Started ST7789 Display");
 }
@@ -98,6 +100,7 @@ bool ST7789Display::Initialize() {
     m_PageManager.RegisterPage("usbconfigpage", new ST7789USBConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("logconfigpage", new ST7789LogConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("timeoutconfigpage", new ST7789TimeoutConfigPage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("lowpowertimeoutconfigpage", new ST7789LowPowerTimeoutConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("infopage", new ST7789InfoPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("setuppage", new ST7789SetupPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("upgradepage", new ST7789UpgradePage(&m_Display, &m_Graphics));
@@ -190,20 +193,36 @@ void ST7789Display::DrawSleepWarning() {
     m_Graphics.UpdateDisplay();
 }
 
-// Dim the screen or even turn it off
-void ST7789Display::Sleep() {
+// Enter low power mode - intermediate dimmed state (silent, no warning)
+void ST7789Display::EnterLowPower() {
     if (!pwm_configured)
         return;
 
-    // Do not sleep if we're in the First Boot Setup phase
-    // or updating
+    // Do not enter low power if we're in the First Boot Setup phase or updating
     if (SetupStatus::Get()->isSetupInProgress() || UpgradeStatus::Get()->isUpgradeInProgress())
-	    return;
+        return;
 
-    LOGNOTE("Sleeping");
-    
+    LOGNOTE("Entering Low Power Mode");
+
+    lowPowerMode = true;
+    lowPowerTimer = CTimer::Get()->GetClockTicks();
+    unsigned lowPowerBrightness = configservice->GetST7789LowPowerBrightness(32);
+    m_PWMOutput.Write(2, lowPowerBrightness);
+}
+
+// Enter sleep mode - final sleep state (with warning if brightness is low)
+void ST7789Display::EnterSleep() {
+    if (!pwm_configured)
+        return;
+
+    // Do not sleep if we're in the First Boot Setup phase or updating
+    if (SetupStatus::Get()->isSetupInProgress() || UpgradeStatus::Get()->isUpgradeInProgress())
+        return;
+
+    LOGNOTE("Entering Sleep Mode");
+
     // Check if sleep brightness is low enough to warrant showing warning
-    unsigned sleepBrightness = configservice->GetST7789SleepBrightness(32);
+    unsigned sleepBrightness = configservice->GetST7789SleepBrightness(0);
     if (sleepBrightness < LOW_BRIGHTNESS_THRESHOLD) {
         DrawSleepWarning();
         CScheduler::Get()->MsSleep(SLEEP_WARNING_DURATION);
@@ -214,19 +233,29 @@ void ST7789Display::Sleep() {
     m_PWMOutput.Write(2, sleepBrightness);
 }
 
+// Legacy Sleep() - triggers the appropriate state transition
+void ST7789Display::Sleep() {
+    if (!lowPowerMode) {
+        EnterLowPower();
+    } else if (!sleeping) {
+        EnterSleep();
+    }
+}
+
 // Wake the screen
 void ST7789Display::Wake() {
     // reset the backlight timer on this keypress
     backlightTimer = CTimer::Get()->GetClockTicks();
 
-    // Wake up if we were sleeping
-    if (sleeping) {
+    // Wake up if we were in low power or sleeping
+    if (lowPowerMode || sleeping) {
         unsigned brightness = configservice->GetST7789Brightness(1024);
         m_PWMOutput.Write(2, brightness);
         m_PageManager.Refresh(true);
     }
 
-    // Regardless, we're definitely not sleeping now
+    // Regardless, we're definitely not in low power or sleeping now
+    lowPowerMode = false;
     sleeping = false;
 }
 
@@ -237,20 +266,27 @@ bool ST7789Display::IsSleeping() {
 // Called by displaymanager kernel loop. Check backlight timeout and sleep if
 // necessary. Pass on the refresh call to the page manager
 void ST7789Display::Refresh() {
-    unsigned backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+    unsigned lowPowerTimeout = configservice->GetLowPowerTimeout(15) * 1000000;
+    unsigned sleepTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+    unsigned now = CTimer::Get()->GetClockTicks();
 
-    // If we're asleep and the timeout got changed to zero
-    if (!backlightTimeout && sleeping)
-            Wake();
+    // If we're asleep or in low power and both timeouts got changed to zero, wake up
+    if (!lowPowerTimeout && !sleepTimeout && (sleeping || lowPowerMode))
+        Wake();
 
-    if (!sleeping) {
-        if (backlightTimeout) {
-            // Is it time to dim the screen?
-            unsigned now = CTimer::Get()->GetClockTicks();
-            if (now - backlightTimer > backlightTimeout)
-                Sleep();
+    // State machine: Active -> Low Power -> Sleep
+    if (!sleeping && !lowPowerMode) {
+        // In active state - check for low power timeout
+        if (lowPowerTimeout) {
+            if (now - backlightTimer > lowPowerTimeout)
+                EnterLowPower();
         }
-
+    } else if (lowPowerMode && !sleeping) {
+        // In low power state - check for sleep timeout
+        if (sleepTimeout) {
+            if (now - lowPowerTimer > sleepTimeout)
+                EnterSleep();
+        }
     }
 
     m_PageManager.Refresh();

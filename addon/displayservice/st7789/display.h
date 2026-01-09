@@ -60,13 +60,17 @@ class ST7789Display : public IDisplay {
     int m_backlight_pin;
     CGPIOPin* m_Backlight;
     int backlightTimer;
+    int lowPowerTimer;
     bool sleeping = false;
+    bool lowPowerMode = false;
     bool pwm_configured = false;
     bool showingSleepWarning = false;
     unsigned sleepWarningStartTime = 0;
     int display_rotation;
     
     void DrawSleepWarning();
+    void EnterLowPower();
+    void EnterSleep();
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };

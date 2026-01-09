@@ -1,18 +1,19 @@
-#ifndef _ST7789_CONFIGPAGE_H
-#define _ST7789_CONFIGPAGE_H
+#ifndef _ST7789_LPTOCONFIGPAGE_H
+#define _ST7789_LPTOCONFIGPAGE_H
 
 #include <displayservice/ipage.h>
 #include <displayservice/buttons.h>
 #include <display/st7789display.h>
+#include <configservice/configservice.h>
 #include <circle/spimaster.h>
 #include <circle/2dgraphics.h>
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-class ST7789ConfigPage : public IPage {
+class ST7789LowPowerTimeoutConfigPage : public IPage {
 public:
-    ST7789ConfigPage(CST7789Display* display, C2DGraphics* graphics);
-    ~ST7789ConfigPage();
+    ST7789LowPowerTimeoutConfigPage(CST7789Display* display, C2DGraphics* graphics);
+    ~ST7789LowPowerTimeoutConfigPage();
     void OnEnter() override;
     void OnExit() override;
     void OnButtonPress(Button buttonId) override;
@@ -34,7 +35,8 @@ private:
     const char* m_NextPageName;
     CST7789Display*          m_Display;
     C2DGraphics*             m_Graphics;
-    const char* options[8] = { "USB Configuration", "Logging Configuration", "Low Power Timeout", "Sleep Timeout", "Sound Config", "USB Target OS", "Build Info", "Power" };
+    ConfigService* configservice;
+    const char* options[5] = { "5s", "10s", "15s", "20s", "25s" };
     size_t m_SelectedIndex = 0;
 
 };

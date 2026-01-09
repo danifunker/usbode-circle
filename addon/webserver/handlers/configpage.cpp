@@ -102,16 +102,25 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
                 config->SetTheme(form_params["theme"].c_str());
             }
             
-            // Screen timeout
+            // Low power timeout
+            if (form_params.count("low_power_timeout")) {
+                config->SetLowPowerTimeout(std::atoi(form_params["low_power_timeout"].c_str()));
+            }
+
+            // Screen timeout (sleep timeout)
             if (form_params.count("screen_timeout")) {
                 config->SetScreenTimeout(std::atoi(form_params["screen_timeout"].c_str()));
             }
-            
+
             // ST7789 brightness settings
             if (form_params.count("st7789_brightness")) {
                 config->SetST7789Brightness(std::atoi(form_params["st7789_brightness"].c_str()));
             }
-            
+
+            if (form_params.count("st7789_low_power_brightness")) {
+                config->SetST7789LowPowerBrightness(std::atoi(form_params["st7789_low_power_brightness"].c_str()));
+            }
+
             if (form_params.count("st7789_sleep_brightness")) {
                 config->SetST7789SleepBrightness(std::atoi(form_params["st7789_sleep_brightness"].c_str()));
             }
@@ -181,8 +190,10 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     
     // Set current values for display
     std::string current_displayhat = config->GetDisplayHat();
+    std::string current_low_power_timeout = std::to_string(config->GetLowPowerTimeout());
     std::string current_screen_timeout = std::to_string(config->GetScreenTimeout());
     std::string current_st7789_brightness = std::to_string(config->GetST7789Brightness());
+    std::string current_st7789_low_power_brightness = std::to_string(config->GetST7789LowPowerBrightness());
     std::string current_st7789_sleep_brightness = std::to_string(config->GetST7789SleepBrightness());
     std::string current_default_volume = std::to_string(config->GetDefaultVolume());
     std::string current_sounddev = config->GetSoundDev();
@@ -218,8 +229,10 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     
     // Set context variables
     context["current_displayhat"] = current_displayhat;
+    context["current_low_power_timeout"] = current_low_power_timeout;
     context["current_screen_timeout"] = current_screen_timeout;
     context["current_st7789_brightness"] = current_st7789_brightness;
+    context["current_st7789_low_power_brightness"] = current_st7789_low_power_brightness;
     context["current_st7789_sleep_brightness"] = current_st7789_sleep_brightness;
     context["current_logfile"] = current_logfile.empty() ? "disabled" : current_logfile;
     context["current_default_volume"] = current_default_volume.empty() ? "255" : current_default_volume;
@@ -229,8 +242,10 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["current_theme"] = current_theme;
 
     // Set form values
+    context["low_power_timeout"] = current_low_power_timeout;
     context["screen_timeout"] = current_screen_timeout;
     context["st7789_brightness"] = current_st7789_brightness;
+    context["st7789_low_power_brightness"] = current_st7789_low_power_brightness;
     context["st7789_sleep_brightness"] = current_st7789_sleep_brightness;
     context["logfile"] = current_logfile;
     

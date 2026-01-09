@@ -1,46 +1,46 @@
-#include "timeoutconfigpage.h"
+#include "lowpowertimeoutconfigpage.h"
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <gitinfo/gitinfo.h>
 #include <shutdown/shutdown.h>
 
-LOGMODULE("timeoutconfigpage");
+LOGMODULE("lowpowertimeoutconfigpage");
 
-ST7789TimeoutConfigPage::ST7789TimeoutConfigPage(CST7789Display* display, C2DGraphics* graphics)
+ST7789LowPowerTimeoutConfigPage::ST7789LowPowerTimeoutConfigPage(CST7789Display* display, C2DGraphics* graphics)
 : m_Display(display),
   m_Graphics(graphics)
 {
     configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 }
 
-ST7789TimeoutConfigPage::~ST7789TimeoutConfigPage() {
-    LOGNOTE("TimeoutConfigPage starting");
+ST7789LowPowerTimeoutConfigPage::~ST7789LowPowerTimeoutConfigPage() {
+    LOGNOTE("LowPowerTimeoutConfigPage starting");
 }
 
-void ST7789TimeoutConfigPage::OnEnter()
+void ST7789LowPowerTimeoutConfigPage::OnEnter()
 {
-    LOGNOTE("Drawing TimeoutConfigPage");
+    LOGNOTE("Drawing LowPowerTimeoutConfigPage");
 
     Draw();
 }
 
-void ST7789TimeoutConfigPage::OnExit()
+void ST7789LowPowerTimeoutConfigPage::OnExit()
 {
 	m_ShouldChangePage = false;
 }
 
-bool ST7789TimeoutConfigPage::shouldChangePage() {
+bool ST7789LowPowerTimeoutConfigPage::shouldChangePage() {
 	return m_ShouldChangePage;
 }
 
-const char* ST7789TimeoutConfigPage::nextPageName() {
+const char* ST7789LowPowerTimeoutConfigPage::nextPageName() {
 	return m_NextPageName;
 }
 
-void ST7789TimeoutConfigPage::OnButtonPress(Button button)
+void ST7789LowPowerTimeoutConfigPage::OnButtonPress(Button button)
 {
 	LOGNOTE("Button received by page %d", button);
-	
+
     switch (button)
     {
         case Button::Up:
@@ -56,8 +56,8 @@ void ST7789TimeoutConfigPage::OnButtonPress(Button button)
         case Button::Ok:
 	{
 	    unsigned timeout = 5 * (m_SelectedIndex + 1);
-	    LOGNOTE("Setting screen timeout to %d", timeout);
-	    configservice->SetScreenTimeout(timeout);
+	    LOGNOTE("Setting low power timeout to %d", timeout);
+	    configservice->SetLowPowerTimeout(timeout);
 	    m_NextPageName = "homepage";
 	    m_ShouldChangePage = true;
             break;
@@ -72,10 +72,10 @@ void ST7789TimeoutConfigPage::OnButtonPress(Button button)
         default:
             break;
     }
-    
+
 }
 
-void ST7789TimeoutConfigPage::MoveSelection(int delta) {
+void ST7789LowPowerTimeoutConfigPage::MoveSelection(int delta) {
 
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
@@ -94,18 +94,18 @@ void ST7789TimeoutConfigPage::MoveSelection(int delta) {
     }
 }
 
-void ST7789TimeoutConfigPage::Refresh()
+void ST7789LowPowerTimeoutConfigPage::Refresh()
 {
 }
 
-void ST7789TimeoutConfigPage::Draw() {
+void ST7789LowPowerTimeoutConfigPage::Draw() {
     size_t fileCount = sizeof(options) / sizeof(options[0]);
     if (fileCount == 0) return;
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
     // Draw header bar with blue background
-    const char* pTitle = "Sleep Timeout";
+    const char* pTitle = "Low Power Timeout";
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
@@ -129,7 +129,7 @@ void ST7789TimeoutConfigPage::Draw() {
 }
 
 // TODO: put in common place
-void ST7789TimeoutConfigPage::DrawNavigationBar(const char* screenType) {
+void ST7789LowPowerTimeoutConfigPage::DrawNavigationBar(const char* screenType) {
     // Draw button bar at bottom
     m_Graphics->DrawRect(0, 210, m_Display->GetWidth(), 30, COLOR2D(58, 124, 165));
 

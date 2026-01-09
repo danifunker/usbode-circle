@@ -30,10 +30,16 @@
             </select>
         </div>
         <div class="form-group">
-            <label for="screen_timeout">Screen Timeout (seconds):</label>
+            <label for="low_power_timeout">Low Power Timeout (seconds):</label>
+            <div class="current-value">Current: {{current_low_power_timeout}} seconds</div>
+            <input type="text" name="low_power_timeout" id="low_power_timeout" value="{{low_power_timeout}}" size="6">
+            <div class="current-value">Time until screen dims to low power mode. Set to 0 to disable.</div>
+        </div>
+        <div class="form-group">
+            <label for="screen_timeout">Sleep Timeout (seconds):</label>
             <div class="current-value">Current: {{current_screen_timeout}} seconds</div>
             <input type="text" name="screen_timeout" id="screen_timeout" value="{{screen_timeout}}" size="6">
-            <div class="current-value">Set to 0 to disable timeout</div>
+            <div class="current-value">Time after low power until sleep mode. Set to 0 to disable.</div>
         </div>
         <div class="form-group">
             <label for="st7789_brightness">PirateAudioLineOut Display Brightness:</label>
@@ -42,10 +48,16 @@
             <div class="current-value">Range: 0-1024 (0 is off, 1024 is default)</div>
         </div>
         <div class="form-group">
+            <label for="st7789_low_power_brightness">PirateAudioLineOut Low Power Brightness:</label>
+            <div class="current-value">Current: {{current_st7789_low_power_brightness}}</div>
+            <input type="number" name="st7789_low_power_brightness" id="st7789_low_power_brightness" value="{{st7789_low_power_brightness}}" min="0" max="4095">
+            <div class="current-value">Range: 0-1024 (0 is off, 32 is default)</div>
+        </div>
+        <div class="form-group">
             <label for="st7789_sleep_brightness">PirateAudioLineOut Sleep Brightness:</label>
             <div class="current-value">Current: {{current_st7789_sleep_brightness}}</div>
             <input type="number" name="st7789_sleep_brightness" id="st7789_sleep_brightness" value="{{st7789_sleep_brightness}}" min="0" max="4095">
-            <div class="current-value">Range: 0-1024 (0 is off, 32 is default)</div>
+            <div class="current-value">Range: 0-1024 (0 is off and default)</div>
         </div>
     </div>
     

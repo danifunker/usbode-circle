@@ -195,6 +195,16 @@ unsigned ConfigService::GetST7789SleepBrightness(unsigned defaultValue)
     return m_config->GetNumber("st7789_sleep_brightness", defaultValue);
 }
 
+unsigned ConfigService::GetST7789LowPowerBrightness(unsigned defaultValue)
+{
+    return m_config->GetNumber("st7789_low_power_brightness", defaultValue);
+}
+
+unsigned ConfigService::GetLowPowerTimeout(unsigned defaultValue)
+{
+    return m_config->GetNumber("low_power_timeout", defaultValue);
+}
+
 void ConfigService::SetCurrentImage(const char* value)
 {
     m_config->SetString("current_image", value);
@@ -250,6 +260,16 @@ void ConfigService::SetST7789Brightness(unsigned value)
 void ConfigService::SetST7789SleepBrightness(unsigned value)
 {
     m_config->SetNumber("st7789_sleep_brightness", value);
+}
+
+void ConfigService::SetST7789LowPowerBrightness(unsigned value)
+{
+    m_config->SetNumber("st7789_low_power_brightness", value);
+}
+
+void ConfigService::SetLowPowerTimeout(unsigned value)
+{
+    m_config->SetNumber("low_power_timeout", value);
 }
 
 unsigned ConfigService::GetProperty(const char* key, unsigned defaultValue, const char* section)
