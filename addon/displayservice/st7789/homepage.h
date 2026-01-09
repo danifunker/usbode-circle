@@ -28,9 +28,10 @@ class ST7789HomePage : public IPage {
     void DrawNavigationBar(const char* screenType);
     const char* GetIPAddress();
     void GetIPAddress(char* buffer, size_t size);
-    const char* GetCurrentImage();
+    const char* GetCurrentImagePath();
     const char* GetVersionString();
     const char* GetUSBSpeed();
+    void TruncatePathWithEllipsis(const char* fullPath, char* outBuffer, size_t outBufferSize, size_t maxChars);
     const char* m_NextPageName;
     ConfigService* config;
 
@@ -40,7 +41,8 @@ class ST7789HomePage : public IPage {
     C2DGraphics* m_Graphics;
     SCSITBService* m_Service = nullptr;
     char pIPAddress[16];
-    const char* pISOName;
+    char pISOPath[MAX_PATH_LEN];         // Store full path
+    char pISOPathDisplay[128];           // Truncated path for display
     const char* pUSBSpeed;
     const char* pTitle;
 };

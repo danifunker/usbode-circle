@@ -12,11 +12,14 @@
 
 #define MAX_FILES 2048
 #define MAX_FILENAME_LEN 255
+#define MAX_PATH_LEN 512
 
 struct FileEntry
 {
-    char name[MAX_FILENAME_LEN];
+    char name[MAX_FILENAME_LEN];          // Display name only (e.g., "game.iso")
+    char relativePath[MAX_PATH_LEN];     // Full path from root (e.g., "Games/RPG/game.iso" or "Games/RPG" for folders)
     DWORD size;
+    bool isDirectory;
 };
 
 class SCSITBService : public CTask
@@ -28,15 +31,22 @@ public:
     // Accessors
     size_t GetCount() const;
     const char* GetName(size_t index) const;
+    const char* GetRelativePath(size_t index) const;
     DWORD GetSize(size_t index) const;
     const FileEntry* GetFileEntry(size_t index) const;
     FileEntry* begin();
     FileEntry* end();
     const char* GetCurrentCDName();
     size_t GetCurrentCD();
+    bool IsDirectory(size_t index) const;
+
+    // Path-aware accessors
+    const char* GetCurrentCDPath() const;    // Full path of mounted image
+    const char* GetCurrentCDFolder() const;  // Folder portion only (without "1:/")
+    void GetFullPath(size_t index, char* outPath, size_t maxLen, const char* basePath) const;
 
     // Modifiers
-    bool RefreshCache();
+    bool RefreshCache();  // Scan entire tree once
     bool SetNextCD(size_t index);
     bool SetNextCDByName(const char* file_name);
 
@@ -55,9 +65,13 @@ private:
     int next_cd = -1;
     int current_cd = -1;
 
+    // Full path of currently mounted image (e.g., "1:/Games/game.iso")
+    char m_CurrentImagePath[MAX_PATH_LEN];
+
     mutable CGenericLock m_Lock;
 
     void ClearCache();
+    void ScanDirectoryRecursive(const char* fullPath, const char* relativePath);  // Recursive scanner
 };
 
 #endif

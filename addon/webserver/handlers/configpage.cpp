@@ -154,7 +154,13 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             
             // USB Target OS configuration
             if (form_params.count("usbtargetos")) {
-            config->SetUSBTargetOS(ConfigService::StringToUSBTargetOS(form_params["usbtargetos"].c_str()));            }
+                config->SetUSBTargetOS(ConfigService::StringToUSBTargetOS(form_params["usbtargetos"].c_str()));
+            }
+
+            // Folder navigation configuration
+            if (form_params.count("folder_navigation")) {
+                config->SetFlatFileList(form_params["folder_navigation"] == "off");
+            }
             
             // Check for action parameter to determine what to do after saving
             std::string action = form_params.count("action") ? form_params["action"] : "save";
@@ -185,6 +191,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string current_logfile = config->GetLogfile();
     std::string current_theme = config->GetTheme();
     std::string current_usbtargetos = ConfigService::USBTargetOSToString(config->GetUSBTargetOS());
+    bool current_flat_file_list = config->GetFlatFileList();
 
     // Remove 0:/ prefix from logfile for display
     if (current_logfile.find("0:/") == 0) {
@@ -249,6 +256,10 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["current_usbtargetos"] = current_usbtargetos;
     context["usbtargetos_doswin"] = (current_usbtargetos == "doswin");
     context["usbtargetos_apple"] = (current_usbtargetos == "apple");
+
+    // Set folder navigation options
+    context["folder_navigation_on"] = !current_flat_file_list;
+    context["folder_navigation_off"] = current_flat_file_list;
     
     // Set log level options
     context["loglevel_0"] = (current_loglevel == "0");

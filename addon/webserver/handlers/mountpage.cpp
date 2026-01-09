@@ -40,11 +40,12 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
 	if (params.count("file") == 0)
 		return HTTPBadRequest;
 
-	std::string file_name = params["file"];
-	context.set("image_name", file_name);
+	// file parameter is a relative path like "Games/RPG/game.iso" or just "game.iso"
+	std::string file_param = params["file"];
+	context.set("image_name", file_param);
 	context.set("meta_refresh_url", "/");
 
-	LOGDBG("Got filename %s from parameter", file_name.c_str());
+	LOGDBG("MountPage: Mounting image with relative path: %s", file_param.c_str());
 
 	SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
 
@@ -53,7 +54,8 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
         return HTTPInternalServerError;
 	}
 
-	if (svc->SetNextCDByName(file_name.c_str())) {
+	// Use SetNextCDByName which now searches by relativePath in the cache
+	if (svc->SetNextCDByName(file_param.c_str())) {
 		return HTTPOK;
 	}
 

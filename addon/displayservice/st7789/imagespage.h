@@ -25,24 +25,30 @@ class ST7789ImagesPage : public IPage {
 
    private:
     void Draw();
-    void ScrollUp();
-    void ScrollDown();
-    void SelectItem();
-    void DrawNavigationBar(const char* screenType);
     void MoveSelection(int delta);
-    void SetSelectedName(const char* name);
-    const char* GetIPAddress();
-    const char* GetCurrentImage();
-    const char* GetVersionString();
-    const char* GetUSBSpeed();
-    const char* m_NextPageName;
+    void NavigateToFolder(const char* path);
+    void NavigateUp();
+    void DrawNavigationBar(const char* screenType);
 
-   private:
+    // Helper functions to iterate visible entries on-the-fly
+    size_t GetVisibleCount();
+    bool IsParentDirEntry(size_t visibleIndex);
+    size_t GetCacheIndex(size_t visibleIndex);
+    const char* GetDisplayName(size_t visibleIndex);
+
+    void DrawText(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
+                  const TFont& rFont = DEFAULT_FONT,
+                  CCharGenerator::TFontFlags FontFlags = CCharGenerator::FontFlagsNone);
+    void DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
+                          int pixelOffset, const TFont& rFont = DEFAULT_FONT,
+                          CCharGenerator::TFontFlags FontFlags = CCharGenerator::FontFlagsNone);
+    void RefreshScroll();
+
+    const char* m_NextPageName;
     bool m_ShouldChangePage = false;
     SCSITBService* m_Service = nullptr;
     CST7789Display* m_Display;
     C2DGraphics* m_Graphics;
-    size_t m_TotalFiles;
     size_t m_SelectedIndex = 0;
     size_t m_MountedIndex = 0;
     int charWidth;
@@ -51,14 +57,9 @@ class ST7789ImagesPage : public IPage {
 
     int m_ScrollOffsetPx = 0;
     bool m_ScrollDirLeft = true;
-    uint32_t m_LastScrollMs = 0;
     size_t m_PreviousSelectedIndex = -1;
-    void DrawText(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
-                  const TFont& rFont = DEFAULT_FONT,
-                  CCharGenerator::TFontFlags FontFlags = CCharGenerator::FontFlagsNone);
-    void DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
-                          int pixelOffset, const TFont& rFont = DEFAULT_FONT,
-                          CCharGenerator::TFontFlags FontFlags = CCharGenerator::FontFlagsNone);
-    void RefreshScroll();
+
+    // Folder navigation state
+    char m_CurrentPath[MAX_PATH_LEN];
 };
 #endif

@@ -120,7 +120,26 @@ a.button {
 	border:2px solid #4182C7;
 }
 .file.current a {
-	font-weight:bold; 
+	font-weight:bold;
+}
+.file.folder {
+	background-color: #FFF9E6;
+	border-left: 3px solid #FFA500;
+}
+.file.folder:nth-child(odd) {
+	background-color: #FFFBF0;
+}
+.file.folder a {
+	color: #996600;
+	font-weight: 500;
+}
+.file.parent-dir {
+	background-color: #F0F0F0;
+	border-left: 3px solid #999;
+}
+.file.parent-dir a {
+	color: #666;
+	font-weight: bold;
 }
 .header-bar {
 	background-color: #2C5F7C; 
@@ -212,9 +231,6 @@ a.button {
 .unavailable {
 	color: #666; 
 	font-style: italic;
-}
-.navigation {
-	margin: 5px 0;
 }
 form {
 	margin-bottom: 20px;

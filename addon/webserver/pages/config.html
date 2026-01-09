@@ -101,6 +101,14 @@
                 {{{theme_options}}}
             </select>
         </div>
+        <div class="form-group">
+            <label for="folder_navigation">Folder Navigation:</label>
+            <div class="current-value">When off, shows all files in a flat list</div>
+            <select name="folder_navigation" id="folder_navigation">
+                <option value="on" {{#folder_navigation_on}}selected{{/folder_navigation_on}}>On</option>
+                <option value="off" {{#folder_navigation_off}}selected{{/folder_navigation_off}}>Off</option>
+            </select>
+        </div>
     </div>
 
     <div class="form-section">

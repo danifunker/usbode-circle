@@ -57,12 +57,25 @@ int compareFileEntries(const void* a, const void* b) {
     return strcasecmp(fa->name, fb->name);
 }
 
+// Sort directories first, then files alphabetically by full path
+int compareFileEntriesDirectoriesFirst(const void* a, const void* b) {
+    const FileEntry* fa = (const FileEntry*)a;
+    const FileEntry* fb = (const FileEntry*)b;
+
+    // Directories come first
+    if (fa->isDirectory && !fb->isDirectory) return -1;
+    if (!fa->isDirectory && fb->isDirectory) return 1;
+
+    // Within same type, sort alphabetically by full path (case-insensitive)
+    return strcasecmp(fa->relativePath, fb->relativePath);
+}
+
 SCSITBService *SCSITBService::s_pThis = 0;
 
 SCSITBService::SCSITBService()
 {
     LOGNOTE("SCSITBService::SCSITBService() called");
-    
+
     // I am the one and only!
     assert(s_pThis == 0);
     s_pThis = this;
@@ -72,6 +85,8 @@ SCSITBService::SCSITBService()
     assert(cdromservice != nullptr && "Failed to get cdromservice");
 
     m_FileEntries = new FileEntry[MAX_FILES]();
+    m_CurrentImagePath[0] = '\0';  // Initialize empty path
+
     bool ok = RefreshCache();
     assert(ok && "Failed to refresh SCSITBService on construction");
     SetName("scsitbservice");
@@ -92,6 +107,12 @@ const char* SCSITBService::GetName(size_t index) const {
     return m_FileEntries[index].name;
 }
 
+const char* SCSITBService::GetRelativePath(size_t index) const {
+    if (index >= m_FileCount)
+        return nullptr;
+    return m_FileEntries[index].relativePath;
+}
+
 DWORD SCSITBService::GetSize(size_t index) const {
     if (index >= m_FileCount)
         return 0;
@@ -110,6 +131,61 @@ size_t SCSITBService::GetCurrentCD() {
 	return current_cd;
 }
 
+bool SCSITBService::IsDirectory(size_t index) const {
+    if (index >= m_FileCount)
+        return false;
+    return m_FileEntries[index].isDirectory;
+}
+
+const char* SCSITBService::GetCurrentCDPath() const {
+    return m_CurrentImagePath;
+}
+
+const char* SCSITBService::GetCurrentCDFolder() const {
+    // Return folder portion without "1:/" prefix
+    // e.g., "1:/Games/RPG/game.iso" -> "Games/RPG/"
+    if (m_CurrentImagePath[0] == '\0')
+        return "";
+
+    // Skip "1:/" prefix
+    const char* path = m_CurrentImagePath;
+    if (strncmp(path, "1:/", 3) == 0)
+        path += 3;
+
+    // Find last slash to extract folder portion
+    const char* lastSlash = strrchr(path, '/');
+    if (lastSlash == nullptr || lastSlash == path)
+        return "";  // No folder (root level)
+
+    // Return static buffer with folder portion
+    static char folderBuf[MAX_PATH_LEN];
+    size_t folderLen = lastSlash - path;
+    if (folderLen >= sizeof(folderBuf))
+        folderLen = sizeof(folderBuf) - 1;
+    memcpy(folderBuf, path, folderLen);
+    folderBuf[folderLen] = '/';
+    folderBuf[folderLen + 1] = '\0';
+    return folderBuf;
+}
+
+void SCSITBService::GetFullPath(size_t index, char* outPath, size_t maxLen, const char* basePath) const {
+    if (index >= m_FileCount || outPath == nullptr || maxLen == 0) {
+        if (outPath && maxLen > 0)
+            outPath[0] = '\0';
+        return;
+    }
+
+    // Construct: "1:/" + basePath + name
+    if (basePath == nullptr || basePath[0] == '\0') {
+        snprintf(outPath, maxLen, "1:/%s", m_FileEntries[index].name);
+    } else {
+        // Ensure basePath doesn't have leading slash
+        while (*basePath == '/')
+            basePath++;
+        snprintf(outPath, maxLen, "1:/%s%s", basePath, m_FileEntries[index].name);
+    }
+}
+
 bool SCSITBService::SetNextCD(size_t cd) {
     //TODO bounds checking
     next_cd = cd;
@@ -124,8 +200,9 @@ bool SCSITBService::SetNextCDByName(const char* file_name) {
 
 	int index = 0;
         for (const FileEntry* it = begin(); it != end(); ++it, ++index) {
-		//LOGNOTE("SCSITBService::SetNextCDByName testing %s", it->name);
-                if (strcmp(file_name, it->name) == 0) {
+		//LOGNOTE("SCSITBService::SetNextCDByName testing %s", it->relativePath);
+                // Compare against relativePath to support files in subfolders
+                if (strcmp(file_name, it->relativePath) == 0) {
                         return SetNextCD(index);
                 }
         }
@@ -133,27 +210,20 @@ bool SCSITBService::SetNextCDByName(const char* file_name) {
 	return false;
 }
 
+// SetNextCDByPath removed - use SetNextCDByName with relativePath instead
 
-bool SCSITBService::RefreshCache() {
-    LOGNOTE("SCSITBService::RefreshCache() called");
-    m_Lock.Acquire ();
 
-    // Get current loaded image
-    const char* current_image = configservice->GetCurrentImage(DEFAULT_IMAGE_FILENAME);
-    LOGNOTE("SCSITBService::RefreshCache() loaded current_image %s from config.txt", current_image);
+// Recursive scanner that stores full relative paths
+void SCSITBService::ScanDirectoryRecursive(const char* fullPath, const char* relativePath) {
+    LOGNOTE("SCSITBService::ScanDirectoryRecursive() scanning: %s (relative: %s)", fullPath, relativePath);
 
-    m_FileCount = 0;
-
-    // Read our directory of images
-    // and populate m_FileEntries
     DIR dir;
-    FRESULT fr = f_opendir(&dir, "1:/");
+    FRESULT fr = f_opendir(&dir, fullPath);
     if (fr != FR_OK) {
-        // TODO: handle error as needed
-        return false;
+        LOGERR("SCSITBService::ScanDirectoryRecursive() failed to open: %s (error: %d)", fullPath, fr);
+        return;
     }
 
-    LOGNOTE("SCSITBService::RefreshCache() opened directory");
     FILINFO fno;
     while (true) {
         fr = f_readdir(&dir, &fno);
@@ -163,58 +233,138 @@ bool SCSITBService::RefreshCache() {
         if (strcmp(fno.fname, ".") == 0 || strcmp(fno.fname, "..") == 0)
             continue;
 
+        // Exclude hidden files/folders
+        if (fno.fname[0] == '.')
+            continue;
+
         // Exclude Mac cache files
-        if (strncmp(fno.fname, "._", 2) == 0 || strcmp(fno.fname, ".DS_Store") == 0)
-            continue;            
+        if (strncmp(fno.fname, "._", 2) == 0)
+            continue;
 
-	//LOGNOTE("SCSITBService::RefreshCache() found file %s", fno.fname);
-        const char* ext = strrchr(fno.fname, '.');
-        if (ext != nullptr) {
-            if (iequals(ext, ".iso") || iequals(ext, ".bin") || iequals(ext, ".mds") || iequals(ext, ".chd")) {
-		if (m_FileCount >= MAX_FILES)
-                    break;
-		//LOGNOTE("SCSITBService::RefreshCache() adding file %s to m_FileEntries", fno.fname);
-                size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);
-                memcpy(m_FileEntries[m_FileCount].name, fno.fname, len);
-                m_FileEntries[m_FileCount].name[len] = '\0';
-                m_FileEntries[m_FileCount].size = fno.fsize;
-                m_FileCount++;
-            }
-        }
-    }
+        // Exclude system folders
+        if (strcasecmp(fno.fname, "System Volume Information") == 0 ||
+            strcasecmp(fno.fname, "$RECYCLE.BIN") == 0 ||
+            strcasecmp(fno.fname, "RECYCLER") == 0 ||
+            strcasecmp(fno.fname, "lost+found") == 0)
+            continue;
 
-    // Sort m_FileEntries by filename alphabetically
-    if (m_FileCount > 1)
-        qsort(m_FileEntries, m_FileCount, sizeof(m_FileEntries[0]), compareFileEntries);
-
-    bool found = false;
-    // Find the index of current_image in m_FileEntries
-    for (size_t i = 0; i < m_FileCount; ++i) {
-        //LOGNOTE("i is %u, m_FileCount is %u, current_image is %s, m_FileEntries is %s", i, m_FileCount, current_image, m_FileEntries[i].name);
-        if (strcmp(m_FileEntries[i].name, current_image) == 0) {
-
-            // If we don't yet have a current_cd e.g. we've
-            // just booted, then mount it
-            if (current_cd < 0)  {
-                next_cd = i;
-            } else {
-                current_cd = i;
-            }
-            found = true;
+        if (m_FileCount >= MAX_FILES) {
+            LOGERR("SCSITBService: MAX_FILES limit reached!");
             break;
         }
-    }
 
-    // If the current image is not found, fallback to the first available image
-    if (!found && m_FileCount > 0) {
-        LOGNOTE("SCSITBService::RefreshCache() Current image '%s' not found. Fallback to '%s'", current_image, m_FileEntries[0].name);
-        next_cd = 0;
-    }
+        // Build relative path for this entry
+        char entryRelativePath[MAX_PATH_LEN];
+        if (relativePath[0] == '\0') {
+            snprintf(entryRelativePath, sizeof(entryRelativePath), "%s", fno.fname);
+        } else {
+            snprintf(entryRelativePath, sizeof(entryRelativePath), "%s/%s", relativePath, fno.fname);
+        }
 
-    LOGNOTE("SCSITBService::RefreshCache() Found %d images (.ISO and BIN total)", m_FileCount);
+        if (fno.fattrib & AM_DIR) {
+            // Store folder entry
+            size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);
+            memcpy(m_FileEntries[m_FileCount].name, fno.fname, len);
+            m_FileEntries[m_FileCount].name[len] = '\0';
+            
+            size_t pathLen = my_strnlen(entryRelativePath, MAX_PATH_LEN - 1);
+            memcpy(m_FileEntries[m_FileCount].relativePath, entryRelativePath, pathLen);
+            m_FileEntries[m_FileCount].relativePath[pathLen] = '\0';
+            
+            m_FileEntries[m_FileCount].size = 0;
+            m_FileEntries[m_FileCount].isDirectory = true;
+            m_FileCount++;
+
+            // Recurse into subdirectory
+            char subFullPath[MAX_PATH_LEN];
+            snprintf(subFullPath, sizeof(subFullPath), "%s/%s", fullPath, fno.fname);
+            ScanDirectoryRecursive(subFullPath, entryRelativePath);
+        } else {
+            // Check for image files
+            const char* ext = strrchr(fno.fname, '.');
+            if (ext != nullptr) {
+                if (iequals(ext, ".iso") || iequals(ext, ".bin") || 
+                    iequals(ext, ".mds") || iequals(ext, ".chd") || iequals(ext, ".toast")) {
+                    size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);
+                    memcpy(m_FileEntries[m_FileCount].name, fno.fname, len);
+                    m_FileEntries[m_FileCount].name[len] = '\0';
+                    
+                    size_t pathLen = my_strnlen(entryRelativePath, MAX_PATH_LEN - 1);
+                    memcpy(m_FileEntries[m_FileCount].relativePath, entryRelativePath, pathLen);
+                    m_FileEntries[m_FileCount].relativePath[pathLen] = '\0';
+                    
+                    m_FileEntries[m_FileCount].size = fno.fsize;
+                    m_FileEntries[m_FileCount].isDirectory = false;
+                    m_FileCount++;
+                }
+            }
+        }
+    }
 
     f_closedir(&dir);
-    m_Lock.Release ();
+}
+
+// Original RefreshCache for backwards compatibility and startup
+bool SCSITBService::RefreshCache() {
+    LOGNOTE("SCSITBService::RefreshCache() called");
+    m_Lock.Acquire();
+
+    // Get current loaded image from config
+    const char* current_image = configservice->GetCurrentImage(DEFAULT_IMAGE_FILENAME);
+    LOGNOTE("SCSITBService::RefreshCache() loaded current_image %s from config.txt", current_image);
+
+    // Store the current image path if not already set
+    if (m_CurrentImagePath[0] == '\0' && current_image != nullptr) {
+        // If current_image contains a path (has /), use it directly
+        // Otherwise assume it's in root
+        if (strchr(current_image, '/') != nullptr) {
+            snprintf(m_CurrentImagePath, sizeof(m_CurrentImagePath), "1:/%s", current_image);
+        } else {
+            snprintf(m_CurrentImagePath, sizeof(m_CurrentImagePath), "1:/%s", current_image);
+        }
+    }
+
+    // Scan entire tree recursively
+    m_FileCount = 0;
+    ScanDirectoryRecursive("1:/", "");
+    
+    // Sort all entries: directories first, then alphabetically
+    if (m_FileCount > 1) {
+        qsort(m_FileEntries, m_FileCount, sizeof(FileEntry), compareFileEntriesDirectoriesFirst);
+    }
+    
+    LOGNOTE("SCSITBService::RefreshCache() Found %d total entries", (int)m_FileCount);
+
+    // Find the current image in cache by matching relative path
+    const char* searchPath = current_image;
+    bool found = false;
+    
+    if (searchPath && searchPath[0] != '\0') {
+        for (size_t i = 0; i < m_FileCount; ++i) {
+            if (!m_FileEntries[i].isDirectory && strcmp(m_FileEntries[i].relativePath, searchPath) == 0) {
+                if (current_cd < 0) {
+                    next_cd = i;
+                }
+                found = true;
+                LOGNOTE("SCSITBService::RefreshCache() Found current image at index %d", (int)i);
+                break;
+            }
+        }
+    }
+
+    // Fallback to first image file if not found
+    if (!found && m_FileCount > 0) {
+        for (size_t i = 0; i < m_FileCount; ++i) {
+            if (!m_FileEntries[i].isDirectory) {
+                LOGNOTE("SCSITBService::RefreshCache() Current image not found, using: %s", 
+                        m_FileEntries[i].relativePath);
+                next_cd = i;
+                break;
+            }
+        }
+    }
+
+    m_Lock.Release();
     return true;
 }
 
@@ -223,40 +373,49 @@ void SCSITBService::Run() {
 
     while (true) {
         m_Lock.Acquire();
-        
+
+        // Handle load by index (SetNextCD or SetNextCDByName was called)
         if (next_cd > -1) {
-            if ((size_t)next_cd > m_FileCount) {
+            if ((size_t)next_cd >= m_FileCount) {
                 next_cd = -1;
                 m_Lock.Release();
                 continue;
             }
 
-            // Load the image
-            char* imageName = m_FileEntries[next_cd].name;
-            IImageDevice* imageDevice = loadImageDevice(imageName);  // Changed
+            // Build full path using relativePath from cache
+            const char* relativePath = m_FileEntries[next_cd].relativePath;
+            // Ensure we have room for "1:/" prefix (3 chars) + relativePath + null terminator
+            if (strlen(relativePath) > MAX_PATH_LEN - 4) {
+                LOGERR("Path too long: %s", relativePath);
+                next_cd = -1;
+                m_Lock.Release();
+                continue;
+            }
+            snprintf(m_CurrentImagePath, sizeof(m_CurrentImagePath), "1:/%s", relativePath);
+
+            IImageDevice* imageDevice = loadImageDevice(m_CurrentImagePath);
 
             if (imageDevice == nullptr) {
-                LOGERR("Failed to load image: %s", imageName);
+                LOGERR("Failed to load image: %s", m_CurrentImagePath);
                 next_cd = -1;
                 m_Lock.Release();
                 continue;
             }
-            
-            LOGNOTE("Loaded image: %s (format: %d, has subchannels: %s)", 
-                    imageName, 
+
+            LOGNOTE("Loaded image: %s (format: %d, has subchannels: %s)",
+                    m_CurrentImagePath,
                     (int)imageDevice->GetFileType(),
                     imageDevice->HasSubchannelData() ? "yes" : "no");
-            
-            // Set the new device in the CD gadget
+
             cdromservice->SetDevice(imageDevice);
 
-            // Save current mounted image name
-            configservice->SetCurrentImage(imageName);
+            // Save relative path to config (without "1:/" prefix)
+            configservice->SetCurrentImage(relativePath);
 
             current_cd = next_cd;
             next_cd = -1;
         }
-        
+
         m_Lock.Release();
         CScheduler::Get()->MsSleep(100);
     }

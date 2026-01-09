@@ -16,28 +16,28 @@ THTTPStatus MountAPIHandler::GetJson(nlohmann::json& j,
                 const char *pParams,
                 const char *pFormData)
 {
-
     auto params = parse_query_params(pParams);
 
     if (params.count("file") == 0)
-            return HTTPBadRequest;
+        return HTTPBadRequest;
 
-    std::string file_name = params["file"];
+    // file parameter is a relative path like "Games/RPG/game.iso" or just "game.iso"
+    // URL decoding has already converted %2F to /
+    std::string file_param = params["file"];
 
     SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     if (!svc) {
-            LOGERR("Couldn't fetch SCSITB Service");
-            return HTTPInternalServerError;
+        LOGERR("Couldn't fetch SCSITB Service");
+        return HTTPInternalServerError;
     }
 
-    if (svc->SetNextCDByName(file_name.c_str())) {
-	    
-	    j = {
-		    {"status", "ok"}
-	    };
-	    return HTTPOK;
+    LOGNOTE("MountAPI: Mounting image with relative path: %s", file_param.c_str());
+
+    // Use SetNextCDByName which now searches by relativePath in the cache
+    if (svc->SetNextCDByName(file_param.c_str())) {
+        j = {{"status", "ok"}};
+        return HTTPOK;
     }
 
     return HTTPNotFound;
-
 }

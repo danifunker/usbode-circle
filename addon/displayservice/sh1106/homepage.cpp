@@ -2,6 +2,7 @@
 
 #include <circle/logger.h>
 #include <gitinfo/gitinfo.h>
+#include <cstring>
 
 #include "../../../src/kernel.h"
 
@@ -12,6 +13,13 @@ SH1106HomePage::SH1106HomePage(CSH1106Display* display, C2DGraphics* graphics)
       m_Graphics(graphics) {
     m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+
+    // Initialize scroll variables
+    CCharGenerator Font(Font6x7, CCharGenerator::FontFlagsNone);
+    m_ISOCharWidth = Font.GetCharWidth();
+    m_ISOMaxTextPx = m_Display->GetWidth() - 12;  // Account for CD icon offset
+    pISOPath[0] = '\0';
+
     LOGNOTE("Homepage starting");
 }
 
@@ -22,7 +30,16 @@ void SH1106HomePage::OnEnter() {
     LOGNOTE("Drawing homepage");
     pTitle = GetVersionString();
     pUSBSpeed = GetUSBSpeed();
-    pISOName = GetCurrentImage();
+
+    // Get full path and store it
+    const char* path = GetCurrentImagePath();
+    strncpy(pISOPath, path, MAX_PATH_LEN - 1);
+    pISOPath[MAX_PATH_LEN - 1] = '\0';
+
+    // Reset scroll state
+    m_ISOScrollOffsetPx = 0;
+    m_ISOScrollDirLeft = true;
+
     GetIPAddress(pIPAddress, sizeof(pIPAddress));
     Draw();
 }
@@ -70,20 +87,28 @@ void SH1106HomePage::OnButtonPress(Button button) {
 }
 
 void SH1106HomePage::Refresh() {
-    // We shouldn't redraw everything all the time!
-    const char* ISOName = GetCurrentImage();
-    if (strcmp(ISOName, pISOName) != 0) {
-	pISOName = ISOName;
+    // Check if ISO path changed
+    const char* currentPath = GetCurrentImagePath();
+    if (strcmp(currentPath, pISOPath) != 0) {
+        strncpy(pISOPath, currentPath, MAX_PATH_LEN - 1);
+        pISOPath[MAX_PATH_LEN - 1] = '\0';
+        m_ISOScrollOffsetPx = 0;
+        m_ISOScrollDirLeft = true;
         Draw();
+        return;
     }
 
+    // Check if IP changed
     char IPAddress[16];
     GetIPAddress(IPAddress, sizeof(IPAddress));
     if (strcmp(IPAddress, pIPAddress) != 0) {
         strcpy(pIPAddress, IPAddress);
         Draw();
+        return;
     }
 
+    // Scroll the ISO path if needed
+    RefreshISOScroll();
 }
 
 void SH1106HomePage::GetIPAddress(char* buffer, size_t size) {
@@ -102,12 +127,16 @@ const char* SH1106HomePage::GetVersionString() {
     return CGitInfo::Get()->GetShortVersionString();
 }
 
-const char* SH1106HomePage::GetCurrentImage() {
-    const char* name = m_Service->GetCurrentCDName();
-    if (name == nullptr)
-	    return "Loading...";
-    else
-	    return name;
+const char* SH1106HomePage::GetCurrentImagePath() {
+    const char* path = m_Service->GetCurrentCDPath();
+    if (path == nullptr || path[0] == '\0')
+        return "Loading...";
+
+    // Skip "1:/" prefix if present
+    if (strncmp(path, "1:/", 3) == 0)
+        path += 3;
+
+    return path;
 }
 
 const char* SH1106HomePage::GetUSBSpeed() {
@@ -174,41 +203,16 @@ void SH1106HomePage::Draw() {
 	}
     }
 
-    // ISO name (with two-line support)
-    size_t first_line_chars = 19;  // Increased from 16 to 19
-    size_t second_line_chars = 21; // Increased from 18 to 21
+    // ISO path display - use single line with marquee scrolling for long paths
+    size_t pathLen = strlen(pISOPath);
+    int fullTextPx = (int)pathLen * m_ISOCharWidth;
 
-    char first_line[32] = {0};
-    char second_line[32] = {0};
-    size_t iso_length = strlen(pISOName);
-
-    if (iso_length <= first_line_chars)
-    {
-	// Short name fits on one line
-        m_Graphics->DrawText(12, 27, COLOR2D(255,255,255), pISOName, C2DGraphics::AlignLeft, Font6x7);
-    }
-    else
-    {
-	// First line (with CD icon offset)
-	strncpy(first_line, pISOName, first_line_chars);
-	first_line[first_line_chars] = '\0';
-        m_Graphics->DrawText(12, 27, COLOR2D(255,255,255), first_line, C2DGraphics::AlignLeft, Font6x7);
-
-	// Second line (potentially with ellipsis for very long names)
-	if (iso_length > first_line_chars + second_line_chars - 4)
-	{
-	    // Very long name, use ellipsis and last 13 chars (increased from 9)
-	    strncpy(second_line, pISOName + first_line_chars, second_line_chars - 17); // Adjust for "..." + 13 chars
-	    strcat(second_line, "...");
-	    strcat(second_line, pISOName + iso_length - 13); // Show last 13 chars instead of 9
-	}
-	else
-	{
-	    strncpy(second_line, pISOName + first_line_chars, second_line_chars);
-	    second_line[second_line_chars] = '\0';
-	}
-
-        m_Graphics->DrawText(0, 37, COLOR2D(255,255,255), second_line, C2DGraphics::AlignLeft, Font6x7);
+    if (fullTextPx <= m_ISOMaxTextPx) {
+        // Short path fits on one line - just display it
+        m_Graphics->DrawText(12, 30, COLOR2D(255, 255, 255), pISOPath, C2DGraphics::AlignLeft, Font6x7);
+    } else {
+        // Long path - will be scrolled by RefreshISOScroll(), just draw static for now
+        DrawTextScrolled(12, 30, COLOR2D(255, 255, 255), pISOPath, m_ISOScrollOffsetPx, Font6x7);
     }
 
     // Draw USB icon - pixel by pixel for better control
@@ -240,9 +244,68 @@ void SH1106HomePage::Draw() {
     }
 
     // Draw USB speed info next to the USB icon
-    m_Graphics->DrawText(10, 49, COLOR2D(255,255,255), pUSBSpeed, C2DGraphics::AlignLeft, Font6x7);
+    m_Graphics->DrawText(10, 49, COLOR2D(255, 255, 255), pUSBSpeed, C2DGraphics::AlignLeft, Font6x7);
 
     // Ensure the display is updated with all changes
+    m_Graphics->UpdateDisplay();
+}
+
+void SH1106HomePage::DrawTextScrolled(unsigned nX, unsigned nY, T2DColor Color, const char* pText,
+                                      int pixelOffset, const TFont& rFont) {
+    CCharGenerator Font(rFont, CCharGenerator::FontFlagsNone);
+
+    unsigned m_nWidth = m_Graphics->GetWidth();
+    unsigned m_nHeight = m_Graphics->GetHeight();
+    unsigned drawX = nX - pixelOffset;
+
+    for (; *pText != '\0'; ++pText) {
+        for (unsigned y = 0; y < Font.GetUnderline(); y++) {
+            CCharGenerator::TPixelLine Line = Font.GetPixelLine(*pText, y);
+            for (unsigned x = 0; x < Font.GetCharWidth(); x++) {
+                unsigned finalX = drawX + x;
+                if (finalX >= nX && finalX < m_nWidth && (nY + y) < m_nHeight) {
+                    if (Font.GetPixel(x, Line)) {
+                        m_Graphics->DrawPixel(finalX, nY + y, Color);
+                    }
+                }
+            }
+        }
+
+        if (*pText == ' ') {
+            drawX += Font.GetCharWidth() / 2;
+        } else {
+            drawX += Font.GetCharWidth();
+        }
+    }
+}
+
+void SH1106HomePage::RefreshISOScroll() {
+    size_t pathLen = strlen(pISOPath);
+    int fullTextPx = (int)pathLen * m_ISOCharWidth;
+
+    if (fullTextPx <= m_ISOMaxTextPx) {
+        // No scrolling needed
+        return;
+    }
+
+    // Update scroll position
+    if (m_ISOScrollDirLeft) {
+        m_ISOScrollOffsetPx += 2;
+        if (m_ISOScrollOffsetPx >= (fullTextPx - m_ISOMaxTextPx)) {
+            m_ISOScrollOffsetPx = (fullTextPx - m_ISOMaxTextPx);
+            m_ISOScrollDirLeft = false;
+        }
+    } else {
+        m_ISOScrollOffsetPx -= 2;
+        if (m_ISOScrollOffsetPx <= 0) {
+            m_ISOScrollOffsetPx = 0;
+            m_ISOScrollDirLeft = true;
+        }
+    }
+
+    // Clear the ISO display area and redraw
+    m_Graphics->DrawRect(12, 27, m_Display->GetWidth() - 12, 18, COLOR2D(0, 0, 0));
+    DrawTextScrolled(12, 30, COLOR2D(255, 255, 255), pISOPath, m_ISOScrollOffsetPx, Font6x7);
     m_Graphics->UpdateDisplay();
 }
 

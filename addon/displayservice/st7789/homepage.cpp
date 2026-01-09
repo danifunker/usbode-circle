@@ -2,6 +2,7 @@
 
 #include <circle/logger.h>
 #include <gitinfo/gitinfo.h>
+#include <cstring>
 
 #include "../../../src/kernel.h"
 
@@ -12,6 +13,9 @@ ST7789HomePage::ST7789HomePage(CST7789Display* display, C2DGraphics* graphics)
       m_Graphics(graphics) {
     m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
+
+    pISOPath[0] = '\0';
+    pISOPathDisplay[0] = '\0';
 }
 
 ST7789HomePage::~ST7789HomePage() {
@@ -21,7 +25,15 @@ void ST7789HomePage::OnEnter() {
     LOGNOTE("Drawing homepage");
     pTitle = GetVersionString();
     pUSBSpeed = GetUSBSpeed();
-    pISOName = GetCurrentImage();
+
+    // Get full path and store it
+    const char* path = GetCurrentImagePath();
+    strncpy(pISOPath, path, MAX_PATH_LEN - 1);
+    pISOPath[MAX_PATH_LEN - 1] = '\0';
+
+    // Create truncated display version (max ~75 chars for 3 lines at 25 chars each)
+    TruncatePathWithEllipsis(pISOPath, pISOPathDisplay, sizeof(pISOPathDisplay), 75);
+
     GetIPAddress(pIPAddress, sizeof(pIPAddress));
     Draw();
 }
@@ -68,21 +80,24 @@ void ST7789HomePage::OnButtonPress(Button button) {
 }
 
 void ST7789HomePage::Refresh() {
-
-    // We shouldn't redraw everything all the time!
-    const char* ISOName = GetCurrentImage();
-    if (strcmp(ISOName, pISOName) != 0) {
-	pISOName = ISOName;
+    // Check if ISO path changed
+    const char* currentPath = GetCurrentImagePath();
+    if (strcmp(currentPath, pISOPath) != 0) {
+        strncpy(pISOPath, currentPath, MAX_PATH_LEN - 1);
+        pISOPath[MAX_PATH_LEN - 1] = '\0';
+        TruncatePathWithEllipsis(pISOPath, pISOPathDisplay, sizeof(pISOPathDisplay), 75);
         Draw();
+        return;
     }
 
+    // Check if IP changed
     char IPAddress[16];
     GetIPAddress(IPAddress, sizeof(IPAddress));
     if (strcmp(IPAddress, pIPAddress) != 0) {
-	strcpy(pIPAddress, IPAddress);
+        strcpy(pIPAddress, IPAddress);
         Draw();
+        return;
     }
-
 }
 
 void ST7789HomePage::GetIPAddress(char* buffer, size_t size) {
@@ -101,12 +116,16 @@ const char* ST7789HomePage::GetVersionString() {
     return CGitInfo::Get()->GetShortVersionString();
 }
 
-const char* ST7789HomePage::GetCurrentImage() {
-    const char* name = m_Service->GetCurrentCDName();
-    if (name == nullptr)
-            return "Loading...";
-    else
-            return name;
+const char* ST7789HomePage::GetCurrentImagePath() {
+    const char* path = m_Service->GetCurrentCDPath();
+    if (path == nullptr || path[0] == '\0')
+        return "Loading...";
+
+    // Skip "1:/" prefix if present
+    if (strncmp(path, "1:/", 3) == 0)
+        path += 3;
+
+    return path;
 }
 
 const char* ST7789HomePage::GetUSBSpeed() {
@@ -179,61 +198,40 @@ void ST7789HomePage::Draw() {
     // Draw center hole of CD
     m_Graphics->DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 2, COLOR2D(0, 0, 0));
 
-    // ISO name handling with THREE-line support
-    size_t first_line_chars = 25;   // First line chars
-    size_t second_line_chars = 25;  // Second line chars
-    size_t third_line_chars = 25;   // Third line chars
+    // ISO path display with THREE-line support using pre-truncated path
+    size_t first_line_chars = 25;
+    size_t second_line_chars = 25;
+    size_t third_line_chars = 25;
 
     char first_line[40] = {0};
     char second_line[40] = {0};
     char third_line[40] = {0};
-    size_t iso_length = strlen(pISOName);
+    size_t path_length = strlen(pISOPathDisplay);
 
-    if (iso_length <= first_line_chars) {
-        // Short name fits on one line
-        m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), pISOName, C2DGraphics::AlignLeft);
-    } else if (iso_length <= first_line_chars + second_line_chars) {
+    if (path_length <= first_line_chars) {
+        // Short path fits on one line
+        m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), pISOPathDisplay, C2DGraphics::AlignLeft);
+    } else if (path_length <= first_line_chars + second_line_chars) {
         // Two lines needed
-        // First line
-        strncpy(first_line, pISOName, first_line_chars);
+        strncpy(first_line, pISOPathDisplay, first_line_chars);
         first_line[first_line_chars] = '\0';
         m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
 
-        // Second line
-        strncpy(second_line, pISOName + first_line_chars, second_line_chars);
+        strncpy(second_line, pISOPathDisplay + first_line_chars, second_line_chars);
         second_line[second_line_chars] = '\0';
         m_Graphics->DrawText(35, cd_y + 20, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
-    } else if (iso_length <= first_line_chars + second_line_chars + third_line_chars) {
-        // Three lines needed
-        // First line
-        strncpy(first_line, pISOName, first_line_chars);
-        first_line[first_line_chars] = '\0';
-        m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
-
-        // Second line
-        strncpy(second_line, pISOName + first_line_chars, second_line_chars);
-        second_line[second_line_chars] = '\0';
-        m_Graphics->DrawText(35, cd_y + 20, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
-
-        // Third line
-        strncpy(third_line, pISOName + first_line_chars + second_line_chars, third_line_chars);
-        third_line[third_line_chars] = '\0';
-        m_Graphics->DrawText(35, cd_y + 40, COLOR2D(0, 0, 0), third_line, C2DGraphics::AlignLeft);
     } else {
-        // More than three lines worth of text - show first two lines and end with ellipsis + last part
-        // First line
-        strncpy(first_line, pISOName, first_line_chars);
+        // Three lines needed
+        strncpy(first_line, pISOPathDisplay, first_line_chars);
         first_line[first_line_chars] = '\0';
         m_Graphics->DrawText(35, cd_y, COLOR2D(0, 0, 0), first_line, C2DGraphics::AlignLeft);
 
-        // Second line
-        strncpy(second_line, pISOName + first_line_chars, second_line_chars);
+        strncpy(second_line, pISOPathDisplay + first_line_chars, second_line_chars);
         second_line[second_line_chars] = '\0';
         m_Graphics->DrawText(35, cd_y + 20, COLOR2D(0, 0, 0), second_line, C2DGraphics::AlignLeft);
 
-        // Third line with "..." and last 11 chars of filename
-        strcpy(third_line, "...");
-        strcat(third_line, pISOName + (iso_length - 11));
+        strncpy(third_line, pISOPathDisplay + first_line_chars + second_line_chars, third_line_chars);
+        third_line[third_line_chars] = '\0';
         m_Graphics->DrawText(35, cd_y + 40, COLOR2D(0, 0, 0), third_line, C2DGraphics::AlignLeft);
     }
 
@@ -493,4 +491,78 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType) {
         m_Graphics->DrawLine(y_icon_x - 2, y_icon_y + 5, y_icon_x + 7, y_icon_y - 4, COLOR2D(0, 255, 0));
     }
     */
+}
+
+void ST7789HomePage::TruncatePathWithEllipsis(const char* fullPath, char* outBuffer, size_t outBufferSize, size_t maxChars) {
+    size_t fullLen = strlen(fullPath);
+
+    // If path fits, just copy it
+    if (fullLen <= maxChars) {
+        strncpy(outBuffer, fullPath, outBufferSize - 1);
+        outBuffer[outBufferSize - 1] = '\0';
+        return;
+    }
+
+    // Split path into components and truncate each as needed
+    // Strategy: preserve folder structure, truncate individual components with "..."
+
+    // First, count components and their lengths
+    char tempPath[MAX_PATH_LEN];
+    strncpy(tempPath, fullPath, MAX_PATH_LEN - 1);
+    tempPath[MAX_PATH_LEN - 1] = '\0';
+
+    // Count total components
+    int numComponents = 1;
+    for (const char* p = tempPath; *p; p++) {
+        if (*p == '/') numComponents++;
+    }
+
+    // Calculate max chars per component (leaving room for slashes and "...")
+    // Reserve 3 chars for "..." per component that needs truncation
+    size_t charsForSlashes = numComponents - 1;
+    size_t availableChars = maxChars - charsForSlashes;
+    size_t maxPerComponent = availableChars / numComponents;
+    if (maxPerComponent < 6) maxPerComponent = 6;  // Minimum: "ab...z"
+
+    // Build output by processing each component
+    outBuffer[0] = '\0';
+    char* token = strtok(tempPath, "/");
+    bool first = true;
+
+    while (token != NULL) {
+        if (!first) {
+            strncat(outBuffer, "/", outBufferSize - strlen(outBuffer) - 1);
+        }
+        first = false;
+
+        size_t tokenLen = strlen(token);
+        if (tokenLen <= maxPerComponent) {
+            // Component fits - add as-is
+            strncat(outBuffer, token, outBufferSize - strlen(outBuffer) - 1);
+        } else {
+            // Component needs truncation
+            // Format: first few chars + "..." + last few chars
+            size_t showChars = maxPerComponent - 3;  // Account for "..."
+            size_t frontChars = showChars / 2;
+            size_t backChars = showChars - frontChars;
+
+            // Add front part
+            size_t currentLen = strlen(outBuffer);
+            if (currentLen + frontChars < outBufferSize - 1) {
+                strncat(outBuffer, token, frontChars);
+            }
+
+            // Add ellipsis
+            strncat(outBuffer, "...", outBufferSize - strlen(outBuffer) - 1);
+
+            // Add back part
+            if (backChars > 0 && tokenLen >= backChars) {
+                strncat(outBuffer, token + tokenLen - backChars, outBufferSize - strlen(outBuffer) - 1);
+            }
+        }
+
+        token = strtok(NULL, "/");
+    }
+
+    outBuffer[outBufferSize - 1] = '\0';
 }
