@@ -20,6 +20,7 @@
 #include "infopage.h"
 #include "logconfigpage.h"
 #include "timeoutconfigpage.h"
+#include "lowpowertimeoutconfigpage.h"
 #include "powerpage.h"
 #include "splashpage.h"
 #include "usbconfigpage.h"
@@ -27,11 +28,15 @@
 #include "upgradepage.h"
 #include "classicmacmodepage.h"
 #include "soundconfig.h"
+#include "discartpage.h"
+#include <scsitbservice/scsitbservice.h>
+#include <discart/discart.h>
 
 LOGMODULE("st7789display");
 
 #define SLEEP_WARNING_DURATION 2 * 1000  // 2 seconds in milliseconds
 #define LOW_BRIGHTNESS_THRESHOLD 16     // Show warning only if sleep brightness < 16
+#define DISCART_DELAY_US 2000000        // 2 seconds delay before showing disc art (in microseconds)
 
 // Constructor
 ST7789Display::ST7789Display(DisplayConfig* config, ButtonConfig* buttons)
@@ -54,6 +59,7 @@ ST7789Display::ST7789Display(DisplayConfig* config, ButtonConfig* buttons)
         m_backlight_pin = config->backlight_pin;
 
     backlightTimer = CTimer::Get()->GetClockTicks();
+    lowPowerTimer = backlightTimer;
 
     LOGNOTE("Started ST7789 Display");
 }
@@ -98,13 +104,18 @@ bool ST7789Display::Initialize() {
     m_PageManager.RegisterPage("usbconfigpage", new ST7789USBConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("logconfigpage", new ST7789LogConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("timeoutconfigpage", new ST7789TimeoutConfigPage(&m_Display, &m_Graphics));
+    m_PageManager.RegisterPage("lowpowertimeoutconfigpage", new ST7789LowPowerTimeoutConfigPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("infopage", new ST7789InfoPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("setuppage", new ST7789SetupPage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("upgradepage", new ST7789UpgradePage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("classicmacmodepage", new ST7789ClassicMacModePage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("upgradepage", new ST7789UpgradePage(&m_Display, &m_Graphics));
     m_PageManager.RegisterPage("soundconfigpage", new ST7789SoundConfigPage(&m_Display, &m_Graphics));
-    
+
+    // Register disc art page and keep a reference for direct access
+    m_DiscArtPage = new ST7789DiscArtPage(&m_Display, &m_Graphics);
+    m_PageManager.RegisterPage("discartpage", m_DiscArtPage);
+
     LOGNOTE("Registered pages");
 
     // Set the starting page
@@ -190,20 +201,48 @@ void ST7789Display::DrawSleepWarning() {
     m_Graphics.UpdateDisplay();
 }
 
-// Dim the screen or even turn it off
-void ST7789Display::Sleep() {
+// Enter low power mode - intermediate dimmed state (silent, no warning)
+void ST7789Display::EnterLowPower() {
     if (!pwm_configured)
         return;
 
-    // Do not sleep if we're in the First Boot Setup phase
-    // or updating
+    // Do not enter low power if we're in the First Boot Setup phase or updating
     if (SetupStatus::Get()->isSetupInProgress() || UpgradeStatus::Get()->isUpgradeInProgress())
-	    return;
+        return;
 
-    LOGNOTE("Sleeping");
-    
+    // If disc art timer has elapsed (m_DiscArtPending), show it before entering low power
+    // Only if we're on the homepage (don't interrupt menu navigation)
+    bool onHomepage = m_PageManager.GetCurrentPage() == m_PageManager.GetPage("homepage");
+    if (onHomepage && m_DiscArtPending) {
+        m_DiscArtPending = false;
+        if (DiscArt::HasDiscArt(m_LastDiscPath)) {
+            LOGNOTE("Showing disc art before low power mode");
+            m_DiscArtPage->SetDiscImagePath(m_LastDiscPath);
+            m_PageManager.SetActivePage("discartpage");
+        }
+    }
+
+    LOGNOTE("Entering Low Power Mode");
+
+    lowPowerMode = true;
+    lowPowerTimer = CTimer::Get()->GetClockTicks();
+    unsigned lowPowerBrightness = configservice->GetST7789LowPowerBrightness(32);
+    m_PWMOutput.Write(2, lowPowerBrightness);
+}
+
+// Enter sleep mode - final sleep state (with warning if brightness is low)
+void ST7789Display::EnterSleep() {
+    if (!pwm_configured)
+        return;
+
+    // Do not sleep if we're in the First Boot Setup phase or updating
+    if (SetupStatus::Get()->isSetupInProgress() || UpgradeStatus::Get()->isUpgradeInProgress())
+        return;
+
+    LOGNOTE("Entering Sleep Mode");
+
     // Check if sleep brightness is low enough to warrant showing warning
-    unsigned sleepBrightness = configservice->GetST7789SleepBrightness(32);
+    unsigned sleepBrightness = configservice->GetST7789SleepBrightness(0);
     if (sleepBrightness < LOW_BRIGHTNESS_THRESHOLD) {
         DrawSleepWarning();
         CScheduler::Get()->MsSleep(SLEEP_WARNING_DURATION);
@@ -214,19 +253,33 @@ void ST7789Display::Sleep() {
     m_PWMOutput.Write(2, sleepBrightness);
 }
 
+// Legacy Sleep() - triggers the appropriate state transition
+void ST7789Display::Sleep() {
+    if (!lowPowerMode) {
+        EnterLowPower();
+    } else if (!sleeping) {
+        EnterSleep();
+    }
+}
+
 // Wake the screen
 void ST7789Display::Wake() {
     // reset the backlight timer on this keypress
     backlightTimer = CTimer::Get()->GetClockTicks();
 
-    // Wake up if we were sleeping
-    if (sleeping) {
+    bool wasAsleep = lowPowerMode || sleeping;
+
+    // Wake up if we were in low power or sleeping
+    if (wasAsleep) {
         unsigned brightness = configservice->GetST7789Brightness(1024);
         m_PWMOutput.Write(2, brightness);
+
+        // Just refresh the current page - don't change screens on wake
         m_PageManager.Refresh(true);
     }
 
-    // Regardless, we're definitely not sleeping now
+    // Regardless, we're definitely not in low power or sleeping now
+    lowPowerMode = false;
     sleeping = false;
 }
 
@@ -237,23 +290,105 @@ bool ST7789Display::IsSleeping() {
 // Called by displaymanager kernel loop. Check backlight timeout and sleep if
 // necessary. Pass on the refresh call to the page manager
 void ST7789Display::Refresh() {
-    unsigned backlightTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+    unsigned lowPowerTimeout = configservice->GetLowPowerTimeout(15) * 1000000;
+    unsigned sleepTimeout = configservice->GetScreenTimeout(DEFAULT_TIMEOUT) * 1000000;
+    unsigned now = CTimer::Get()->GetClockTicks();
 
-    // If we're asleep and the timeout got changed to zero
-    if (!backlightTimeout && sleeping)
-            Wake();
+    // If we're asleep or in low power and both timeouts got changed to zero, wake up
+    if (!lowPowerTimeout && !sleepTimeout && (sleeping || lowPowerMode))
+        Wake();
 
-    if (!sleeping) {
-        if (backlightTimeout) {
-            // Is it time to dim the screen?
-            unsigned now = CTimer::Get()->GetClockTicks();
-            if (now - backlightTimer > backlightTimeout)
-                Sleep();
+    // State machine: Active -> Low Power -> Sleep
+    if (!sleeping && !lowPowerMode) {
+        // In active state - check for low power timeout
+        if (lowPowerTimeout) {
+            if (now - backlightTimer > lowPowerTimeout)
+                EnterLowPower();
         }
-
+    } else if (lowPowerMode && !sleeping) {
+        // In low power state - check for sleep timeout
+        if (sleepTimeout) {
+            if (now - lowPowerTimer > sleepTimeout)
+                EnterSleep();
+        }
     }
 
+    // Check for disc art display timer
+    CheckDiscArtTimer();
+
     m_PageManager.Refresh();
+}
+
+// Check if a disc was recently loaded and show disc art after delay
+void ST7789Display::CheckDiscArtTimer() {
+    // Don't do disc art processing during low power or sleep modes
+    if (lowPowerMode || sleeping) {
+        return;
+    }
+
+    // Get current disc path
+    SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+    if (!svc) return;
+
+    const char* currentPath = svc->GetCurrentCDPath();
+    if (!currentPath || currentPath[0] == '\0') {
+        m_DiscArtPending = false;
+        m_LastDiscPath[0] = '\0';
+        return;
+    }
+
+    // Check if we're on homepage (only show disc art from homepage)
+    bool onHomepage = m_PageManager.GetCurrentPage() == m_PageManager.GetPage("homepage");
+
+    // Check if disc changed
+    if (strcmp(m_LastDiscPath, currentPath) != 0) {
+        strncpy(m_LastDiscPath, currentPath, sizeof(m_LastDiscPath) - 1);
+        m_LastDiscPath[sizeof(m_LastDiscPath) - 1] = '\0';
+
+        // Only start the disc art timer if we're on homepage
+        // This prevents the timer from running during splash/other screens
+        if (onHomepage) {
+            m_DiscLoadTime = CTimer::Get()->GetClockTicks();
+            m_DiscArtPending = true;
+        }
+
+        // Update the disc art page with new path
+        if (m_DiscArtPage) {
+            m_DiscArtPage->SetDiscImagePath(currentPath);
+        }
+
+        // Don't check timer this cycle - wait for next refresh
+        return;
+    }
+
+    // If we just arrived at homepage and have a disc but timer not started yet, start it now
+    if (onHomepage && !m_DiscArtPending && m_LastDiscPath[0] != '\0' && m_DiscLoadTime == 0) {
+        m_DiscLoadTime = CTimer::Get()->GetClockTicks();
+        m_DiscArtPending = true;
+        return;
+    }
+
+    // Check if it's time to show disc art (already confirmed not sleeping/low power above)
+    if (m_DiscArtPending && onHomepage) {
+        unsigned now = CTimer::Get()->GetClockTicks();
+
+        if (now - m_DiscLoadTime > DISCART_DELAY_US) {
+            m_DiscArtPending = false;
+            m_DiscLoadTime = 0;  // Reset for next disc change
+            ShowDiscArt();
+        }
+    }
+}
+
+// Show disc art page if art is available
+void ST7789Display::ShowDiscArt() {
+    if (!m_DiscArtPage) return;
+
+    // Check if we have disc art for current disc
+    if (DiscArt::HasDiscArt(m_LastDiscPath)) {
+        m_DiscArtPage->SetDiscImagePath(m_LastDiscPath);
+        m_PageManager.SetActivePage("discartpage");
+    }
 }
 
 // Debounce the key presses

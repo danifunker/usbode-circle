@@ -251,6 +251,17 @@ form {
 .no-oldie {
 	* display: none;
 }
+.disc-art {
+	text-align: center;
+	margin-bottom: 15px;
+}
+.disc-art img {
+	max-width: 240px;
+	max-height: 240px;
+	border-radius: 4px;
+	box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+	border: 1px solid #ddd;
+}
 
 @media screen and (max-width: 490px) {
 	.header h1 {

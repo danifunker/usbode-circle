@@ -2,6 +2,7 @@
 #define IPAGE_HANDLER_H
 
 #include <circle/sched/scheduler.h>
+#include <circle/net/httpdaemon.h>
 #include <usbcdgadget/usbcdgadget.h>
 
 class IPageHandler {

@@ -66,30 +66,35 @@ void ST7789ConfigPage::OnButtonPress(Button button)
 			    m_ShouldChangePage = true;
 			    break;
 		    case 2:
-			    LOGNOTE("Timeout Configuration");
+			    LOGNOTE("Low Power Timeout Configuration");
+			    m_NextPageName = "lowpowertimeoutconfigpage";
+			    m_ShouldChangePage = true;
+			    break;
+		    case 3:
+			    LOGNOTE("Sleep Timeout Configuration");
 			    m_NextPageName = "timeoutconfigpage";
 			    m_ShouldChangePage = true;
 			    break;
-            case 3:
+            case 4:
                 LOGNOTE("Sound Configuration");
                 m_NextPageName = "soundconfigpage";
                 m_ShouldChangePage = true;
                 break;
-            case 4:
+            case 5:
                 LOGNOTE("Apple OS Mode");
                 m_NextPageName = "classicmacmodepage";
                 m_ShouldChangePage = true;
-                break;                
-            case 5:
+                break;
+            case 6:
                 LOGNOTE("Build Info");
                 m_NextPageName = "infopage";
                 m_ShouldChangePage = true;
                 break;
-            case 6:
+            case 7:
                 LOGNOTE("Power Menu");
                 m_NextPageName = "powerpage";
                 m_ShouldChangePage = true;
-                break;                
+                break;
 	    }
             break;
 

@@ -1,6 +1,11 @@
 {{#cdrom}}
 	<h3>File Selection</h3>
 	<div class="info-box">
+		{{#has_disc_art}}
+		<div class="disc-art">
+			<img src="/discart?{{boot_id}}" alt="Disc Art" />
+		</div>
+		{{/has_disc_art}}
 		<p>Current File Loaded: <strong>{{image_name}}</strong></p>
 		{{#show_path}}
 		<p>Current Folder: <strong>/{{current_path}}</strong></p>

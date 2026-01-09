@@ -23,7 +23,8 @@ OBJS    = webserver.o \
 	handlers/mountapi.o \
 	handlers/shutdownapi.o \
 	handlers/imagenameapi.o \
-	handlers/listapi.o
+	handlers/listapi.o \
+	handlers/discarthandler.o
 
 libwebserver.a: $(OBJS)
 	@echo "  AR    $@"

@@ -4,6 +4,7 @@
 #include <mustache/mustache.hpp>
 #include <scsitbservice/scsitbservice.h>
 #include <configservice/configservice.h>
+#include <discart/discart.h>
 #include <circle/koptions.h>
 #include <vector>
 #include <string>
@@ -145,6 +146,13 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     
     context.set("image_name", current_image_name);
     context.set("image_path", current_image_path ? current_image_path : "");
+
+    // Check if disc art exists for current image
+    bool has_disc_art = false;
+    if (current_image_path && current_image_path[0] != '\0') {
+        has_disc_art = DiscArt::HasDiscArt(current_image_path);
+    }
+    context.set("has_disc_art", has_disc_art);
     
     // Check if we're browsing the folder that contains the current image
     bool browsing_current_folder = (current_path == current_image_folder);
