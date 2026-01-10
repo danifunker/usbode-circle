@@ -70,7 +70,7 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
 Setup is now complete. See the instructions below to learn how to use the USBODE.
 
 ## Upgrading USBODE Versions
-To upgrade USBODE without losing any of your disc images or settings, first make sure the version is at least 2.6.1 for PirateAudio, or 2.18.3 for Waveshare. ***Alternatively, you can set the screen to pirateaudio screen during the upgrade if you are on a version higher than 2.6.1 and are using the waveshare screen, but be aware the upgrade messages will not appear on the screen***. 
+To upgrade USBODE without losing any of your disc images or settings, first make sure the version is at least 2.14.0 for PirateAudio, or 2.18.3 for Waveshare. ***Alternatively, you can set the screen to pirateaudio screen during the upgrade if you are on a version higher than 2.14.0 and are using the waveshare screen, but be aware the upgrade messages will not appear on the screen***. 
 
 Next, download the following files from the release you are trying to ugprade to:
 - sysupgrade.tar
