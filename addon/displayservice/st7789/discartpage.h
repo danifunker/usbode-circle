@@ -7,6 +7,8 @@
 #include <displayservice/buttons.h>
 #include <displayservice/ipage.h>
 
+class SCSITBService;
+
 class ST7789DiscArtPage : public IPage {
 public:
     ST7789DiscArtPage(CST7789Display* display, C2DGraphics* graphics);
@@ -33,6 +35,7 @@ private:
 private:
     CST7789Display* m_Display;
     C2DGraphics* m_Graphics;
+    SCSITBService* m_Service;
 
     char m_DiscImagePath[512];
     u16* m_ArtBuffer;

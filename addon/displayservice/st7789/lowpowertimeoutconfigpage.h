@@ -36,7 +36,8 @@ private:
     CST7789Display*          m_Display;
     C2DGraphics*             m_Graphics;
     ConfigService* configservice;
-    const char* options[5] = { "5s", "10s", "15s", "20s", "25s" };
+    const char* options[7] = { "5s", "10s", "30s", "60s", "2 min", "5 min", "Never" };
+    const unsigned timeoutValues[7] = { 5, 10, 30, 60, 120, 300, 0 };
     size_t m_SelectedIndex = 0;
 
 };

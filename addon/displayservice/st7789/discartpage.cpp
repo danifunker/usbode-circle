@@ -1,7 +1,9 @@
 #include "discartpage.h"
 
 #include <circle/logger.h>
+#include <circle/sched/scheduler.h>
 #include <discart/discart.h>
+#include <scsitbservice/scsitbservice.h>
 #include <string.h>
 
 LOGMODULE("discartpage");
@@ -12,6 +14,7 @@ ST7789DiscArtPage::ST7789DiscArtPage(CST7789Display* display, C2DGraphics* graph
       m_ArtBuffer(nullptr),
       m_HasArt(false),
       m_ShouldChangePage(false) {
+    m_Service = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
     m_DiscImagePath[0] = '\0';
 }
 
@@ -96,10 +99,33 @@ void ST7789DiscArtPage::OnButtonPress(Button button) {
 }
 
 void ST7789DiscArtPage::Refresh() {
-    // No dynamic content to refresh
+    // Check if disc changed while we're displaying art
+    if (m_Service) {
+        const char* currentPath = m_Service->GetCurrentCDPath();
+        if (currentPath && currentPath[0] != '\0') {
+            if (strcmp(m_DiscImagePath, currentPath) != 0) {
+                SetDiscImagePath(currentPath);
+                if (LoadArt()) {
+                    Draw();
+                }
+            }
+        }
+    }
 }
 
 void ST7789DiscArtPage::Draw() {
+    // Check if disc changed since we loaded art (e.g., changed via web while in low power/sleep)
+    if (m_Service) {
+        const char* currentPath = m_Service->GetCurrentCDPath();
+        if (currentPath && currentPath[0] != '\0') {
+            // Reload if path changed or art not loaded
+            if (!m_HasArt || strcmp(m_DiscImagePath, currentPath) != 0) {
+                SetDiscImagePath(currentPath);
+                LoadArt();
+            }
+        }
+    }
+
     if (m_HasArt && m_ArtBuffer) {
         // Draw the full-screen disc art
         m_Graphics->DrawImage(0, 0, DISCART_WIDTH, DISCART_HEIGHT, m_ArtBuffer);

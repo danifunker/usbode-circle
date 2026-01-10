@@ -55,7 +55,7 @@ void ST7789LowPowerTimeoutConfigPage::OnButtonPress(Button button)
 
         case Button::Ok:
 	{
-	    unsigned timeout = 5 * (m_SelectedIndex + 1);
+	    unsigned timeout = timeoutValues[m_SelectedIndex];
 	    LOGNOTE("Setting low power timeout to %d", timeout);
 	    configservice->SetLowPowerTimeout(timeout);
 	    m_NextPageName = "homepage";
