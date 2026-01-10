@@ -3,6 +3,7 @@
 #include <circle/sched/scheduler.h>
 #include <gitinfo/gitinfo.h>
 #include <shutdown/shutdown.h>
+#include <linux/kernel.h>
 
 LOGMODULE("timeoutconfigpage");
 
@@ -21,7 +22,84 @@ void ST7789TimeoutConfigPage::OnEnter()
 {
     LOGNOTE("Drawing TimeoutConfigPage");
 
+    unsigned currentTimeout = configservice->GetScreenTimeout();
+    
+    // Reset options array to original state first
+    options[0] = "5s";
+    options[1] = "10s";
+    options[2] = "30s";
+    options[3] = "60s";
+    options[4] = "2 min";
+    options[5] = "5 min";
+    options[6] = "Never";
+    options[7] = nullptr;
+    
+    timeoutValues[0] = 5;
+    timeoutValues[1] = 10;
+    timeoutValues[2] = 30;
+    timeoutValues[3] = 60;
+    timeoutValues[4] = 120;
+    timeoutValues[5] = 300;
+    timeoutValues[6] = 0;
+    timeoutValues[7] = 0;
+    
+    // Always show 8 options (7 predefined + 1 custom)
+    m_OptionCount = 8;
+    
+    // Check if current timeout matches any predefined option (including 0 for Never)
+    bool foundMatch = false;
+    for (size_t i = 0; i < 7; ++i) {
+        if (timeoutValues[i] == currentTimeout) {
+            foundMatch = true;
+            m_SelectedIndex = i;
+            break;
+        }
+    }
+    
+    // Update custom option display
+    if (!foundMatch && currentTimeout > 0) {
+        // Show actual custom value (only for non-zero values)
+        if (currentTimeout >= 60) {
+            snprintf(customLabel, sizeof(customLabel), "Custom: %u min", currentTimeout / 60);
+        } else {
+            snprintf(customLabel, sizeof(customLabel), "Custom: %us", currentTimeout);
+        }
+        
+        // Find insertion point between 5 min (index 5) and Never (index 6)
+        // Custom values go at index 6, Never shifts to index 7
+        options[7] = options[6];  // Move Never to position 7
+        timeoutValues[7] = timeoutValues[6];
+        
+        options[6] = customLabel;  // Put custom at position 6
+        timeoutValues[6] = currentTimeout;
+        m_SelectedIndex = 6;  // Select the custom value
+    } else {
+        // Show placeholder for custom at the end
+        snprintf(customLabel, sizeof(customLabel), "Custom: not set");
+        options[7] = customLabel;
+        timeoutValues[7] = 0;  // Not used when not set
+    }
+
     Draw();
+}
+
+size_t ST7789TimeoutConfigPage::FindClosestTimeout(unsigned currentTimeout)
+{
+    size_t closestIndex = 0;
+    unsigned minDiff = 0xFFFFFFFF;  // Max unsigned value
+
+    for (size_t i = 0; i < 7; ++i) {
+        unsigned diff = (currentTimeout > timeoutValues[i]) 
+            ? (currentTimeout - timeoutValues[i]) 
+            : (timeoutValues[i] - currentTimeout);
+        
+        if (diff < minDiff) {
+            minDiff = diff;
+            closestIndex = i;
+        }
+    }
+
+    return closestIndex;
 }
 
 void ST7789TimeoutConfigPage::OnExit()
@@ -55,7 +133,7 @@ void ST7789TimeoutConfigPage::OnButtonPress(Button button)
 
         case Button::Ok:
 	{
-	    unsigned timeout = 5 * (m_SelectedIndex + 1);
+	    unsigned timeout = timeoutValues[m_SelectedIndex];
 	    LOGNOTE("Setting screen timeout to %d", timeout);
 	    configservice->SetScreenTimeout(timeout);
 	    m_NextPageName = "homepage";
@@ -77,15 +155,14 @@ void ST7789TimeoutConfigPage::OnButtonPress(Button button)
 
 void ST7789TimeoutConfigPage::MoveSelection(int delta) {
 
-    size_t fileCount = sizeof(options) / sizeof(options[0]);
-    if (fileCount == 0) return;
+    if (m_OptionCount == 0) return;
 
     LOGDBG("Selected index is %d, Menu delta is %d", m_SelectedIndex, delta);
     int newIndex = static_cast<int>(m_SelectedIndex) + delta;
     if (newIndex < 0)
         newIndex = 0;
-    else if (newIndex >= static_cast<int>(fileCount))
-        newIndex = static_cast<int>(fileCount - 1);
+    else if (newIndex >= static_cast<int>(m_OptionCount))
+        newIndex = static_cast<int>(m_OptionCount - 1);
 
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
 	LOGDBG("New menu index is %d", newIndex);
@@ -99,8 +176,7 @@ void ST7789TimeoutConfigPage::Refresh()
 }
 
 void ST7789TimeoutConfigPage::Draw() {
-    size_t fileCount = sizeof(options) / sizeof(options[0]);
-    if (fileCount == 0) return;
+    if (m_OptionCount == 0) return;
 
     m_Graphics->ClearScreen(COLOR2D(255, 255, 255));
 
@@ -110,7 +186,7 @@ void ST7789TimeoutConfigPage::Draw() {
     m_Graphics->DrawText(10, 8, COLOR2D(255, 255, 255), pTitle, C2DGraphics::AlignLeft);
 
     size_t startIndex = 0;
-    size_t endIndex = fileCount;
+    size_t endIndex = m_OptionCount;
 
     for (size_t i = startIndex; i < endIndex; ++i) {
         int y = static_cast<int>((i - startIndex) * 20);

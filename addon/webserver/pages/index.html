@@ -35,23 +35,19 @@
 	</div>
 	{{#pagination}}
 	<div class="pagination">
-		{{#has_first}}
-		<a href="/?page=1{{{path_param}}}">1</a>
-		{{/has_first}}
-
-		{{#has_prev}}
-		<a href="/?page={{prev_page}}{{{path_param}}}">{{prev_page}}</a>
-		{{/has_prev}}
-
-		<span class="current">{{current_page}}</span>
-
-		{{#has_next}}
-		<a href="/?page={{next_page}}{{{path_param}}}">{{next_page}}</a>
-		{{/has_next}}
-
-		{{#has_last}}
-		<a href="/?page={{last_page}}{{{path_param}}}">{{last_page}}</a>
-		{{/has_last}}
+		{{#pages}}
+		{{#is_ellipsis}}
+		<span class="ellipsis">...</span>
+		{{/is_ellipsis}}
+		{{^is_ellipsis}}
+		{{#is_current}}
+		<span class="current">{{page_num}}</span>
+		{{/is_current}}
+		{{^is_current}}
+		<a href="/?page={{page_num}}{{{path_param}}}">{{page_num}}</a>
+		{{/is_current}}
+		{{/is_ellipsis}}
+		{{/pages}}
 	</div>
 	{{/pagination}}
 {{/cdrom}}
