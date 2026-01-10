@@ -29,6 +29,7 @@ private:
     void DrawNavigationBar(const char* screenType);
     void DrawConfirmation(const char* message);
     void MoveSelection(int delta);
+    size_t FindClosestTimeout(unsigned currentTimeout);
 
 private:
     bool m_ShouldChangePage = false;
@@ -36,8 +37,10 @@ private:
     CST7789Display*          m_Display;
     C2DGraphics*             m_Graphics;
     ConfigService* configservice;
-    const char* options[7] = { "5s", "10s", "30s", "60s", "2 min", "5 min", "Never" };
-    const unsigned timeoutValues[7] = { 5, 10, 30, 60, 120, 300, 0 };
+    const char* options[8] = { "5s", "10s", "30s", "60s", "2 min", "5 min", "Never", nullptr };
+    unsigned timeoutValues[8] = { 5, 10, 30, 60, 120, 300, 0, 0 };
+    char customLabel[32];
+    size_t m_OptionCount = 7;
     size_t m_SelectedIndex = 0;
 
 };
