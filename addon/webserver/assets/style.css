@@ -188,6 +188,11 @@ a.button {
 .pagination a:hover {
 	background-color: #BBDEFB;
 }
+.pagination .ellipsis {
+	border: none;
+	background: transparent;
+	color: #666;
+}
 .page-info {
 	text-align: center; 
 	margin: 5px 0; 

@@ -290,34 +290,76 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
 
         pagination.set("current_page", page_str);
         pagination.set("total_pages", total_pages_str);
-        
+
         // Always include path parameter (use "/" for root)
         std::string path_for_url = current_path.empty() ? "/" : current_path;
         pagination.set("path_param", "&path=" + url_encode_path(path_for_url));
 
-        pagination.set("has_first", page > 1);
+        // Build page number list with ellipses
+        // Always show first and last, plus up to 8 pages around current
+        mustache::data pages{mustache::data::type::list};
 
-        pagination.set("has_prev", page > 2);
-        if (page > 2) {
-            char prev_str[16];
-            snprintf(prev_str, sizeof(prev_str), "%d", page - 1);
-            pagination.set("prev_page", prev_str);
+        const int WINDOW_SIZE = 8;  // Number of pages to show around current (excluding first/last)
+        int window_start = page - WINDOW_SIZE / 2;
+        int window_end = page + WINDOW_SIZE / 2;
+
+        // Adjust window to fit within bounds
+        if (window_start < 2) {
+            window_end += (2 - window_start);
+            window_start = 2;
+        }
+        if (window_end > total_pages - 1) {
+            window_start -= (window_end - (total_pages - 1));
+            window_end = total_pages - 1;
+        }
+        if (window_start < 2) window_start = 2;
+
+        // Always add first page
+        {
+            mustache::data p;
+            p.set("page_num", "1");
+            p.set("is_current", page == 1);
+            p.set("is_ellipsis", false);
+            pages.push_back(p);
         }
 
-        pagination.set("has_next", page < total_pages - 1);
-        if (page < total_pages - 1) {
-            char next_str[16];
-            snprintf(next_str, sizeof(next_str), "%d", page + 1);
-            pagination.set("next_page", next_str);
+        // Add ellipsis after first if needed
+        if (window_start > 2) {
+            mustache::data p;
+            p.set("is_ellipsis", true);
+            pages.push_back(p);
         }
 
-        pagination.set("has_last", page < total_pages);
-        if (page < total_pages) {
+        // Add window pages (excluding first and last)
+        for (int i = window_start; i <= window_end && i < total_pages; i++) {
+            char num_str[16];
+            snprintf(num_str, sizeof(num_str), "%d", i);
+            mustache::data p;
+            p.set("page_num", num_str);
+            p.set("is_current", i == page);
+            p.set("is_ellipsis", false);
+            pages.push_back(p);
+        }
+
+        // Add ellipsis before last if needed
+        if (window_end < total_pages - 1) {
+            mustache::data p;
+            p.set("is_ellipsis", true);
+            pages.push_back(p);
+        }
+
+        // Always add last page (if more than 1 page)
+        if (total_pages > 1) {
             char last_str[16];
             snprintf(last_str, sizeof(last_str), "%d", total_pages);
-            pagination.set("last_page", last_str);
+            mustache::data p;
+            p.set("page_num", last_str);
+            p.set("is_current", page == total_pages);
+            p.set("is_ellipsis", false);
+            pages.push_back(p);
         }
 
+        pagination.set("pages", pages);
         context.set("pagination", pagination);
     }
 
