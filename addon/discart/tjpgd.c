@@ -621,10 +621,11 @@ JRESULT jd_mcu_output(JDEC * jd, int (*outfunc)(JDEC *, void *, JRECT *), unsign
         uint16_t w, * d = (uint16_t *)s;
         unsigned int n = rx * ry;
         do {
-            w = (*s++ & 0xF8) << 8;
-            w |= (*s++ & 0xFC) << 3;
-            w |= *s++ >> 3;
-            *d++ = w;
+            // YCC->RGB outputs BGR order: B, G, R
+            w = *s++ >> 3;           // B at bits [4:0]
+            w |= (*s++ & 0xFC) << 3; // G at bits [10:5]
+            w |= (*s++ & 0xF8) << 8; // R at bits [15:11]
+            *d++ = (w >> 8) | (w << 8);  // Byte-swap for big-endian display
         } while(--n);
     }
 
