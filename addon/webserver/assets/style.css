@@ -267,12 +267,29 @@ form {
 	box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 	border: 1px solid #ddd;
 }
-
+.info-box::after {
+	content: "";
+	clear: both;
+	display: table;
+}
+.info-box .disc-art {
+	margin-right: 20px;
+	float: left;
+}
+.info-box .disc-art img {
+	display: block;
+	width: 120px;
+	height: 120px;
+}
 @media screen and (max-width: 490px) {
 	.header h1 {
 		margin-top: 10px;
 	}
 	.header h2 {
 		font-size: 12px;
+	}
+	.info-box .disc-art {
+		margin-bottom: 20px;
+		float: none;
 	}
 }

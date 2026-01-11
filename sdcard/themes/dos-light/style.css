@@ -261,6 +261,20 @@ select::after {
 .no-oldie {
 	* display: none;
 }
+.info-box::after {
+	content: "";
+	clear: both;
+	display: table;
+}
+.info-box .disc-art {
+	margin-right: 18px;
+	float: left;
+}
+.info-box .disc-art img {
+	display: block;
+	width: 120px;
+	height: 120px;
+}
 @media screen and (max-width: 480px) {
 	.header {
 		margin: 16px 18px;
@@ -288,5 +302,9 @@ select::after {
 	}
 	input {
 		max-width: calc(100% - 9px);
+	}
+	.info-box .disc-art {
+		margin-bottom: 16px;
+		float: none;
 	}
 }
