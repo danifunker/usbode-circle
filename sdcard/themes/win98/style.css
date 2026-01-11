@@ -309,3 +309,18 @@ input, select {
 /* Links */
 a { color: #0000FF; text-decoration: underline; }
 a:hover { color: #000080; }
+
+.info-box::after {
+	content: "";
+	clear: both;
+	display: table;
+}
+.info-box .disc-art {
+	margin-right: 12px;
+	float: left;
+}
+.info-box .disc-art img {
+	display: block;
+	width: 120px;
+	height: 120px;
+}
