@@ -303,4 +303,8 @@ select::after {
 	input {
 		max-width: calc(100% - 9px);
 	}
+	.info-box .disc-art {
+		margin-bottom: 16px;
+		float: none;
+	}
 }

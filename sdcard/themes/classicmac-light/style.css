@@ -411,4 +411,8 @@ input, select {
     input {
         width: 100%;
     }
+    .info-box .disc-art {
+		margin-bottom: 15px;
+		float: none;
+	}
 }

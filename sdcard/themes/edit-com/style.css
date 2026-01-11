@@ -352,4 +352,8 @@ input, select {
     input {
         max-width: calc(100% - 9px);
     }
+    .info-box .disc-art {
+		margin-bottom: 15px;
+		float: none;
+	}
 }
