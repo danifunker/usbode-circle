@@ -195,7 +195,7 @@ There is a toggle to enable flattened folders, which lists all of the available 
 Some new functionality has been added in verion 2.20.0 where there is a 2 stage dimming mode for the Pirate Audio/ST7889 screen. The first stage is low-power mode, which will automatically set the screen to a brightness of 32 (so fairly dim), then the second phase is sleep mode, which turns off the display altogether.
 
 ## Disc Artwork
-To use disc artwork, place a 240x240px JPG with the same basename of your disc image in the same folder as the disc image. e.g. if the disc image is called `mygame.iso` creating the `mygame.jpg` will be what discart expects. There is a new dedicated app which helps to identify and resize images automatically. Please have a look at the companion project [ODE-artwork-downloader](github.com/danifunker/ODE-artwork-downloader)
+To use disc artwork, place a 240x240px JPG with the same basename of your disc image in the same folder as the disc image. e.g. if the disc image is called `mygame.iso` creating the `mygame.jpg` will be what discart expects. There is a new dedicated app which helps to identify and resize images automatically. Please have a look at the companion project [ODE-artwork-downloader](https://www.github.com/danifunker/ODE-artwork-downloader)
 
 The disc art is shown on the web interface, as well on the ST7889 screen after about 2 seconds from being on the homepage, as well as just before entering low-power mode.
 
