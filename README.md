@@ -231,6 +231,9 @@ I have been doing some deep research, it seems that many games use the AppleCD d
 
 Currently the CDROM drive we are emulating in classic mac mode is not compatible with MacOS 10.4 (possibly other MacOS versions as well) so I am also evaluating on how that works.
 
+The detection mechanism for many classic MacOS games assumes a single CDROM drive installed in the Mac. This causes an issue with USBODE, so I have created a patch which disables the internal CDROM drive (SCSI or IDE) and allows easy switching between USBODE as the default and re-enabling the existing physical drives, though it does require a reboot. This is the patch, named  [USBCDExtensionPatcher](https://github.com/danifunker/USBCDExtensionPatcher).
+
+
 ## Notes about version
 
 - The Stable version of this project is available under the [Main branch](https://github.com/danifunker/usbode-circle/tree/main). This project also has a [pipeline](https://github.com/danifunker/usbode-circle/actions) set up to facilitate rapid deployment of new features. The pipeline builds are cutting edge and are not guaranteed to be stable.
