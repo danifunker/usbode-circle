@@ -39,6 +39,20 @@
 #define CUE_MAX_INDEXES 100
 #endif
 
+#ifndef CUE_MAX_CDTEXT
+#define CUE_MAX_CDTEXT 256
+#endif
+
+#ifndef CUE_MAX_REM
+#define CUE_MAX_REM 256
+#endif
+
+// ISRC is exactly 12 characters
+#define CUE_ISRC_LENGTH 12
+
+// CATALOG (UPC/EAN) is exactly 13 digits
+#define CUE_CATALOG_LENGTH 13
+
 // File format types (FILE directive)
 enum CUEFileMode {
     CUEFile_BINARY = 0,
@@ -71,6 +85,31 @@ enum CUETrackFlags {
     CUEFlag_SCMS = 0x08,    // Serial copy management system
 };
 
+// CD-TEXT fields (per-disc or per-track)
+struct CUECDText {
+    char title[CUE_MAX_CDTEXT + 1];
+    char performer[CUE_MAX_CDTEXT + 1];
+    char songwriter[CUE_MAX_CDTEXT + 1];
+    char composer[CUE_MAX_CDTEXT + 1];
+    char arranger[CUE_MAX_CDTEXT + 1];
+    char message[CUE_MAX_CDTEXT + 1];
+};
+
+// REM (remark) fields
+struct CUERem {
+    char date[CUE_MAX_REM + 1];             // REM DATE
+    char genre[CUE_MAX_REM + 1];            // REM GENRE
+    char discid[CUE_MAX_REM + 1];           // REM DISCID
+    char comment[CUE_MAX_REM + 1];          // REM COMMENT
+    int disc_number;                         // REM DISCNUMBER
+    int total_discs;                         // REM TOTALDISCS
+    // ReplayGain values (stored as strings to preserve precision)
+    char replaygain_album_gain[32];
+    char replaygain_album_peak[32];
+    char replaygain_track_gain[32];
+    char replaygain_track_peak[32];
+};
+
 // Information about a single track
 struct CUETrackInfo {
     // Source file name and file type
@@ -85,6 +124,9 @@ struct CUETrackInfo {
     uint32_t sector_length;     // Bytes per sector
     uint8_t flags;              // CUETrackFlags bitmask
 
+    // ISRC code (12 characters)
+    char isrc[CUE_ISRC_LENGTH + 1];
+
     // Pregap handling
     uint32_t unstored_pregap_length;  // PREGAP frames (not in file)
     uint32_t cumulative_offset;       // Running total of unstored pregaps
@@ -93,6 +135,12 @@ struct CUETrackInfo {
     uint32_t file_start;        // LBA where this file begins
     uint32_t data_start;        // LBA of INDEX 01
     uint32_t track_start;       // LBA of INDEX 00 (or INDEX 01 if no 00)
+
+    // Per-track CD-TEXT
+    CUECDText cdtext;
+
+    // Per-track REM (ReplayGain)
+    CUERem rem;
 };
 
 // Internal structure for tracking parsed files
@@ -100,6 +148,14 @@ struct CUEFileEntry {
     char filename[CUE_MAX_FILENAME + 1];
     CUEFileMode mode;
     uint64_t size;              // Set via set_file_size()
+};
+
+// Disc-level metadata
+struct CUEDiscInfo {
+    char catalog[CUE_CATALOG_LENGTH + 1];   // UPC/EAN barcode
+    char cdtextfile[CUE_MAX_FILENAME + 1];  // CDTEXTFILE reference
+    CUECDText cdtext;                        // Disc-level CD-TEXT
+    CUERem rem;                              // Disc-level REM comments
 };
 
 // Internal structure for a fully parsed track
@@ -132,7 +188,7 @@ public:
     const CUETrackInfo *next_track(uint64_t prev_file_size);
 
     // Get total number of tracks (available after parsing)
-    int get_track_count() const { return m_track_count; }
+    int get_track_count() const;
 
     // Get track by number (1-based). Returns nullptr if not found.
     const CUETrackInfo *get_track(int track_number);
@@ -140,9 +196,21 @@ public:
     // Set file size for a specific file index (for multi-bin LBA calculation)
     void set_file_size(int file_index, uint64_t size);
 
+    // Get disc-level metadata
+    const CUEDiscInfo *get_disc_info() const;
+
+    // Convenience accessors for common disc metadata
+    const char *get_catalog() const;
+    const char *get_cdtextfile() const;
+    const CUECDText *get_disc_cdtext() const;
+    const CUERem *get_disc_rem() const;
+
 protected:
     // Source CUE sheet
     const char *m_cue_sheet;
+
+    // Disc-level metadata
+    CUEDiscInfo m_disc_info;
 
     // Parsed track storage
     CUEParsedTrack m_tracks[CUE_MAX_TRACKS];
@@ -199,4 +267,13 @@ protected:
 
     // Case-insensitive string comparison (limited length)
     static bool str_equal_nocase(const char *a, const char *b, int len);
+
+    // Copy string to fixed-size buffer safely
+    static void safe_strcpy(char *dest, const char *src, int dest_size);
+
+    // Parse CD-TEXT directive and store in appropriate cdtext struct
+    void parse_cdtext_field(const char *keyword, const char *value, CUECDText *cdtext);
+
+    // Parse REM directive
+    void parse_rem_field(const char *line, CUERem *rem);
 };

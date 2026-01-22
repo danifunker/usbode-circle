@@ -289,3 +289,170 @@ New fields could be added to `CUETrackInfo` without breaking existing code:
 - `flags` - Track flags bitmask
 - `index[100]` - All index points
 - `title`, `performer` - CD-TEXT fields
+
+---
+
+## New Implementation (January 2025)
+
+A complete rewrite of the CUE parser was implemented, inspired by 86Box's CD-ROM image handling.
+The new parser is licensed under GPL-3.0-or-later and provides full feature parity with libcue
+while remaining suitable for embedded systems.
+
+### Source
+
+- **Reference:** [86Box cdrom_image.c](https://github.com/86Box/86Box/blob/master/src/cdrom/cdrom_image.c) (GPL-2.0-or-later)
+- **License:** GPL-3.0-or-later (compatible with 86Box's GPL-2.0-or-later)
+
+### Architecture Changes
+
+| Aspect | Old Parser | New Parser |
+|--------|------------|------------|
+| **Parsing model** | Streaming (parse on-demand) | Upfront (parse all tracks into array) |
+| **Track storage** | Single track buffer | `m_tracks[99]` array |
+| **File tracking** | Implicit via `file_index` | Explicit `CUEFileEntry` array |
+| **Token parsing** | Inline `strncasecmp` | Dedicated `extract_token()` |
+| **LBA calculation** | On-the-fly | Separate `recalculate_lba_positions()` pass |
+| **Random access** | No | Yes - `get_track(int)` |
+
+### Complete Feature Support
+
+| Feature | Directive | Support |
+|---------|-----------|---------|
+| File declaration | `FILE "name" BINARY` | ✓ Multi-bin |
+| Track declaration | `TRACK 01 MODE1/2352` | ✓ All modes |
+| Index points | `INDEX 00/01/02...` | ✓ Up to 100 |
+| Pregap | `PREGAP 00:02:00` | ✓ |
+| Postgap | `POSTGAP 00:02:00` | ✓ |
+| Track flags | `FLAGS PRE DCP 4CH SCMS` | ✓ |
+| ISRC code | `ISRC USRC17607839` | ✓ |
+| Catalog | `CATALOG 1234567890123` | ✓ |
+| CD-TEXT file | `CDTEXTFILE "disc.cdt"` | ✓ |
+| Title | `TITLE "Name"` | ✓ Disc & track |
+| Performer | `PERFORMER "Artist"` | ✓ Disc & track |
+| Songwriter | `SONGWRITER "Writer"` | ✓ Disc & track |
+| Composer | `COMPOSER "Name"` | ✓ Disc & track |
+| Arranger | `ARRANGER "Name"` | ✓ Disc & track |
+| Message | `MESSAGE "Text"` | ✓ Disc & track |
+| REM Date | `REM DATE 1995` | ✓ |
+| REM Genre | `REM GENRE "Rock"` | ✓ |
+| REM DiscID | `REM DISCID 12345678` | ✓ |
+| REM Comment | `REM COMMENT "text"` | ✓ |
+| REM Disc Number | `REM DISCNUMBER 1` | ✓ |
+| REM Total Discs | `REM TOTALDISCS 2` | ✓ |
+| REM ReplayGain | `REM REPLAYGAIN_*` | ✓ Album & track |
+| Multi-session | Multiple sessions | ✗ Not implemented |
+
+### Public API
+
+```cpp
+class CUEParser {
+public:
+    CUEParser();
+    CUEParser(const char *cue_sheet);
+
+    // Iteration
+    void restart();
+    const CUETrackInfo *next_track();
+    const CUETrackInfo *next_track(uint64_t prev_file_size);
+
+    // Random access
+    int get_track_count() const;
+    const CUETrackInfo *get_track(int track_number);
+
+    // Multi-bin support
+    void set_file_size(int file_index, uint64_t size);
+
+    // Disc metadata
+    const CUEDiscInfo *get_disc_info() const;
+    const char *get_catalog() const;
+    const char *get_cdtextfile() const;
+    const CUECDText *get_disc_cdtext() const;
+    const CUERem *get_disc_rem() const;
+};
+```
+
+### Data Structures
+
+```cpp
+// Track information (extended)
+struct CUETrackInfo {
+    // File info
+    char filename[CUE_MAX_FILENAME + 1];
+    int file_index;
+    CUEFileMode file_mode;
+    uint64_t file_offset;
+
+    // Track info
+    int track_number;
+    CUETrackMode track_mode;
+    uint32_t sector_length;
+    uint8_t flags;                  // NEW: CUETrackFlags bitmask
+    char isrc[CUE_ISRC_LENGTH + 1]; // NEW: ISRC code
+
+    // Timing
+    uint32_t unstored_pregap_length;
+    uint32_t cumulative_offset;
+    uint32_t file_start;
+    uint32_t data_start;
+    uint32_t track_start;
+
+    // Metadata
+    CUECDText cdtext;               // NEW: Per-track CD-TEXT
+    CUERem rem;                     // NEW: Per-track REM
+};
+
+// CD-TEXT fields
+struct CUECDText {
+    char title[CUE_MAX_CDTEXT + 1];
+    char performer[CUE_MAX_CDTEXT + 1];
+    char songwriter[CUE_MAX_CDTEXT + 1];
+    char composer[CUE_MAX_CDTEXT + 1];
+    char arranger[CUE_MAX_CDTEXT + 1];
+    char message[CUE_MAX_CDTEXT + 1];
+};
+
+// REM comment fields
+struct CUERem {
+    char date[CUE_MAX_REM + 1];
+    char genre[CUE_MAX_REM + 1];
+    char discid[CUE_MAX_REM + 1];
+    char comment[CUE_MAX_REM + 1];
+    int disc_number;
+    int total_discs;
+    char replaygain_album_gain[32];
+    char replaygain_album_peak[32];
+    char replaygain_track_gain[32];
+    char replaygain_track_peak[32];
+};
+
+// Disc-level metadata
+struct CUEDiscInfo {
+    char catalog[CUE_CATALOG_LENGTH + 1];
+    char cdtextfile[CUE_MAX_FILENAME + 1];
+    CUECDText cdtext;
+    CUERem rem;
+};
+```
+
+### Track Flags
+
+```cpp
+enum CUETrackFlags {
+    CUEFlag_NONE = 0x00,
+    CUEFlag_PRE  = 0x01,    // Pre-emphasis
+    CUEFlag_DCP  = 0x02,    // Digital copy permitted
+    CUEFlag_4CH  = 0x04,    // Four channel audio
+    CUEFlag_SCMS = 0x08,    // Serial copy management system
+};
+```
+
+### Backward Compatibility
+
+The new implementation maintains full backward compatibility with existing code:
+
+- Same class name and constructor signature
+- Same `restart()` and `next_track()` methods
+- Same `CUETrackInfo` field names and types
+- All existing usage patterns continue to work unchanged
+
+New features are additive and do not affect existing code that doesn't use them.

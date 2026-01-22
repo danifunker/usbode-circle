@@ -49,9 +49,34 @@
 
 CUEParser::CUEParser() : m_cue_sheet(nullptr), m_track_count(0), m_file_count(0),
                          m_current_track(0), m_parsed(false) {
+    memset(&m_disc_info, 0, sizeof(m_disc_info));
     memset(m_tracks, 0, sizeof(m_tracks));
     memset(m_files, 0, sizeof(m_files));
     memset(&m_iter_info, 0, sizeof(m_iter_info));
+}
+
+int CUEParser::get_track_count() const {
+    return m_track_count;
+}
+
+const CUEDiscInfo *CUEParser::get_disc_info() const {
+    return &m_disc_info;
+}
+
+const char *CUEParser::get_catalog() const {
+    return m_disc_info.catalog;
+}
+
+const char *CUEParser::get_cdtextfile() const {
+    return m_disc_info.cdtextfile;
+}
+
+const CUECDText *CUEParser::get_disc_cdtext() const {
+    return &m_disc_info.cdtext;
+}
+
+const CUERem *CUEParser::get_disc_rem() const {
+    return &m_disc_info.rem;
 }
 
 CUEParser::CUEParser(const char *cue_sheet) : CUEParser() {
@@ -129,7 +154,6 @@ void CUEParser::parse_cue_sheet() {
         if (*pos == '\0') break;
 
         // Extract the command keyword
-        const char *line_start = pos;
         pos = extract_token(pos, token, sizeof(token), true);
 
         if (str_equal_nocase(token, "FILE", 4)) {
@@ -259,9 +283,82 @@ void CUEParser::parse_cue_sheet() {
             flags_str[len] = '\0';
             current_track->info.flags = parse_flags(flags_str);
             pos = line_end;
+
+        } else if (str_equal_nocase(token, "ISRC", 4)) {
+            // ISRC ABCDE1234567 (12 characters)
+            if (!current_track) {
+                pos = next_line(pos);
+                continue;
+            }
+            pos = extract_token(pos, token, sizeof(token), false);
+            safe_strcpy(current_track->info.isrc, token, CUE_ISRC_LENGTH + 1);
+
+        } else if (str_equal_nocase(token, "CATALOG", 7)) {
+            // CATALOG 1234567890123 (13 digits, disc-level)
+            pos = extract_token(pos, token, sizeof(token), false);
+            safe_strcpy(m_disc_info.catalog, token, CUE_CATALOG_LENGTH + 1);
+
+        } else if (str_equal_nocase(token, "CDTEXTFILE", 10)) {
+            // CDTEXTFILE "filename.cdt"
+            pos = extract_token(pos, filename, sizeof(filename), false);
+            safe_strcpy(m_disc_info.cdtextfile, filename, CUE_MAX_FILENAME + 1);
+
+        } else if (str_equal_nocase(token, "TITLE", 5)) {
+            pos = extract_token(pos, token, sizeof(token), false);
+            if (current_track) {
+                safe_strcpy(current_track->info.cdtext.title, token, CUE_MAX_CDTEXT + 1);
+            } else {
+                safe_strcpy(m_disc_info.cdtext.title, token, CUE_MAX_CDTEXT + 1);
+            }
+
+        } else if (str_equal_nocase(token, "PERFORMER", 9)) {
+            pos = extract_token(pos, token, sizeof(token), false);
+            if (current_track) {
+                safe_strcpy(current_track->info.cdtext.performer, token, CUE_MAX_CDTEXT + 1);
+            } else {
+                safe_strcpy(m_disc_info.cdtext.performer, token, CUE_MAX_CDTEXT + 1);
+            }
+
+        } else if (str_equal_nocase(token, "SONGWRITER", 10)) {
+            pos = extract_token(pos, token, sizeof(token), false);
+            if (current_track) {
+                safe_strcpy(current_track->info.cdtext.songwriter, token, CUE_MAX_CDTEXT + 1);
+            } else {
+                safe_strcpy(m_disc_info.cdtext.songwriter, token, CUE_MAX_CDTEXT + 1);
+            }
+
+        } else if (str_equal_nocase(token, "COMPOSER", 8)) {
+            pos = extract_token(pos, token, sizeof(token), false);
+            if (current_track) {
+                safe_strcpy(current_track->info.cdtext.composer, token, CUE_MAX_CDTEXT + 1);
+            } else {
+                safe_strcpy(m_disc_info.cdtext.composer, token, CUE_MAX_CDTEXT + 1);
+            }
+
+        } else if (str_equal_nocase(token, "ARRANGER", 8)) {
+            pos = extract_token(pos, token, sizeof(token), false);
+            if (current_track) {
+                safe_strcpy(current_track->info.cdtext.arranger, token, CUE_MAX_CDTEXT + 1);
+            } else {
+                safe_strcpy(m_disc_info.cdtext.arranger, token, CUE_MAX_CDTEXT + 1);
+            }
+
+        } else if (str_equal_nocase(token, "MESSAGE", 7)) {
+            pos = extract_token(pos, token, sizeof(token), false);
+            if (current_track) {
+                safe_strcpy(current_track->info.cdtext.message, token, CUE_MAX_CDTEXT + 1);
+            } else {
+                safe_strcpy(m_disc_info.cdtext.message, token, CUE_MAX_CDTEXT + 1);
+            }
+
+        } else if (str_equal_nocase(token, "REM", 3)) {
+            // REM comments - parse the rest of the line
+            if (current_track) {
+                parse_rem_field(pos, &current_track->info.rem);
+            } else {
+                parse_rem_field(pos, &m_disc_info.rem);
+            }
         }
-        // Skip REM, CATALOG, PERFORMER, TITLE, SONGWRITER, CDTEXTFILE, ISRC
-        // These are metadata we don't need for basic playback
 
         pos = next_line(pos);
     }
@@ -537,4 +634,71 @@ bool CUEParser::str_equal_nocase(const char *a, const char *b, int len) {
         if (ca == '\0') return true;
     }
     return true;
+}
+
+void CUEParser::safe_strcpy(char *dest, const char *src, int dest_size) {
+    if (dest_size <= 0) return;
+    int i = 0;
+    while (i < dest_size - 1 && src[i] != '\0') {
+        dest[i] = src[i];
+        i++;
+    }
+    dest[i] = '\0';
+}
+
+void CUEParser::parse_cdtext_field(const char *keyword, const char *value, CUECDText *cdtext) {
+    if (str_equal_nocase(keyword, "TITLE", 5)) {
+        safe_strcpy(cdtext->title, value, CUE_MAX_CDTEXT + 1);
+    } else if (str_equal_nocase(keyword, "PERFORMER", 9)) {
+        safe_strcpy(cdtext->performer, value, CUE_MAX_CDTEXT + 1);
+    } else if (str_equal_nocase(keyword, "SONGWRITER", 10)) {
+        safe_strcpy(cdtext->songwriter, value, CUE_MAX_CDTEXT + 1);
+    } else if (str_equal_nocase(keyword, "COMPOSER", 8)) {
+        safe_strcpy(cdtext->composer, value, CUE_MAX_CDTEXT + 1);
+    } else if (str_equal_nocase(keyword, "ARRANGER", 8)) {
+        safe_strcpy(cdtext->arranger, value, CUE_MAX_CDTEXT + 1);
+    } else if (str_equal_nocase(keyword, "MESSAGE", 7)) {
+        safe_strcpy(cdtext->message, value, CUE_MAX_CDTEXT + 1);
+    }
+}
+
+void CUEParser::parse_rem_field(const char *line, CUERem *rem) {
+    char keyword[64];
+    char value[CUE_MAX_REM + 1];
+
+    // Extract the REM sub-keyword
+    line = skip_whitespace(line);
+    line = extract_token(line, keyword, sizeof(keyword), true);
+
+    // Extract the value (rest of line or quoted string)
+    line = extract_token(line, value, sizeof(value), false);
+
+    if (str_equal_nocase(keyword, "DATE", 4)) {
+        safe_strcpy(rem->date, value, CUE_MAX_REM + 1);
+    } else if (str_equal_nocase(keyword, "GENRE", 5)) {
+        safe_strcpy(rem->genre, value, CUE_MAX_REM + 1);
+    } else if (str_equal_nocase(keyword, "DISCID", 6)) {
+        safe_strcpy(rem->discid, value, CUE_MAX_REM + 1);
+    } else if (str_equal_nocase(keyword, "COMMENT", 7)) {
+        safe_strcpy(rem->comment, value, CUE_MAX_REM + 1);
+    } else if (str_equal_nocase(keyword, "DISCNUMBER", 10)) {
+        rem->disc_number = 0;
+        for (const char *p = value; *p >= '0' && *p <= '9'; p++) {
+            rem->disc_number = rem->disc_number * 10 + (*p - '0');
+        }
+    } else if (str_equal_nocase(keyword, "TOTALDISCS", 10)) {
+        rem->total_discs = 0;
+        for (const char *p = value; *p >= '0' && *p <= '9'; p++) {
+            rem->total_discs = rem->total_discs * 10 + (*p - '0');
+        }
+    } else if (str_equal_nocase(keyword, "REPLAYGAIN_ALBUM_GAIN", 21)) {
+        safe_strcpy(rem->replaygain_album_gain, value, sizeof(rem->replaygain_album_gain));
+    } else if (str_equal_nocase(keyword, "REPLAYGAIN_ALBUM_PEAK", 21)) {
+        safe_strcpy(rem->replaygain_album_peak, value, sizeof(rem->replaygain_album_peak));
+    } else if (str_equal_nocase(keyword, "REPLAYGAIN_TRACK_GAIN", 21)) {
+        safe_strcpy(rem->replaygain_track_gain, value, sizeof(rem->replaygain_track_gain));
+    } else if (str_equal_nocase(keyword, "REPLAYGAIN_TRACK_PEAK", 21)) {
+        safe_strcpy(rem->replaygain_track_peak, value, sizeof(rem->replaygain_track_peak));
+    }
+    // Unknown REM fields are silently ignored
 }
