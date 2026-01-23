@@ -273,6 +273,10 @@ int CDUtils::GetBlocksize(CUSBCDGadget* gadget)
 {
     gadget->cueParser.restart();
     const CUETrackInfo *trackInfo = gadget->cueParser.next_track();
+    if (trackInfo == nullptr) {
+        MLOGERR("CDUtils::GetBlocksize", "No tracks found in cue sheet, defaulting to 2352");
+        return 2352;
+    }
     return GetBlocksizeForTrack(gadget, *trackInfo);
 }
 
@@ -310,6 +314,10 @@ int CDUtils::GetSkipbytes(CUSBCDGadget* gadget)
 {
     gadget->cueParser.restart();
     const CUETrackInfo *trackInfo = gadget->cueParser.next_track();
+    if (trackInfo == nullptr) {
+        MLOGERR("CDUtils::GetSkipbytes", "No tracks found in cue sheet, defaulting to 0");
+        return 0;
+    }
     return GetSkipbytesForTrack(gadget, *trackInfo);
 }
 
