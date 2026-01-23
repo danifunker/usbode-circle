@@ -24,6 +24,7 @@ public:
     static CUETrackInfo GetTrackInfoForTrack(CUSBCDGadget* gadget, int track);
     static int GetLastTrackNumber(CUSBCDGadget* gadget);
     static u32 GetLeadoutLBA(CUSBCDGadget* gadget);
+    static u64 GetByteOffsetForLBA(CUSBCDGadget* gadget, u32 lba);
 
     static int GetBlocksize(CUSBCDGadget* gadget);
     static int GetBlocksizeForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo);

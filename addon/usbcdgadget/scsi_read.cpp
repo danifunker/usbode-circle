@@ -111,12 +111,14 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
         CDROM_DEBUG_LOG("SCSIRead::DoRead", "LBA=%u, cnt=%u, max_lba=%u",
                         gadget->m_nblock_address, gadget->m_nnumber_blocks, max_lba);
 
-        // Transfer Block Size is the size of data to return to host
-        // Block Size and Skip Bytes is worked out from cue sheet
-        // For a CDROM, this is always 2048
+        // Get track info for the requested LBA to determine sector parameters
+        CUETrackInfo trackInfo = CDUtils::GetTrackInfoForLBA(gadget, gadget->m_nblock_address);
+
+        // Transfer Block Size is the size of data to return to host (always 2048 for data reads)
+        // Block Size and Skip Bytes are determined per-track to handle mixed sector sizes
         gadget->transfer_block_size = 2048;
-        gadget->block_size = gadget->data_block_size; // set at SetDevice
-        gadget->skip_bytes = gadget->data_skip_bytes; // set at SetDevice
+        gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, trackInfo);
+        gadget->skip_bytes = CDUtils::GetSkipbytesForTrack(gadget, trackInfo);
         gadget->mcs = 0;
         gadget->m_nbyteCount = gadget->m_CBW.dCBWDataTransferLength;
 
@@ -368,8 +370,9 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
     }
 
     // Ensure read doesn't exceed image size
-    u64 readEnd = (u64)gadget->m_nblock_address * trackInfo.sector_length +
-                  (u64)gadget->m_nnumber_blocks * trackInfo.sector_length;
+    // Use GetByteOffsetForLBA to correctly calculate position for mixed sector size discs
+    u64 readStart = CDUtils::GetByteOffsetForLBA(gadget, gadget->m_nblock_address);
+    u64 readEnd = readStart + (u64)gadget->m_nnumber_blocks * trackInfo.sector_length;
     if (readEnd > gadget->m_pDevice->GetSize())
     {
         MLOGNOTE("SCSIRead::ReadCD",

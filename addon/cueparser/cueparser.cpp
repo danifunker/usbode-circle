@@ -420,8 +420,29 @@ void CUEParser::recalculate_lba_positions() {
             }
         }
 
-        // Calculate file offset (byte position in the bin file)
-        info->file_offset = (uint64_t)index01_frames * info->sector_length;
+        // Calculate file_offset (byte position in the bin file)
+        // Must use cumulative byte positions to handle mixed sector sizes correctly.
+        // Each track's position = previous track's position + (frames between tracks × previous track's sector size)
+        if (i == 0 || m_tracks[i - 1].info.file_index != info->file_index) {
+            // First track in this file: byte position is simply frame position × sector size
+            info->file_offset = (uint64_t)index01_frames * info->sector_length;
+        } else {
+            // Subsequent tracks in same file: calculate from previous track's end position
+            CUEParsedTrack *prev_track = &m_tracks[i - 1];
+            uint32_t prev_index01 = 0;
+            if (prev_track->index_count > 1) {
+                prev_index01 = prev_track->index[1];
+            } else if (prev_track->index_count > 0) {
+                prev_index01 = prev_track->index[0];
+            }
+
+            // Number of frames between previous track's INDEX 01 and this track's INDEX 01
+            uint32_t frames_in_prev_track = index01_frames - prev_index01;
+
+            // Previous track's byte offset + bytes for those frames at previous track's sector size
+            info->file_offset = prev_track->info.file_offset +
+                               (uint64_t)frames_in_prev_track * prev_track->info.sector_length;
+        }
     }
 }
 

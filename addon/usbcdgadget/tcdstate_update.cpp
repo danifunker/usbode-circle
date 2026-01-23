@@ -106,7 +106,7 @@ void CUSBCDGadget::Update()
                                 old_count, m_nnumber_blocks);
             }
 
-            offset = m_pDevice->Seek(block_size * m_nblock_address);
+            offset = m_pDevice->Seek(CDUtils::GetByteOffsetForLBA(this, m_nblock_address));
 
             if (offset != (u64)(-1))
             {

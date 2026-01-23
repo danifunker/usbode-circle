@@ -182,7 +182,7 @@ int CDUtils::GetLastTrackNumber(CUSBCDGadget* gadget)
 u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
 {
     const CUETrackInfo *trackInfo = nullptr;
-    u32 file_offset = 0;
+    u64 file_offset = 0;
     u32 sector_length = 0;
     u32 track_start = 0;
 
@@ -192,7 +192,7 @@ u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
     {
         file_offset = trackInfo->file_offset;
         sector_length = trackInfo->sector_length;
-        track_start = trackInfo->data_start; // I think this is right
+        track_start = trackInfo->data_start;
     }
 
     u64 deviceSize = gadget->m_pDevice->GetSize(); // Use u64 to support DVDs > 4GB
@@ -202,8 +202,8 @@ u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
     if (deviceSize < file_offset)
     {
         CDROM_DEBUG_LOG("CDUtils::GetLeadoutLBA",
-                        "device size %llu < file_offset %lu, returning track_start %lu",
-                        deviceSize, (unsigned long)file_offset, (unsigned long)track_start);
+                        "device size %llu < file_offset %llu, returning track_start %lu",
+                        deviceSize, file_offset, (unsigned long)track_start);
         return track_start;
     }
 
@@ -217,8 +217,7 @@ u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
 
     // We know the start position of the last track, and we know its sector length
     // and we know the file size, so we can work out the LBA of the end of the last track
-    // We can't just divide the file size by sector size because sectors lengths might
-    // not be consistent (e.g. multi-mode cd where track 1 is 2048
+    // file_offset is now correctly calculated to handle mixed sector sizes
     u64 remainingBytes = deviceSize - file_offset;
     u64 lastTrackBlocks = remainingBytes / sector_length;
 
@@ -233,12 +232,30 @@ u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
     u32 ret = track_start + (u32)lastTrackBlocks; // Cast back to u32 for LBA (max ~2TB disc)
 
     CDROM_DEBUG_LOG("CDUtils::GetLeadoutLBA",
-                    "device size is %llu, last track file offset is %lu, last track sector_length is %lu, "
+                    "device size is %llu, last track file offset is %llu, last track sector_length is %lu, "
                     "last track track_start is %lu, lastTrackBlocks = %llu, returning = %lu",
-                    deviceSize, (unsigned long)file_offset, (unsigned long)sector_length,
+                    deviceSize, file_offset, (unsigned long)sector_length,
                     (unsigned long)track_start, lastTrackBlocks, (unsigned long)ret);
 
     return ret;
+}
+
+u64 CDUtils::GetByteOffsetForLBA(CUSBCDGadget* gadget, u32 lba)
+{
+    CUETrackInfo trackInfo = GetTrackInfoForLBA(gadget, lba);
+    if (trackInfo.track_number == -1) {
+        // Fallback for invalid LBA - shouldn't happen in normal operation
+        MLOGERR("CDUtils::GetByteOffsetForLBA",
+                "Could not find track for LBA %lu, using default 2352", (unsigned long)lba);
+        return (u64)lba * 2352;
+    }
+
+    // file_offset is the byte position of this track's INDEX 01 (pre-calculated during cue parsing)
+    // Add the offset for sectors within this track
+    u32 lba_within_track = lba - trackInfo.data_start;
+    u64 offset = trackInfo.file_offset + (u64)lba_within_track * trackInfo.sector_length;
+
+    return offset;
 }
 
 int CDUtils::GetBlocksize(CUSBCDGadget* gadget)
