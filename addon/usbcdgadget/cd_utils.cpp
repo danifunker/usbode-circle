@@ -250,7 +250,18 @@ u64 CDUtils::GetByteOffsetForLBA(CUSBCDGadget* gadget, u32 lba)
         return (u64)lba * 2352;
     }
 
-    // file_offset is the byte position of this track's INDEX 01 (pre-calculated during cue parsing)
+    // CHD and MDS files use uniform "virtual" sector sizes internally,
+    // so we use the simple LBA * sector_length calculation for those.
+    // CUE/BIN and ISO files use physical byte offsets with potentially
+    // varying sector sizes, so we use the pre-calculated file_offset.
+    FileType fileType = gadget->m_pDevice->GetFileType();
+    if (fileType == FileType::CHD || fileType == FileType::MDS) {
+        // Uniform sector size - use simple calculation
+        return (u64)lba * trackInfo.sector_length;
+    }
+
+    // CUE/BIN and ISO files: use pre-calculated cumulative byte positions
+    // file_offset is the byte position of this track's INDEX 01
     // Add the offset for sectors within this track
     u32 lba_within_track = lba - trackInfo.data_start;
     u64 offset = trackInfo.file_offset + (u64)lba_within_track * trackInfo.sector_length;
