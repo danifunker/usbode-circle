@@ -93,6 +93,20 @@ bool hasChdExtension(const char* imageName) {
     return false;
 }
 
+bool hasToastExtension(const char* imageName) {
+    size_t len = strlen(imageName);
+    if (len >= 6) {
+        const char* ext = imageName + len - 6;
+        return tolower(ext[0]) == '.' &&
+               tolower(ext[1]) == 't' &&
+               tolower(ext[2]) == 'o' &&
+               tolower(ext[3]) == 'a' &&
+               tolower(ext[4]) == 's' &&
+               tolower(ext[5]) == 't';
+    }
+    return false;
+}
+
 void change_extension_to_bin(char* fullPath) {
     size_t len = strlen(fullPath);
     if (len >= 3) {
@@ -343,8 +357,8 @@ IImageDevice* loadImageDevice(const char* imagePath) {
         LOGNOTE("Detected CHD format - using CHD plugin");
         return loadCHDFileDevice(imagePath);
     }
-    else if (hasCueExtension(imagePath) || hasBinExtension(imagePath) || hasIsoExtension(imagePath)) {
-        LOGNOTE("Detected CUE/BIN/ISO format - using CUE plugin");
+    else if (hasCueExtension(imagePath) || hasBinExtension(imagePath) || hasIsoExtension(imagePath) || hasToastExtension(imagePath)) {
+        LOGNOTE("Detected CUE/BIN/ISO/TOAST format - using CUE plugin");
         return loadCueBinIsoFileDevice(imagePath);
     }
     else {

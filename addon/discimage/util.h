@@ -16,6 +16,7 @@ bool hasMdsExtension(const char* imageName);
 bool hasIsoExtension(const char* imageName);
 bool hasCueExtension(const char* imageName);
 bool hasChdExtension(const char* imageName);
+bool hasToastExtension(const char* imageName);
 void change_extension_to_cue(char* fullPath);
 void change_extension_to_bin(char* fullPath);
 bool hasDvdHint(const char* imageName);
