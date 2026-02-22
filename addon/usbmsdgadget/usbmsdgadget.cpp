@@ -426,6 +426,12 @@ void CUSBMMSDGadget::OnActivate()
 	m_pEP[EPOut]->BeginTransfer(CUSBMMSDGadgetEndpoint::TransferCBWOut,m_OutBuffer,SIZE_CBW);
 }
 
+void CUSBMMSDGadget::OnDeactivate (void)
+{
+    m_nState = Init;
+    m_MMSDReady = false;
+}
+
 void CUSBMMSDGadget::SendCSW()
 {
 	memcpy(&m_InBuffer,&m_CSW,SIZE_CSW);

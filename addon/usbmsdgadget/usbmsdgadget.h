@@ -189,8 +189,8 @@ private:
 
 	void OnTransferComplete (boolean bIn, size_t nLength);
 
-	void OnActivate(); //called from OUT ep
-
+	void OnActivate(); //called from OUT ep	
+	void OnDeactivate(); //called from OUT ep
 private:
 	void HandleSCSICommand();
 

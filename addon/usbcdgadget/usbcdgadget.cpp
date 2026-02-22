@@ -788,6 +788,13 @@ void CUSBCDGadget::OnActivate()
                     m_CDReady, (int)m_mediaState);
 }
 
+void CUSBCDGadget::OnDeactivate()
+{
+    //Unsure where this is used, but let's reset state here just in case
+    CDROM_DEBUG_LOG("CD OnDeactivate", "entered");
+    m_nState = TCDState::Init;
+}
+
 void CUSBCDGadget::SendCSW()
 {
     // CDROM_DEBUG_LOG ("CUSBCDGadget::SendCSW", "entered");
