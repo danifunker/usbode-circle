@@ -50,6 +50,14 @@ void CUSBMMSDGadgetEndpoint::OnActivate (void)
 	}
 }
 
+void CUSBMMSDGadgetEndpoint::OnDeactivate (void)
+{
+	if (GetDirection () == DirectionOut)
+	{
+		m_pGadget->OnDeactivate();
+	}
+}
+
 void CUSBMMSDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 {
 	MLOGNOTE("MMSDEndpoint","Transfer complete nlen= %i",nLength);
