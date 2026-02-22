@@ -587,8 +587,12 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         case TCDState::SentCSW:
         {
             m_nState = TCDState::ReceiveCBW;
-            m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                        m_OutBuffer, SIZE_CBW);
+            // Request max-packet-size bytes to handle USB 2.0 hosts that pad CBW to packet boundary
+            {
+                size_t cbwRecvSize = m_IsFullSpeed ? 64 : 512;
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, cbwRecvSize);
+            }
             break;
         }
         case TCDState::DataIn:
@@ -635,9 +639,9 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         {
         case TCDState::ReceiveCBW:
         {
-            if (nLength != SIZE_CBW)
+            if (nLength < SIZE_CBW)
             {
-                MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
+                MLOGERR("ReceiveCBW", "Invalid CBW len = %i (expected >= %i)", nLength, SIZE_CBW);
                 m_pEP[EPIn]->StallRequest(true);
                 break;
             }
@@ -775,7 +779,9 @@ void CUSBCDGadget::OnActivate()
     }
 
     m_nState = TCDState::ReceiveCBW;
-    m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
+    // Request max-packet-size bytes to handle USB 2.0 hosts that pad CBW to packet boundary
+    size_t cbwRecvSize = m_IsFullSpeed ? 64 : 512;
+    m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, cbwRecvSize);
 
     CDROM_DEBUG_LOG("CD OnActivate",
                     "=== EXIT === Waiting for CBW, m_CDReady=%d, mediaState=%d",
