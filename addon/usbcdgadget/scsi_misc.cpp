@@ -41,6 +41,7 @@ void SCSIMisc::TestUnitReady(CUSBCDGadget *gadget)
         //                 "TEST UNIT READY -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)");
         gadget->setSenseData(0x06, 0x28, 0x00);
         gadget->sendCheckCondition();
+        CTimer::Get()->MsDelay(100);
         return;
     }
 
