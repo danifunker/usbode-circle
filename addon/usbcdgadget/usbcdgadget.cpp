@@ -85,7 +85,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1, // bNumInterfaces
             1,
             0,
-            0xa0,   // bmAttributes (bus-powered)
+            0x80,   // bmAttributes (bus-powered)
             500 / 2 // bMaxPower (500mA)
         },
         {
@@ -163,7 +163,7 @@ const CUSBCDGadget::TUSBMSTGadgetConfigurationDescriptor CUSBCDGadget::s_Configu
             1, // bNumInterfaces
             1,
             0,
-            0xa0,   // bmAttributes (bus-powered)
+            0x80,   // bmAttributes (bus-powered)
             500 / 2 // bMaxPower (500mA)
         },
         {
@@ -587,8 +587,12 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         case TCDState::SentCSW:
         {
             m_nState = TCDState::ReceiveCBW;
-            m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
-                                        m_OutBuffer, SIZE_CBW);
+            // Request max-packet-size bytes to handle USB 2.0 hosts that pad CBW to packet boundary
+            {
+                size_t cbwRecvSize = m_IsFullSpeed ? 64 : 512;
+                m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
+                                            m_OutBuffer, cbwRecvSize);
+            }
             break;
         }
         case TCDState::DataIn:
@@ -635,9 +639,9 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         {
         case TCDState::ReceiveCBW:
         {
-            if (nLength != SIZE_CBW)
+            if (nLength < SIZE_CBW)
             {
-                MLOGERR("ReceiveCBW", "Invalid CBW len = %i", nLength);
+                MLOGERR("ReceiveCBW", "Invalid CBW len = %i (expected >= %i)", nLength, SIZE_CBW);
                 m_pEP[EPIn]->StallRequest(true);
                 break;
             }
@@ -758,7 +762,7 @@ void CUSBCDGadget::OnActivate()
                     (int)m_nState,
                     m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
                     m_CDReady, (int)m_mediaState);
-
+    CTimer::Get()->MsDelay(10);
     // Set media ready NOW - USB endpoints are active
     if (m_pDevice && !m_CDReady)
     {
@@ -769,12 +773,15 @@ void CUSBCDGadget::OnActivate()
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
+        CTimer::Get()->MsDelay(100);
         CDROM_DEBUG_LOG("CD OnActivate",
                         "Initial media ready: Set UNIT_ATTENTION, sense=06/28/00");
     }
 
     m_nState = TCDState::ReceiveCBW;
-    m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, SIZE_CBW);
+    // Request max-packet-size bytes to handle USB 2.0 hosts that pad CBW to packet boundary
+    size_t cbwRecvSize = m_IsFullSpeed ? 64 : 512;
+    m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, cbwRecvSize);
 
     CDROM_DEBUG_LOG("CD OnActivate",
                     "=== EXIT === Waiting for CBW, m_CDReady=%d, mediaState=%d",
@@ -859,7 +866,7 @@ void CUSBCDGadget::HandleSCSICommand()
                             "Command 0x%02x -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)", cmd);
             setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
             sendCheckCondition();
-            CTimer::Get()->MsDelay(10);
+            CTimer::Get()->MsDelay(100);
             return;
         }
     }
