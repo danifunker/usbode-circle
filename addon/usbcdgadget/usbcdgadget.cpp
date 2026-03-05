@@ -773,7 +773,6 @@ void CUSBCDGadget::OnActivate()
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
         discChanged = true;
-        CTimer::Get()->MsDelay(100);
         CDROM_DEBUG_LOG("CD OnActivate",
                         "Initial media ready: Set UNIT_ATTENTION, sense=06/28/00");
     }
@@ -866,7 +865,6 @@ void CUSBCDGadget::HandleSCSICommand()
                             "Command 0x%02x -> CHECK CONDITION (sense 06/28/00 - UNIT ATTENTION)", cmd);
             setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION - MEDIA CHANGED
             sendCheckCondition();
-            CTimer::Get()->MsDelay(100);
             return;
         }
     }
