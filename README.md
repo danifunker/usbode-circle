@@ -57,7 +57,7 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
     - Under Operating System, choose `Use Custom`
     - Select the `.img` file that was downloaded in step 1
     - Under Storage, select the SD card to flash
-    - Click Next. If the Imager gives you an error, try using diskpart's Clean command, then try again, or check out our [Discord](https://discord.gg/na2qNrvdFY).
+    - Click Next. If the Imager gives you an error, try using diskpart's Clean command, then try again, or check out our [Discord](https://discord.gg/UWdcyzXetG).
 3.  If required, re-insert the MicroSD card if a `bootfs` volume is not listed. Open the `bootfs` volume on the MicroSD card, open the file labeled “wpa_supplicant.conf”.
 4.  Under `country=GB`, replace “GB” with the [two digit code for your country](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#Officially_assigned_code_elements) if needed. Different countries use different WiFi frequencies; if you are in the US, the device will not connect to US wifi unless you change this line to `country=US`.
 5.  Under `ssid=”MySSID”`, type in the name of your WiFi network between the quotes. Keep in mind that the Pi supports only 2.4 GHz wifi signals.
