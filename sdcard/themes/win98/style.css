@@ -2,10 +2,6 @@
    1. GLOBAL RESET & FONTS
    ========================================= */
 
-* {
-    box-sizing: border-box;
-}
-
 /* --- System Font (Nimbus Sans L) --- */
 @font-face {
     font-family: 'Nimbus Sans L';
@@ -18,37 +14,73 @@
 
 /* --- Base Body (The "Desktop") --- */
 body {
-    font-family: 'Nimbus Sans L', 'Segoe UI', sans-serif;
+    font-family: var(--main-font);
     background-color: #008080; /* Windows 98 Teal */
     color: #000000;
     margin: 0;
     padding: 0;
     font-size: 13px;
     line-height: 1.2em;
-    
+
     /* Center the window on screen */
     display: flex;
-    flex-direction: column;
-    justify-content: center;
+    flex-direction: row;
+    justify-content: space-around;
     align-items: center;
     min-height: 100vh;
-}
 
-body * {
-    font-family: 'Nimbus Sans L', 'Segoe UI', sans-serif;
+	/* Custom variables */
+	--menu-height: 24px;
+	--main-font: 'Nimbus Sans L', 'Segoe UI', sans-serif;
+	/* Windows border/highlight colors, from bright top-left to dark bottom-right. */
+    --color-bright: #FFF;
+	--color-highlight: #DFDFDF;
+	--color-background: #C0C0C0;
+	--color-text: #000;
+    --color-shadow: #808080;
+    --color-dark: #000;
+	/* Buttons. */
+	--button-padding: 4px 10px;
+	--button-box-shadow:
+        inset -1px -1px 0 var(--color-dark),
+        inset 1px 1px 0 var(--color-bright),
+        inset -2px -2px 0 var(--color-shadow),
+        inset 2px 2px 0 var(--color-highlight);
+	--button-box-shadow-pressed:
+        inset -1px -1px 0 var(--color-bright),
+        inset 1px 1px 0 var(--color-dark),
+        inset -2px -2px 0 var(--color-highlight),
+        inset 2px 2px 0 var(--color-shadow);
+	/* Form fields that are not buttons. */
+	--form-field-padding: 4px 10px;
+	--form-field-background: #FFF;
+	--form-field-text: #000;
+	--form-field-box-shadow:
+        inset -1px -1px 0 var(--color-bright),
+        inset 1px 1px 0 var(--color-shadow),
+        inset -2px -2px 0 var(--color-highlight),
+        inset 2px 2px 0 var(--color-dark);
+	/* Generic container. */
+	--container-padding: 10px;
+	--fieldset-box-shadow:
+        inset -1px -1px 0 var(--color-bright),
+        inset 1px 1px 0 var(--color-shadow),
+        inset -2px -2px 0 var(--color-shadow),
+        inset 2px 2px 0 var(--color-bright);
 }
 
 /* =========================================
    2. WINDOW FRAME (Mapped to .header & .content)
    ========================================= */
 
-.header, .content {
-    width: 100%;
+.container {
     max-width: 800px;
+}
+.header, .content {
     /* Ensure they stack perfectly without gaps */
-    margin: 0; 
-    border-left: 2px solid #DFDFDF;  /* 3D Highlight */
-    border-right: 2px solid #000000; /* 3D Shadow */
+    margin: 0;
+    border-left: 2px solid var(--color-highlight);  /* 3D Highlight */
+    border-right: 2px solid var(--color-dark); /* 3D Shadow */
 }
 
 /* =========================================
@@ -57,39 +89,42 @@ body * {
 
 .header {
     background: linear-gradient(90deg, #000080, #1084d0); /* Active Title Gradient */
-    height: 24px;
-    padding: 2px;
-    border-top: 2px solid #DFDFDF;   /* Top Highlight */
-    border-bottom: none; 
-    
-    position: relative; 
+    height: 16px;
+    padding: 1px 2px;
+    border-top: 2px solid var(--color-highlight);   /* Top Highlight */
+    border-bottom: none;
+
+    position: relative;
     display: flex;
     align-items: center;
-}
-
-/* Title Text */
-.header h1 {
-    font-size: 13px;
-    font-weight: bold;
-    color: #FFFFFF;
-    margin: 0;
-    padding-left: 2px;
-    line-height: 16px;
-    cursor: default;
-    background: transparent;
-    box-shadow: none;
-    position: static;
-    flex-grow: 1;
+	gap: 2px;
 }
 
 /* Icon (Top Left) */
 .header img {
     width: 16px;
     height: 16px;
-    margin-right: 4px;
     background: transparent;
     box-shadow: none;
+	border: 0;
     padding: 0;
+	margin: 0;
+	display: block;
+}
+
+/* Title Text */
+.header h1 {
+    color: #FFFFFF;
+    margin: 0;
+	padding: 0;
+    font-weight: bold;
+    font-size: 12px;
+    line-height: 16px;
+    cursor: default;
+    background: transparent;
+    box-shadow: none;
+    position: static;
+    flex-grow: 1;
 }
 
 .header h2 { display: none; }
@@ -104,19 +139,18 @@ body * {
 .header h1::before {   /* Minimize */
     content: '';
     position: absolute;
-    top: 4px;
+    top: 2px;
     width: 16px;
     height: 14px;
-    background-color: #C0C0C0;
-    border: 1px solid #FFF; 
-    box-shadow: 1px 1px 0 #000; 
+    background-color: var(--color-background);
+    box-shadow: var(--button-box-shadow);
     z-index: 10;
 }
 
 /* --- Close Button [X] --- */
 .header::after {
-    right: 4px;
-    background-image: 
+    right: 2px;
+    background-image:
         linear-gradient(45deg, transparent 40%, black 40%, black 60%, transparent 60%),
         linear-gradient(-45deg, transparent 40%, black 40%, black 60%, transparent 60%);
     background-size: 8px 8px;
@@ -126,28 +160,18 @@ body * {
 
 /* --- Maximize Button [ ] --- */
 .header h1::after {
-    right: 22px; 
-    background-image: linear-gradient(transparent, transparent);
-    box-shadow: 1px 1px 0 #000, inset 1px 1px 0 #FFF;
-}
-/* Icon styling inside maximize button */
-.header h1::after {
-    border: 1px solid #FFF; 
-    border-right-color: #000;
-    border-bottom-color: #000;
-    background: 
-        linear-gradient(black, black) top left / 100% 2px no-repeat,
-        linear-gradient(black, black) bottom left / 100% 1px no-repeat,
-        linear-gradient(black, black) top left / 1px 100% no-repeat,
-        linear-gradient(black, black) top right / 1px 100% no-repeat;
-    background-origin: content-box;
-    padding: 3px 2px 2px 2px;
-    background-color: #C0C0C0;
+    right: 20px;
+    background:
+        linear-gradient(black, black) 3px 2px / 9px 2px no-repeat,
+        linear-gradient(black, black) 3px 10px / 9px 1px no-repeat,
+        linear-gradient(black, black) 3px 2px / 1px 9px no-repeat,
+        linear-gradient(black, black) 11px 2px / 1px 9px no-repeat;
+    background-color: var(--color-background);
 }
 
 /* --- Minimize Button [_] --- */
 .header h1::before {
-    right: 40px;
+    right: 36px;
     background-image: linear-gradient(black, black);
     background-size: 6px 2px;
     background-position: 4px 9px;
@@ -159,11 +183,21 @@ body * {
    ========================================= */
 
 .content {
-    background-color: #C0C0C0;
-    border-bottom: 2px solid #000;
-    padding: 10px;
+    background-color: var(--color-background);
+    color: var(--color-text);
+    border-bottom: 2px solid var(--color-dark);
+    padding: var(--container-padding);
     position: relative;
-    padding-top: 50px; 
+    padding-top: calc(var(--container-padding) + var(--menu-height));
+}
+
+.content, .message, .info-box {
+	& > :first-child {
+		margin-top: 0;
+	}
+	& > :last-child {
+		margin-bottom: 0;
+	}
 }
 
 /* FAKE MENU BAR & LOGO ICON
@@ -175,30 +209,29 @@ body * {
     top: 0;
     left: 0;
     right: 0;
-    height: 40px; /* Menu + Toolbar Height */
-    
+    height: var(--menu-height);
+	padding: var(--form-field-padding);
+	box-sizing: border-box;
+
     /* Styling */
-    background-color: #C0C0C0;
-    color: #000;
-    padding: 4px 10px;
-    font-family: 'Nimbus Sans L', sans-serif;
-    white-space: pre; 
+    background-color: var(--color-background);
+    color: var(--color-text);
+	font-family: var(--main-font);
+	white-space: pre;
     border-bottom: 1px solid #808080;
-    box-shadow: 0 1px 0 #FFF; 
+    box-shadow: 0 1px 0 #FFF;
     z-index: 5;
-    
+
     /* THE ICON (Top Right) - Replaces the Black Box Throbber */
     /* Note: Update url() to your actual icon path if different */
-    background-image: url('/icon.png'); 
-    background-size: 24px 24px; /* Adjust size as needed */
-    background-position: calc(100% - 10px) 8px; /* Center vertical in header */
+    background-image: url('/favicon.ico');
+    background-size: contain;
+    background-position: top right;
     background-repeat: no-repeat;
-    
-    /* Removed black box shadow */
-    box-shadow: 0 1px 0 #FFF; 
-}
 
-/* Removed Fake Address Bar (.content::after) as requested */
+    /* Removed black box shadow */
+    box-shadow: 0 1px 0 #FFF;
+}
 
 /* =========================================
    6. INNER WIDGETS
@@ -206,42 +239,52 @@ body * {
 
 /* --- The File List (White Area) --- */
 .files, #log {
-    background-color: #FFFFFF;
-    border: 2px solid;
-    border-color: #808080 #DFDFDF #DFDFDF #808080; /* Inset 3D */
+    background-color: var(--form-field-background);
+	color: var(--form-field-text);
+    box-shadow: var(--form-field-box-shadow);
+    padding: var(--form-field-padding);
+	
     margin-top: 5px;
     margin-bottom: 10px; /* Spacing for pagination below */
-    box-shadow: none;
-    
-    /* Layout Fixes */
-    width: 100%;
-    display: block;
     clear: both;
+}
+.files {
+	padding: 2px;
 }
 
 .file {
-    border-bottom: none;
-    padding: 2px 4px;
     cursor: default;
-}
+	a {
+		text-decoration: none;
+	}
 
-/* Selected/Current State (Static Red Box) */
-.file.current, .file.active, .file[aria-selected="true"] {
-    background-color: #FF0000; /* Red Highlight */
-    color: #FFFFFF;
-    outline: 1px dotted #FFFF00; /* Subtle contrast */
+	/* Selected/Current State (Static Red Box) */
+	&.current, &.active, &[aria-selected="true"] {
+	    padding: 2px 4px;
+	    background-color: #FF0000; /* Red Highlight */
+	    color: #FFFFFF;
+	    outline: 1px dotted #FFFF00; /* Subtle contrast */
+		outline-offset: -1px;
+		& a {
+		    color: #FFFFFF;
+		}
+	}
+	&:not(.current):not(.active) {
+		a {
+			display: block;
+		    padding: 2px 4px;
+		}
+	}
+	/* Hover State (Blue Navigation) - Defined AFTER to take precedence during hover */
+	&:hover {
+	    background-color: #000080;
+	    color: #FFF;
+	    outline: none; /* Clean look on hover */
+		& a {
+			color: #FFF;
+		}
+	}
 }
-.file.current a, .file.active a {
-    color: #FFFFFF;
-}
-
-/* Hover State (Blue Navigation) - Defined AFTER to take precedence during hover */
-.file:hover {
-    background-color: #000080;
-    color: #FFF;
-    outline: none; /* Clean look on hover */
-}
-.file:hover a { color: #FFF; }
 
 /* --- Pagination (Navigation Buttons) --- */
 .pagination {
@@ -254,56 +297,47 @@ body * {
 
 /* --- Buttons --- */
 .button, button, .pagination a, .pagination span {
-    font-family: 'Nimbus Sans L', sans-serif;
+    font-family: var(--main-font);
     font-size: 12px;
-    background-color: #C0C0C0;
-    color: #000;
-    border: 1px solid #000;
-    box-shadow: 
-        inset 1px 1px 0 #FFF,
-        inset -1px -1px 0 #000,
-        inset 2px 2px 0 #DFDFDF,
-        inset -2px -2px 0 #808080;
+    background-color: var(--color-background);
+    color: var(--color-text);
+	box-shadow: var(--button-box-shadow);
+	border: 0;
     border-radius: 0;
-    padding: 4px 12px;
-    margin: 4px;
+    padding: var(--button-padding);
     display: inline-block; /* Fix layout flow */
-    text-decoration: none !important;
+    text-decoration: none;
     text-transform: none;
-}
-
-.button:active, button:active {
-    box-shadow: 
-        inset 1px 1px 0 #000,
-        inset -1px -1px 0 #FFF,
-        inset 2px 2px 0 #808080,
-        inset -2px -2px 0 #DFDFDF;
-    transform: translate(1px, 1px);
-    background-color: #C0C0C0;
+	&:focus {
+		border: 1px solid #000;
+		margin: -1px;
+		outline: 1px dotted #000;
+        outline-offset: -5px;
+	}
+	&:active {
+	    box-shadow: var(--button-box-shadow-pressed);
+	    transform: translate(1px, 1px);
+	}
 }
 
 /* --- Inputs --- */
-input, select {
-    border: 2px solid;
-    border-color: #808080 #DFDFDF #DFDFDF #808080; 
-    background-color: #FFF;
-    box-shadow: none;
+input, select, textarea {
+    border: 0;
     border-radius: 0;
-    padding: 3px;
+    background-color: var(--form-field-background);
+	color: var(--form-field-text);
+    box-shadow: var(--form-field-box-shadow);
+    padding: var(--form-field-padding);
 }
 
 /* --- Messages/Info Boxes --- */
 .message, .info-box {
-    background-color: #C0C0C0;
-    border: 1px solid #000;
-    box-shadow: 
-        inset 1px 1px 0 #FFF,
-        inset -1px -1px 0 #000,
-        inset 2px 2px 0 #DFDFDF,
-        inset -2px -2px 0 #808080;
-    color: #000;
-    margin-bottom: 10px;
-    padding: 12px; /* Added spacing */
+    background-color: var(--color-background);
+    color: var(--color-text);
+    box-shadow: var(--fieldset-box-shadow);
+    margin-top: var(--container-padding);
+    margin-bottom: var(--container-padding);
+    padding: calc(2px + var(--container-padding));
 }
 
 /* Links */
