@@ -302,14 +302,15 @@ body {
     background-color: var(--color-background);
     color: var(--color-text);
 	box-shadow: var(--button-box-shadow);
-	border: 1px solid transparent;
+	border: 0;
     border-radius: 0;
     padding: var(--button-padding);
     display: inline-block; /* Fix layout flow */
     text-decoration: none;
     text-transform: none;
 	&:focus {
-	    border-color: #000;
+		border: 1px solid #000;
+		margin: -1px;
 		outline: 1px dotted #000;
         outline-offset: -5px;
 	}
