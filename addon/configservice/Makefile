@@ -20,7 +20,7 @@ libconfigservice.a: $(OBJS)
 include $(CIRCLEHOME)/Rules.mk
 
 # Add include path for addon itself if needed, and other common addon paths
-CFLAGS += -I $(STDLIBHOME)/include -I $(STDDEF_INCPATH) -I ../../addon
+CFLAGS += -I $(STDLIBHOME)/include -I ../../addon
 CFLAGS += -D_TIME_T_DECLARED
 
 -include $(DEPS)
