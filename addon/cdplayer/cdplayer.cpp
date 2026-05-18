@@ -85,18 +85,18 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     // STEP 3: Flush the entire audio pipeline (FIFOs + DMA buffers)
     if (m_pSound) {
         LOGNOTE("Flushing audio pipeline (FIFOs + DMA buffers)");
-        m_pSound->FlushAudioPipeline();
-        
+        m_pSound->Flush();
+
         // CRITICAL: Give I2S hardware FIFO time to drain
         // The hardware FIFO can't be instantly cleared - samples already
         // clocked into the I2S peripheral need time to be transmitted
         // At 44.1kHz, ~100ms ensures all samples are clocked out
         LOGNOTE("Waiting for I2S hardware FIFO to drain...");
         CTimer::Get()->MsDelay(100);
-        
+
         // Double-flush to catch any samples that were mid-transfer
         LOGNOTE("Performing secondary flush");
-        m_pSound->FlushAudioPipeline();
+        m_pSound->Flush();
     }
     
     // STEP 4: Reset ALL address pointers
