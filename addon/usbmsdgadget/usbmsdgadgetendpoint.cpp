@@ -50,6 +50,10 @@ void CUSBMMSDGadgetEndpoint::OnActivate (void)
 	}
 }
 
+void CUSBMMSDGadgetEndpoint::OnDeactivate (void)
+{
+}
+
 void CUSBMMSDGadgetEndpoint::OnTransferComplete (boolean bIn, size_t nLength)
 {
 	MLOGNOTE("MMSDEndpoint","Transfer complete nlen= %i",nLength);

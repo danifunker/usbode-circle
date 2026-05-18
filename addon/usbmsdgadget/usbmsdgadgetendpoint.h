@@ -37,6 +37,8 @@ public:
 
 	void OnActivate (void) override;
 
+	void OnDeactivate (void) override;
+
 	void OnTransferComplete (boolean bIn, size_t nLength) override;
 
 private:
