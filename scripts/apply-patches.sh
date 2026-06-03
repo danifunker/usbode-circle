@@ -147,8 +147,9 @@ get_submodule_path() {
             echo "$PROJECT_ROOT/circle-stdlib/libs/circle-newlib"
             ;;
         "hostap"
-        *)
             echo "$PROJECT_ROOT/circle-stdlib/libs/circle/addon/wlan/hostap"
+            ;;
+        *)
             echo ""
             ;;
     esac
