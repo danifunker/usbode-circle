@@ -369,7 +369,7 @@ const void *CUSBCDGadget::GetDescriptor(u16 wValue, u16 wIndex, size_t *pLength)
             {
                 return &s_ConfigurationDescriptorMacOS9;
             }
-            return m_IsFullSpeed ? &s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
+            return IsEffectiveFullSpeed() ? &s_ConfigurationDescriptorFullSpeed : &s_ConfigurationDescriptorHighSpeed;
         }
         break;
 
@@ -448,6 +448,47 @@ void CUSBCDGadget::AddEndpoints(void)
     assert(m_pEP[EPIn]);
 
     m_nState = TCDState::Init;
+}
+
+// Called at IRQ level on every "enumeration done", with the speed the host
+// actually negotiated. Only acts when that differs from the speed we are
+// presenting: a high-speed-configured gadget on a full-speed-only host
+// (e.g. OHCI/UHCI BIOS, USB 1.1 Mac) shrinks its bulk EPs to 64 bytes and
+// serves the full-speed configuration descriptor - and switches back if a
+// later reset negotiates high-speed again.
+void CUSBCDGadget::OnNegotiatedSpeed(TDeviceSpeed Speed)
+{
+    if (Speed == DeviceSpeedUnknown)
+    {
+        return;
+    }
+
+    boolean bFullSpeed = (Speed == FullSpeed);
+    if (bFullSpeed == IsEffectiveFullSpeed())
+    {
+        return; // negotiated speed matches what we present - nothing to do
+    }
+
+    if (m_IsFullSpeed)
+    {
+        return; // statically configured full-speed: never switch up
+    }
+
+    m_bNegotiatedFullSpeed = bFullSpeed;
+
+    size_t nMaxPacketSize = bFullSpeed ? 64 : 512;
+    if (m_pEP[EPIn])
+    {
+        m_pEP[EPIn]->SetMaxPacketSize(nMaxPacketSize);
+    }
+    if (m_pEP[EPOut])
+    {
+        m_pEP[EPOut]->SetMaxPacketSize(nMaxPacketSize);
+    }
+
+    MLOGNOTE("CUSBCDGadget::OnNegotiatedSpeed",
+             "Host negotiated %s, bulk max packet size now %u",
+             bFullSpeed ? "Full-Speed" : "High-Speed", (unsigned)nMaxPacketSize);
 }
 
 // must set device before usb activation
@@ -588,7 +629,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
             m_nState = TCDState::ReceiveCBW;
             // Request max-packet-size bytes to handle USB 2.0 hosts that pad CBW to packet boundary
             {
-                size_t cbwRecvSize = m_IsFullSpeed ? 64 : 512;
+                size_t cbwRecvSize = IsEffectiveFullSpeed() ? 64 : 512;
                 m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut,
                                             m_OutBuffer, cbwRecvSize);
             }
@@ -759,7 +800,7 @@ void CUSBCDGadget::OnActivate()
     CDROM_DEBUG_LOG("CD OnActivate",
                     "=== ENTRY === state=%d, USB=%s, m_CDReady=%d, mediaState=%d",
                     (int)m_nState,
-                    m_IsFullSpeed ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
+                    IsEffectiveFullSpeed() ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
                     m_CDReady, (int)m_mediaState);
     CTimer::Get()->MsDelay(10);
     // Set media ready NOW - USB endpoints are active
@@ -778,7 +819,7 @@ void CUSBCDGadget::OnActivate()
 
     m_nState = TCDState::ReceiveCBW;
     // Request max-packet-size bytes to handle USB 2.0 hosts that pad CBW to packet boundary
-    size_t cbwRecvSize = m_IsFullSpeed ? 64 : 512;
+    size_t cbwRecvSize = IsEffectiveFullSpeed() ? 64 : 512;
     m_pEP[EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCBWOut, m_OutBuffer, cbwRecvSize);
 
     CDROM_DEBUG_LOG("CD OnActivate",

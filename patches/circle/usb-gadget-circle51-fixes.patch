@@ -1,0 +1,298 @@
+diff --git a/include/circle/usb/dwhci.h b/include/circle/usb/dwhci.h
+index b094a37a..91731628 100644
+--- a/include/circle/usb/dwhci.h
++++ b/include/circle/usb/dwhci.h
+@@ -255,6 +255,13 @@
+ 	#define DWHCI_DEV_CTRL_SET_GLOBAL_OUT_NAK		(1 << 9)
+ 	#define DWHCI_DEV_CTRL_CLEAR_GLOBAL_OUT_NAK		(1 << 10)
+ 	#define DWHCI_DEV_CTRL_NAK_ON_BABBLE			(1 << 16)
++#define DWHCI_DEV_STS					(ARM_USB_DEV_BASE + 0x008)
++	#define DWHCI_DEV_STS_ENUM_SPEED__SHIFT			1
++	#define DWHCI_DEV_STS_ENUM_SPEED__MASK			(3 << 1)
++		#define DWHCI_DEV_STS_ENUM_SPEED_HS_30_60	0
++		#define DWHCI_DEV_STS_ENUM_SPEED_FS_30_60	1
++		#define DWHCI_DEV_STS_ENUM_SPEED_LS		2
++		#define DWHCI_DEV_STS_ENUM_SPEED_FS_48		3
+ #define DWHCI_DEV_IN_EP_COMMON_INT_MASK			(ARM_USB_DEV_BASE + 0x010)
+ 	#define DWHCI_DEV_IN_EP_COMMON_INT_MASK_FIFO_UNDERRUN	(1 << 10)
+ #define DWHCI_DEV_OUT_EP_COMMON_INT_MASK		(ARM_USB_DEV_BASE + 0x014)
+diff --git a/include/circle/usb/gadget/dwusbgadget.h b/include/circle/usb/gadget/dwusbgadget.h
+index 1c9cbf43..d7872700 100644
+--- a/include/circle/usb/gadget/dwusbgadget.h
++++ b/include/circle/usb/gadget/dwusbgadget.h
+@@ -33,7 +33,8 @@ public:
+ 	enum TDeviceSpeed
+ 	{
+ 		FullSpeed,
+-		HighSpeed
++		HighSpeed,
++		DeviceSpeedUnknown
+ 	};
+ 
+ public:
+@@ -64,6 +65,15 @@ public:
+ 	/// \brief Create application interface device (API)
+ 	virtual void CreateDevice (void) = 0;
+ 
++	/// \brief Get the speed, which has been negotiated with the host
++	/// \return Negotiated speed (FullSpeed or HighSpeed) or DeviceSpeedUnknown
++	TDeviceSpeed GetNegotiatedUSBSpeed (void) const;
++
++	/// \brief A speed has been negotiated with the host (on enumeration done)
++	/// \param Speed Negotiated speed (FullSpeed or HighSpeed)
++	/// \note May override this to update EP parameters (e.g. max. packet size).
++	virtual void OnNegotiatedSpeed (TDeviceSpeed Speed) {}
++
+ 	/// \brief Device connection has been suspended / removed
+ 	/// \note Have to undo AddEndpoints() and CreateDevice() here.
+ 	virtual void OnSuspend (void) = 0;
+diff --git a/include/circle/usb/gadget/dwusbgadgetendpoint.h b/include/circle/usb/gadget/dwusbgadgetendpoint.h
+index cb791fb8..f22a8270 100644
+--- a/include/circle/usb/gadget/dwusbgadgetendpoint.h
++++ b/include/circle/usb/gadget/dwusbgadgetendpoint.h
+@@ -65,6 +65,10 @@ public:
+ 	/// \note Override this to abort pending transfers.
+ 	virtual void OnSuspend (void) {}
+ 
++	/// \brief Set the maximum packet size of this EP (e.g. after speed negotiation)
++	/// \param nMaxPacketSize New maximum packet size in bytes
++	void SetMaxPacketSize (size_t nMaxPacketSize);
++
+ protected:
+ 	/// \return Endpoint number (0-15)
+ 	unsigned GetEPNumber (void) const
+diff --git a/lib/usb/gadget/dwusbgadget.cpp b/lib/usb/gadget/dwusbgadget.cpp
+index 6c12acdf..a8fd80a5 100644
+--- a/lib/usb/gadget/dwusbgadget.cpp
++++ b/lib/usb/gadget/dwusbgadget.cpp
+@@ -507,11 +507,20 @@ void CDWUSBGadget::HandleUSBSuspend (void)
+ 	LOGDBG ("USB suspend");
+ #endif
+ 
++	// Trace: always log suspend with current state (diagnosis for issue #591)
++	LOGNOTE ("USB suspend (state %u)", (unsigned) m_State);
++
+ 	if (   m_State != StatePowered
+ 	    && m_State != StateSuspended)
+ 	{
+-		m_bPnPEvent[PnPEventSuspend] = TRUE;
+-
++		// Do NOT tear down the core or disable interrupts here. Treating a
++		// bus suspend as a disconnect (PnP event -> EP teardown and full core
++		// re-init in UpdatePlugAndPlay) leaves the device deaf for >100 ms.
++		// A host, which resets and enumerates during that window (e.g. a PC
++		// BIOS on warm reboot), then talks to a device, whose hardware ACKs,
++		// but whose software never sees ENUMDONE or SETUP interrupts. Only
++		// abort the in-flight transfers and wait for the next USB reset,
++		// which re-initializes the EPs at IRQ level.
+ 		for (unsigned i = 0; i <= NumberOfEPs; i++)
+ 		{
+ 			if (m_pEP[i])
+@@ -520,11 +529,7 @@ void CDWUSBGadget::HandleUSBSuspend (void)
+ 			}
+ 		}
+ 
+-		// Disable all interrupts
+-		CDWHCIRegister AHBConfig (DWHCI_CORE_AHB_CFG);
+-		AHBConfig.Read ();
+-		AHBConfig.And (~DWHCI_CORE_AHB_CFG_GLOBALINT_MASK);
+-		AHBConfig.Write ();
++		m_State = StateSuspended;
+ 	}
+ 
+ 	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_USB_SUSPEND);
+@@ -537,6 +542,9 @@ void CDWUSBGadget::HandleUSBReset (void)
+ 	LOGDBG ("USB reset");
+ #endif
+ 
++	// Trace: always log bus reset with current state (diagnosis for issue #591)
++	LOGNOTE ("USB reset (state %u)", (unsigned) m_State);
++
+ 	switch (m_State)
+ 	{
+ 	case StateConfigured:
+@@ -544,6 +552,11 @@ void CDWUSBGadget::HandleUSBReset (void)
+ 		// fall through
+ 
+ 	case StateEnumDone:
++	case StateSuspended:
++		// A reset arriving from StateSuspended (host warm reboot) must also
++		// cancel EP0's still-armed SETUP transfer. Otherwise the next SETUP
++		// completes against the stale transfer, FinishTransfer() returns a
++		// length != 8, and the EP0 SETUP_DONE assertion halts the whole core.
+ 		assert (m_pEP[0]);
+ 		m_pEP[0]->OnDeactivate ();
+ 		break;
+@@ -620,6 +633,16 @@ void CDWUSBGadget::HandleEnumerationDone (void)
+ 	LOGDBG ("Enumeration done");
+ #endif
+ 
++	// Trace: always log which speed this enumeration settled on, to diagnose
++	// hosts that bounce between High-Speed and Full-Speed (issue #591)
++	{
++		TDeviceSpeed Speed = GetNegotiatedUSBSpeed ();
++		LOGNOTE ("Enumeration done at %s (state %u)",
++			   Speed == FullSpeed ? "Full-Speed"
++			 : Speed == HighSpeed ? "High-Speed" : "Unknown",
++			 (unsigned) m_State);
++	}
++
+ 	if (m_State == StateSuspended)
+ 	{
+ 		HandleUSBReset ();
+@@ -633,6 +656,12 @@ void CDWUSBGadget::HandleEnumerationDone (void)
+ 		USBConfig.Or (9 << DWHCI_CORE_USB_CFG_TURNAROUND_TIME__SHIFT);
+ 		USBConfig.Write ();
+ 
++		// Notify the gadget about the speed, which has been negotiated with
++		// the host, so it can adapt its EP parameters (e.g. max. packet size,
++		// configuration descriptor), when the negotiated speed differs from
++		// the configured one.
++		OnNegotiatedSpeed (GetNegotiatedUSBSpeed ());
++
+ 		assert (m_pEP[0]);
+ 		m_pEP[0]->OnActivate ();
+ 
+@@ -651,7 +680,8 @@ void CDWUSBGadget::HandleInEPInterrupt (void)
+ 	LOGDBG ("In EP interrupt");
+ #endif
+ 
+-	assert (   m_State == StateEnumDone
++	assert (   m_State == StateSuspended
++		|| m_State == StateEnumDone
+ 		|| m_State == StateConfigured);
+ 
+ 	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
+@@ -662,9 +692,19 @@ void CDWUSBGadget::HandleInEPInterrupt (void)
+ 	{
+ 		if (nInEPStat & 1)
+ 		{
+-			assert (nEP <= NumberOfEPs);
+-			assert (m_pEP[nEP]);
+-			m_pEP[nEP]->HandleInInterrupt ();
++			if (m_State != StateSuspended)
++			{
++				assert (nEP <= NumberOfEPs);
++				assert (m_pEP[nEP]);
++				m_pEP[nEP]->HandleInInterrupt ();
++			}
++			else
++			{
++				// Suspended: acknowledge without processing (a transfer,
++				// which completed while suspend was being handled)
++				CDWHCIRegister InEPIntAck (DWHCI_DEV_IN_EP_INT (nEP), ~0U);
++				InEPIntAck.Write ();
++			}
+ 		}
+ 	}
+ }
+@@ -841,3 +881,23 @@ boolean CDWUSBGadget::SetConfiguration (u8 uchConfiguration)
+ 
+ 	return TRUE;
+ }
++
++CDWUSBGadget::TDeviceSpeed CDWUSBGadget::GetNegotiatedUSBSpeed (void) const
++{
++	CDWHCIRegister DeviceStatus (DWHCI_DEV_STS);
++	u32 nEnumSpeed =    (DeviceStatus.Read () & DWHCI_DEV_STS_ENUM_SPEED__MASK)
++			 >> DWHCI_DEV_STS_ENUM_SPEED__SHIFT;
++
++	switch (nEnumSpeed)
++	{
++	case DWHCI_DEV_STS_ENUM_SPEED_HS_30_60:
++		return HighSpeed;
++
++	case DWHCI_DEV_STS_ENUM_SPEED_FS_30_60:
++	case DWHCI_DEV_STS_ENUM_SPEED_FS_48:
++		return FullSpeed;
++
++	default:
++		return DeviceSpeedUnknown;
++	}
++}
+diff --git a/lib/usb/gadget/dwusbgadgetendpoint.cpp b/lib/usb/gadget/dwusbgadgetendpoint.cpp
+index 1e7a69b7..add046ff 100644
+--- a/lib/usb/gadget/dwusbgadgetendpoint.cpp
++++ b/lib/usb/gadget/dwusbgadgetendpoint.cpp
+@@ -65,6 +65,22 @@ CDWUSBGadgetEndpoint::~CDWUSBGadgetEndpoint (void)
+ 	m_pGadget->RemoveEndpoint (m_nEP);
+ }
+ 
++void CDWUSBGadgetEndpoint::SetMaxPacketSize (size_t nMaxPacketSize)
++{
++	m_nMaxPacketSize = nMaxPacketSize;
++
++	if (m_nEP != 0)
++	{
++		CDWHCIRegister EPCtrl (  m_Direction == DirectionIn
++				       ? DWHCI_DEV_IN_EP_CTRL (m_nEP)
++				       : DWHCI_DEV_OUT_EP_CTRL (m_nEP));
++		EPCtrl.Read ();
++		EPCtrl.And (~DWHCI_DEV_EP_CTRL_MAX_PACKET_SIZ__MASK);
++		EPCtrl.Or (m_nMaxPacketSize << DWHCI_DEV_EP_CTRL_MAX_PACKET_SIZ__SHIFT);
++		EPCtrl.Write ();
++	}
++}
++
+ void CDWUSBGadgetEndpoint::OnUSBReset (void)
+ {
+ 	InitTransfer ();
+@@ -356,13 +372,20 @@ void CDWUSBGadgetEndpoint::HandleOutInterrupt (void)
+ 		OutEPIntAck.Set (DWHCI_DEV_OUT_EP_INT_SETUP_DONE);
+ 		OutEPIntAck.Write ();
+ 
+-#ifndef NDEBUG
+-		size_t nLength =
+-#endif
+-			FinishTransfer ();
+-		assert (nLength == sizeof (TSetupData));
+-
+-		OnControlMessage ();
++		size_t nLength = FinishTransfer ();
++		if (nLength == sizeof (TSetupData))
++		{
++			OnControlMessage ();
++		}
++		else
++		{
++			// A SETUP can complete against a stale/partial transfer during a
++			// host warm-reboot or aborted control transfer. Do not crash the
++			// system: drop the malformed SETUP and re-arm EP0 (OnActivate) to
++			// receive the next one cleanly.
++			LOGWARN ("Ignoring SETUP with unexpected length %u", (unsigned) nLength);
++			OnActivate ();
++		}
+ 
+ 		OutEPInt.And (~DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE);
+ 	}
+diff --git a/lib/usb/gadget/dwusbgadgetendpoint0.cpp b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
+index ba825668..97012228 100644
+--- a/lib/usb/gadget/dwusbgadgetendpoint0.cpp
++++ b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
+@@ -21,8 +21,11 @@
+ #include <circle/usb/gadget/dwusbgadget.h>
+ #include <circle/usb/dwhci.h>
+ #include <circle/util.h>
++#include <circle/logger.h>
+ #include <assert.h>
+ 
++static const char FromEP0[] = "ep0";
++
+ CDWUSBGadgetEndpoint0::CDWUSBGadgetEndpoint0 (size_t nMaxPacketSize, CDWUSBGadget *pGadget)
+ :	CDWUSBGadgetEndpoint (nMaxPacketSize, pGadget),
+ 	m_State (StateDisconnect)
+@@ -56,6 +59,14 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
+ 	// copy setup packet to be used in OnTransferComplete()
+ 	memcpy (&m_SetupData, pSetupData, sizeof m_SetupData);
+ 
++	// Trace: always log every SETUP request (diagnosis for issue #591)
++	CLogger::Get ()->Write (FromEP0, LogNotice,
++				"SETUP bmRequestType 0x%02X bRequest 0x%02X wValue 0x%04X wLength %u",
++				(unsigned) pSetupData->bmRequestType,
++				(unsigned) pSetupData->bRequest,
++				(unsigned) pSetupData->wValue,
++				(unsigned) pSetupData->wLength);
++
+ 	if (pSetupData->bmRequestType & REQUEST_IN)
+ 	{
+ 		switch (pSetupData->bRequest)
