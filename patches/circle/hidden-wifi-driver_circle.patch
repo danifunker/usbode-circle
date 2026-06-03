@@ -1,0 +1,50 @@
+diff --git a/src/drivers/driver_circle.cpp b/src/drivers/driver_circle.cpp
+index 79906c2..05e7173 100644
+--- a/src/drivers/driver_circle.cpp
++++ b/src/drivers/driver_circle.cpp
+@@ -338,14 +338,43 @@ static int wpa_driver_circle_scan2 (void *priv, wpa_driver_scan_params *params)
+ 	assert (params != 0);
+ 
+ 	// TODO: allow scan params
+-	//assert (params->num_ssids == 0);
+ 	assert (params->extra_ies == 0);
+ 	assert (params->extra_ies_len == 0);
+ 	//assert (params->freqs == 0);
+ 
++	// Pass a directed SSID to the driver so that hidden networks
++	// (scan_ssid=1) are probed for and show up in the scan results. The
++	// driver always probes with a wildcard too, so visible networks are
++	// still found. Only one directed SSID per scan is supported.
++	char ssid[32+1];
++	ssid[0] = '\0';
++	for (size_t i = 0; i < params->num_ssids; i++)
++	{
++		if (params->ssids[i].ssid != 0 && params->ssids[i].ssid_len > 0)
++		{
++			assert (params->ssids[i].ssid_len <= 32);
++			os_memcpy (ssid, params->ssids[i].ssid,
++				   params->ssids[i].ssid_len);
++			ssid[params->ssids[i].ssid_len] = '\0';
++			break;
++		}
++	}
++
+ 	assert (drv->netdev != 0);
+ 	// increase scan duration here to be sure, scan is not started again
+-	if (!drv->netdev->Control ("escan %u", SCAN_DURATION_SECS+2))
++	boolean bOK;
++	if (ssid[0] != '\0')
++	{
++		CString SSID (ssid);
++		SSID.Replace (" ", "\\x20");	// escape spaces for the ctl parser
++		bOK = drv->netdev->Control ("escan %u %s", SCAN_DURATION_SECS+2,
++					    (const char *) SSID);
++	}
++	else
++	{
++		bOK = drv->netdev->Control ("escan %u", SCAN_DURATION_SECS+2);
++	}
++	if (!bOK)
+ 	{
+ 		return -1;
+ 	}
