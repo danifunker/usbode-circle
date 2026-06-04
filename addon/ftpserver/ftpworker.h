@@ -135,7 +135,11 @@ class CFTPWorker : protected CTask {
     // Command/data buffers
     char m_CommandBuffer[FRAME_BUFFER_SIZE];
     BYTE* WriteBuffer;
-    alignas(512) BYTE* m_DataBuffer;
+    // NOTE: no alignas() here! alignas on the POINTER raises the alignment of
+    // the whole class; "new CFTPWorker" then needs aligned-new (GCC 15+) and
+    // Circle's allocator panics on alignment > HEAP_BLOCK_ALIGN (64). The
+    // buffer itself is heap-allocated separately and aligned by the allocator.
+    BYTE* m_DataBuffer;
 
     // Session state
     CString m_User;
