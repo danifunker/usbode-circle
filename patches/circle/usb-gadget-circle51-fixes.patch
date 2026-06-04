@@ -47,7 +47,7 @@ index 1c9cbf43..d7872700 100644
  	/// \note Have to undo AddEndpoints() and CreateDevice() here.
  	virtual void OnSuspend (void) = 0;
 diff --git a/include/circle/usb/gadget/dwusbgadgetendpoint.h b/include/circle/usb/gadget/dwusbgadgetendpoint.h
-index cb791fb8..f22a8270 100644
+index cb791fb8..24fefbf5 100644
 --- a/include/circle/usb/gadget/dwusbgadgetendpoint.h
 +++ b/include/circle/usb/gadget/dwusbgadgetendpoint.h
 @@ -65,6 +65,10 @@ public:
@@ -61,8 +61,21 @@ index cb791fb8..f22a8270 100644
  protected:
  	/// \return Endpoint number (0-15)
  	unsigned GetEPNumber (void) const
+@@ -118,6 +122,12 @@ protected:
+ 	/// \brief Cancel a began transfer
+ 	void CancelTransfer (void);
+ 
++	/// \return Is a transfer currently armed / in flight on this EP?
++	boolean IsTransferActive (void) const
++	{
++		return m_TransferMode != TransferUnknown;
++	}
++
+ 	/// \brief Send STALL response
+ 	/// \param bIn STALL next IN request, or OUT otherwise?
+ 	void Stall (boolean bIn);
 diff --git a/lib/usb/gadget/dwusbgadget.cpp b/lib/usb/gadget/dwusbgadget.cpp
-index 6c12acdf..a8fd80a5 100644
+index 6c12acdf..867196b2 100644
 --- a/lib/usb/gadget/dwusbgadget.cpp
 +++ b/lib/usb/gadget/dwusbgadget.cpp
 @@ -507,11 +507,20 @@ void CDWUSBGadget::HandleUSBSuspend (void)
@@ -111,19 +124,37 @@ index 6c12acdf..a8fd80a5 100644
  	switch (m_State)
  	{
  	case StateConfigured:
-@@ -544,6 +552,11 @@ void CDWUSBGadget::HandleUSBReset (void)
+@@ -544,6 +552,12 @@ void CDWUSBGadget::HandleUSBReset (void)
  		// fall through
  
  	case StateEnumDone:
 +	case StateSuspended:
-+		// A reset arriving from StateSuspended (host warm reboot) must also
-+		// cancel EP0's still-armed SETUP transfer. Otherwise the next SETUP
-+		// completes against the stale transfer, FinishTransfer() returns a
-+		// length != 8, and the EP0 SETUP_DONE assertion halts the whole core.
++	case StateResetDone:
++		// A reset arriving from StateSuspended (host warm reboot) or from
++		// StateResetDone (host reset storm) must also cancel EP0's possibly
++		// still-armed SETUP transfer. Otherwise the next SETUP completes
++		// against the stale transfer and is dropped with a wrong length.
  		assert (m_pEP[0]);
  		m_pEP[0]->OnDeactivate ();
  		break;
-@@ -620,6 +633,16 @@ void CDWUSBGadget::HandleEnumerationDone (void)
+@@ -610,6 +624,16 @@ void CDWUSBGadget::HandleUSBReset (void)
+ 
+ 	m_State = StateResetDone;
+ 
++	// Arm EP0 for SETUP reception already here (as the Linux dwc2 gadget
++	// driver does in its USB reset handler), not only on enumeration done.
++	// Otherwise the first SETUP from a fast host can arrive in the window
++	// between ENUMDONE and OnActivate(): the core ACKs it unconditionally,
++	// but the transfer accounting is attached to nothing and the SETUP is
++	// dropped with length 0, which makes a PC BIOS miss the device on warm
++	// reboot. OnActivate() is idempotent and will not arm a second time.
++	assert (m_pEP[0]);
++	m_pEP[0]->OnActivate ();
++
+ 	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_USB_RESET_INTR);
+ 	IntStatus.Write ();
+ }
+@@ -620,6 +644,16 @@ void CDWUSBGadget::HandleEnumerationDone (void)
  	LOGDBG ("Enumeration done");
  #endif
  
@@ -140,7 +171,7 @@ index 6c12acdf..a8fd80a5 100644
  	if (m_State == StateSuspended)
  	{
  		HandleUSBReset ();
-@@ -633,6 +656,12 @@ void CDWUSBGadget::HandleEnumerationDone (void)
+@@ -633,6 +667,12 @@ void CDWUSBGadget::HandleEnumerationDone (void)
  		USBConfig.Or (9 << DWHCI_CORE_USB_CFG_TURNAROUND_TIME__SHIFT);
  		USBConfig.Write ();
  
@@ -153,7 +184,7 @@ index 6c12acdf..a8fd80a5 100644
  		assert (m_pEP[0]);
  		m_pEP[0]->OnActivate ();
  
-@@ -651,7 +680,8 @@ void CDWUSBGadget::HandleInEPInterrupt (void)
+@@ -651,7 +691,8 @@ void CDWUSBGadget::HandleInEPInterrupt (void)
  	LOGDBG ("In EP interrupt");
  #endif
  
@@ -163,7 +194,7 @@ index 6c12acdf..a8fd80a5 100644
  		|| m_State == StateConfigured);
  
  	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
-@@ -662,9 +692,19 @@ void CDWUSBGadget::HandleInEPInterrupt (void)
+@@ -662,9 +703,19 @@ void CDWUSBGadget::HandleInEPInterrupt (void)
  	{
  		if (nInEPStat & 1)
  		{
@@ -186,7 +217,7 @@ index 6c12acdf..a8fd80a5 100644
  		}
  	}
  }
-@@ -841,3 +881,23 @@ boolean CDWUSBGadget::SetConfiguration (u8 uchConfiguration)
+@@ -841,3 +892,23 @@ boolean CDWUSBGadget::SetConfiguration (u8 uchConfiguration)
  
  	return TRUE;
  }
@@ -266,7 +297,7 @@ index 1e7a69b7..add046ff 100644
  		OutEPInt.And (~DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE);
  	}
 diff --git a/lib/usb/gadget/dwusbgadgetendpoint0.cpp b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
-index ba825668..97012228 100644
+index ba825668..1bf36625 100644
 --- a/lib/usb/gadget/dwusbgadgetendpoint0.cpp
 +++ b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
 @@ -21,8 +21,11 @@
@@ -281,7 +312,21 @@ index ba825668..97012228 100644
  CDWUSBGadgetEndpoint0::CDWUSBGadgetEndpoint0 (size_t nMaxPacketSize, CDWUSBGadget *pGadget)
  :	CDWUSBGadgetEndpoint (nMaxPacketSize, pGadget),
  	m_State (StateDisconnect)
-@@ -56,6 +59,14 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
+@@ -37,7 +40,12 @@ void CDWUSBGadgetEndpoint0::OnActivate (void)
+ {
+ 	m_State = StateIdle;
+ 
+-	BeginTransfer (TransferSetupOut, m_OutBuffer, sizeof (TSetupData));
++	// SETUP reception may already have been armed in HandleUSBReset() (see
++	// there). Do not arm it twice.
++	if (!IsTransferActive ())
++	{
++		BeginTransfer (TransferSetupOut, m_OutBuffer, sizeof (TSetupData));
++	}
+ }
+ 
+ void CDWUSBGadgetEndpoint0::OnDeactivate (void)
+@@ -56,6 +64,14 @@ void CDWUSBGadgetEndpoint0::OnControlMessage (void)
  	// copy setup packet to be used in OnTransferComplete()
  	memcpy (&m_SetupData, pSetupData, sizeof m_SetupData);
  
