@@ -30,7 +30,7 @@ jobs:
         git submodule foreach --recursive git reset --hard HEAD
         git submodule deinit --all --force
     
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules:  recursive
         clean: true
@@ -50,7 +50,7 @@ jobs:
       run: |
         echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.get-filename.outputs.filename }}-images IMG
         path: imgout/${{ steps.get-filename.outputs.filename }}.img.xz
@@ -60,7 +60,7 @@ jobs:
         overwrite: true
         include-hidden-files: false
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.get-filename.outputs.filename }}-images-64bit IMG
         path: imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
@@ -73,7 +73,7 @@ jobs:
     - name: Clean Images Folder
       run: make clean-imagesfolder
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         # Using the extracted filename as the artifact name
         name: ${{ steps.get-filename.outputs.filename }}
@@ -84,7 +84,7 @@ jobs:
         overwrite: true
         include-hidden-files: false
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         # Using the extracted filename as the artifact name
         name: ${{ steps.get-filename.outputs.filename }}-64bit
@@ -115,7 +115,7 @@ jobs:
         crc32 sysupgrade64.tar > sysupgrade64.crc
         cd ..
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: sysupgrade32
         path: upgrade/sysupgrade32.tar
@@ -124,7 +124,7 @@ jobs:
         compression-level: 6
         overwrite: true
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: sysupgrade32crc
         path: upgrade/sysupgrade32.crc
@@ -133,7 +133,7 @@ jobs:
         compression-level: 6
         overwrite: true
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: sysupgrade64
         path: upgrade/sysupgrade64.tar
@@ -143,7 +143,7 @@ jobs:
         overwrite: true
         include-hidden-files: false
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: sysupgrade64crc
         path: upgrade/sysupgrade64.crc
@@ -155,7 +155,7 @@ jobs:
     - name: Create Release (on main only)
       if: github.ref == 'refs/heads/main'
       id: create-release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       with:
         tag_name: build-${{ github.run_number }}
         name: USBODE build-${{ github.run_number }}
