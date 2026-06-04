@@ -146,6 +146,9 @@ get_submodule_path() {
         "circle-newlib")
             echo "$PROJECT_ROOT/circle-stdlib/libs/circle-newlib"
             ;;
+        "hostap")
+            echo "$PROJECT_ROOT/circle-stdlib/libs/circle/addon/wlan/hostap"
+            ;;
         *)
             echo ""
             ;;
@@ -157,7 +160,7 @@ main() {
     local action="${1:-apply}"
     
     # Define submodules as a space-separated list
-    local SUBMODULE_NAMES="circle-stdlib circle circle-newlib"
+    local SUBMODULE_NAMES="circle-stdlib circle circle-newlib hostap"
     
     case "$action" in
         "apply")
