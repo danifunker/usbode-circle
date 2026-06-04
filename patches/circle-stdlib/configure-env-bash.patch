@@ -1,0 +1,10 @@
+diff --git a/configure b/configure
+index b87aeb1..24fb8bb 100755
+--- a/configure
++++ b/configure
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/usr/bin/env bash
+ 
+ set -e
+ 

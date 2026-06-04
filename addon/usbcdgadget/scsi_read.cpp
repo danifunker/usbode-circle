@@ -311,7 +311,7 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
 
     CDROM_DEBUG_LOG("SCSIRead::ReadCD",
                     "READ CD: USB=%s, LBA=%u, blocks=%u, type=0x%02x, MCS=0x%02x, subchan=0x%02x",
-                    gadget->m_IsFullSpeed ? "FS" : "HS",
+                    gadget->IsEffectiveFullSpeed() ? "FS" : "HS",
                     gadget->m_nblock_address, gadget->m_nnumber_blocks,
                     expectedSectorType, gadget->mcs, subChannelSelection);
 

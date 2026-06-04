@@ -110,8 +110,8 @@ void CUSBCDGadget::Update()
 
             if (offset != (u64)(-1))
             {
-                size_t maxBlocks = m_IsFullSpeed ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed;
-                size_t maxBufferSize = m_IsFullSpeed ? MaxInMessageSizeFullSpeed : MaxInMessageSize;
+                size_t maxBlocks = IsEffectiveFullSpeed() ? MaxBlocksToReadFullSpeed : MaxBlocksToReadHighSpeed;
+                size_t maxBufferSize = IsEffectiveFullSpeed() ? MaxInMessageSizeFullSpeed : MaxInMessageSize;
 
                 u32 blocks_to_read_in_batch = m_nnumber_blocks;
 

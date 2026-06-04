@@ -112,6 +112,7 @@ private:
     void CreateDevice(void) override;
     void OnSuspend(void) override;
     int OnClassOrVendorRequest(const TSetupData *pSetupData, u8 *pData) override;
+    void OnNegotiatedSpeed(TDeviceSpeed Speed) override;
     // ========================================================================
     // USB Transfer Callbacks (called from IRQ level via CUSBCDGadgetEndpoint)
     // ========================================================================
@@ -246,7 +247,12 @@ private:
     MEDIA_TYPE m_mediaType = MEDIA_TYPE::CD;
 
     boolean m_CDReady = false;   // Device ready flag
-    boolean m_IsFullSpeed = 0;   // USB 1.1 full-speed vs USB 2.0 high-speed
+    boolean m_IsFullSpeed = 0;   // USB 1.1 full-speed vs USB 2.0 high-speed (configured)
+    boolean m_bNegotiatedFullSpeed = 0; // Host negotiated full-speed while configured high-speed
+
+    // Effective speed: configured full-speed OR negotiated down to full-speed
+    boolean IsEffectiveFullSpeed(void) const { return m_IsFullSpeed || m_bNegotiatedFullSpeed; }
+
     boolean discChanged = false; // Media change flag
     bool m_bDebugLogging;        // Debug flag to enable verbose CD-ROM logging
     // ========================================================================

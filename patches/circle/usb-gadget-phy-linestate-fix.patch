@@ -1,0 +1,97 @@
+diff --git a/include/circle/usb/dwhci.h b/include/circle/usb/dwhci.h
+index b094a37a..fa62ce9f 100644
+--- a/include/circle/usb/dwhci.h
++++ b/include/circle/usb/dwhci.h
+@@ -20,6 +20,8 @@
+ //
+ #define DWHCI_CORE_OTG_CTRL		(ARM_USB_CORE_BASE + 0x000)
+ 	#define DWHCI_CORE_OTG_CTRL_HST_SET_HNP_EN	(1 << 10)
++	#define DWHCI_CORE_OTG_CTRL_B_SESSION_VALID_OV_EN	(1 << 19)
++	#define DWHCI_CORE_OTG_CTRL_B_SESSION_VALID_OV_VAL	(1 << 20)
+ #define DWHCI_CORE_OTG_INT		(ARM_USB_CORE_BASE + 0x004)
+ #define DWHCI_CORE_AHB_CFG		(ARM_USB_CORE_BASE + 0x008)
+ 	#define DWHCI_CORE_AHB_CFG_GLOBALINT_MASK	(1 << 0)
+@@ -36,6 +38,8 @@
+ 	#define DWHCI_CORE_USB_CFG_HNP_CAPABLE 		(1 << 9)
+ 	#define DWHCI_CORE_USB_CFG_TURNAROUND_TIME__SHIFT 10
+ 	#define DWHCI_CORE_USB_CFG_TURNAROUND_TIME__MASK  (0xF << 10)
++	#define DWHCI_CORE_USB_CFG_TOUTCAL__SHIFT	15
++	#define DWHCI_CORE_USB_CFG_TOUTCAL__MASK	(7 << 15)
+ 	#define DWHCI_CORE_USB_CFG_ULPI_FSLS		(1 << 17)
+ 	#define DWHCI_CORE_USB_CFG_ULPI_CLK_SUS_M	(1 << 19)
+ 	#define DWHCI_CORE_USB_CFG_ULPI_EXT_VBUS_DRV	(1 << 20)
+diff --git a/lib/usb/gadget/dwusbgadget.cpp b/lib/usb/gadget/dwusbgadget.cpp
+index 6c12acdf..66298343 100644
+--- a/lib/usb/gadget/dwusbgadget.cpp
++++ b/lib/usb/gadget/dwusbgadget.cpp
+@@ -128,6 +128,13 @@ boolean CDWUSBGadget::Initialize (boolean bScanDevices)
+ 	AHBConfig.Or (DWHCI_CORE_AHB_CFG_GLOBALINT_MASK);
+ 	AHBConfig.Write ();
+ 
++	// Now that EP0 is armed and interrupts are enabled, connect to the bus
++	// (clear SOFT_DISCONNECT) so the host sees a device that is ready to talk.
++	CDWHCIRegister DeviceCtrl (DWHCI_DEV_CTRL);
++	DeviceCtrl.Read ();
++	DeviceCtrl.And (~DWHCI_DEV_CTRL_SOFT_DISCONNECT);
++	DeviceCtrl.Write ();
++
+ 	PeripheralExit ();
+ 
+ 	return TRUE;
+@@ -174,6 +181,13 @@ boolean CDWUSBGadget::UpdatePlugAndPlay (void)
+ 		AHBConfig.Read ();
+ 		AHBConfig.Or (DWHCI_CORE_AHB_CFG_GLOBALINT_MASK);
+ 		AHBConfig.Write ();
++
++		// Reconnect to the bus (clear SOFT_DISCONNECT) now that EP0 is armed
++		// and interrupts are enabled.
++		CDWHCIRegister DeviceCtrl (DWHCI_DEV_CTRL);
++		DeviceCtrl.Read ();
++		DeviceCtrl.And (~DWHCI_DEV_CTRL_SOFT_DISCONNECT);
++		DeviceCtrl.Write ();
+ 	}
+ 	else if (m_bPnPEvent[PnPEventConfigured])
+ 	{
+@@ -217,10 +231,42 @@ boolean CDWUSBGadget::InitCore (void)
+ 		return FALSE;
+ 	}
+ 
++	// Keep the device soft-disconnected from the bus until we are fully
++	// initialized. Otherwise a strict host (e.g. EHCI/OHCI BIOS) may reset and
++	// start enumerating before EP0 is armed, leaving control transfers NAKing
++	// forever. The pull-up is re-enabled (clear SOFT_DISCONNECT) by the caller
++	// after the EPs are created and interrupts are enabled.
++	CDWHCIRegister DeviceCtrl (DWHCI_DEV_CTRL);
++	DeviceCtrl.Read ();
++	DeviceCtrl.Or (DWHCI_DEV_CTRL_SOFT_DISCONNECT);
++	DeviceCtrl.Write ();
++
++	// Force the B-session (VBUS) valid override. On the Pi's USB-OTG port (and
++	// boards that don't drive VBUS the way the core expects) device-mode VBUS
++	// sensing is unreliable, which can leave the core thinking no valid session
++	// is present and produce an undefined D+/D- line state during the HS chirp.
++	CDWHCIRegister OTGControl (DWHCI_CORE_OTG_CTRL);
++	OTGControl.Read ();
++	OTGControl.Or (DWHCI_CORE_OTG_CTRL_B_SESSION_VALID_OV_EN);
++	OTGControl.Or (DWHCI_CORE_OTG_CTRL_B_SESSION_VALID_OV_VAL);
++	OTGControl.Write ();
++
+ 	CDWHCIRegister USBConfig (DWHCI_CORE_USB_CFG);
+ 	USBConfig.Read ();
+ 	USBConfig.And (~DWHCI_CORE_USB_CFG_ULPI_UTMI_SEL);	// select UTMI+
+ 	USBConfig.And (~DWHCI_CORE_USB_CFG_PHYIF);		// UTMI width is 8
++	USBConfig.And (~DWHCI_CORE_USB_CFG_PHY_SEL_FS);		// always use UTMI+ PHY
++	USBConfig.And (~DWHCI_CORE_USB_CFG_ULPI_EXT_VBUS_DRV);
++	USBConfig.And (~DWHCI_CORE_USB_CFG_TERM_SEL_DL_PULSE);
++
++	// Set USB turnaround time (TRDT) to 9 (UTMI+ / High Speed, BCM283x)
++	USBConfig.And (~DWHCI_CORE_USB_CFG_TURNAROUND_TIME__MASK);
++	USBConfig.Or (9 << DWHCI_CORE_USB_CFG_TURNAROUND_TIME__SHIFT);
++
++	// Set timeout calibration (TOUTCAL) to 7
++	USBConfig.And (~DWHCI_CORE_USB_CFG_TOUTCAL__MASK);
++	USBConfig.Or (7 << DWHCI_CORE_USB_CFG_TOUTCAL__SHIFT);
++
+ 	USBConfig.Write ();
+ 
+ 	CDWHCIRegister AHBConfig (DWHCI_CORE_AHB_CFG);
