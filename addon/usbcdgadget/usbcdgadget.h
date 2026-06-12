@@ -270,9 +270,14 @@ private:
     static const size_t MaxInMessageSize = MaxBlocksToReadHighSpeed * MaxSectorSize;          // 75,264 bytes
     static const size_t MaxInMessageSizeFullSpeed = MaxBlocksToReadFullSpeed * MaxSectorSize; // 37,632 bytes
 
-    alignas(64) DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // USB IN transfers
-    alignas(64) DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // USB OUT transfers
-    alignas(64) DMA_BUFFER(u8, m_FileChunk, MaxInMessageSize);  // File staging buffer
+    // NOTE: no alignas(64) here! DMA_BUFFER's CACHE_ALIGN already aligns to the
+    // platform cache line (32 on RASPPI=1, 64 elsewhere). An explicit alignas(64)
+    // raises alignof(CUSBCDGadget) to 64, and with C++17 aligned-new (GCC 15.2 /
+    // Circle 51) heap-allocating it panics on Pi Zero W / Pi 1, where Circle's
+    // HEAP_BLOCK_ALIGN is only 32 (see lib/new.cpp assert).
+    DMA_BUFFER(u8, m_InBuffer, MaxInMessageSize);   // USB IN transfers
+    DMA_BUFFER(u8, m_OutBuffer, MaxOutMessageSize); // USB OUT transfers
+    DMA_BUFFER(u8, m_FileChunk, MaxInMessageSize);  // File staging buffer
     // ========================================================================
     // Instance Variables - SCSI Reply Structures
     // ========================================================================
