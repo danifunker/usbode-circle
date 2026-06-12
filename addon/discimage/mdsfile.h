@@ -57,17 +57,41 @@ class CMDSFileDevice : public IMDSDevice {
     const char* GetCueSheet() const override { return m_cue_sheet; }
 
    private:
+    /// Mapping of one track between the virtual byte space implied by the
+    /// generated cue sheet and the physical MDF layout
+    struct TrackMap {
+        u64 vstart;       // virtual byte offset of the track's INDEX 01
+        u32 data_start;   // LBA of INDEX 01 (MDS start_sector, disc-absolute)
+        u32 length;       // track length in frames (0 = unknown)
+        u32 base_size;    // logical bytes per sector (sector_size minus subchannel)
+        u32 sector_size;  // physical bytes per sector in the MDF
+        u64 start_offset; // physical byte offset of the track data in the MDF
+        u8 subchannel;    // 0 = none, 0x08 = 96-byte interleaved P-W appended
+        u8 session;
+        u8 track_number;  // point
+        bool audio;
+        const char* cue_type; // cue TRACK type string (static storage)
+    };
+    static const int MaxTracks = 99;
+
+    bool BuildTrackMap();
+    bool GenerateCueSheet();
+    int FindMapForV(u64 vpos) const;   // track whose virtual range contains vpos
+    int FindMapForLBA(u32 lba) const;
+
     FIL* m_pFile;
     char* m_mds_str = nullptr;
-    char* m_cue_sheet = nullptr;  // Generated for compatibility
+    char* m_cue_sheet = nullptr;  // Normalized cue consumed by the gadget
     const char* m_mds_filename;
     MEDIA_TYPE m_mediaType;
-    MDSParser* m_parser;    
+    MDSParser* m_parser;
     DWORD* m_pCLMT;
     bool m_hasSubchannels = false;
-    
-    // Helper to find track containing an LBA
-    MDS_TrackBlock* FindTrackForLBA(u32 lba, int* sessionOut, int* trackOut) const;
+
+    TrackMap m_Map[MaxTracks];
+    int m_nMapCount = 0;
+    u64 m_vpos = 0;
+    u64 m_vsize = 0;
 };
 
 #endif

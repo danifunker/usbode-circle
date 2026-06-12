@@ -48,9 +48,25 @@ public:
     // ========================================================================
     // Subchannel Support (Critical for Copy Protection like SafeDisc)
     // ========================================================================
-    
+
     virtual bool HasSubchannelData() const { return false; }
+
+    /// Read the stored subchannel data for an LBA.
+    /// \param subchannel Receives 96 bytes of RAW INTERLEAVED P-W data
+    ///        (as on disc; devices storing linear data must interleave).
+    /// \return 96 on success, -1 if unavailable
     virtual int ReadSubchannel(u32 lba, u8* subchannel) { return -1; }
+
+    // ========================================================================
+    // Catalog / ISRC (READ SUB-CHANNEL 0x42 parameters 0x02/0x03)
+    // ========================================================================
+
+    /// Media Catalog Number: 13 digits + NUL. Return false if none.
+    virtual bool GetMCN(char mcn[14]) const { return false; }
+
+    /// ISRC of a track (1-based track number): 12 characters + NUL.
+    /// Return false if none.
+    virtual bool GetISRC(int track, char isrc[13]) const { return false; }
     
     // ========================================================================
     // CUE Sheet Compatibility (for track navigation)

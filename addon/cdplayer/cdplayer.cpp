@@ -118,7 +118,9 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     
     // STEP 7: Assign new device
     m_pBinFileDevice = pBinFileDevice;
-    
+    m_CueParser = CUEParser(pBinFileDevice ? pBinFileDevice->GetCueSheet() : "");
+    m_HaveTrack = false;
+
     // STEP 8: Restart audio if it was running before the swap
     if (bNeedRestart && m_pSound) {
         LOGNOTE("Restarting audio after disc swap");
@@ -132,6 +134,41 @@ boolean CCDPlayer::SetDevice(IImageDevice *pBinFileDevice) {
     
     LOGNOTE("CD Player device set complete: state=%u, device=%p", state, m_pBinFileDevice);
     return true;
+}
+
+u64 CCDPlayer::LBAToByteOffset(u32 lba) {
+    // Cache the track containing the previous LBA; sequential playback only
+    // re-walks the cue sheet when crossing a track boundary.
+    if (!m_HaveTrack || lba < m_CurrentTrack.track_start || lba >= m_CurrentTrackEnd) {
+        m_CueParser.restart();
+        const CUETrackInfo *ti;
+        CUETrackInfo last = {};
+        last.track_number = -1;
+        u32 end = 0xFFFFFFFF;
+        boolean found = false;
+
+        while ((ti = m_CueParser.next_track()) != nullptr) {
+            if (last.track_number != -1 && lba < ti->track_start) {
+                end = ti->track_start;
+                found = true;
+                break;
+            }
+            last = *ti;
+        }
+
+        if (last.track_number == -1) {
+            return (u64)(-1); // No tracks at all
+        }
+        if (!found) {
+            end = 0xFFFFFFFF; // Last track: upper bound is the leadout, unknown here
+        }
+
+        m_CurrentTrack = last;
+        m_CurrentTrackEnd = end;
+        m_HaveTrack = true;
+    }
+
+    return CUEByteOffset(m_CurrentTrack, lba);
 }
 
 boolean CCDPlayer::Initialize() {
@@ -435,8 +472,9 @@ void CCDPlayer::Run(void) {
         
         // STATE 3: Normal operation - seeking
         if (state == SEEKING || state == SEEKING_PLAYING) {
-            LOGNOTE("Seeking to sector %u (byte %u)", address, unsigned(address * SECTOR_SIZE));
-            u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
+            u64 byte_offset = LBAToByteOffset(address);
+            LOGNOTE("Seeking to sector %u (byte %llu)", address, byte_offset);
+            u64 offset = (byte_offset != (u64)(-1)) ? m_pBinFileDevice->Seek(byte_offset) : (u64)(-1);
 
             // When we seek, the contents of our read and write buffer are now invalid.
             memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
@@ -448,7 +486,7 @@ void CCDPlayer::Run(void) {
                 LOGNOTE("Seeking successful");
                 state = (state == SEEKING_PLAYING) ? PLAYING : STOPPED_OK;
             } else {
-                LOGERR("Error seeking to byte position %u", address * SECTOR_SIZE);
+                LOGERR("Error seeking to sector %u", address);
                 state = STOPPED_ERROR;
             }
         }
@@ -472,9 +510,10 @@ void CCDPlayer::Run(void) {
 
                 // Because another task could have moved the file pointer after a Yield(),
                 // we MUST seek to our intended address before every read operation.
-                u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
+                u64 byte_offset = LBAToByteOffset(address);
+                u64 offset = (byte_offset != (u64)(-1)) ? m_pBinFileDevice->Seek(byte_offset) : (u64)(-1);
                 if (offset == (u64)(-1)) {
-                    LOGERR("Pre-read seek failed at position %u", address * SECTOR_SIZE);
+                    LOGERR("Pre-read seek failed at sector %u", address);
                     state = STOPPED_ERROR;
                     continue; // Re-evaluate state in the next loop iteration.
                 }

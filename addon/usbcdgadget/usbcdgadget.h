@@ -531,20 +531,37 @@ private:
     SenseParameters m_SenseParams; // Current sense data
 
     // Sector format parameters
-    int data_skip_bytes = 0;        // Skip bytes for data track reads
-    int data_block_size = 2048;     // Data block size
     int skip_bytes = 0;             // Skip bytes for current operation
     int block_size = 2048;          // Physical block size on disc
     int transfer_block_size = 2048; // Block size for USB transfer
     int file_mode = 1;              // File/track mode
-    int numTracks = 0;              // Number of tracks on disc
     uint8_t mcs = 0;
+    uint8_t sub_channel_selection = 0; // READ CD byte 10 bits 0-2 (0x01 raw P-W, 0x02 Q, 0x04 corrected P-W)
+
+    // When true, skip_bytes/block_size are derived from the track containing
+    // the current LBA and must be recomputed when a read crosses into another
+    // track (cooked 2048-byte reads: READ(10)/(12), READ CD types 2 and 4).
+    boolean skip_bytes_per_track = FALSE;
 
     // ========================================================================
     // Instance Variables - CUE Parsing and Device Identification
     // ========================================================================
 
     CUEParser cueParser;
+
+    /// Cached track table, built in SetDevice() from the device's cue sheet.
+    /// Hot paths use this instead of re-parsing the cue sheet text.
+    static const int MaxCueTracks = 99;
+    struct CDTrackEntry
+    {
+        CUETrackInfo info;
+        u32 end_lba; // track_start of the next track, or leadout for the last
+    };
+    CDTrackEntry m_TrackTable[MaxCueTracks];
+    int m_nTrackCount = 0;
+    u32 m_nLeadoutLBA = 0;
+    int m_nSessionCount = 1;
+    void BuildTrackTable();
 
     char m_HardwareSerialNumber[20];   // Hardware serial number (e.g., "USBODE-XXXXXXXX")
     const char *m_StringDescriptor[4]; // USB string descriptors

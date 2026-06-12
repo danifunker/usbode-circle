@@ -283,8 +283,9 @@ void SCSITBService::ScanDirectoryRecursive(const char* fullPath, const char* rel
             // Check for image files
             const char* ext = strrchr(fno.fname, '.');
             if (ext != nullptr) {
-                if (iequals(ext, ".iso") || iequals(ext, ".bin") || 
-                    iequals(ext, ".mds") || iequals(ext, ".chd") || iequals(ext, ".toast")) {
+                if (iequals(ext, ".iso") || iequals(ext, ".bin") || iequals(ext, ".cue") ||
+                    iequals(ext, ".mds") || iequals(ext, ".chd") || iequals(ext, ".ccd") ||
+                    iequals(ext, ".toast")) {
                     size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);
                     memcpy(m_FileEntries[m_FileCount].name, fno.fname, len);
                     m_FileEntries[m_FileCount].name[len] = '\0';
@@ -302,6 +303,83 @@ void SCSITBService::ScanDirectoryRecursive(const char* fullPath, const char* rel
     }
 
     f_closedir(&dir);
+}
+
+// Remove entries for data files that are referenced by a cue sheet in the
+// same directory; the cue itself stays listed and is the mountable entry.
+void SCSITBService::HideCueCoveredBins() {
+    if (m_FileCount == 0)
+        return;
+
+    bool* remove = new bool[m_FileCount]();
+
+    for (size_t i = 0; i < m_FileCount; ++i) {
+        if (m_FileEntries[i].isDirectory)
+            continue;
+        const char* ext = strrchr(m_FileEntries[i].name, '.');
+        if (ext == nullptr || !iequals(ext, ".cue"))
+            continue;
+
+        // Directory part of the cue's relative path (with trailing '/')
+        const char* rel = m_FileEntries[i].relativePath;
+        const char* lastSlash = strrchr(rel, '/');
+        size_t dirLen = lastSlash ? (size_t)(lastSlash - rel + 1) : 0;
+
+        char fullPath[MAX_PATH_LEN + 4];
+        snprintf(fullPath, sizeof(fullPath), "1:/%s", rel);
+
+        char* cueText = nullptr;
+        if (!ReadFileToString(fullPath, &cueText))
+            continue;
+
+        // Hide every data file referenced by a FILE "name" line
+        const char* p = cueText;
+        while (*p) {
+            while (*p == ' ' || *p == '\t' || *p == '\r')
+                p++;
+            const char* lineEnd = strchr(p, '\n');
+
+            if (strncasecmp(p, "FILE", 4) == 0) {
+                const char* q = strchr(p, '"');
+                if (q != nullptr && (lineEnd == nullptr || q < lineEnd)) {
+                    q++;
+                    const char* qe = strchr(q, '"');
+                    if (qe != nullptr && (size_t)(qe - q) < MAX_FILENAME_LEN) {
+                        char refPath[MAX_PATH_LEN];
+                        snprintf(refPath, sizeof(refPath), "%.*s%.*s",
+                                 (int)dirLen, rel, (int)(qe - q), q);
+
+                        for (size_t j = 0; j < m_FileCount; ++j) {
+                            if (j != i && !m_FileEntries[j].isDirectory && !remove[j] &&
+                                strcasecmp(m_FileEntries[j].relativePath, refPath) == 0) {
+                                LOGNOTE("Hiding %s (referenced by %s)",
+                                        m_FileEntries[j].relativePath, rel);
+                                remove[j] = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (lineEnd == nullptr)
+                break;
+            p = lineEnd + 1;
+        }
+
+        delete[] cueText;
+    }
+
+    // Compact the array
+    size_t w = 0;
+    for (size_t j = 0; j < m_FileCount; ++j) {
+        if (!remove[j]) {
+            if (w != j)
+                m_FileEntries[w] = m_FileEntries[j];
+            w++;
+        }
+    }
+    m_FileCount = w;
+    delete[] remove;
 }
 
 // Original RefreshCache for backwards compatibility and startup
@@ -327,7 +405,12 @@ bool SCSITBService::RefreshCache() {
     // Scan entire tree recursively
     m_FileCount = 0;
     ScanDirectoryRecursive("1:/", "");
-    
+
+    // Hide bin files that belong to a cue sheet: the cue is the mountable
+    // entry (multi-bin images would otherwise list dozens of track bins
+    // that cannot be mounted individually)
+    HideCueCoveredBins();
+
     // Sort all entries: directories first, then alphabetically
     if (m_FileCount > 1) {
         qsort(m_FileEntries, m_FileCount, sizeof(FileEntry), compareFileEntriesDirectoriesFirst);

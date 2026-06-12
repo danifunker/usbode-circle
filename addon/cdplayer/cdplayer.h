@@ -35,6 +35,7 @@
 #include <fatfs/ff.h>
 #include <linux/kernel.h>
 #include <discimage/imagedevice.h>
+#include <cueparser/cueparser.h>
 
 #define SECTOR_SIZE 2352
 #define BATCH_SIZE 16 
@@ -89,7 +90,12 @@ class CCDPlayer : public CTask {
 
    private:
     void ScaleVolume(u8 *buffer, u32 byteCount);
-    
+
+    // Map an LBA to its byte offset in the device, using the track that
+    // contains it (sector sizes and file offsets are per-track).
+    // Returns (u64)-1 if the LBA is not within any track.
+    u64 LBAToByteOffset(u32 lba);
+
    private:
     const char *m_pSoundDevice;
     CI2CMaster m_I2CMaster;
@@ -110,6 +116,12 @@ class CCDPlayer : public CTask {
     unsigned int m_BufferBytesValid = 0;
     unsigned int m_BufferReadPos = 0;
     unsigned int m_BytesProcessedInSector = 0;
+
+    // Track lookup state for LBAToByteOffset()
+    CUEParser m_CueParser;
+    CUETrackInfo m_CurrentTrack;
+    u32 m_CurrentTrackEnd = 0;
+    boolean m_HaveTrack = false;
 };
 
 #endif

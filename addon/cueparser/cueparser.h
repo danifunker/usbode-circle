@@ -63,6 +63,9 @@ struct CUETrackInfo {
     int track_number;
     CUETrackMode track_mode;
 
+    // Session this track belongs to (from "REM SESSION nn" markers, default 1)
+    int session;
+
     // Sector length for this track in bytes, assuming BINARY or MOTOROLA file modes.
     uint32_t sector_length;
 
@@ -141,3 +144,13 @@ class CUEParser {
     // Remove './' or '.\' from the beginning of the filename as it is not recogized by the SDFat library
     void remove_dot_slash(char *filename, size_t length);
 };
+
+// Byte offset of an LBA within the image byte space described by a cue sheet.
+// Requires the normalized-cue contract: every LBA between track_start and the
+// next track is backed by bytes at file_offset-relative positions (stored
+// pregap bytes precede file_offset; unstored PREGAP regions must not exist).
+static inline uint64_t CUEByteOffset(const CUETrackInfo &t, uint32_t lba) {
+    if (lba >= t.data_start)
+        return t.file_offset + (uint64_t)(lba - t.data_start) * t.sector_length;
+    return t.file_offset - (uint64_t)(t.data_start - lba) * t.sector_length;
+}

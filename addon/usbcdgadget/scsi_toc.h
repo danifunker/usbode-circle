@@ -24,6 +24,8 @@ private:
     static void DoReadFullTOC(CUSBCDGadget* gadget, uint8_t session, uint16_t allocationLength, bool useBCD);
     static void FormatTOCEntry(const CUETrackInfo *track, uint8_t *dest, bool use_MSF);
     static void FormatRawTOCEntry(CUSBCDGadget* gadget, const CUETrackInfo *track, uint8_t *dest, bool useBCD);
+    static void FormatRawTOCLeadEntry(uint8_t session, uint8_t point, uint8_t control,
+                                      uint8_t pmin, uint8_t psec, uint8_t pframe, uint8_t *dest);
     static void DoReadTrackInformation(CUSBCDGadget* gadget, u8 addressType, u32 address, u16 allocationLength);
     static void DoReadHeader(CUSBCDGadget* gadget, bool MSF, uint32_t lba, uint16_t allocationLength);
     static void DoReadCDText(CUSBCDGadget* gadget, uint16_t allocationLength);

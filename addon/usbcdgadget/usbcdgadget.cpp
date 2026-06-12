@@ -528,8 +528,7 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     m_mediaType = m_pDevice->GetMediaType();
     MLOGNOTE("CUSBCDGadget::SetDevice", "Media type set to %d", m_mediaType);
     cueParser = CUEParser(m_pDevice->GetCueSheet());
-    data_skip_bytes = CDUtils::GetSkipbytes(this);
-    data_block_size = CDUtils::GetBlocksize(this);
+    BuildTrackTable();
 
     if (bDiscSwap)
     {
@@ -554,6 +553,53 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
                     "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
                     m_CDReady, (int)m_mediaState,
                     m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+}
+
+void CUSBCDGadget::BuildTrackTable()
+{
+    m_nTrackCount = 0;
+    m_nSessionCount = 1;
+    m_nLeadoutLBA = 0;
+
+    cueParser.restart();
+    const CUETrackInfo *ti;
+    while ((ti = cueParser.next_track()) != nullptr && m_nTrackCount < MaxCueTracks)
+    {
+        m_TrackTable[m_nTrackCount].info = *ti;
+        if (m_nTrackCount > 0)
+            m_TrackTable[m_nTrackCount - 1].end_lba = ti->track_start;
+        m_nTrackCount++;
+    }
+
+    if (m_nTrackCount == 0)
+    {
+        MLOGERR("CUSBCDGadget::BuildTrackTable", "No tracks parsed from cue sheet");
+        return;
+    }
+
+    const CUETrackInfo &last = m_TrackTable[m_nTrackCount - 1].info;
+    m_nSessionCount = last.session;
+
+    // The last track runs to the end of the image. Sector lengths can differ
+    // per track, so compute from the last track's file offset, not image
+    // size alone. Guards cover cue sheets referencing data beyond the image.
+    u32 leadout = last.data_start;
+    u64 deviceSize = m_pDevice->GetSize();
+    if (last.sector_length != 0 && deviceSize >= last.file_offset)
+    {
+        u64 lastTrackBlocks = (deviceSize - last.file_offset) / last.sector_length;
+        if (lastTrackBlocks > 0xFFFFFFFF)
+        {
+            MLOGERR("CUSBCDGadget::BuildTrackTable", "lastTrackBlocks overflow: %llu", lastTrackBlocks);
+            lastTrackBlocks = 0xFFFFFFFF;
+        }
+        leadout = last.data_start + (u32)lastTrackBlocks;
+    }
+    m_nLeadoutLBA = leadout;
+    m_TrackTable[m_nTrackCount - 1].end_lba = leadout;
+
+    MLOGNOTE("CUSBCDGadget::BuildTrackTable", "%d tracks, %d session(s), leadout LBA %u",
+             m_nTrackCount, m_nSessionCount, m_nLeadoutLBA);
 }
 
 void CUSBCDGadget::CreateDevice(void)

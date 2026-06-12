@@ -98,66 +98,40 @@ u32 CDUtils::lba_to_msf(u32 lba, boolean relative)
 // Track Info & Calculation
 // ============================================================================
 
-CUETrackInfo CDUtils::GetTrackInfoForLBA(CUSBCDGadget* gadget, u32 lba)
+CUETrackInfo CDUtils::GetTrackInfoForLBA(CUSBCDGadget* gadget, u32 lba, u32 *pEndLBA)
 {
-    const CUETrackInfo *trackInfo;
-    MLOGDEBUG("CDUtils::GetTrackInfoForLBA", "Searching for LBA %u", lba);
-
-    gadget->cueParser.restart();
-
-    // Shortcut for LBA zero
-    if (lba == 0)
+    // An LBA between a track's track_start (INDEX 00) and the next track
+    // belongs to that track; LBAs at or past the leadout map to the last
+    // track, matching the previous parser-based behavior.
+    for (int i = 0; i < gadget->m_nTrackCount; i++)
     {
-        MLOGDEBUG("CDUtils::GetTrackInfoForLBA", "Shortcut lba == 0 returning first track");
-        const CUETrackInfo *firstTrack = gadget->cueParser.next_track(); // Return the first track
-        if (firstTrack != nullptr)
+        const CUSBCDGadget::CDTrackEntry &entry = gadget->m_TrackTable[i];
+
+        if (lba < entry.info.track_start && !(lba == 0 && i == 0))
+            break; // Below the first track's start: no match
+
+        if (lba < entry.end_lba || i == gadget->m_nTrackCount - 1 || lba == 0)
         {
-            return *firstTrack;
-        }
-        else
-        {
-            CUETrackInfo invalid = {};
-            invalid.track_number = -1;
-            return invalid;
+            if (pEndLBA)
+                *pEndLBA = entry.end_lba;
+            return entry.info;
         }
     }
 
-    // Iterate to find our track
-    CUETrackInfo lastTrack = {};
-    lastTrack.track_number = -1;
-    while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
-    {
-        MLOGDEBUG("CDUtils::GetTrackInfoForLBA", "Iterating: Current Track %d track_start is %lu", trackInfo->track_number, trackInfo->track_start);
-
-        //  Shortcut for when our LBA is the start address of this track
-        if (trackInfo->track_start == lba)
-        {
-            MLOGDEBUG("CDUtils::GetTrackInfoForLBA", "Shortcut track_start == lba, returning track %d", trackInfo->track_number);
-            return *trackInfo;
-        }
-
-        if (lba < trackInfo->track_start)
-        {
-            MLOGDEBUG("CDUtils::GetTrackInfoForLBA", "Found LBA %lu in track %d", lba, lastTrack.track_number);
-            return lastTrack;
-        }
-
-        lastTrack = *trackInfo;
-    }
-
-    MLOGDEBUG("CDUtils::GetTrackInfoForLBA", "Returning last track");
-    return lastTrack;
+    CUETrackInfo invalid = {};
+    invalid.track_number = -1;
+    if (pEndLBA)
+        *pEndLBA = 0;
+    return invalid;
 }
 
 CUETrackInfo CDUtils::GetTrackInfoForTrack(CUSBCDGadget* gadget, int track)
 {
-    const CUETrackInfo *trackInfo = nullptr;
-    gadget->cueParser.restart();
-    while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
+    for (int i = 0; i < gadget->m_nTrackCount; i++)
     {
-        if (trackInfo->track_number == track)
+        if (gadget->m_TrackTable[i].info.track_number == track)
         {
-            return *trackInfo; // Safe copy — all fields are POD
+            return gadget->m_TrackTable[i].info;
         }
     }
 
@@ -168,84 +142,14 @@ CUETrackInfo CDUtils::GetTrackInfoForTrack(CUSBCDGadget* gadget, int track)
 
 int CDUtils::GetLastTrackNumber(CUSBCDGadget* gadget)
 {
-    const CUETrackInfo *trackInfo = nullptr;
-    int lastTrack = 1;
-    gadget->cueParser.restart();
-    while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
-    {
-        if (trackInfo->track_number > lastTrack)
-            lastTrack = trackInfo->track_number;
-    }
-    return lastTrack;
+    if (gadget->m_nTrackCount == 0)
+        return 1;
+    return gadget->m_TrackTable[gadget->m_nTrackCount - 1].info.track_number;
 }
 
 u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
 {
-    const CUETrackInfo *trackInfo = nullptr;
-    u32 file_offset = 0;
-    u32 sector_length = 0;
-    u32 track_start = 0;
-
-    // Find the last track
-    gadget->cueParser.restart();
-    while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
-    {
-        file_offset = trackInfo->file_offset;
-        sector_length = trackInfo->sector_length;
-        track_start = trackInfo->data_start; // I think this is right
-    }
-
-    u64 deviceSize = gadget->m_pDevice->GetSize(); // Use u64 to support DVDs > 4GB
-
-    // Some corrupted cd images might have a cue that references track that are
-    // outside the bin.
-    if (deviceSize < file_offset)
-    {
-        CDROM_DEBUG_LOG("CDUtils::GetLeadoutLBA",
-                        "device size %llu < file_offset %lu, returning track_start %lu",
-                        deviceSize, (unsigned long)file_offset, (unsigned long)track_start);
-        return track_start;
-    }
-
-    // Guard against invalid sector length
-    if (sector_length == 0)
-    {
-        MLOGERR("CDUtils::GetLeadoutLBA",
-                "sector_length is 0, returning track_start %lu", (unsigned long)track_start);
-        return track_start;
-    }
-
-    // We know the start position of the last track, and we know its sector length
-    // and we know the file size, so we can work out the LBA of the end of the last track
-    // We can't just divide the file size by sector size because sectors lengths might
-    // not be consistent (e.g. multi-mode cd where track 1 is 2048
-    u64 remainingBytes = deviceSize - file_offset;
-    u64 lastTrackBlocks = remainingBytes / sector_length;
-
-    // Ensure the result fits in u32 before casting
-    if (lastTrackBlocks > 0xFFFFFFFF)
-    {
-        MLOGERR("CDUtils::GetLeadoutLBA",
-                "lastTrackBlocks overflow: %llu, capping to max u32", lastTrackBlocks);
-        lastTrackBlocks = 0xFFFFFFFF;
-    }
-
-    u32 ret = track_start + (u32)lastTrackBlocks; // Cast back to u32 for LBA (max ~2TB disc)
-
-    CDROM_DEBUG_LOG("CDUtils::GetLeadoutLBA",
-                    "device size is %llu, last track file offset is %lu, last track sector_length is %lu, "
-                    "last track track_start is %lu, lastTrackBlocks = %llu, returning = %lu",
-                    deviceSize, (unsigned long)file_offset, (unsigned long)sector_length,
-                    (unsigned long)track_start, lastTrackBlocks, (unsigned long)ret);
-
-    return ret;
-}
-
-int CDUtils::GetBlocksize(CUSBCDGadget* gadget)
-{
-    gadget->cueParser.restart();
-    const CUETrackInfo *trackInfo = gadget->cueParser.next_track();
-    return GetBlocksizeForTrack(gadget, *trackInfo);
+    return gadget->m_nLeadoutLBA;
 }
 
 int CDUtils::GetBlocksizeForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo)
@@ -261,28 +165,20 @@ int CDUtils::GetBlocksizeForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo)
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
-        MLOGNOTE("CDUtils::GetBlocksizeForTrack", "CUETrack_MODE1_2048");
+    case CUETrack_MODE2_2048:
         return 2048;
     case CUETrack_MODE1_2352:
-        MLOGNOTE("CDUtils::GetBlocksizeForTrack", "CUETrack_MODE1_2352");
-        return 2352;
     case CUETrack_MODE2_2352:
-        MLOGNOTE("CDUtils::GetBlocksizeForTrack", "CUETrack_MODE2_2352");
-        return 2352;
+    case CUETrack_CDI_2352:
     case CUETrack_AUDIO:
-        MLOGNOTE("CDUtils::GetBlocksizeForTrack", "CUETrack_AUDIO");
         return 2352;
+    case CUETrack_MODE2_2336:
+    case CUETrack_CDI_2336:
+        return 2336;
     default:
         MLOGERR("CDUtils::GetBlocksizeForTrack", "Track mode %d not handled", trackInfo.track_mode);
         return 0;
     }
-}
-
-int CDUtils::GetSkipbytes(CUSBCDGadget* gadget)
-{
-    gadget->cueParser.restart();
-    const CUETrackInfo *trackInfo = gadget->cueParser.next_track();
-    return GetSkipbytesForTrack(gadget, *trackInfo);
 }
 
 int CDUtils::GetSkipbytesForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo)
@@ -290,17 +186,17 @@ int CDUtils::GetSkipbytesForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo)
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
-        CDROM_DEBUG_LOG("CDUtils::GetSkipbytesForTrack", "CUETrack_MODE1_2048");
+    case CUETrack_MODE2_2048:
+    case CUETrack_AUDIO:
         return 0;
     case CUETrack_MODE1_2352:
-        CDROM_DEBUG_LOG("CDUtils::GetSkipbytesForTrack", "CUETrack_MODE1_2352");
-        return 16;
+        return 16; // sync (12) + header (4)
     case CUETrack_MODE2_2352:
-        CDROM_DEBUG_LOG("CDUtils::GetSkipbytesForTrack", "CUETrack_MODE2_2352");
-        return 24;
-    case CUETrack_AUDIO:
-        CDROM_DEBUG_LOG("CDUtils::GetSkipbytesForTrack", "CUETrack_AUDIO");
-        return 0;
+    case CUETrack_CDI_2352:
+        return 24; // sync (12) + header (4) + subheader (8)
+    case CUETrack_MODE2_2336:
+    case CUETrack_CDI_2336:
+        return 8; // stored without sync/header; skip subheader only
     default:
         CDROM_DEBUG_LOG("CDUtils::GetSkipbytesForTrack", "Track mode %d not handled", trackInfo.track_mode);
         return 0;
@@ -318,13 +214,10 @@ int CDUtils::GetMediumType(CUSBCDGadget* gadget)
     // Legacy Mac OS 9 needs actual detection
     bool hasAudio = false;
     bool hasData = false;
-    
-    gadget->cueParser.restart();
-    const CUETrackInfo *trackInfo = nullptr;
-    
-    while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
+
+    for (int i = 0; i < gadget->m_nTrackCount; i++)
     {
-        if (trackInfo->track_mode == CUETrack_AUDIO)
+        if (gadget->m_TrackTable[i].info.track_mode == CUETrack_AUDIO)
             hasAudio = true;
         else
             hasData = true;

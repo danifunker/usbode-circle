@@ -52,6 +52,7 @@ CUEParser::CUEParser(const char *cue_sheet) : m_cue_sheet(cue_sheet) {
 void CUEParser::restart() {
     m_parse_pos = m_cue_sheet;
     memset(&m_track_info, 0, sizeof(m_track_info));
+    m_track_info.session = 1;
 }
 
 const CUETrackInfo *CUEParser::next_track() {
@@ -60,7 +61,7 @@ const CUETrackInfo *CUEParser::next_track() {
 
 const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
     // Previous track info is needed to track file offset
-    uint32_t prev_track_start = m_track_info.track_start;
+    uint32_t prev_data_start = m_track_info.data_start;
     m_track_info.cumulative_offset += m_track_info.unstored_pregap_length;
     uint32_t prev_sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);  // Defaults to 2352 before first track
 
@@ -69,11 +70,21 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
     bool got_data = false;
     bool got_pause = false;  // true if a period of silence (INDEX 00) was encountered for a track
     while (!(got_track && got_data) && start_line()) {
-        if (strncasecmp(m_parse_pos, "FILE ", 5) == 0) {
+        if (strncasecmp(m_parse_pos, "REM SESSION", 11) == 0) {
+            const char *session_str = skip_space(m_parse_pos + 11);
+            char *endptr;
+            int session = strtoul(session_str, &endptr, 10);
+            if (session > 0) {
+                m_track_info.session = session;
+            }
+        } else if (strncasecmp(m_parse_pos, "FILE ", 5) == 0) {
             if (m_track_info.file_index > 0) {
                 // Take into account the length of last track in previous file.
                 uint32_t last_track_blocks = (prev_file_size - m_track_info.file_offset) / m_track_info.sector_length;
-                m_track_info.file_start = m_track_info.data_start + last_track_blocks;
+                // file_start is a file-frame coordinate: it must exclude the
+                // unstored pregaps accumulated so far, because INDEX handling
+                // below adds cumulative_offset on top of it.
+                m_track_info.file_start = (m_track_info.data_start - m_track_info.cumulative_offset) + last_track_blocks;
             }
 
             const char *p = read_quoted(m_parse_pos + 5, m_track_info.filename, sizeof(m_track_info.filename));
@@ -82,7 +93,6 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             m_track_info.file_offset = 0;
             m_track_info.file_index++;
             m_track_info.track_mode = CUETrack_AUDIO;
-            prev_track_start = 0;
             prev_sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);
             got_file = true;
         } else if (strncasecmp(m_parse_pos, "TRACK ", 6) == 0) {
@@ -131,8 +141,11 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
 
     if (got_track && got_data) {
         if (!got_file) {
-            // Advance file position by the length of previous track
-            m_track_info.file_offset += (uint64_t)(m_track_info.track_start - (prev_track_start + m_track_info.cumulative_offset)) * prev_sector_length;
+            // Advance file position from the previous track's INDEX 01 (which
+            // is where file_offset pointed) to the first stored frame of this
+            // track. Both values are absolute LBAs, so the cumulative
+            // unstored-pregap offsets cancel out.
+            m_track_info.file_offset += (uint64_t)(m_track_info.track_start - prev_data_start) * prev_sector_length;
         }
 
         // Advance file position by any stored pregap

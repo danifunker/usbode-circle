@@ -111,13 +111,30 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
         CDROM_DEBUG_LOG("SCSIRead::DoRead", "LBA=%u, cnt=%u, max_lba=%u",
                         gadget->m_nblock_address, gadget->m_nnumber_blocks, max_lba);
 
-        // Transfer Block Size is the size of data to return to host
-        // Block Size and Skip Bytes is worked out from cue sheet
-        // For a CDROM, this is always 2048
+        // READ(10)/(12) returns cooked 2048-byte sectors. The stored sector
+        // geometry depends on the track containing the LBA, not on track 1.
+        CUETrackInfo trackInfo = CDUtils::GetTrackInfoForLBA(gadget, gadget->m_nblock_address);
+        if (trackInfo.track_number == -1)
+        {
+            gadget->setSenseData(0x05, 0x21, 0x00); // LOGICAL BLOCK ADDRESS OUT OF RANGE
+            gadget->sendCheckCondition();
+            return;
+        }
+        if (trackInfo.track_mode == CUETrack_AUDIO)
+        {
+            CDROM_DEBUG_LOG("SCSIRead::DoRead", "Cooked read of audio LBA %u rejected",
+                            gadget->m_nblock_address);
+            gadget->setSenseData(0x05, 0x64, 0x00); // ILLEGAL MODE FOR THIS TRACK
+            gadget->sendCheckCondition();
+            return;
+        }
+
         gadget->transfer_block_size = 2048;
-        gadget->block_size = gadget->data_block_size; // set at SetDevice
-        gadget->skip_bytes = gadget->data_skip_bytes; // set at SetDevice
+        gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, trackInfo);
+        gadget->skip_bytes = CDUtils::GetSkipbytesForTrack(gadget, trackInfo);
+        gadget->skip_bytes_per_track = TRUE;
         gadget->mcs = 0;
+        gadget->sub_channel_selection = 0;
         gadget->m_nbyteCount = gadget->m_CBW.dCBWDataTransferLength;
 
         // Recalculate byte count based on potentially truncated block count
@@ -308,6 +325,7 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
 
     // Subchannel selection from byte 10
     u8 subChannelSelection = gadget->m_CBW.CBWCB[10] & 0x07;
+    gadget->sub_channel_selection = subChannelSelection;
 
     CDROM_DEBUG_LOG("SCSIRead::ReadCD",
                     "READ CD: USB=%s, LBA=%u, blocks=%u, type=0x%02x, MCS=0x%02x, subchan=0x%02x",
@@ -315,18 +333,36 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
                     gadget->m_nblock_address, gadget->m_nnumber_blocks,
                     expectedSectorType, gadget->mcs, subChannelSelection);
 
-    // Check subchannel request compatibility
-    if (subChannelSelection != 0 && !gadget->m_pDevice->HasSubchannelData())
+    // Subchannel requests are always satisfiable: stored data is passed
+    // through when the image has it, otherwise Q/P-W data is synthesized
+    // from the TOC (a real drive can always deliver subchannel data).
+
+    // Validate LBA range against the disc, not the raw image size: the image
+    // byte space is no longer uniform (multi-file images, virtual gaps).
+    u32 max_lba = CDUtils::GetLeadoutLBA(gadget);
+    if (gadget->m_nblock_address >= max_lba)
     {
-        CDROM_DEBUG_LOG("SCSIRead::ReadCD",
-                        "READ CD: Subchannel requested but image has no subchannel data");
-        gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+        MLOGERR("SCSIRead::ReadCD", "LBA %u beyond disc boundary (max=%u)",
+                gadget->m_nblock_address, max_lba);
+        gadget->setSenseData(0x05, 0x21, 0x00); // LOGICAL BLOCK ADDRESS OUT OF RANGE
         gadget->sendCheckCondition();
         return;
+    }
+    if (gadget->m_nblock_address + gadget->m_nnumber_blocks > max_lba)
+    {
+        CDROM_DEBUG_LOG("SCSIRead::ReadCD", "Read truncated: LBA=%u, requested=%u, max=%u",
+                        gadget->m_nblock_address, gadget->m_nnumber_blocks, max_lba);
+        gadget->m_nnumber_blocks = max_lba - gadget->m_nblock_address;
     }
 
     // Get track info for validation
     CUETrackInfo trackInfo = CDUtils::GetTrackInfoForLBA(gadget, gadget->m_nblock_address);
+    if (trackInfo.track_number == -1)
+    {
+        gadget->setSenseData(0x05, 0x21, 0x00); // LOGICAL BLOCK ADDRESS OUT OF RANGE
+        gadget->sendCheckCondition();
+        return;
+    }
 
     // Verify sector type if specified
     if (expectedSectorType != 0)
@@ -367,19 +403,8 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
         }
     }
 
-    // Ensure read doesn't exceed image size
-    u64 readEnd = (u64)gadget->m_nblock_address * trackInfo.sector_length +
-                  (u64)gadget->m_nnumber_blocks * trackInfo.sector_length;
-    if (readEnd > gadget->m_pDevice->GetSize())
-    {
-        MLOGNOTE("SCSIRead::ReadCD",
-                 "READ CD: Read exceeds image size");
-        gadget->setSenseData(0x05, 0x21, 0x00); // LOGICAL BLOCK ADDRESS OUT OF RANGE
-        gadget->sendCheckCondition();
-        return;
-    }
-
     // Determine sector parameters based on expected type or track mode
+    gadget->skip_bytes_per_track = FALSE;
     switch (expectedSectorType)
     {
     case 0x01: // CD-DA
@@ -392,6 +417,7 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
         gadget->skip_bytes = CDUtils::GetSkipbytesForTrack(gadget, trackInfo);
         gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, trackInfo);
         gadget->transfer_block_size = 2048;
+        gadget->skip_bytes_per_track = TRUE;
         break;
 
     case 0x03: // Mode 2 formless
@@ -404,6 +430,7 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
         gadget->skip_bytes = CDUtils::GetSkipbytesForTrack(gadget, trackInfo);
         gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, trackInfo);
         gadget->transfer_block_size = 2048;
+        gadget->skip_bytes_per_track = TRUE;
         break;
 
     case 0x05: // Mode 2 form 2
@@ -432,23 +459,21 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
     // Add subchannel data size if requested
     if (subChannelSelection != 0)
     {
-        // Subchannel selections:
-        // 0x00 = No subchannel
-        // 0x01 = Raw P-W (96 bytes)
-        // 0x02 = Q subchannel (16 bytes) - formatted
-        // 0x04 = P-W subchannel (96 bytes) - deinterleaved and error corrected
+        // Subchannel selections (MMC):
+        // 0x01 = Raw interleaved P-W (96 bytes)
+        // 0x02 = Formatted Q (16 bytes)
+        // 0x04 = De-interleaved/corrected P-W (96 bytes)
 
         CDROM_DEBUG_LOG("SCSIRead::ReadCD",
                         "READ CD: Adding subchannel data (type 0x%02x)", subChannelSelection);
 
-        // Most requests are for raw P-W (96 bytes)
-        if (subChannelSelection == 0x01)
+        if (subChannelSelection == 0x01 || subChannelSelection == 0x04)
         {
-            gadget->transfer_block_size += 96; // Add raw P-W subchannel
+            gadget->transfer_block_size += 96;
         }
         else if (subChannelSelection == 0x02)
         {
-            gadget->transfer_block_size += 16; // Add formatted Q subchannel
+            gadget->transfer_block_size += 16;
         }
         else
         {

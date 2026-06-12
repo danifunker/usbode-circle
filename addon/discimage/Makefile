@@ -6,7 +6,7 @@ STDLIBHOME = $(USBODEHOME)/circle-stdlib
 NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
-OBJS    = cuebinfile.o mdsfile.o chdfile.o util.o
+OBJS    = cuebinfile.o mdsfile.o chdfile.o ccdfile.o util.o subchannel.o
 
 $(info *** discimage Makefile Diagnostics ***)
 $(info OBJS = $(OBJS))
@@ -21,5 +21,6 @@ include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
 
 CFLAGS += -I $(USBODEHOME)/addon/libchdr-src/include
+CFLAGS += -I $(USBODEHOME)/addon
 
 -include $(DEPS)

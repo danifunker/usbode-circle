@@ -149,7 +149,7 @@ void SCSITOC::FormatRawTOCEntry(CUSBCDGadget *gadget, const CUETrackInfo *track,
         control_adr = 0x10; // Audio track
     }
 
-    dest[0] = 0x01; // Session always 1
+    dest[0] = track->session;
     dest[1] = control_adr;
     dest[2] = 0x00;                // TNO, always 0
     dest[3] = track->track_number; // POINT
@@ -166,6 +166,24 @@ void SCSITOC::FormatRawTOCEntry(CUSBCDGadget *gadget, const CUETrackInfo *track,
     {
         CDUtils::LBA2MSF(track->data_start, &dest[8], false);
     }
+}
+
+// A0/A1/A2 descriptor for the Full TOC response. pmin/psec/pframe are the
+// PMIN/PSEC/PFRAME fields, whose meaning depends on the point.
+void SCSITOC::FormatRawTOCLeadEntry(uint8_t session, uint8_t point, uint8_t control,
+                                    uint8_t pmin, uint8_t psec, uint8_t pframe, uint8_t *dest)
+{
+    dest[0] = session;
+    dest[1] = control;
+    dest[2] = 0x00; // TNO
+    dest[3] = point;
+    dest[4] = 0x00; // ATIME (unused)
+    dest[5] = 0x00;
+    dest[6] = 0x00;
+    dest[7] = 0x00; // HOUR
+    dest[8] = pmin;
+    dest[9] = psec;
+    dest[10] = pframe;
 }
 
 void SCSITOC::DoReadCDText(CUSBCDGadget *gadget, uint16_t allocationLength)
@@ -321,12 +339,27 @@ void SCSITOC::DoReadSessionInfo(CUSBCDGadget *gadget, bool msf, uint16_t allocat
         0x00, 0x0A, 0x01, 0x01, 0x00, 0x14, 0x01, 0x00,
         0x00, 0x00, 0x00, 0x00};
 
-    gadget->cueParser.restart();
-    const CUETrackInfo *trackinfo = gadget->cueParser.next_track();
+    // The descriptor is the first track of the LAST complete session: this
+    // is what hosts use to find the filesystem on multisession discs.
+    sessionTOC[3] = gadget->m_nSessionCount;
+
+    const CUETrackInfo *trackinfo = nullptr;
+    for (int i = 0; i < gadget->m_nTrackCount; i++)
+    {
+        if (gadget->m_TrackTable[i].info.session == gadget->m_nSessionCount)
+        {
+            trackinfo = &gadget->m_TrackTable[i].info;
+            break;
+        }
+    }
+
     if (trackinfo)
     {
-        CDROM_DEBUG_LOG("SCSITOC::DoReadSessionInfo", "First track: num=%d, start=%u",
-                        trackinfo->track_number, trackinfo->data_start);
+        CDROM_DEBUG_LOG("SCSITOC::DoReadSessionInfo", "First track of session %d: num=%d, start=%u",
+                        gadget->m_nSessionCount, trackinfo->track_number, trackinfo->data_start);
+
+        sessionTOC[5] = (trackinfo->track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+        sessionTOC[6] = trackinfo->track_number;
 
         if (msf)
         {
@@ -370,7 +403,7 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget *gadget, uint8_t session, uint16_t allo
         return;
     }
 
-    if (session > 1)
+    if (session > gadget->m_nSessionCount)
     {
         CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "INVALID SESSION %d", session);
         gadget->setSenseData(0x05, 0x24, 0x00);
@@ -378,68 +411,93 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget *gadget, uint8_t session, uint16_t allo
         return;
     }
 
-    // Base full TOC structure with A0/A1/A2 descriptors
-    uint8_t fullTOCBase[37] = {
-        0x00, 0x2E, 0x01, 0x01,
-        0x01, 0x14, 0x00, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-        0x01, 0x14, 0x00, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-        0x01, 0x14, 0x00, 0xA2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    // Header: first/last complete session number on the disc
+    gadget->m_InBuffer[2] = 0x01;
+    gadget->m_InBuffer[3] = gadget->m_nSessionCount;
+    uint32_t len = 4;
 
-    uint32_t len = sizeof(fullTOCBase);
-    memcpy(gadget->m_InBuffer, fullTOCBase, len);
-
-    // Find first and last tracks
-    int firsttrack = -1;
-    CUETrackInfo lasttrack = {0};
-    const CUETrackInfo *trackinfo;
-
-    gadget->cueParser.restart();
-    while ((trackinfo = gadget->cueParser.next_track()) != nullptr)
+    for (int s = 1; s <= gadget->m_nSessionCount; s++)
     {
-        if (firsttrack < 0)
+        if (session != 0 && session != s)
+            continue;
+
+        // Track range of this session
+        int firstIdx = -1, lastIdx = -1;
+        for (int i = 0; i < gadget->m_nTrackCount; i++)
         {
-            firsttrack = trackinfo->track_number;
-            if (trackinfo->track_mode == CUETrack_AUDIO)
+            if (gadget->m_TrackTable[i].info.session == s)
             {
-                gadget->m_InBuffer[5] = 0x10;  // A0 control for audio
-                gadget->m_InBuffer[16] = 0x10; // A1 control for audio
-                gadget->m_InBuffer[27] = 0x10; // A2 control for audio
+                if (firstIdx < 0)
+                    firstIdx = i;
+                lastIdx = i;
             }
-            CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "First track: %d, mode=%d", firsttrack, trackinfo->track_mode);
         }
-        lasttrack = *trackinfo;
+        if (firstIdx < 0)
+            continue;
 
-        // Add track descriptor
-        FormatRawTOCEntry(gadget, trackinfo, &gadget->m_InBuffer[len], useBCD);
+        const CUETrackInfo &first = gadget->m_TrackTable[firstIdx].info;
+        const CUETrackInfo &last = gadget->m_TrackTable[lastIdx].info;
+        uint8_t sessionControl = (first.track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
 
-        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "  Track %d: mode=%d, start=%u",
-                        trackinfo->track_number, trackinfo->track_mode, trackinfo->data_start);
+        // Disc type in A0's PSEC: 0x00 = CD-DA/CD-ROM, 0x20 = CD-ROM XA
+        uint8_t discType = 0x00;
+        if (first.track_mode == CUETrack_MODE2_2352 || first.track_mode == CUETrack_MODE2_2336 ||
+            first.track_mode == CUETrack_MODE2_2048 || first.track_mode == CUETrack_MODE2_2324)
+        {
+            discType = 0x20;
+        }
 
+        // Lead-out start of this session: for the last session this is the
+        // disc leadout; for earlier ones it ends one inter-session gap
+        // before the next session's first track.
+        u32 sessionLeadout;
+        if (s == gadget->m_nSessionCount)
+        {
+            sessionLeadout = CDUtils::GetLeadoutLBA(gadget);
+        }
+        else
+        {
+            u32 nextStart = 0;
+            for (int i = 0; i < gadget->m_nTrackCount; i++)
+            {
+                if (gadget->m_TrackTable[i].info.session == s + 1)
+                {
+                    nextStart = gadget->m_TrackTable[i].info.track_start;
+                    break;
+                }
+            }
+            u32 gap = CDUtils::GetSessionGapFrames(s);
+            sessionLeadout = (nextStart > gap) ? (nextStart - gap) : nextStart;
+        }
+
+        uint8_t leadoutMSF[3];
+        if (useBCD)
+            CDUtils::LBA2MSFBCD(sessionLeadout, leadoutMSF, false);
+        else
+            CDUtils::LBA2MSF(sessionLeadout, leadoutMSF, false);
+
+        FormatRawTOCLeadEntry(s, 0xA0, sessionControl, first.track_number, discType, 0,
+                              &gadget->m_InBuffer[len]);
         len += 11;
-    }
+        FormatRawTOCLeadEntry(s, 0xA1, sessionControl, last.track_number, 0, 0,
+                              &gadget->m_InBuffer[len]);
+        len += 11;
+        FormatRawTOCLeadEntry(s, 0xA2, sessionControl, leadoutMSF[0], leadoutMSF[1], leadoutMSF[2],
+                              &gadget->m_InBuffer[len]);
+        len += 11;
 
-    // Update A0, A1, A2 descriptors
-    gadget->m_InBuffer[12] = firsttrack;
-    gadget->m_InBuffer[23] = lasttrack.track_number;
+        for (int i = firstIdx; i <= lastIdx; i++)
+        {
+            const CUETrackInfo &track = gadget->m_TrackTable[i].info;
+            FormatRawTOCEntry(gadget, &track, &gadget->m_InBuffer[len], useBCD);
+            len += 11;
 
-    CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "Header: First=%d, Last=%d. A0: First=%d, A1: Last=%d",
-                    firsttrack, lasttrack.track_number, firsttrack, lasttrack.track_number);
+            CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "  Session %d Track %d: mode=%d, start=%u",
+                            s, track.track_number, track.track_mode, track.data_start);
+        }
 
-    // A2: Leadout position
-    u32 leadoutLBA = CDUtils::GetLeadoutLBA(gadget);
-    CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "A2: Lead-out LBA=%u", leadoutLBA);
-
-    if (useBCD)
-    {
-        CDUtils::LBA2MSFBCD(leadoutLBA, &gadget->m_InBuffer[34], false);
-        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "A2 MSF (BCD): %02x:%02x:%02x",
-                        gadget->m_InBuffer[34], gadget->m_InBuffer[35], gadget->m_InBuffer[36]);
-    }
-    else
-    {
-        CDUtils::LBA2MSF(leadoutLBA, &gadget->m_InBuffer[34], false);
-        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "A2 MSF: %02x:%02x:%02x",
-                        gadget->m_InBuffer[34], gadget->m_InBuffer[35], gadget->m_InBuffer[36]);
+        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "Session %d: tracks %d-%d, leadout=%u",
+                        s, first.track_number, last.track_number, sessionLeadout);
     }
 
     // Update TOC length
@@ -490,8 +548,18 @@ void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
     // Update disc information with current media state
     gadget->m_DiscInfoReply.disc_status = 0x0E; // Complete disc, finalized, last session complete
     gadget->m_DiscInfoReply.first_track_number = 0x01;
-    gadget->m_DiscInfoReply.number_of_sessions = 0x01; // Single session
-    gadget->m_DiscInfoReply.first_track_last_session = 0x01;
+    gadget->m_DiscInfoReply.number_of_sessions = gadget->m_nSessionCount;
+
+    int firstTrackLastSession = 1;
+    for (int i = 0; i < gadget->m_nTrackCount; i++)
+    {
+        if (gadget->m_TrackTable[i].info.session == gadget->m_nSessionCount)
+        {
+            firstTrackLastSession = gadget->m_TrackTable[i].info.track_number;
+            break;
+        }
+    }
+    gadget->m_DiscInfoReply.first_track_last_session = firstTrackLastSession;
     gadget->m_DiscInfoReply.last_track_last_session = CDUtils::GetLastTrackNumber(gadget);
 
     // Set disc type based on track 1 mode
@@ -565,13 +633,14 @@ void SCSITOC::DoReadTrackInformation(CUSBCDGadget *gadget, u8 addressType, u32 a
     }
     else if (addressType == 0x02)
     {
-        // Session number - we only support session 1
-        if (address == 1)
+        // Session number: return the first track of that session
+        for (int i = 0; i < gadget->m_nTrackCount; i++)
         {
-            gadget->cueParser.restart();
-            const CUETrackInfo *first = gadget->cueParser.next_track();
-            if (first)
-                trackInfo = *first;
+            if (gadget->m_TrackTable[i].info.session == (int)address)
+            {
+                trackInfo = gadget->m_TrackTable[i].info;
+                break;
+            }
         }
     }
 
@@ -610,7 +679,7 @@ void SCSITOC::DoReadTrackInformation(CUSBCDGadget *gadget, u8 addressType, u32 a
     // Fill response
     response.dataLength = htons(0x002E); // 46 bytes
     response.logicalTrackNumberLSB = trackInfo.track_number;
-    response.sessionNumberLSB = 0x01;
+    response.sessionNumberLSB = trackInfo.session;
 
     // Track mode
     if (trackInfo.track_mode == CUETrack_AUDIO)
@@ -796,20 +865,63 @@ void SCSITOC::ReadSubChannel(CUSBCDGadget *gadget)
 
     case 0x02:
     {
-        // Media Catalog Number (UPC Bar Code)
+        // Media Catalog Number (UPC bar code). Always succeed; MCVal=0
+        // signals "no catalog number present" (real-drive behavior).
+        TUSBCDSubChannelHeaderReply header;
+        memset(&header, 0, sizeof(header));
+        header.audioStatus = 0x15;
+        header.dataLength = htons(20);
+
+        u8 data[20];
+        memset(data, 0, sizeof(data));
+        data[0] = 0x02; // data format code
+
+        char mcn[14];
+        if (gadget->m_pDevice != nullptr && gadget->m_pDevice->GetMCN(mcn))
+        {
+            data[4] = 0x80; // MCVal
+            memcpy(&data[5], mcn, 13);
+        }
+
+        memcpy(gadget->m_InBuffer, &header, SIZE_SUBCHANNEL_HEADER_REPLY);
+        memcpy(gadget->m_InBuffer + SIZE_SUBCHANNEL_HEADER_REPLY, data, sizeof(data));
+        length = SIZE_SUBCHANNEL_HEADER_REPLY + sizeof(data);
         break;
     }
 
     case 0x03:
     {
-        // International Standard Recording Code (ISRC)
-        // TODO We're ignoring track number because that's only valid here
+        // International Standard Recording Code; TCVal=0 = none present
+        unsigned int track_number = gadget->m_CBW.CBWCB[6];
+
+        TUSBCDSubChannelHeaderReply header;
+        memset(&header, 0, sizeof(header));
+        header.audioStatus = 0x15;
+        header.dataLength = htons(20);
+
+        u8 data[20];
+        memset(data, 0, sizeof(data));
+        data[0] = 0x03; // data format code
+        data[1] = track_number;
+
+        char isrc[13];
+        if (gadget->m_pDevice != nullptr && gadget->m_pDevice->GetISRC(track_number, isrc))
+        {
+            data[4] = 0x80; // TCVal
+            memcpy(&data[5], isrc, 12);
+        }
+
+        memcpy(gadget->m_InBuffer, &header, SIZE_SUBCHANNEL_HEADER_REPLY);
+        memcpy(gadget->m_InBuffer + SIZE_SUBCHANNEL_HEADER_REPLY, data, sizeof(data));
+        length = SIZE_SUBCHANNEL_HEADER_REPLY + sizeof(data);
         break;
     }
 
     default:
     {
-        // TODO Error
+        gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+        gadget->sendCheckCondition();
+        return;
     }
     }
 

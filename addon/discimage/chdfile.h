@@ -11,14 +11,19 @@
 #include "filetype.h"
 #include "chdevice.h"
 
-// Internal track info structure
+// Internal track info structure (offset semantics follow MAME's
+// cdrom_file: logical/chd frame accounting with 4-frame track padding)
 struct CHDTrackInfo {
     u32 trackNumber;
-    u32 startLBA;
-    u32 frames;
-    u32 pregap;
-    u32 trackType;  // CD_TRACK_MODE1, CD_TRACK_AUDIO, etc.
-    u32 dataSize;   // bytes per frame
+    u32 frames;        // stored frames (includes pregap when pregapStored)
+    u32 pregap;        // pregap length in frames
+    bool pregapStored; // PGTYPE starts with 'V': pregap frames are in the CHD
+    u32 trackType;     // CD_TRACK_MODE1, CD_TRACK_AUDIO, etc.
+    u32 dataSize;      // logical bytes per frame (2048 cooked, 2352 raw, ...)
+    u32 track_start;   // LBA of the first stored frame (INDEX 00 if stored pregap)
+    u32 data_start;    // LBA of INDEX 01
+    u32 chdFrameStart; // CHD frame index of the first stored frame
+    u64 vstart;        // virtual byte offset of the first stored frame
 };
 
 /// Implementation of CHD image support (MAME compressed hunks format)
@@ -64,8 +69,8 @@ class CCHDFileDevice : public ICHDDevice {
     char* m_cue_sheet;
     
     u64 m_currentOffset;
-    u32 m_frameSize;
-    
+    u64 m_vsize;
+
     // Track info parsed from CHD metadata
     CHDTrackInfo m_tracks[CD_MAX_TRACKS];
     int m_numTracks;
@@ -74,7 +79,6 @@ class CCHDFileDevice : public ICHDDevice {
     u8* m_hunkBuffer;
     u32 m_hunkSize;
     u32 m_cachedHunkNum;
-    int m_lastTrackIndex;
     
     // Helper to parse CHD track metadata
     bool ParseTrackMetadata();

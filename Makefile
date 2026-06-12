@@ -65,7 +65,7 @@ endif
 # Define USBODE addon modules (from /addon directory) - gitinfo built separately first
 USBODE_ADDONS = sdcardservice cdromservice scsitbservice usbcdgadget \
                 shutdown usbmsdgadget \
-				lzma zlib zstd libchdr discimage mdsparser cueparser filelogdaemon \
+				lzma zlib zstd libchdr discimage mdsparser ccdparser cueparser filelogdaemon \
                 webserver ftpserver configservice libsh1106 libssd1306 displayservice cdplayer \
                 upgradestatus setupstatus discart
 

@@ -6,6 +6,7 @@
 #include <usbcdgadget/usbcdgadget.h>
 #include <cdplayer/cdplayer.h>
 #include <usbcdgadget/cd_utils.h>
+#include <discimage/subchannel.h>
 #include <circle/logger.h>
 #include <circle/util.h>
 #include <circle/sched/scheduler.h>
@@ -106,7 +107,43 @@ void CUSBCDGadget::Update()
                                 old_count, m_nnumber_blocks);
             }
 
-            offset = m_pDevice->Seek(block_size * m_nblock_address);
+            // Resolve the track containing the current position: byte offsets
+            // and (for cooked reads) sector geometry are per-track.
+            u32 track_end_lba = 0;
+            CUETrackInfo track = CDUtils::GetTrackInfoForLBA(this, m_nblock_address, &track_end_lba);
+            if (track.track_number == -1 || track_end_lba <= m_nblock_address)
+            {
+                MLOGERR("UpdateRead", "No track for LBA %u", m_nblock_address);
+                setSenseData(0x05, 0x21, 0x00);
+                sendCheckCondition();
+                return;
+            }
+
+            if (skip_bytes_per_track)
+            {
+                // Cooked 2048-byte read crossing into this track
+                if (track.track_mode == CUETrack_AUDIO)
+                {
+                    MLOGERR("UpdateRead", "Cooked read entered audio track %d at LBA %u",
+                            track.track_number, m_nblock_address);
+                    setSenseData(0x05, 0x64, 0x00); // ILLEGAL MODE FOR THIS TRACK
+                    sendCheckCondition();
+                    return;
+                }
+                block_size = CDUtils::GetBlocksizeForTrack(this, track);
+                skip_bytes = CDUtils::GetSkipbytesForTrack(this, track);
+            }
+
+            if (block_size <= 0)
+            {
+                MLOGERR("UpdateRead", "Unsupported track mode %d at LBA %u",
+                        track.track_mode, m_nblock_address);
+                setSenseData(0x05, 0x64, 0x00);
+                sendCheckCondition();
+                return;
+            }
+
+            offset = m_pDevice->Seek(CUEByteOffset(track, m_nblock_address));
 
             if (offset != (u64)(-1))
             {
@@ -118,29 +155,25 @@ void CUSBCDGadget::Update()
                 if (blocks_to_read_in_batch > maxBlocks)
                 {
                     blocks_to_read_in_batch = maxBlocks;
-                    m_nnumber_blocks -= maxBlocks;
                 }
-                else
+
+                // Cap the batch at the end of the current track: the next
+                // track may have different geometry or storage location, so
+                // it gets its own batch (this loop runs once per batch).
+                u32 track_remaining = track_end_lba - m_nblock_address;
+                if (blocks_to_read_in_batch > track_remaining)
                 {
-                    m_nnumber_blocks = 0;
+                    blocks_to_read_in_batch = track_remaining;
+                }
+
+                u32 total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
+                if (total_transfer_size > maxBufferSize)
+                {
+                    blocks_to_read_in_batch = maxBufferSize / transfer_block_size;
+                    total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
                 }
 
                 u32 total_batch_size = blocks_to_read_in_batch * block_size;
-                u32 total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
-
-                if (total_transfer_size > maxBufferSize)
-                {
-                    u32 safe_blocks = maxBufferSize / transfer_block_size;
-                    blocks_to_read_in_batch = safe_blocks;
-                    total_batch_size = blocks_to_read_in_batch * block_size;
-                    total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
-
-                    if (m_nnumber_blocks > 0)
-                    {
-                        m_nnumber_blocks += (maxBlocks - blocks_to_read_in_batch);
-                    }
-                }
-
                 if (total_batch_size > MaxInMessageSize)
                 {
                     MLOGERR("UpdateRead", "BUFFER OVERFLOW: %u > %u",
@@ -148,8 +181,9 @@ void CUSBCDGadget::Update()
                     blocks_to_read_in_batch = MaxInMessageSize / block_size;
                     total_batch_size = blocks_to_read_in_batch * block_size;
                     total_transfer_size = blocks_to_read_in_batch * transfer_block_size;
-                    m_nnumber_blocks = 0;
                 }
+
+                m_nnumber_blocks -= blocks_to_read_in_batch;
 
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
 
@@ -217,23 +251,68 @@ void CUSBCDGadget::Update()
                 u8 *dest_ptr = m_InBuffer;
                 u32 total_copied = 0;
 
-                // Check if we need subchannel data interleaved with sectors
-                u8 subChannelSelection = mcs & 0x07;
-                bool need_subchannels = (subChannelSelection != 0 && m_pDevice->HasSubchannelData());
-                
-                // Calculate base sector size (without subchannel)
-                u32 base_sector_size = transfer_block_size;
-                if (need_subchannels && subChannelSelection == 0x01) {
-                    base_sector_size -= 96; // Remove subchannel size to get just sector data
-                }
+                // Subchannel data requested via READ CD byte 10
+                u8 subSel = sub_channel_selection;
+                u32 sub_size = (subSel == 0x01 || subSel == 0x04) ? 96 : (subSel == 0x02 ? 16 : 0);
 
-                if (transfer_block_size == block_size && skip_bytes == 0 && !need_subchannels)
+                // Sector payload size without the appended subchannel data
+                u32 base_sector_size = transfer_block_size - sub_size;
+                bool device_has_subs = m_pDevice->HasSubchannelData();
+
+                // Append one sector's subchannel data in the requested format:
+                // stored data passed through when the image has it, otherwise
+                // synthesized from the track table.
+                auto appendSubchannel = [&](u32 current_lba) {
+                    u8 rawsub[96];
+                    bool have = device_has_subs &&
+                                m_pDevice->ReadSubchannel(current_lba, rawsub) == 96;
+                    if (!have)
+                    {
+                        CUETrackInfo t = CDUtils::GetTrackInfoForLBA(this, current_lba);
+                        QSynthInfo qi;
+                        qi.control = (t.track_mode == CUETrack_AUDIO) ? 0x00 : 0x04;
+                        qi.tno = (t.track_number > 0) ? t.track_number : 1;
+                        qi.index = (current_lba < t.data_start) ? 0 : 1;
+                        qi.rel_lba = (current_lba < t.data_start) ? (t.data_start - current_lba)
+                                                                  : (current_lba - t.data_start);
+                        qi.abs_lba = current_lba;
+                        BuildRawPW96(qi, rawsub);
+                    }
+
+                    if (subSel == 0x01)
+                    {
+                        memcpy(dest_ptr, rawsub, 96);
+                        dest_ptr += 96;
+                        total_copied += 96;
+                    }
+                    else if (subSel == 0x02)
+                    {
+                        u8 linear[96];
+                        DeinterleavePW96(rawsub, linear);
+                        memcpy(dest_ptr, &linear[12], 12); // Q channel
+                        memset(dest_ptr + 12, 0, 4);
+                        dest_ptr += 16;
+                        total_copied += 16;
+                    }
+                    else // 0x04: de-interleaved P-W
+                    {
+                        u8 linear[96];
+                        DeinterleavePW96(rawsub, linear);
+                        memcpy(dest_ptr, linear, 96);
+                        dest_ptr += 96;
+                        total_copied += 96;
+                    }
+                };
+
+                if (transfer_block_size == block_size && skip_bytes == 0 && sub_size == 0)
                 {
                     memcpy(dest_ptr, m_FileChunk, total_transfer_size);
                     total_copied = total_transfer_size;
                 }
-                else if (transfer_block_size > block_size && !need_subchannels)
+                else if (base_sector_size > (u32)block_size)
                 {
+                    // Host wants more than is stored per sector (2048-byte
+                    // image, raw-style read): reconstruct sync/header
                     for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
                     {
                         u8 sector2352[2352] = {0};
@@ -267,43 +346,26 @@ void CUSBCDGadget::Update()
                             offset += 288;
                         }
 
-                        memcpy(dest_ptr, sector2352 + skip_bytes, transfer_block_size);
-                        dest_ptr += transfer_block_size;
-                        total_copied += transfer_block_size;
+                        memcpy(dest_ptr, sector2352 + skip_bytes, base_sector_size);
+                        dest_ptr += base_sector_size;
+                        total_copied += base_sector_size;
+
+                        if (sub_size != 0)
+                            appendSubchannel(m_nblock_address + i);
                     }
                 }
                 else
                 {
-                    // Standard copy with optional subchannel interleaving
+                    // Standard copy with optional subchannel append
                     for (u32 i = 0; i < blocks_to_read_in_batch; ++i)
                     {
-                        u32 current_lba = m_nblock_address + i;
-                        
-                        // Copy sector data
                         memcpy(dest_ptr, m_FileChunk + (i * block_size) + skip_bytes,
                                base_sector_size);
                         dest_ptr += base_sector_size;
                         total_copied += base_sector_size;
-                        
-                        // Immediately follow with subchannel data if requested
-                        if (need_subchannels && subChannelSelection == 0x01)
-                        {
-                            u8 subchannel_buf[96];
-                            int sc_result = m_pDevice->ReadSubchannel(current_lba, subchannel_buf);
-                            
-                            if (sc_result == 96)
-                            {
-                                memcpy(dest_ptr, subchannel_buf, 96);
-                            }
-                            else
-                            {
-                                CDROM_DEBUG_LOG("UpdateRead", "Subchannel read failed for LBA %u, zero-filling",
-                                                current_lba);
-                                memset(dest_ptr, 0, 96);
-                            }
-                            dest_ptr += 96;
-                            total_copied += 96;
-                        }
+
+                        if (sub_size != 0)
+                            appendSubchannel(m_nblock_address + i);
                     }
                 }
 
@@ -368,14 +430,14 @@ void CUSBCDGadget::Update()
                 }
                 
                 // Debug subchannel data for SafeDisc troubleshooting
-                if (need_subchannels && m_bDebugLogging && blocks_to_read_in_batch > 0)
+                if (sub_size != 0 && m_bDebugLogging && blocks_to_read_in_batch > 0)
                 {
                     u32 start_lba = m_nblock_address - blocks_to_read_in_batch;
                     CDROM_DEBUG_LOG("UpdateRead", "=== SUBCHANNEL DEBUG: LBA %u ===", start_lba);
                     CDROM_DEBUG_LOG("UpdateRead", "transfer_block_size=%u, base_sector_size=%u, subchan_sel=0x%02x",
-                                    transfer_block_size, base_sector_size, subChannelSelection);
+                                    transfer_block_size, base_sector_size, subSel);
 
-                        
+
                     if (total_copied >= base_sector_size + 96)
                     {
                         u8* subchan_ptr = m_InBuffer + base_sector_size;

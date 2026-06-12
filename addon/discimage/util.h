@@ -16,10 +16,16 @@ bool hasMdsExtension(const char* imageName);
 bool hasIsoExtension(const char* imageName);
 bool hasCueExtension(const char* imageName);
 bool hasChdExtension(const char* imageName);
+bool hasCcdExtension(const char* imageName);
+bool hasImgExtension(const char* imageName);
 bool hasToastExtension(const char* imageName);
 void change_extension_to_cue(char* fullPath);
 void change_extension_to_bin(char* fullPath);
 bool hasDvdHint(const char* imageName);
+
+// Read an entire file into a newly allocated, null-terminated buffer.
+// Caller owns *out_str (delete[]).
+bool ReadFileToString(const char* fullPath, char** out_str);
 
 // Image loading - returns base IImageDevice interface
 IImageDevice* loadImageDevice(const char* imageName);
@@ -28,6 +34,7 @@ IImageDevice* loadImageDevice(const char* imageName);
 IImageDevice* loadMDSFileDevice(const char* imageName);
 IImageDevice* loadCueBinIsoFileDevice(const char* imageName);
 IImageDevice* loadCHDFileDevice(const char* imageName);
+IImageDevice* loadCCDFileDevice(const char* imageName);
 
 class FatFsOptimizer {
 public:

@@ -24,6 +24,7 @@
 #include "cuebinfile.h"
 #include "mdsfile.h"
 #include "chdfile.h"
+#include "ccdfile.h"
 
 LOGMODULE("discimage-util");
 
@@ -89,6 +90,30 @@ bool hasChdExtension(const char* imageName) {
                tolower(ext[1]) == 'c' &&
                tolower(ext[2]) == 'h' &&
                tolower(ext[3]) == 'd';
+    }
+    return false;
+}
+
+bool hasCcdExtension(const char* imageName) {
+    size_t len = strlen(imageName);
+    if (len >= 4) {
+        const char* ext = imageName + len - 4;
+        return tolower(ext[0]) == '.' &&
+               tolower(ext[1]) == 'c' &&
+               tolower(ext[2]) == 'c' &&
+               tolower(ext[3]) == 'd';
+    }
+    return false;
+}
+
+bool hasImgExtension(const char* imageName) {
+    size_t len = strlen(imageName);
+    if (len >= 4) {
+        const char* ext = imageName + len - 4;
+        return tolower(ext[0]) == '.' &&
+               tolower(ext[1]) == 'i' &&
+               tolower(ext[2]) == 'm' &&
+               tolower(ext[3]) == 'g';
     }
     return false;
 }
@@ -224,50 +249,93 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
     strncpy(fullPath, imagePath, sizeof(fullPath) - 1);
     fullPath[sizeof(fullPath) - 1] = '\0';
 
-    FIL* imageFile = new FIL();
-    char* cue_str = nullptr;
-
     // Handle BIN files - look for matching CUE
     if (hasBinExtension(fullPath)) {
         LOGNOTE("BIN file detected, looking for CUE file");
         change_extension_to_cue(fullPath);
     }
 
-    // Handle CUE files
+    // Handle CUE files: the device resolves and opens the bin file(s) the
+    // cue sheet references (multi-bin images reference several).
     if (hasCueExtension(fullPath)) {
         LOGNOTE("Loading CUE sheet from: %s", fullPath);
+        char* cue_str = nullptr;
         if (!ReadFileToString(fullPath, &cue_str)) {
             LOGERR("Failed to read CUE file: %s", fullPath);
-            delete imageFile;
             return nullptr;
         }
-        LOGNOTE("Loaded CUE sheet");
 
-        // Switch to BIN file for data
-        change_extension_to_bin(fullPath);
+        CCueBinFileDevice* device = new CCueBinFileDevice(fullPath, cue_str, mediaType);
+        delete[] cue_str; // device made its own copy
+
+        if (!device->Init()) {
+            LOGERR("Failed to initialize CUE/BIN device: %s", fullPath);
+            delete device;
+            return nullptr;
+        }
+
+        LOGNOTE("Successfully loaded CUE/BIN device: %s", imagePath);
+        return device;
     }
 
-    // Open the data file (BIN or ISO)
+    // ISO/TOAST: single data file, no cue sheet
+    FIL* imageFile = new FIL();
     LOGNOTE("Opening data file: %s", fullPath);
     FRESULT result = f_open(imageFile, fullPath, FA_READ);
     if (result != FR_OK) {
         LOGERR("Cannot open data file for reading: %s (error %d)", fullPath, result);
         delete imageFile;
-        if (cue_str) delete[] cue_str;
         return nullptr;
     }
-    LOGNOTE("Opened data file successfully");
 
-    // Create device
-    CCueBinFileDevice* device = new CCueBinFileDevice(imageFile, cue_str, mediaType);
+    CCueBinFileDevice* device = new CCueBinFileDevice(imageFile, mediaType);
+    if (!device->Init()) {
+        LOGERR("Failed to initialize ISO device: %s", fullPath);
+        delete device;
+        return nullptr;
+    }
 
-    // Cleanup - CCueBinFileDevice takes ownership of cue_str if provided
-    if (cue_str != nullptr)
-        delete[] cue_str;
+    LOGNOTE("Successfully loaded ISO device: %s", imagePath);
+    return device;
+}
 
-    LOGNOTE("Successfully loaded CUE/BIN/ISO device: %s", imagePath);
-    
-    // Returns ICueDevice*, which is an IImageDevice*
+// ============================================================================
+// CloneCD (CCD/IMG/SUB) Plugin Loader
+// ============================================================================
+IImageDevice* loadCCDFileDevice(const char* imagePath) {
+    LOGNOTE("Loading CCD image: %s", imagePath);
+
+    MEDIA_TYPE mediaType = hasDvdHint(imagePath) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
+
+    char fullPath[512];
+    strncpy(fullPath, imagePath, sizeof(fullPath) - 1);
+    fullPath[sizeof(fullPath) - 1] = '\0';
+
+    // An .img path redirects to its sibling .ccd
+    if (hasImgExtension(fullPath)) {
+        size_t len = strlen(fullPath);
+        fullPath[len - 3] = 'c';
+        fullPath[len - 2] = 'c';
+        fullPath[len - 1] = 'd';
+    }
+
+    char* ccd_str = nullptr;
+    if (!ReadFileToString(fullPath, &ccd_str)) {
+        LOGERR("Failed to read CCD file: %s", fullPath);
+        return nullptr;
+    }
+
+    CCCDFileDevice* device = new CCCDFileDevice(fullPath, ccd_str, mediaType);
+    delete[] ccd_str; // device made its own copy
+
+    if (!device->Init()) {
+        LOGERR("Failed to initialize CCD device: %s", fullPath);
+        delete device;
+        return nullptr;
+    }
+
+    LOGNOTE("Successfully loaded CCD device: %s (has subchannels: %s)",
+            imagePath, device->HasSubchannelData() ? "yes" : "no");
     return device;
 }
 
@@ -356,6 +424,10 @@ IImageDevice* loadImageDevice(const char* imagePath) {
     else if (hasChdExtension(imagePath)) {
         LOGNOTE("Detected CHD format - using CHD plugin");
         return loadCHDFileDevice(imagePath);
+    }
+    else if (hasCcdExtension(imagePath) || hasImgExtension(imagePath)) {
+        LOGNOTE("Detected CCD format - using CCD plugin");
+        return loadCCDFileDevice(imagePath);
     }
     else if (hasCueExtension(imagePath) || hasBinExtension(imagePath) || hasIsoExtension(imagePath) || hasToastExtension(imagePath)) {
         LOGNOTE("Detected CUE/BIN/ISO/TOAST format - using CUE plugin");

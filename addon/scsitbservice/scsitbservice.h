@@ -72,6 +72,7 @@ private:
 
     void ClearCache();
     void ScanDirectoryRecursive(const char* fullPath, const char* relativePath);  // Recursive scanner
+    void HideCueCoveredBins();  // Hide bins referenced by a cue in the same folder
 };
 
 #endif
