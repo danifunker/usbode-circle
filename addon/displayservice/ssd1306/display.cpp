@@ -206,6 +206,11 @@ void MT32PiDisplay::DrawSleepWarning() {
 // Called by displaymanager kernel loop. Check backlight timeout and sleep if
 // necessary. Pass on the refresh call to the page manager
 void MT32PiDisplay::Refresh() {
+    // Handle any button presses queued by the interrupt handler. Done here, in
+    // task context, so all display I2C stays off the IRQ path (see
+    // HandleButtonPress).
+    ProcessPendingInput();
+
     unsigned backlightTimeout = configservice->GetScreenTimeout(MT32PI_DEFAULT_TIMEOUT) * 1000000;
 
     // If we're asleep and the timeout got changed to zero
@@ -236,32 +241,47 @@ bool MT32PiDisplay::Debounce(Button button) {
     return false;
 }
 
-// This is the callback from the GPIO Button interrupt. Debounce, wake screen on
-// button press, and then pass on the keypress to page manager (and ultimately
-// the page) to handle
+// This is the callback from the GPIO Button interrupt. It runs in IRQ context,
+// so it must NOT touch the display: the SSD1306 is driven over I2C, whose Circle
+// driver takes a TASK_LEVEL spinlock and shares the bus with the CDPlayer DAC.
+// Doing I2C here can deadlock against an in-flight task-level transaction. We
+// only debounce (pure timer math) and flag the press; ProcessPendingInput(),
+// called from the task-level Refresh() loop, does the wake and page handling.
 void MT32PiDisplay::HandleButtonPress(void* pParam) {
     ButtonHandlerContext* context = static_cast<ButtonHandlerContext*>(pParam);
-    LOGNOTE("Got button press %d", context->button);
     if (context) {
-        if (context->display->Debounce(context->button))
+        MT32PiDisplay* self = static_cast<MT32PiDisplay*>(context->display);
+
+        if (self->Debounce(context->button))
             return;
 
-        bool wasSleeping = context->display->IsSleeping();
-        context->display->Wake();
+        // Queue the press for task-context handling.
+        self->m_PendingButton[static_cast<int>(context->button)] = true;
+    }
+}
 
-        // If it was sleeping, swallow this keypress
+// Runs in task context (from Refresh()). Safe to perform display I2C here.
+void MT32PiDisplay::ProcessPendingInput() {
+    for (int i = 0; i < static_cast<int>(Button::Count); i++) {
+        if (!m_PendingButton[i])
+            continue;
+        m_PendingButton[i] = false;
+
+        Button button = static_cast<Button>(i);
+        LOGNOTE("Handling button press %d", i);
+
+        bool wasSleeping = IsSleeping();
+        Wake();
+
+        // If it was sleeping, the keypress only wakes the screen.
         if (wasSleeping)
-            return;
+            continue;
 
-        UpgradeStatus* upgrade = UpgradeStatus::Get();
-        if (upgrade->isUpgradeInProgress()) {
+        if (UpgradeStatus::Get()->isUpgradeInProgress()) {
             LOGNOTE("Button press ignored - upgrade in progress");
-            context->pin->EnableInterrupt(GPIOInterruptOnFallingEdge);
-            return;
+            continue;
         }
 
-        context->pin->DisableInterrupt();
-        context->pageManager->HandleButtonPress(context->button);
-        context->pin->EnableInterrupt(GPIOInterruptOnFallingEdge);
+        m_PageManager.HandleButtonPress(button);
     }
 }

@@ -57,6 +57,9 @@ class MT32PiDisplay : public IDisplay {
 
    private:
     void DrawSleepWarning();
+    // Drain any button/wake requests queued by the interrupt handler.
+    // Runs in task context so display I2C is never touched from an IRQ.
+    void ProcessPendingInput();
 
    private:
     CI2CMaster m_I2CMaster;
@@ -79,6 +82,13 @@ class MT32PiDisplay : public IDisplay {
 
     int backlightTimer;
     bool sleeping = false;
+
+    // Set by the GPIO interrupt handler, consumed in task context by
+    // ProcessPendingInput(). The SSD1306 talks over I2C, whose Circle driver
+    // uses a TASK_LEVEL spinlock and shares the bus with the CDPlayer DAC, so
+    // performing display I/O directly from an IRQ can deadlock. We therefore
+    // only flag work here and do the actual I2C in Refresh().
+    volatile bool m_PendingButton[static_cast<int>(Button::Count)] = {false};
 
     unsigned lastPressTime[static_cast<int>(Button::Count)] = {0};
 };
