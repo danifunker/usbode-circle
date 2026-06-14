@@ -38,7 +38,20 @@ OBJS    = displayservice.o \
 	sh1106/setuppage.o \
 	sh1106/upgradepage.o \
 	sh1106/classicmacmodepage.o \
-	sh1106/soundconfig.o
+	sh1106/soundconfig.o \
+	ssd1306/display.o \
+	ssd1306/homepage.o \
+	ssd1306/powerpage.o \
+	ssd1306/configpage.o \
+	ssd1306/usbconfigpage.o \
+	ssd1306/logconfigpage.o \
+	ssd1306/timeoutconfigpage.o \
+	ssd1306/imagespage.o \
+	ssd1306/infopage.o \
+	ssd1306/setuppage.o \
+	ssd1306/upgradepage.o \
+	ssd1306/classicmacmodepage.o \
+	ssd1306/soundconfig.o
 
 libdisplayservice.a: $(OBJS)
 	@echo "  AR    $@"
@@ -58,4 +71,6 @@ clean:
 	@echo "  CLEAN"
 	@rm -f $(OBJS) $(DEPS) libdisplayservice.a
 	@rm -rf st7789/*.d
+	@rm -rf sh1106/*.d
+	@rm -rf ssd1306/*.d
 	@rm -f *.d

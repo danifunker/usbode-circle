@@ -256,7 +256,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["displayhat_waveshare"] = (current_displayhat == "waveshare");
     context["displayhat_st7789"] = (current_displayhat == "st7789");
     context["displayhat_sh1106"] = (current_displayhat == "sh1106");
-    
+    context["displayhat_mt32pi"] = (current_displayhat == "mt32pi");
+
     // Set sound device options
     context["sounddev_sndpwm"] = (current_sounddev == "sndpwm");
     context["sounddev_sndi2s"] = (current_sounddev == "sndi2s");
