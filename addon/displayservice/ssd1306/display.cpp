@@ -38,7 +38,8 @@ MT32PiDisplay::MT32PiDisplay(SSD1306Config* config, ButtonConfig* buttons)
       up_pin(buttons->Up),
       down_pin(buttons->Down),
       ok_pin(buttons->Ok),
-      cancel_pin(buttons->Cancel)
+      cancel_pin(buttons->Cancel),
+      display_rotation(config->display_rotation)
 {
     // Obtain our config service
     configservice = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
@@ -69,6 +70,9 @@ bool MT32PiDisplay::Initialize() {
 
     if (bOK) {
         bOK = m_Display.Initialize();
+        // 180-degree rotation flips the panel's segment/COM scan order. Other
+        // angles are not supported on this 1bpp panel.
+        m_Display.SetRotation(display_rotation == 180);
         LOGNOTE("Initialized SSD1306 Display");
     }
 

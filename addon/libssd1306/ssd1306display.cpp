@@ -128,6 +128,22 @@ void CSSD1306GfxDisplay::InvertDisplay(boolean bInvert)
     SendCommand(bInvert ? SSD1306_INVERTDISPLAY : SSD1306_NORMALDISPLAY);
 }
 
+void CSSD1306GfxDisplay::SetRotation(boolean bRotate180)
+{
+    if (bRotate180)
+    {
+        // Mirror columns and reverse COM scan -> panel appears upside down
+        SendCommand(SSD1306_SEGREMAP | 0x00);
+        SendCommand(SSD1306_COMSCANINC);
+    }
+    else
+    {
+        // Default orientation, matching Initialize()
+        SendCommand(SSD1306_SEGREMAP | 0x01);
+        SendCommand(SSD1306_COMSCANDEC);
+    }
+}
+
 void CSSD1306GfxDisplay::SetPixel(unsigned nPosX, unsigned nPosY, TSSD1306Color Color)
 {
     if (nPosX >= m_nWidth || nPosY >= m_nHeight)

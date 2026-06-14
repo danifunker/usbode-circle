@@ -188,6 +188,7 @@ void DisplayService::CreateDisplay(const char* displayType) {
 	    .i2c_address = (u8)config->GetProperty("i2c_address", (unsigned)CSSD1306GfxDisplay::DEFAULT_I2C_ADDRESS, section),
 	    .oled_width = config->GetProperty("oled_width", 128u, section),
 	    .oled_height = config->GetProperty("oled_height", 64u, section),
+	    .display_rotation = config->GetProperty("display_rotation", 0u, section),
 	};
 
 	ButtonConfig buttons = {

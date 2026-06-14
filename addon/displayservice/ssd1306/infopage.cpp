@@ -92,7 +92,7 @@ void SSD1306InfoPage::Draw() {
 	     (strcmp(pGitBranch, "main") == 0) ? " *" : "");
 
     // Display the complete build info with word wrapping
-    const size_t chars_per_line = 21; // Maximum chars per line for SH1106
+    const size_t chars_per_line = 21; // Maximum chars per line for the 128px OLED
 
     size_t total_length = strlen(buildInfo);
     size_t current_pos = 0;

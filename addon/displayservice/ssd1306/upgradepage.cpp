@@ -73,7 +73,7 @@ void SSD1306UpgradePage::Refresh() {
 void SSD1306UpgradePage::Draw() {
     m_Graphics->ClearScreen(COLOR2D(0, 0, 0));
 
-    // Draw title at top - use AlignLeft like other SH1106 pages
+    // Draw title at top - use AlignLeft like other pages
     const char* title = "System Upgrade";
     m_Graphics->DrawText(10, 0, COLOR2D(255, 255, 255), title, 
                          C2DGraphics::AlignLeft, Font6x7);

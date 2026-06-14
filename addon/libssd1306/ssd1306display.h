@@ -96,6 +96,9 @@ public:
     void Clear(TSSD1306Color Color = SSD1306_BLACK_COLOR);
     void SetContrast(u8 ucContrast);
     void InvertDisplay(boolean bInvert);
+    // Rotate the panel 180 degrees by flipping segment remap and COM scan
+    // direction. Takes effect immediately; call after Initialize().
+    void SetRotation(boolean bRotate180);
 
     // Refresh the display from the framebuffer
     void Refresh(void) { UpdateDisplay(); }

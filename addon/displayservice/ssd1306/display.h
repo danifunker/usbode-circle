@@ -39,6 +39,7 @@ struct SSD1306Config {
     u8 i2c_address;
     unsigned oled_width;
     unsigned oled_height;
+    unsigned display_rotation;  // 0 or 180 (others treated as 0)
 };
 
 class MT32PiDisplay : public IDisplay {
@@ -82,6 +83,7 @@ class MT32PiDisplay : public IDisplay {
 
     int backlightTimer;
     bool sleeping = false;
+    int display_rotation;
 
     // Set by the GPIO interrupt handler, consumed in task context by
     // ProcessPendingInput(). The SSD1306 talks over I2C, whose Circle driver
