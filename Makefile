@@ -66,7 +66,7 @@ endif
 USBODE_ADDONS = sdcardservice cdromservice scsitbservice usbcdgadget \
                 shutdown usbmsdgadget \
 				lzma zlib zstd libchdr discimage mdsparser cueparser filelogdaemon \
-                webserver ftpserver configservice libsh1106 displayservice cdplayer \
+                webserver ftpserver configservice libsh1106 libssd1306 displayservice cdplayer \
                 upgradestatus setupstatus discart
 
 # Only the Circle addons we actually need

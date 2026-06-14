@@ -17,6 +17,7 @@
 #include "../../src/kernel.h"
 #include "st7789/display.h"
 #include "sh1106/display.h"
+#include "ssd1306/display.h"
 
 #define CONFIG_FILE "0:/config.txt"
 
@@ -178,6 +179,25 @@ void DisplayService::CreateDisplay(const char* displayType) {
 	};
 
         m_IDisplay = new SH1106Display(&display_config, &buttons);
+    } else if (strcmp(displayType, "mt32pi") == 0) {
+	// MT32-Pi-compatible HAT: I2C SSD1306 OLED + four tactile buttons.
+	// The PCM5102A I2S DAC is handled by CDPlayer's "sndi2s" path.
+	const char* section = "mt32pi";
+
+	SSD1306Config display_config = {
+	    .i2c_address = (u8)config->GetProperty("i2c_address", (unsigned)CSSD1306GfxDisplay::DEFAULT_I2C_ADDRESS, section),
+	    .oled_width = config->GetProperty("oled_width", 128u, section),
+	    .oled_height = config->GetProperty("oled_height", 64u, section),
+	};
+
+	ButtonConfig buttons = {
+	    .Up = config->GetProperty("button_up", MT32PI_BUTTONUP, section),
+	    .Down = config->GetProperty("button_down", MT32PI_BUTTONDOWN, section),
+	    .Ok = config->GetProperty("button_ok", MT32PI_BUTTONOK, section),
+	    .Cancel = config->GetProperty("button_cancel", MT32PI_BUTTONCANCEL, section)
+	};
+
+	m_IDisplay = new MT32PiDisplay(&display_config, &buttons);
     }
     assert(m_IDisplay != nullptr && "Didn't create display");
 }
