@@ -256,10 +256,17 @@ void MT32PiDisplay::HandleButtonPress(void* pParam) {
     if (context) {
         MT32PiDisplay* self = static_cast<MT32PiDisplay*>(context->display);
 
+        // IMPORTANT: do NOT call CGPIOPin::DisableInterrupt()/EnableInterrupt()
+        // here. Those take CGPIOPin::s_SpinLock, which is an IRQ_LEVEL spinlock;
+        // acquiring it from within this interrupt handler deadlocks the whole
+        // system if a task is mid-GPIO-operation. The interrupt is registered
+        // with auto-ack (ConnectInterrupt default), so it re-arms itself - this
+        // handler must only do quick, lock-free work.
         if (self->Debounce(context->button))
             return;
 
-        // Queue the press for task-context handling.
+        // Queue the press for task-context handling. We never touch the display
+        // (I2C) from here - the OLED is updated only from Refresh() (task ctx).
         self->m_PendingButton[static_cast<int>(context->button)] = true;
     }
 }

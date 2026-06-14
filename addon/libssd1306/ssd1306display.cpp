@@ -96,19 +96,12 @@ boolean CSSD1306GfxDisplay::Initialize(void)
 
 void CSSD1306GfxDisplay::On(void)
 {
-    // Re-enable the charge pump before powering the panel on. After a sleep
-    // (DISPLAYOFF) some SSD1306 modules will not light reliably unless the
-    // charge pump regulator is re-asserted first.
-    SendCommand(SSD1306_CHARGEPUMP);
-    SendCommand(0x14);  // Enable internal charge pump
     SendCommand(SSD1306_DISPLAYON);
 }
 
 void CSSD1306GfxDisplay::Off(void)
 {
     SendCommand(SSD1306_DISPLAYOFF);
-    SendCommand(SSD1306_CHARGEPUMP);
-    SendCommand(0x10);  // Disable charge pump while asleep (saves power)
 }
 
 void CSSD1306GfxDisplay::Clear(TSSD1306Color Color)
