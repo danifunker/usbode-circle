@@ -64,8 +64,22 @@ class CCueBinFileDevice : public ICueDevice {
     mutable bool m_tracksParsed = false;
     mutable int m_numTracks = 0;
     // TODO: Add track structure storage
-    
+
     void ParseCueSheet() const;
+
+    // Read-ahead cache: Seek() only records the logical position (host
+    // reads always Seek() then Read(), so the underlying FIL cursor doesn't
+    // need to track it). Read() serves from the cache when possible, and on
+    // a miss reads a larger window than requested so that the immediately
+    // following sequential read (the common case for game/OS data and
+    // Redbook streaming) becomes a cache hit instead of another SD card
+    // access - this avoids the additional read latency showing up as
+    // stutter on the low-bandwidth USB 1.1 link.
+    static constexpr size_t CacheSize = 128 * 1024;
+    u8* m_pCacheBuffer = nullptr;
+    u64 m_nCacheStart = 0;
+    size_t m_nCacheLen = 0;
+    u64 m_nLogicalPos = 0;
     
     static constexpr const char* default_cue_sheet =
         "FILE \"image.iso\" BINARY\n"
