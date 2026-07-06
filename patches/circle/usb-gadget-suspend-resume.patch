@@ -1,0 +1,172 @@
+--- a/include/circle/usb/gadget/dwusbgadget.h
++++ b/include/circle/usb/gadget/dwusbgadget.h
+@@ -97,6 +97,7 @@
+ 	void FlushRxFIFO (void);
+ 
+ 	void HandleUSBSuspend (void);
++	void HandleUSBResume (void);
+ 	void HandleUSBReset (void);
+ 	void HandleEnumerationDone (void);
+ 	void HandleInEPInterrupt (void);
+@@ -133,6 +134,7 @@
+ 	};
+ 
+ 	TState m_State;
++	TState m_StateBeforeSuspend;
+ 
+ 	enum TPnPEvent
+ 	{
+--- a/lib/usb/gadget/dwusbgadget.cpp
++++ b/lib/usb/gadget/dwusbgadget.cpp
+@@ -43,6 +43,7 @@
+ :	m_pInterruptSystem (pInterruptSystem),
+ 	m_DeviceSpeed (DeviceSpeed),
+ 	m_State (StatePowered),
++	m_StateBeforeSuspend (StatePowered),
+ 	m_bPnPEvent {FALSE, FALSE}
+ {
+ 	for (unsigned i = 0; i <= NumberOfEPs; i++)
+@@ -437,6 +438,7 @@
+ 
+ 	// Enable interrupts
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_USB_SUSPEND);
++	IntMask.Or (DWHCI_CORE_INT_MASK_WKUP_INTR);
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_USB_RESET_INTR);
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_ENUM_DONE);
+ 	IntMask.Or (DWHCI_CORE_INT_MASK_IN_EP_INTR);
+@@ -529,13 +531,34 @@
+ 			}
+ 		}
+ 
++		m_StateBeforeSuspend = m_State;
+ 		m_State = StateSuspended;
+ 	}
+ 
+ 	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_USB_SUSPEND);
+ 	IntStatus.Write ();
+ }
++
++void CDWUSBGadget::HandleUSBResume (void)
++{
++	// Trace: always log resume with current state (diagnosis for issue #591)
++	LOGNOTE ("USB resume (state %u)", (unsigned) m_State);
++
++	if (m_State == StateSuspended)
++	{
++		// The host resumed the bus without a reset. Old UHCI hosts (e.g.
++		// Intel PIIX4 driven by DOS USBASPI.SYS) stop the schedule between
++		// enumeration steps: >3 ms without SOFs looks like a suspend to the
++		// DWC2 core, but the host continues transactions afterwards without
++		// resetting. Restore the pre-suspend state, so those transactions
++		// are processed instead of being dropped.
++		m_State = m_StateBeforeSuspend;
++	}
+ 
++	CDWHCIRegister IntStatus (DWHCI_CORE_INT_STAT, DWHCI_CORE_INT_MASK_WKUP_INTR);
++	IntStatus.Write ();
++}
++
+ void CDWUSBGadget::HandleUSBReset (void)
+ {
+ #ifdef USB_GADGET_DEBUG
+@@ -692,9 +715,20 @@
+ #endif
+ 
+ 	assert (   m_State == StateSuspended
++		|| m_State == StateResetDone
+ 		|| m_State == StateEnumDone
+ 		|| m_State == StateConfigured);
+ 
++	if (m_State == StateSuspended)
++	{
++		// EP activity while suspended means the host resumed the bus
++		// without a reset (see HandleUSBResume()). Restore the state and
++		// process the interrupt instead of dropping it.
++		LOGNOTE ("Implicit USB resume on IN EP activity (state %u)",
++			 (unsigned) m_StateBeforeSuspend);
++		m_State = m_StateBeforeSuspend;
++	}
++
+ 	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
+ 	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK);
+ 	u32 nInEPStat = (AllEPsIntStat.Read () & AllEPsIntMask.Read ()) & 0xFFFF;
+@@ -703,19 +737,9 @@
+ 	{
+ 		if (nInEPStat & 1)
+ 		{
+-			if (m_State != StateSuspended)
+-			{
+-				assert (nEP <= NumberOfEPs);
+-				assert (m_pEP[nEP]);
+-				m_pEP[nEP]->HandleInInterrupt ();
+-			}
+-			else
+-			{
+-				// Suspended: acknowledge without processing (a transfer,
+-				// which completed while suspend was being handled)
+-				CDWHCIRegister InEPIntAck (DWHCI_DEV_IN_EP_INT (nEP), ~0U);
+-				InEPIntAck.Write ();
+-			}
++			assert (nEP <= NumberOfEPs);
++			assert (m_pEP[nEP]);
++			m_pEP[nEP]->HandleInInterrupt ();
+ 		}
+ 	}
+ }
+@@ -727,9 +751,21 @@
+ #endif
+ 
+ 	assert (   m_State == StateSuspended
++		|| m_State == StateResetDone
+ 		|| m_State == StateEnumDone
+ 		|| m_State == StateConfigured);
+ 
++	if (m_State == StateSuspended)
++	{
++		// EP activity while suspended means the host resumed the bus
++		// without a reset (see HandleUSBResume()). Restore the state and
++		// process the interrupt (e.g. a SETUP from an old UHCI host)
++		// instead of acknowledging and dropping it.
++		LOGNOTE ("Implicit USB resume on OUT EP activity (state %u)",
++			 (unsigned) m_StateBeforeSuspend);
++		m_State = m_StateBeforeSuspend;
++	}
++
+ 	CDWHCIRegister AllEPsIntStat (DWHCI_DEV_ALL_EPS_INT_STAT);
+ 	CDWHCIRegister AllEPsIntMask (DWHCI_DEV_ALL_EPS_INT_MASK);
+ 	u32 nOutEPStat = (AllEPsIntStat.Read () & AllEPsIntMask.Read ()) >> 16;
+@@ -738,19 +774,9 @@
+ 	{
+ 		if (nOutEPStat & 1)
+ 		{
+-			if (m_State != StateSuspended)
+-			{
+-				assert (nEP <= NumberOfEPs);
+-				assert (m_pEP[nEP]);
+-				m_pEP[nEP]->HandleOutInterrupt ();
+-			}
+-			else
+-			{
+-				CDWHCIRegister OutEPIntAck (DWHCI_DEV_OUT_EP_INT (nEP));
+-				OutEPIntAck.Set (  DWHCI_DEV_OUT_EP_INT_SETUP_DONE
+-						 | DWHCI_DEV_OUT_EP_INT_XFER_COMPLETE);
+-				OutEPIntAck.Write ();
+-			}
++			assert (nEP <= NumberOfEPs);
++			assert (m_pEP[nEP]);
++			m_pEP[nEP]->HandleOutInterrupt ();
+ 		}
+ 	}
+ }
+@@ -774,6 +800,11 @@
+ 		nIntStatus = 0;
+ 	}
+ 
++	if (nIntStatus & DWHCI_CORE_INT_MASK_WKUP_INTR)
++	{
++		HandleUSBResume ();
++	}
++
+ 	if (nIntStatus & DWHCI_CORE_INT_MASK_USB_RESET_INTR)
+ 	{
+ 		HandleUSBReset ();

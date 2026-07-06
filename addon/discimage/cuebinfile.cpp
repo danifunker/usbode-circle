@@ -51,13 +51,19 @@ CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE media
     // NEW: Use shared Fast Seek helper
     if (m_pFile) {
         FatFsOptimizer::EnableFastSeek(m_pFile, &m_pCLMT, 256, "BIN/ISO: ");
+        m_nLogicalPos = f_tell(m_pFile);
     }
+
+    m_pCacheBuffer = new u8[CacheSize];
 }
 
 CCueBinFileDevice::~CCueBinFileDevice(void) {
     // NEW: Use shared Fast Seek helper
     FatFsOptimizer::DisableFastSeek(&m_pCLMT);
-    
+
+    delete[] m_pCacheBuffer;
+    m_pCacheBuffer = nullptr;
+
     if (m_pFile) {
         f_close(m_pFile);
         delete m_pFile;
@@ -76,13 +82,56 @@ int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
         return -1;
     }
 
-    UINT nBytesRead = 0;
-    FRESULT result = f_read(m_pFile, pBuffer, nSize, &nBytesRead);
+    // Cache hit: entirely served from RAM, no SD card access.
+    if (m_pCacheBuffer && nSize <= m_nCacheLen &&
+        m_nLogicalPos >= m_nCacheStart &&
+        m_nLogicalPos + nSize <= m_nCacheStart + m_nCacheLen) {
+        memcpy(pBuffer, m_pCacheBuffer + (m_nLogicalPos - m_nCacheStart), nSize);
+        m_nLogicalPos += nSize;
+        return nSize;
+    }
+
+    // Requests larger than the cache go straight through and don't disturb it.
+    if (!m_pCacheBuffer || nSize > CacheSize) {
+        FRESULT result = f_lseek(m_pFile, m_nLogicalPos);
+        if (result != FR_OK) {
+            LOGERR("Seek to offset %llu failed, err %d", m_nLogicalPos, result);
+            return -1;
+        }
+
+        UINT nBytesRead = 0;
+        result = f_read(m_pFile, pBuffer, nSize, &nBytesRead);
+        if (result != FR_OK) {
+            LOGERR("Failed to read %d bytes into memory, err %d", nSize, result);
+            return -1;
+        }
+        m_nLogicalPos += nBytesRead;
+        return nBytesRead;
+    }
+
+    // Cache miss: read a larger window than requested, so the next
+    // sequential read (the common case) is served from the cache.
+    FRESULT result = f_lseek(m_pFile, m_nLogicalPos);
     if (result != FR_OK) {
-        LOGERR("Failed to read %d bytes into memory, err %d", nSize, result);
+        LOGERR("Seek to offset %llu failed, err %d", m_nLogicalPos, result);
         return -1;
     }
-    return nBytesRead;
+
+    UINT nBytesRead = 0;
+    result = f_read(m_pFile, m_pCacheBuffer, CacheSize, &nBytesRead);
+    if (result != FR_OK) {
+        LOGERR("Failed to read %d bytes into memory, err %d", (int)CacheSize, result);
+        m_nCacheLen = 0;
+        return -1;
+    }
+
+    m_nCacheStart = m_nLogicalPos;
+    m_nCacheLen = nBytesRead;
+
+    size_t nServe = ((size_t)nBytesRead < nSize) ? (size_t)nBytesRead : nSize;
+    memcpy(pBuffer, m_pCacheBuffer, nServe);
+    m_nLogicalPos += nServe;
+    return nServe;
 }
 
 int CCueBinFileDevice::Write(const void *pBuffer, size_t nSize) {
@@ -96,7 +145,7 @@ u64 CCueBinFileDevice::Tell() const {
         return static_cast<u64>(-1);
     }
 
-    return f_tell(m_pFile);
+    return m_nLogicalPos;
 }
 
 u64 CCueBinFileDevice::Seek(u64 nOffset) {
@@ -105,15 +154,10 @@ u64 CCueBinFileDevice::Seek(u64 nOffset) {
         return static_cast<u64>(-1);
     }
 
-    // Don't seek if we're already there
-    if (Tell() == nOffset)
-	    return nOffset;
-
-    FRESULT result = f_lseek(m_pFile, nOffset);
-    if (result != FR_OK) {
-        LOGERR("Seek to offset %llu is not ok, err %d", nOffset, result);
-        return 0;
-    }
+    // Just record the position; Read() lazily seeks the underlying file
+    // only on a cache miss, so a Seek() into an already-cached region
+    // costs nothing.
+    m_nLogicalPos = nOffset;
     return nOffset;
 }
 
