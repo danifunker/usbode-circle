@@ -1,0 +1,193 @@
+--- a/include/circle/usb/gadget/dwusbgadget.h
++++ b/include/circle/usb/gadget/dwusbgadget.h
+@@ -85,6 +85,16 @@
+ 	/// \note By default host-to-device requests will be ignored and other requests will be STALLed
+ 	virtual int OnClassOrVendorRequest (const TSetupData *pSetupData, u8 *pData);
+ 
++	/// \brief Set or clear the halt (STALL) feature of an EP (SET_FEATURE/CLEAR_FEATURE)
++	/// \param uchEPAddress Endpoint address from the setup packet (direction bit 7 + number)
++	/// \param bHalt Set the halt condition, or clear it otherwise?
++	/// \return Operation successful (EP exists)?
++	boolean SetEndpointHalt (u8 uchEPAddress, boolean bHalt);
++
++	/// \return Is the halt (STALL) condition set on this EP (GET_STATUS)?
++	/// \param uchEPAddress Endpoint address from the setup packet (direction bit 7 + number)
++	boolean IsEndpointHalted (u8 uchEPAddress);
++
+ private:
+ 	boolean PowerOn (void);
+ 	boolean InitCore (void);
+--- a/include/circle/usb/gadget/dwusbgadgetendpoint.h
++++ b/include/circle/usb/gadget/dwusbgadgetendpoint.h
+@@ -69,6 +69,16 @@
+ 	/// \param nMaxPacketSize New maximum packet size in bytes
+ 	void SetMaxPacketSize (size_t nMaxPacketSize);
+ 
++	/// \brief Set or clear the halt (STALL) feature of this EP
++	/// \param bIn Apply to the IN direction, or OUT otherwise?
++	/// \param bHalt Set the halt condition, or clear it otherwise?
++	/// \note Clearing resets the data toggle to DATA0 and re-arms a queued transfer.
++	void SetHalt (boolean bIn, boolean bHalt);
++
++	/// \return Is the halt (STALL) condition set?
++	/// \param bIn Query the IN direction, or OUT otherwise?
++	boolean IsHalted (boolean bIn) const;
++
+ protected:
+ 	/// \return Endpoint number (0-15)
+ 	unsigned GetEPNumber (void) const
+--- a/lib/usb/gadget/dwusbgadget.cpp
++++ b/lib/usb/gadget/dwusbgadget.cpp
+@@ -208,6 +208,37 @@
+ 	return pSetupData->bmRequestType & REQUEST_IN ? -1 : 0;
+ }
+ 
++boolean CDWUSBGadget::SetEndpointHalt (u8 uchEPAddress, boolean bHalt)
++{
++	unsigned nEP = uchEPAddress & 0x0F;
++	boolean bIn = !!(uchEPAddress & 0x80);
++
++	if (   nEP == 0
++	    || nEP > NumberOfEPs
++	    || !m_pEP[nEP])
++	{
++		return FALSE;
++	}
++
++	m_pEP[nEP]->SetHalt (bIn, bHalt);
++
++	return TRUE;
++}
++
++boolean CDWUSBGadget::IsEndpointHalted (u8 uchEPAddress)
++{
++	unsigned nEP = uchEPAddress & 0x0F;
++	boolean bIn = !!(uchEPAddress & 0x80);
++
++	if (   nEP > NumberOfEPs
++	    || !m_pEP[nEP])
++	{
++		return FALSE;
++	}
++
++	return m_pEP[nEP]->IsHalted (bIn);
++}
++
+ boolean CDWUSBGadget::PowerOn (void)
+ {
+ 	CBcmPropertyTags Tags;
+--- a/lib/usb/gadget/dwusbgadgetendpoint.cpp
++++ b/lib/usb/gadget/dwusbgadgetendpoint.cpp
+@@ -345,9 +345,53 @@
+ 	EPCtrl.Read ();
+ 	EPCtrl.Or (DWHCI_DEV_EP_CTRL_STALL);
+ 	EPCtrl.Or (DWHCI_DEV_EP_CTRL_CLEAR_NAK);
++	EPCtrl.Write ();
++}
++
++void CDWUSBGadgetEndpoint::SetHalt (boolean bIn, boolean bHalt)
++{
++	if (bHalt)
++	{
++		Stall (bIn);
++
++		return;
++	}
++
++	LOGWARN ("EP%u: Clear STALL condition", m_nEP);
++
++	CDWHCIRegister EPCtrl (bIn ? DWHCI_DEV_IN_EP_CTRL (m_nEP)
++				   : DWHCI_DEV_OUT_EP_CTRL (m_nEP));
++	EPCtrl.Read ();
++	EPCtrl.And (~DWHCI_DEV_EP_CTRL_STALL);
++
++	// Reset the data toggle to DATA0 (USB 2.0 spec 9.4.5) for bulk and
++	// interrupt EPs, so the next transaction after the halt is in sync.
++	if (m_nEP != 0)
++	{
++		EPCtrl.Or (DWHCI_DEV_EP_CTRL_SETDPID_D0);
++	}
++
+ 	EPCtrl.Write ();
++
++	// If a transfer was armed while the EP was halted (e.g. a CSW queued
++	// behind a Bulk-In STALL by a mass storage gadget), restart it now.
++	if (m_nEP != 0 && IsTransferActive ())
++	{
++		EPCtrl.Read ();
++		EPCtrl.Or (DWHCI_DEV_EP_CTRL_EP_ENABLE);
++		EPCtrl.Or (DWHCI_DEV_EP_CTRL_CLEAR_NAK);
++		EPCtrl.Write ();
++	}
+ }
+ 
++boolean CDWUSBGadgetEndpoint::IsHalted (boolean bIn) const
++{
++	CDWHCIRegister EPCtrl (bIn ? DWHCI_DEV_IN_EP_CTRL (m_nEP)
++				   : DWHCI_DEV_OUT_EP_CTRL (m_nEP));
++
++	return !!(EPCtrl.Read () & DWHCI_DEV_EP_CTRL_STALL);
++}
++
+ void CDWUSBGadgetEndpoint::OnControlMessage (void)
+ {
+ 	assert (0);
+--- a/lib/usb/gadget/dwusbgadgetendpoint0.cpp
++++ b/lib/usb/gadget/dwusbgadgetendpoint0.cpp
+@@ -123,6 +123,17 @@
+ 			m_InBuffer[0] = 0;
+ 			m_InBuffer[1] = 0;
+ 
++			// GET_STATUS to an endpoint reports the halt (STALL) condition
++			// in bit 0 (USB 2.0 spec 9.4.5).
++			if ((pSetupData->bmRequestType & 0x7F) == REQUEST_TO_ENDPOINT)
++			{
++				assert (m_pGadget);
++				if (m_pGadget->IsEndpointHalted (pSetupData->wIndex & 0xFF))
++				{
++					m_InBuffer[0] = 1;
++				}
++			}
++
+ 			m_State = StateInDataPhase;
+ 
+ 			m_nBytesLeft = 2;
+@@ -186,6 +197,38 @@
+ 			BeginTransfer (TransferDataIn, nullptr, 0);
+ 			break;
+ 
++		case CLEAR_FEATURE:
++		case SET_FEATURE:
++			// Standard CLEAR_FEATURE/SET_FEATURE (ENDPOINT_HALT) to an
++			// endpoint. Required for bulk transport error recovery: the
++			// host clears the halt after a STALLed data phase and expects
++			// the data toggle to be reset (USB 2.0 spec 9.4.5). Without
++			// this the EP remains halted and the host resets the device.
++			if (   (pSetupData->bmRequestType & 0x7F) == REQUEST_TO_ENDPOINT
++			    && pSetupData->wValue == 0	// ENDPOINT_HALT
++			    && pSetupData->wLength == 0)
++			{
++				assert (m_pGadget);
++				if (!m_pGadget->SetEndpointHalt (pSetupData->wIndex & 0xFF,
++								 pSetupData->bRequest == SET_FEATURE))
++				{
++					Stall (TRUE);
++
++					BeginTransfer (TransferSetupOut, m_OutBuffer,
++						       sizeof (TSetupData));
++
++					return;
++				}
++
++				m_State = StateInStatusPhase;
++
++				BeginTransfer (TransferDataIn, nullptr, 0);
++				break;
++			}
++			// Not an endpoint halt request (e.g. a class request with the
++			// same bRequest code): handle like any other request.
++			// fall through
++
+ 		default:
+ 			if (pSetupData->wLength)
+ 			{
