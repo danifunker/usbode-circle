@@ -66,8 +66,98 @@ jobs:
           circle-stdlib/libs/circle/boot/*.dtbo
         key: boot-firmware-${{ hashFiles('circle-stdlib/libs/circle/boot/Makefile') }}
 
+    # A restored cache or an earlier failed download can contain 0-byte
+    # firmware files: wget -O creates the destination before the transfer
+    # starts, and the circle boot Makefile's download loop ignores per-file
+    # wget failures. Build-947 "succeeded" that way while shipping 0-byte
+    # bootcode.bin/fixup.dat — which bricks Pi Zero (2) W cards — and the
+    # poisoned files were then saved into the cache. Delete any empty files
+    # so the prefetch step / make re-download them instead.
+    - name: Purge empty firmware files (cache poison guard)
+      run: |
+        find circle-stdlib/libs/circle/addon/wlan/firmware \
+             circle-stdlib/libs/circle/boot \
+             -maxdepth 1 -type f -size 0 -print -delete
+
+    # When the caches above miss, fetch the same files through api.github.com
+    # with the workflow token instead of letting make wget them anonymously:
+    # authenticated requests use a per-token quota (1000 req/h) that is not
+    # affected by the anonymous per-IP throttle that rate-limited this runner
+    # (HTTP 429 -> wget "Error 8" -> silent 0-byte files, see above). The file
+    # lists and pinned refs are parsed from the two Makefiles at run time, so
+    # a FIRMWARE pin bump upstream is picked up automatically. Non-fatal: if
+    # this step fails, make falls back to its own wget exactly as before.
+    #
+    # Each file is fetched only if missing or empty, and every download goes
+    # to a temp file that is moved into place only when non-empty, so a failed
+    # transfer can never leave a 0-byte file for make to treat as done.
+    - name: Prefetch firmware via GitHub API (on cache miss)
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -uo pipefail
+        fetch() { # $1 owner/repo  $2 ref  $3 path-in-repo  $4 dest-file
+          local tmp="$4.fetch-tmp"
+          if curl -sSfL --retry 3 --retry-delay 10 \
+               -H "Authorization: Bearer $GH_TOKEN" \
+               -H "Accept: application/vnd.github.raw" \
+               "https://api.github.com/repos/$1/contents/$3?ref=$2" -o "$tmp" \
+             && [ -s "$tmp" ]; then
+            mv "$tmp" "$4"
+          else
+            rm -f "$tmp"
+            echo "prefetch FAILED for $3"
+            return 1
+          fi
+        }
+
+        rc=0
+
+        FW=circle-stdlib/libs/circle/addon/wlan/firmware
+        SHA=$(sed -n 's/^FIRMWARE ?= *//p' "$FW/Makefile")
+        while read -r _ _ _ dest url; do
+          [ -s "$FW/$dest" ] && continue
+          fetch RPi-Distro/firmware-nonfree "$SHA" \
+                "debian/config/brcm80211/${url#'$(BASEURL)/'}" "$FW/$dest" || rc=1
+        done < <(grep -E '^[[:space:]]*wget -q -O ' "$FW/Makefile")
+
+        BOOT=circle-stdlib/libs/circle/boot
+        SHA=$(make -pn -C "$BOOT" 2>/dev/null | sed -n 's/^FIRMWARE = //p' | tail -n1)
+        FILES=$(make -pn -C "$BOOT" 2>/dev/null | sed -n 's/^FILES = //p' | tail -n1)
+        OVERLAYS=$(make -pn -C "$BOOT" 2>/dev/null | sed -n 's/^OVERLAYS = //p' | tail -n1)
+        for f in $FILES; do
+          [ -s "$BOOT/$f" ] || fetch raspberrypi/firmware "$SHA" "boot/$f" "$BOOT/$f" || rc=1
+        done
+        for f in $OVERLAYS; do
+          [ -s "$BOOT/$f" ] || fetch raspberrypi/firmware "$SHA" "boot/overlays/$f" "$BOOT/$f" || rc=1
+        done
+
+        exit $rc
+
     - name: Build
       run: make release BUILD_NUMBER=${{ github.run_number }}
+
+    # Refuse to ship a build containing empty files. A verified-good build
+    # has none (checked against a local clean build), and empty boot firmware
+    # looks like a successful build while bricking every Pi Zero (2) W card
+    # it is flashed or sysupgraded onto (build-947, build-950).
+    - name: Verify no empty files in distribution
+      run: |
+        bad=$(find dist dist64 -type f -size 0)
+        if [ -n "$bad" ]; then
+          echo "ERROR: empty files in distribution:"
+          echo "$bad"
+          exit 1
+        fi
+        for f in dist/bootcode.bin dist/fixup.dat dist/start.elf \
+                 dist64/bootcode.bin dist64/fixup.dat dist64/start.elf; do
+          if [ ! -s "$f" ]; then
+            echo "ERROR: missing or empty critical boot file: $f"
+            exit 1
+          fi
+        done
+        echo "All distribution files verified non-empty"
 
     - name: Get filename
       id: get-filename
