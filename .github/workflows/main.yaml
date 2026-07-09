@@ -34,6 +34,38 @@ jobs:
       with:
         submodules:  recursive
         clean: true
+
+    # circle-deps / boot re-download these from GitHub on every build once
+    # "Clean workspace" + submodule deinit wipe them out. On a self-hosted
+    # runner building frequently, unauthenticated raw-file fetches to
+    # RPi-Distro/firmware-nonfree can hit GitHub's rate limit (HTTP 429) and
+    # fail the whole build. Cache them across runs; the key is derived from
+    # the pinned firmware commit hash in each Makefile, so bumping either
+    # FIRMWARE variable upstream automatically invalidates the cache instead
+    # of silently keeping stale blobs.
+    - name: Cache WLAN firmware
+      uses: actions/cache@v4
+      with:
+        path: circle-stdlib/libs/circle/addon/wlan/firmware
+        key: wlan-firmware-${{ hashFiles('circle-stdlib/libs/circle/addon/wlan/firmware/Makefile') }}
+
+    - name: Cache boot firmware
+      uses: actions/cache@v4
+      with:
+        # Only the files boot/Makefile downloads, never the tracked
+        # sources (Makefile, armstub/*, config*.txt) that ship in the
+        # circle submodule itself, so a cache restore can never shadow a
+        # newer tracked file with a stale cached one.
+        path: |
+          circle-stdlib/libs/circle/boot/LICENCE.broadcom
+          circle-stdlib/libs/circle/boot/COPYING.linux
+          circle-stdlib/libs/circle/boot/bootcode.bin
+          circle-stdlib/libs/circle/boot/start*.elf
+          circle-stdlib/libs/circle/boot/fixup*.dat
+          circle-stdlib/libs/circle/boot/*.dtb
+          circle-stdlib/libs/circle/boot/*.dtbo
+        key: boot-firmware-${{ hashFiles('circle-stdlib/libs/circle/boot/Makefile') }}
+
     - name: Build
       run: make release BUILD_NUMBER=${{ github.run_number }}
 
