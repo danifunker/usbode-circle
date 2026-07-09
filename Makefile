@@ -144,18 +144,43 @@ circle-stdlib: configure
 	cd $(STDLIBHOME) && $(MAKE) clean && $(MAKE) all 
 
 # Handle Circle dependencies (firmware and boot files)
+#
+# The firmware/boot Makefiles fetch blobs from GitHub with plain `wget` and no
+# retry. Our self-hosted runner builds often and gets rate-limited (HTTP 429)
+# by GitHub's raw-file host, so a single throttled download (wget exit 8) would
+# otherwise fail the whole multi-arch build. Retry with linear backoff to ride
+# out the rate-limit window; `make` re-runs its own `clean` each attempt, so a
+# partial download can't leave stale files behind.
+#
+# The WLAN guard checks for the LAST file the download produces (not the stale
+# LICENCE.broadcom_bcm43xx name the old guard used, which is never created) so a
+# populated dir — e.g. a restored actions/cache — actually skips the re-download.
 circle-deps: circle-stdlib
 	@echo "Building Circle dependencies..."
-	@if [ ! -f "$(CIRCLEHOME)/addon/wlan/firmware/LICENCE.broadcom_bcm43xx" ]; then \
+	@if [ ! -f "$(CIRCLEHOME)/addon/wlan/firmware/brcmfmac43455-sdio.raspberrypi,5-model-b.clm_blob" ]; then \
 		echo "WLAN firmware not found, downloading..."; \
-		cd $(CIRCLEHOME)/addon/wlan/firmware && $(MAKE); \
+		cd $(CIRCLEHOME)/addon/wlan/firmware && n=0; \
+		until $(MAKE); do \
+			n=$$((n+1)); \
+			if [ $$n -ge 5 ]; then echo "ERROR: WLAN firmware download failed after 5 attempts (GitHub rate limit?)"; exit 1; fi; \
+			w=$$((n*20)); \
+			echo "WLAN firmware download failed (attempt $$n/5); retrying in $${w}s..."; \
+			sleep $$w; \
+		done; \
 	else \
 		echo "WLAN firmware already exists, skipping download"; \
 		cd $(CIRCLEHOME)/addon/wlan && $(MAKE) clean && $(MAKE); \
 	fi
 	@if [ ! -f "$(CIRCLEHOME)/boot/LICENCE.broadcom" ]; then \
 		echo "Building boot files..."; \
-		cd $(CIRCLEHOME)/boot && $(MAKE); \
+		cd $(CIRCLEHOME)/boot && n=0; \
+		until $(MAKE); do \
+			n=$$((n+1)); \
+			if [ $$n -ge 5 ]; then echo "ERROR: boot firmware download failed after 5 attempts (GitHub rate limit?)"; exit 1; fi; \
+			w=$$((n*20)); \
+			echo "Boot firmware download failed (attempt $$n/5); retrying in $${w}s..."; \
+			sleep $$w; \
+		done; \
 	fi
 
 # Build the two Circle addons we need
