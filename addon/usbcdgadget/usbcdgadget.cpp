@@ -859,6 +859,24 @@ void CUSBCDGadget::sendCheckCondition()
     // USB Mass Storage spec: data residue = amount of expected data not transferred
     // For CHECK CONDITION with no data phase, residue = full requested length
     m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength;
+
+    // Bulk-Only Transport spec 6.7.2/6.7.3: if the host expects a data phase
+    // that we will not perform, STALL the data endpoint before the CSW. The
+    // host clears the halt (CLEAR_FEATURE) and then reads the CSW, which is
+    // queued behind the STALL. Sending the CSW in place of the data phase
+    // makes strict hosts (Windows 11 xHCI) reset the device.
+    if (m_CBW.dCBWDataTransferLength > 0)
+    {
+        if (m_CBW.bmCBWFlags & 0x80)
+        {
+            m_pEP[EPIn]->StallRequest(true);
+        }
+        else
+        {
+            m_pEP[EPOut]->StallRequest(false);
+        }
+    }
+
     SendCSW();
 }
 
