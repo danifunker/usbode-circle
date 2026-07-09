@@ -66,6 +66,52 @@ jobs:
           circle-stdlib/libs/circle/boot/*.dtbo
         key: boot-firmware-${{ hashFiles('circle-stdlib/libs/circle/boot/Makefile') }}
 
+    # When the caches above miss, fetch the same files through api.github.com
+    # with the workflow token instead of letting make wget them anonymously:
+    # authenticated requests use a per-token quota (1000 req/h) that is not
+    # affected by the anonymous per-IP throttle that rate-limited this
+    # runner (HTTP 429 -> wget "Error 8"). The file lists and pinned refs are
+    # parsed from the two Makefiles at run time, so a FIRMWARE pin bump
+    # upstream is picked up automatically. Non-fatal: if this step fails,
+    # make falls back to its own wget exactly as before.
+    - name: Prefetch firmware via GitHub API (on cache miss)
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+        fetch() { # $1 owner/repo  $2 ref  $3 path-in-repo  $4 dest-file
+          curl -sSfL --retry 3 --retry-delay 10 \
+               -H "Authorization: Bearer $GH_TOKEN" \
+               -H "Accept: application/vnd.github.raw" \
+               "https://api.github.com/repos/$1/contents/$3?ref=$2" -o "$4"
+        }
+
+        FW=circle-stdlib/libs/circle/addon/wlan/firmware
+        if [ ! -f "$FW/.firmware_downloaded" ]; then
+          SHA=$(sed -n 's/^FIRMWARE ?= *//p' "$FW/Makefile")
+          grep -E '^[[:space:]]*wget -q -O ' "$FW/Makefile" | while read -r _ _ _ dest url; do
+            fetch RPi-Distro/firmware-nonfree "$SHA" \
+                  "debian/config/brcm80211/${url#'$(BASEURL)/'}" "$FW/$dest"
+          done
+          touch "$FW/.firmware_downloaded"
+          echo "WLAN firmware prefetched"
+        else
+          echo "WLAN firmware present (cache hit), skipping prefetch"
+        fi
+
+        BOOT=circle-stdlib/libs/circle/boot
+        if [ ! -f "$BOOT/LICENCE.broadcom" ]; then
+          SHA=$(make -pn -C "$BOOT" 2>/dev/null | sed -n 's/^FIRMWARE = //p' | tail -n1)
+          FILES=$(make -pn -C "$BOOT" 2>/dev/null | sed -n 's/^FILES = //p' | tail -n1)
+          OVERLAYS=$(make -pn -C "$BOOT" 2>/dev/null | sed -n 's/^OVERLAYS = //p' | tail -n1)
+          for f in $FILES;    do fetch raspberrypi/firmware "$SHA" "boot/$f" "$BOOT/$f"; done
+          for f in $OVERLAYS; do fetch raspberrypi/firmware "$SHA" "boot/overlays/$f" "$BOOT/$f"; done
+          echo "Boot firmware prefetched"
+        else
+          echo "Boot firmware present (cache hit), skipping prefetch"
+        fi
+
     - name: Build
       run: make release BUILD_NUMBER=${{ github.run_number }}
 

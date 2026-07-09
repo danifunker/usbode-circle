@@ -144,11 +144,17 @@ circle-stdlib: configure
 	cd $(STDLIBHOME) && $(MAKE) clean && $(MAKE) all 
 
 # Handle Circle dependencies (firmware and boot files)
+# Note: the download gate used to test for LICENCE.broadcom_bcm43xx, but the
+# wlan firmware Makefile stopped downloading that file with the circle 51
+# update, so the gate never passed and every arch pass of every build
+# re-downloaded all 17 firmware blobs from GitHub (which eventually got the
+# CI runner's IP rate-limited). Gate on a marker file we create ourselves
+# after a successful download instead.
 circle-deps: circle-stdlib
 	@echo "Building Circle dependencies..."
-	@if [ ! -f "$(CIRCLEHOME)/addon/wlan/firmware/LICENCE.broadcom_bcm43xx" ]; then \
+	@if [ ! -f "$(CIRCLEHOME)/addon/wlan/firmware/.firmware_downloaded" ]; then \
 		echo "WLAN firmware not found, downloading..."; \
-		cd $(CIRCLEHOME)/addon/wlan/firmware && $(MAKE); \
+		cd $(CIRCLEHOME)/addon/wlan/firmware && $(MAKE) && touch .firmware_downloaded; \
 	else \
 		echo "WLAN firmware already exists, skipping download"; \
 		cd $(CIRCLEHOME)/addon/wlan && $(MAKE) clean && $(MAKE); \
@@ -338,7 +344,7 @@ clean-imagesfolder:
 # Clean WLAN firmware files (forces re-download on next build)
 cleanwlanfirmware:
 	@echo "Cleaning WLAN firmware files..."
-	@cd $(CIRCLEHOME)/addon/wlan/firmware && $(MAKE) clean
+	@cd $(CIRCLEHOME)/addon/wlan/firmware && $(MAKE) clean && rm -f .firmware_downloaded
 	@echo "WLAN firmware cleaned. Next build will re-download firmware files."
 
 # 32-bit specific targets
