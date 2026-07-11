@@ -56,7 +56,8 @@ LIBS	=  $(NEWLIBDIR)/lib/libm.a \
 	$(USBODEHOME)/addon/libssd1306/libssd1306.a \
 	$(USBODEHOME)/addon/configservice/libconfigservice.a \
 	$(USBODEHOME)/addon/gitinfo/libgitinfo.a \
-	$(USBODEHOME)/addon/discart/libdiscart.a
+	$(USBODEHOME)/addon/discart/libdiscart.a \
+	$(USBODEHOME)/addon/tracelab/libtracelab.a
 
 %.h: %.html
 	@echo "  GEN   $@"

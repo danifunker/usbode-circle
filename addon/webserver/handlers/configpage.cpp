@@ -151,6 +151,11 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             if (form_params.count("loglevel")) {
                 config->SetLogLevel(std::atoi(form_params["loglevel"].c_str()));
             }
+
+            // Trace Lab configuration
+            if (form_params.count("trace_mode")) {
+                config->SetProperty("trace_mode", form_params["trace_mode"].c_str());
+            }
             
             // USB speed configuration
             if (form_params.count("usbspeed")) {
@@ -198,6 +203,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     std::string current_default_volume = std::to_string(config->GetDefaultVolume());
     std::string current_sounddev = config->GetSoundDev();
     std::string current_loglevel = std::to_string(config->GetLogLevel());
+    std::string current_trace_mode = config->GetProperty("trace_mode", "off");
     std::string current_usbspeed = config->GetUSBFullSpeed() ? "full" : "high";
     std::string current_logfile = config->GetLogfile();
     std::string current_theme = config->GetTheme();
@@ -284,6 +290,12 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
     context["loglevel_3"] = (current_loglevel == "3");
     context["loglevel_4"] = (current_loglevel == "4");
     context["loglevel_5"] = (current_loglevel == "5");
+
+    // Set trace mode options
+    context["current_trace_mode"] = current_trace_mode;
+    context["trace_mode_off"] = (current_trace_mode == "off");
+    context["trace_mode_standard"] = (current_trace_mode == "standard");
+    context["trace_mode_deep"] = (current_trace_mode == "deep");
     
     // Set messages
     if (!error_message.empty()) {

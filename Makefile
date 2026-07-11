@@ -67,7 +67,7 @@ USBODE_ADDONS = sdcardservice cdromservice scsitbservice usbcdgadget \
                 shutdown usbmsdgadget \
 				lzma zlib zstd libchdr discimage mdsparser cueparser filelogdaemon \
                 webserver ftpserver configservice libsh1106 libssd1306 displayservice cdplayer \
-                upgradestatus setupstatus discart
+                upgradestatus setupstatus discart tracelab
 
 # Only the Circle addons we actually need
 # Note: wlan/firmware is handled specially in circle-deps to avoid re-downloading

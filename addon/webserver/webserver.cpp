@@ -26,7 +26,9 @@
 #include <circle/string.h>
 #include "pagehandlerregistry.h"
 
-#define MAX_CONTENT_SIZE 131072
+// Large enough for a Trace Lab capture up to trace_buffer_kb=1024 (plus
+// file header) to be downloaded via /usbode.utrace in a single response.
+#define MAX_CONTENT_SIZE 1114112
 #define MAX_FILES 1024
 #define MAX_FILES_PER_PAGE 50
 #define MAX_FILENAME 255

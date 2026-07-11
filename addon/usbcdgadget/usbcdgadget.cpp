@@ -42,6 +42,7 @@
 #include <usbcdgadget/scsi_toc.h>
 #include <usbcdgadget/scsi_toolbox.h>
 #include <usbcdgadget/scsi_misc.h>
+#include <tracelab/tracelab.h>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...) // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
@@ -258,6 +259,9 @@ CUSBCDGadget::CUSBCDGadget(CInterruptSystem *pInterruptSystem, boolean isFullSpe
         m_bDebugLogging = false; // Default to disabled if config service not available
         m_USBTargetOS = USBTargetOS::DosWin;
     }
+
+    static CTraceLab s_TraceLab;
+    s_TraceLab.Initialize();
 
     // Initialize SCSI Handlers
     InitSCSIHandlers();
@@ -836,6 +840,11 @@ void CUSBCDGadget::OnActivate()
 void CUSBCDGadget::SendCSW()
 {
     // CDROM_DEBUG_LOG ("CUSBCDGadget::SendCSW", "entered");
+    // Every command path ends here (including the data-in read paths that
+    // never go through sendGoodStatus), so this is the one place that sees
+    // all command completions.
+    CTraceLab::Get()->TraceCommandComplete(m_CBW.CBWCB[0], m_CSW.bmCSWStatus, m_CSW.dCSWDataResidue);
+
     memcpy(&m_InBuffer, &m_CSW, SIZE_CSW);
     m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferCSWIn, m_InBuffer, SIZE_CSW);
     m_nState = TCDState::SentCSW;
@@ -848,6 +857,8 @@ void CUSBCDGadget::setSenseData(u8 senseKey, u8 asc, u8 ascq)
     m_SenseParams.bSenseKey = senseKey;
     m_SenseParams.bAddlSenseCode = asc;
     m_SenseParams.bAddlSenseCodeQual = ascq;
+
+    CTraceLab::Get()->TraceSenseSet(senseKey, asc, ascq);
 
     MLOGDEBUG("setSenseData", "Sense: %02x/%02x/%02x", senseKey, asc, ascq);
 }
@@ -890,11 +901,14 @@ void CUSBCDGadget::sendGoodStatus()
 {
     m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     m_CSW.dCSWDataResidue = 0; // Command succeeded, all data (if any) transferred
+
     SendCSW();
 }
 
 void CUSBCDGadget::HandleSCSICommand()
 {
+    CTraceLab::Get()->TraceCDBReceived(m_CBW.bCBWLUN, m_CBW.CBWCB, m_CBW.bCBWCBLength);
+
     if (m_CBW.CBWCB[0] != 0x00) // Filter out TEST_UNIT_READY spam
     {
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "SCSI Command is 0x%02x", m_CBW.CBWCB[0]);

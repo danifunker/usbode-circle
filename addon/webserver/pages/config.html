@@ -144,6 +144,16 @@
                 <option value="5" {{#loglevel_5}}selected{{/loglevel_5}}>5 - Debug (all messages)</option>
             </select>
         </div>
+        <div class="form-group">
+            <label for="trace_mode">SCSI Trace Capture:</label>
+            <div class="current-value">Current: {{current_trace_mode}}</div>
+            <select name="trace_mode" id="trace_mode">
+                <option value="off" {{#trace_mode_off}}selected{{/trace_mode_off}}>Off</option>
+                <option value="standard" {{#trace_mode_standard}}selected{{/trace_mode_standard}}>Standard (SCSI commands)</option>
+                <option value="deep" {{#trace_mode_deep}}selected{{/trace_mode_deep}}>Deep (currently same as Standard)</option>
+            </select>
+            <div class="current-value">Low-overhead binary capture for debugging. Download at <a href="/usbode.utrace">/usbode.utrace</a> or save to SD via /api/trace/save.</div>
+        </div>
     </div>
 
     <div class="info-box">

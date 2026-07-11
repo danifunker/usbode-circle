@@ -270,6 +270,9 @@ It's also possible to use dupont headers to chain these audio cables together, w
 ## CD-ROM / DVD-ROM Command Debugging
 To enable verbose CD-ROM/DVD-ROM command debugging, in the `config.txt` under the `[usbode]` section add a new line containing `debug_cdrom=1`. Setting this to 0 or removing the line will disable the feature. Only enable debugging if required, since it does impact performance.
 
+## USBODE Trace Lab (experimental)
+Trace Lab is a compact binary event tracer for diagnosing timing-sensitive USB/SCSI issues without the overhead of text logging. Enable it from the web UI Config page ("SCSI Trace Capture"), or in `config.txt` under the `[usbode]` section add `trace_mode=standard` (or `deep`, currently treated the same as `standard`); `debug_cdrom=1` also enables standard tracing for compatibility. Optionally set `trace_buffer_kb=<n>` to change the RAM buffer size (default 128 KB). This first release captures SCSI command, completion, and sense-data events into RAM. To export a capture, download `http://<usbode-ip>/usbode.utrace` directly in a browser, or visit `http://<usbode-ip>/api/trace/save` to write it to `usbode.utrace` on the boot partition of the SD card (`http://<usbode-ip>/api/trace` shows capture status). Decode it on a PC with `tools/usbode-trace/usbode_trace.py decode usbode.utrace`.
+
 ## Discord Server
 
 For updates on this project please visit the discord server here: [https://discord.gg/8qfuuUPBts](https://discord.gg/8qfuuUPBts)

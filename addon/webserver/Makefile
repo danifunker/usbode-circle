@@ -24,6 +24,7 @@ OBJS    = webserver.o \
 	handlers/shutdownapi.o \
 	handlers/imagenameapi.o \
 	handlers/listapi.o \
+	handlers/traceapi.o \
 	handlers/discarthandler.o
 
 libwebserver.a: $(OBJS)
