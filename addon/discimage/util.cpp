@@ -300,38 +300,59 @@ boolean FatFsOptimizer::EnableFastSeek(FIL* pFile, DWORD** ppCLMT, size_t clmtSi
     if (!pFile || !ppCLMT) {
         return false;
     }
-    
-    // Allocate CLMT array
-    *ppCLMT = new DWORD[clmtSize];
-    if (!*ppCLMT) {
-        LOGERR("%sFast seek: Failed to allocate CLMT", logPrefix);
-        return false;
+
+    // A heavily fragmented image file needs more CLMT entries than the
+    // default. On FR_NOT_ENOUGH_CORE FatFs writes the required entry count
+    // into element 0, so retry once with that size. Without fast seek, the
+    // read-ahead cache's per-window f_lseek() calls degrade to FAT chain
+    // walks, which on a large fragmented file stalls playback badly enough
+    // to look like a system freeze (reported on 3.0.5+).
+    static constexpr size_t MaxCLMTEntries = 65536; // 256 KB ceiling
+
+    for (int attempt = 0; attempt < 2; attempt++) {
+        // Allocate CLMT array
+        *ppCLMT = new DWORD[clmtSize];
+        if (!*ppCLMT) {
+            LOGERR("%sFast seek: Failed to allocate CLMT (%zu entries)", logPrefix, clmtSize);
+            return false;
+        }
+
+        // Set up CLMT in file handle
+        pFile->cltbl = *ppCLMT;
+        (*ppCLMT)[0] = clmtSize;
+
+        // Create the cluster link map
+        FRESULT result = f_lseek(pFile, CREATE_LINKMAP);
+
+        if (result == FR_OK) {
+            f_lseek(pFile, 0);
+            LOGNOTE("%sFast seek enabled, using %u CLMT entries", logPrefix, (*ppCLMT)[0]);
+            return true;
+        }
+
+        size_t needed = (*ppCLMT)[0];
+
+        delete[] *ppCLMT;
+        *ppCLMT = nullptr;
+        pFile->cltbl = nullptr;
+
+        if (result != FR_NOT_ENOUGH_CORE) {
+            LOGERR("%sFast seek: Creation failed with error %d", logPrefix, result);
+            return false;
+        }
+
+        if (attempt > 0 || needed <= clmtSize || needed > MaxCLMTEntries) {
+            LOGERR("%sFast seek: CLMT too small, need %zu entries (limit %zu) - "
+                   "file is heavily fragmented, fast seek disabled",
+                   logPrefix, needed, MaxCLMTEntries);
+            return false;
+        }
+
+        LOGNOTE("%sFast seek: retrying with %zu CLMT entries (fragmented file)",
+                logPrefix, needed);
+        clmtSize = needed;
     }
-    
-    // Set up CLMT in file handle
-    pFile->cltbl = *ppCLMT;
-    (*ppCLMT)[0] = clmtSize;
-    
-    // Create the cluster link map
-    FRESULT result = f_lseek(pFile, CREATE_LINKMAP);
-    
-    if (result == FR_OK) {
-        f_lseek(pFile, 0);
-        LOGNOTE("%sFast seek enabled, using %u CLMT entries", logPrefix, (*ppCLMT)[0]);
-        return true;
-    } 
-    else if (result == FR_NOT_ENOUGH_CORE) {
-        LOGERR("%sFast seek: CLMT too small, need %u entries (have %zu)", 
-                logPrefix, (*ppCLMT)[0], clmtSize);
-    } 
-    else {
-        LOGERR("%sFast seek: Creation failed with error %d", logPrefix, result);
-    }
-    
-    // Cleanup on failure
-    delete[] *ppCLMT;
-    *ppCLMT = nullptr;
-    pFile->cltbl = nullptr;
+
     return false;
 }
 
