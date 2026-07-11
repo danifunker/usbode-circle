@@ -468,6 +468,8 @@ void CUSBCDGadget::OnNegotiatedSpeed(TDeviceSpeed Speed)
     }
 
     boolean bFullSpeed = (Speed == FullSpeed);
+    CTraceLab::Get()->TraceUSBSpeed(bFullSpeed);
+
     if (bFullSpeed == IsEffectiveFullSpeed())
     {
         return; // negotiated speed matches what we present - nothing to do
@@ -580,6 +582,7 @@ void CUSBCDGadget::CreateDevice(void)
 void CUSBCDGadget::OnSuspend(void)
 {
     CDROM_DEBUG_LOG("CUSBCDGadget::OnSuspend", "entered");
+    CTraceLab::Get()->TraceUSBSuspend();
     delete m_pEP[EPOut];
     m_pEP[EPOut] = nullptr;
 
@@ -647,6 +650,7 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         }
         case TCDState::DataIn:
         {
+            CTraceLab::Get()->TraceTransferComplete((u32)nLength);
             if (m_nnumber_blocks > 0)
             {
                 if (m_CDReady)
@@ -807,6 +811,7 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
 // will be called before vendor request 0xfe
 void CUSBCDGadget::OnActivate()
 {
+    CTraceLab::Get()->TraceUSBActivate();
     CDROM_DEBUG_LOG("CD OnActivate",
                     "=== ENTRY === state=%d, USB=%s, m_CDReady=%d, mediaState=%d",
                     (int)m_nState,

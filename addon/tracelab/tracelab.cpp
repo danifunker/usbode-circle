@@ -19,6 +19,7 @@ CTraceLab *CTraceLab::s_pThis = nullptr;
 
 CTraceLab::CTraceLab()
     : m_bEnabled(FALSE),
+      m_bDeepMode(FALSE),
       m_nCaptureStartTime(0)
 {
     assert(s_pThis == nullptr);
@@ -47,10 +48,11 @@ boolean CTraceLab::Initialize()
     }
 
     const char *pMode = pConfig->GetProperty("trace_mode", "off");
-    // Phase 1 only implements "standard"; "deep" is accepted in config but
-    // behaves like "standard" until deep-mode events are added in a later
-    // phase.
-    m_bEnabled = (strcmp(pMode, "standard") == 0) || (strcmp(pMode, "deep") == 0);
+    // "standard" records SCSI-level and rare USB bus events; "deep" adds
+    // per-command image-read and BOT transfer records to decompose READ
+    // latency (roughly 3x the record volume).
+    m_bDeepMode = (strcmp(pMode, "deep") == 0);
+    m_bEnabled = (strcmp(pMode, "standard") == 0) || m_bDeepMode;
 
     // Compatibility alias: debug_cdrom=1 with no explicit trace_mode also
     // turns on standard tracing, so existing users get the new tracer
@@ -81,7 +83,8 @@ boolean CTraceLab::Initialize()
     m_nCaptureStartTime = CTimer::GetClockTicks();
     m_RingBuffer.WriteRecord(TRACE_CAPTURE_START, nullptr, 0);
 
-    CLogger::Get()->Write(FromTraceLab, LogNotice, "Trace Lab enabled (%u KB buffer)", nBufferKB);
+    CLogger::Get()->Write(FromTraceLab, LogNotice, "Trace Lab enabled (%u KB buffer, %s mode)",
+                          nBufferKB, m_bDeepMode ? "deep" : "standard");
 
     return TRUE;
 }
@@ -137,6 +140,99 @@ void CTraceLab::TraceSenseSet(u8 senseKey, u8 asc, u8 ascq)
     payload.ascq = ascq;
 
     m_RingBuffer.WriteRecord(SCSI_SENSE_SET, &payload, sizeof(payload));
+}
+
+void CTraceLab::TraceUSBSuspend()
+{
+    if (!m_bEnabled)
+    {
+        return;
+    }
+    m_RingBuffer.WriteRecord(USB_SUSPEND, nullptr, 0);
+}
+
+void CTraceLab::TraceUSBActivate()
+{
+    if (!m_bEnabled)
+    {
+        return;
+    }
+    m_RingBuffer.WriteRecord(USB_ACTIVATE, nullptr, 0);
+}
+
+void CTraceLab::TraceUSBSpeed(boolean bFullSpeed)
+{
+    if (!m_bEnabled)
+    {
+        return;
+    }
+
+    TraceUSBSpeedPayload payload;
+    payload.fullSpeed = bFullSpeed ? 1 : 0;
+    m_RingBuffer.WriteRecord(USB_SPEED_NEGOTIATED, &payload, sizeof(payload));
+}
+
+void CTraceLab::TraceImageReadStart(u32 lba, u32 bytes)
+{
+    if (!m_bDeepMode)
+    {
+        return;
+    }
+
+    TraceImageReadPayload payload;
+    payload.lba = lba;
+    payload.bytes = bytes;
+    m_RingBuffer.WriteRecord(IMAGE_READ_START, &payload, sizeof(payload));
+}
+
+void CTraceLab::TraceImageReadComplete(u32 lba, u32 bytesRead)
+{
+    if (!m_bDeepMode)
+    {
+        return;
+    }
+
+    TraceImageReadPayload payload;
+    payload.lba = lba;
+    payload.bytes = bytesRead;
+    m_RingBuffer.WriteRecord(IMAGE_READ_COMPLETE, &payload, sizeof(payload));
+}
+
+void CTraceLab::TraceImageReadError(u32 lba, u32 bytes)
+{
+    if (!m_bEnabled)
+    {
+        return;
+    }
+
+    TraceImageReadPayload payload;
+    payload.lba = lba;
+    payload.bytes = bytes;
+    m_RingBuffer.WriteRecord(IMAGE_READ_ERROR, &payload, sizeof(payload));
+}
+
+void CTraceLab::TraceTransferStart(u32 bytes)
+{
+    if (!m_bDeepMode)
+    {
+        return;
+    }
+
+    TraceTransferPayload payload;
+    payload.bytes = bytes;
+    m_RingBuffer.WriteRecord(BOT_IN_TRANSFER_START, &payload, sizeof(payload));
+}
+
+void CTraceLab::TraceTransferComplete(u32 bytes)
+{
+    if (!m_bDeepMode)
+    {
+        return;
+    }
+
+    TraceTransferPayload payload;
+    payload.bytes = bytes;
+    m_RingBuffer.WriteRecord(BOT_IN_TRANSFER_COMPLETE, &payload, sizeof(payload));
 }
 
 u32 CTraceLab::ExportToBuffer(u8 *pBuffer, u32 nMaxLength)

@@ -34,6 +34,7 @@ public:
     boolean Initialize();
 
     boolean IsEnabled() const { return m_bEnabled; }
+    boolean IsDeepMode() const { return m_bDeepMode; }
 
     u32 GetRecordCount() const { return m_RingBuffer.GetRecordCount(); }
     u32 GetDroppedRecordCount() const { return m_RingBuffer.GetDroppedRecordCount(); }
@@ -43,6 +44,20 @@ public:
     void TraceCDBReceived(u8 lun, const u8 *pCDB, u8 nCDBLength);
     void TraceCommandComplete(u8 opcode, u8 status, u32 residue);
     void TraceSenseSet(u8 senseKey, u8 asc, u8 ascq);
+
+    // Phase 2: USB bus/device state (rare events, recorded in any mode).
+    void TraceUSBSuspend();
+    void TraceUSBActivate();
+    void TraceUSBSpeed(boolean bFullSpeed);
+
+    // Phase 2: per-command detail, recorded only in trace_mode=deep so
+    // standard mode keeps its low record volume. Start/complete pairs
+    // decompose SCSI READ latency into storage time and USB wire time.
+    void TraceImageReadStart(u32 lba, u32 bytes);
+    void TraceImageReadComplete(u32 lba, u32 bytesRead);
+    void TraceImageReadError(u32 lba, u32 bytes); // recorded in any mode
+    void TraceTransferStart(u32 bytes);
+    void TraceTransferComplete(u32 bytes);
 
     // Writes the current buffer contents to a .utrace file on the SD card.
     // Must only be called from task context (not the USB hot path).
@@ -58,6 +73,7 @@ private:
     static CTraceLab *s_pThis;
 
     boolean m_bEnabled;
+    boolean m_bDeepMode;
     CTraceRingBuffer m_RingBuffer;
     u64 m_nCaptureStartTime;
 };

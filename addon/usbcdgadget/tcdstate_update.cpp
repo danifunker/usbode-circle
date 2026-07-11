@@ -9,6 +9,7 @@
 #include <circle/logger.h>
 #include <circle/util.h>
 #include <circle/sched/scheduler.h>
+#include <tracelab/tracelab.h>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...) // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
@@ -163,7 +164,10 @@ void CUSBCDGadget::Update()
                     m_nnumber_blocks = 0;
                 }
 
+                CTraceLab::Get()->TraceImageReadStart(m_nblock_address, total_batch_size);
                 readCount = m_pDevice->Read(m_FileChunk, total_batch_size);
+                CTraceLab::Get()->TraceImageReadComplete(m_nblock_address,
+                                                         readCount > 0 ? (u32)readCount : 0);
 
                 // if (m_bDebugLogging)
                 // {
@@ -405,6 +409,7 @@ void CUSBCDGadget::Update()
                 }
 
                 m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+                CTraceLab::Get()->TraceTransferStart(total_copied);
                 m_pEP[EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                            m_InBuffer, total_copied);
             }
@@ -413,6 +418,7 @@ void CUSBCDGadget::Update()
         if (!m_CDReady || offset == (u64)(-1))
         {
             MLOGERR("UpdateRead", "Failed: ready=%d, offset=%llu", m_CDReady, offset);
+            CTraceLab::Get()->TraceImageReadError(m_nblock_address, 0);
             setSenseData(0x02, 0x04, 0x00);
             sendCheckCondition();
         }

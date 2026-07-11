@@ -34,15 +34,31 @@ struct TraceFileHeader
     u32 mountedImageHash;        // reserved, 0 in Phase 1
 } PACKED;
 
-// Event type ranges (see proposal for full layout; Phase 1 only uses the
-// control and SCSI ranges below).
+// Event type ranges (see proposal for full layout):
+//   0x0000  trace control       0x0100  USB bus/device state
+//   0x0300  Bulk-Only Transport 0x0400  SCSI
+//   0x0500  image access
 enum TTraceEventType : u16
 {
     TRACE_CAPTURE_START = 0x0001,
 
+    // USB bus/device state (rare; recorded in standard and deep mode)
+    USB_SUSPEND = 0x0101,          // no payload
+    USB_ACTIVATE = 0x0102,         // no payload; device (re)configured
+    USB_SPEED_NEGOTIATED = 0x0103, // TraceUSBSpeedPayload
+
+    // Bulk-Only Transport data phase (deep mode only; per-command volume)
+    BOT_IN_TRANSFER_START = 0x0300,    // TraceTransferPayload
+    BOT_IN_TRANSFER_COMPLETE = 0x0301, // TraceTransferPayload
+
     SCSI_CDB_RECEIVED = 0x0400,
     SCSI_COMMAND_COMPLETE = 0x0401,
     SCSI_SENSE_SET = 0x0402,
+
+    // Image/storage access (start/complete deep mode only; error always)
+    IMAGE_READ_START = 0x0500,    // TraceImageReadPayload
+    IMAGE_READ_COMPLETE = 0x0501, // TraceImageReadPayload (bytes actually read)
+    IMAGE_READ_ERROR = 0x0502,    // TraceImageReadPayload
 };
 
 struct TraceRecordHeader
@@ -74,6 +90,25 @@ struct TraceSCSISensePayload
     u8 senseKey;
     u8 asc;
     u8 ascq;
+} PACKED;
+
+// Payload for USB_SPEED_NEGOTIATED
+struct TraceUSBSpeedPayload
+{
+    u8 fullSpeed; // 1 = USB 1.1 full speed, 0 = USB 2.0 high speed
+} PACKED;
+
+// Payload for BOT_IN_TRANSFER_START / BOT_IN_TRANSFER_COMPLETE
+struct TraceTransferPayload
+{
+    u32 bytes;
+} PACKED;
+
+// Payload for IMAGE_READ_START / IMAGE_READ_COMPLETE / IMAGE_READ_ERROR
+struct TraceImageReadPayload
+{
+    u32 lba;
+    u32 bytes; // requested (START/ERROR) or actually read (COMPLETE)
 } PACKED;
 
 #endif
