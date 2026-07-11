@@ -20,6 +20,6 @@ libdiscimage.a: $(OBJS)
 include $(STDLIBHOME)/Config.mk
 include $(CIRCLEHOME)/Rules.mk
 
-CFLAGS += -I $(USBODEHOME)/addon/libchdr-src/include
+CFLAGS += -I $(USBODEHOME)/addon/libchdr-src/include -I $(USBODEHOME)/addon
 
 -include $(DEPS)

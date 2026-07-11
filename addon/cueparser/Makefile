@@ -7,7 +7,7 @@ STDLIBHOME = $(USBODEHOME)/circle-stdlib
 NEWLIBDIR = $(STDLIBHOME)/install/$(NEWLIB_ARCH)
 CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
-OBJS    = cueparser.o
+OBJS    = cueparser.o cueutil.o
 
 libcueparser.a: $(OBJS)
 	@echo "  AR    $@"

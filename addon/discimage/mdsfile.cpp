@@ -140,16 +140,17 @@ bool CMDSFileDevice::Init() {
             cue_ptr += len;
             remaining -= len;
 
-            // Add PREGAP if present
+            // Do NOT emit a PREGAP line: start_sector below is already a
+            // final disc LBA (pregaps included), so a PREGAP keyword would
+            // make the CUE parser shift every data_start by the pregap
+            // length again. The shifted TOC sent track 1 to LBA 150 and DOS
+            // drivers, which locate the ISO9660 PVD relative to the TOC,
+            // failed with "not High Sierra or ISO-9660". File positions are
+            // unaffected: reads are mapped through the MDS track table, not
+            // this synthesized cue.
             if (extra && extra->pregap > 0) {
-                LOGNOTE("    pregap: %u", extra->pregap);
+                LOGNOTE("    pregap: %u (not emitted, start_sector is absolute)", extra->pregap);
                 LOGNOTE("    length: %u", extra->length);
-                int minutes = extra->pregap / (75 * 60);
-                int seconds = (extra->pregap / 75) % 60;
-                int frames = extra->pregap % 75;
-                len = snprintf(cue_ptr, remaining, "    PREGAP %02d:%02d:%02d\n", minutes, seconds, frames);
-                cue_ptr += len;
-                remaining -= len;
             }
 
             // Add INDEX 01 with the track's start position

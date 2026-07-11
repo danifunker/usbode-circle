@@ -52,6 +52,7 @@ CUEParser::CUEParser(const char *cue_sheet) : m_cue_sheet(cue_sheet) {
 void CUEParser::restart() {
     m_parse_pos = m_cue_sheet;
     memset(&m_track_info, 0, sizeof(m_track_info));
+    m_prev_index01_time = 0;
 }
 
 const CUETrackInfo *CUEParser::next_track() {
@@ -60,7 +61,6 @@ const CUETrackInfo *CUEParser::next_track() {
 
 const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
     // Previous track info is needed to track file offset
-    uint32_t prev_track_start = m_track_info.track_start;
     m_track_info.cumulative_offset += m_track_info.unstored_pregap_length;
     uint32_t prev_sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);  // Defaults to 2352 before first track
 
@@ -68,6 +68,13 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
     bool got_track = false;
     bool got_data = false;
     bool got_pause = false;  // true if a period of silence (INDEX 00) was encountered for a track
+
+    // Raw file-relative INDEX times for the track being parsed. CUE INDEX
+    // timestamps are positions within the stored data file, so file_offset
+    // advances are computed from these directly; disc LBAs (track_start/
+    // data_start) separately add file_start and cumulative_offset.
+    uint32_t index00_time = 0;
+    uint32_t index01_time = 0;
     while (!(got_track && got_data) && start_line()) {
         if (strncasecmp(m_parse_pos, "FILE ", 5) == 0) {
             if (m_track_info.file_index > 0) {
@@ -82,7 +89,7 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             m_track_info.file_offset = 0;
             m_track_info.file_index++;
             m_track_info.track_mode = CUETrack_AUDIO;
-            prev_track_start = 0;
+            m_prev_index01_time = 0;  // INDEX times restart per file
             prev_sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);
             got_file = true;
         } else if (strncasecmp(m_parse_pos, "TRACK ", 6) == 0) {
@@ -94,6 +101,8 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             m_track_info.unstored_pregap_length = 0;
             m_track_info.data_start = 0;
             m_track_info.track_start = 0;
+            index00_time = 0;
+            index01_time = 0;
             got_track = true;
             got_data = false;
             got_pause = false;
@@ -113,10 +122,12 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             if (index == 0) {
                 // Stored pregap that is present both on CD and in data file
                 m_track_info.track_start = m_track_info.file_start + time + m_track_info.cumulative_offset;
+                index00_time = time;
                 got_pause = true;
             } else if (index == 1) {
                 // Data content of the track
                 m_track_info.data_start = m_track_info.file_start + time + m_track_info.cumulative_offset;
+                index01_time = time;
                 got_data = true;
             }
         }
@@ -130,14 +141,26 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
     }
 
     if (got_track && got_data) {
+        // First stored frame of this track in file-relative time: the
+        // stored pregap (INDEX 00) if present, otherwise the data (INDEX 01).
+        uint32_t first_stored_time = got_pause ? index00_time : index01_time;
+
         if (!got_file) {
-            // Advance file position by the length of previous track
-            m_track_info.file_offset += (uint64_t)(m_track_info.track_start - (prev_track_start + m_track_info.cumulative_offset)) * prev_sector_length;
+            // Advance file position by the remainder of the previous track:
+            // from its INDEX 01 (which file_offset corresponds to) up to this
+            // track's first stored frame. Using raw INDEX times avoids
+            // double-counting the previous track's stored pregap and is
+            // unaffected by unstored PREGAP gaps, which exist only in disc
+            // LBA space, not in the file.
+            m_track_info.file_offset += (uint64_t)(first_stored_time - m_prev_index01_time) * prev_sector_length;
         }
 
-        // Advance file position by any stored pregap
-        uint32_t stored_pregap = m_track_info.data_start - (m_track_info.track_start + m_track_info.unstored_pregap_length);
-        m_track_info.file_offset += (uint64_t)stored_pregap * m_track_info.sector_length;
+        // Advance file position by this track's stored pregap
+        if (got_pause) {
+            m_track_info.file_offset += (uint64_t)(index01_time - index00_time) * m_track_info.sector_length;
+        }
+
+        m_prev_index01_time = index01_time;
 
         return &m_track_info;
     } else {

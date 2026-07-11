@@ -435,8 +435,13 @@ void CCDPlayer::Run(void) {
         
         // STATE 3: Normal operation - seeking
         if (state == SEEKING || state == SEEKING_PLAYING) {
-            LOGNOTE("Seeking to sector %u (byte %u)", address, unsigned(address * SECTOR_SIZE));
-            u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
+            // Translate LBA to a byte offset through the device: on mixed-mode
+            // BIN/CUE images the data track is often stored at 2048 bytes per
+            // sector, so a flat address * 2352 lands audio reads at the wrong
+            // file position (and past EOF near the end of the disc).
+            u64 seek_byte = m_pBinFileDevice->GetByteOffsetForLBA(address);
+            LOGNOTE("Seeking to sector %u (byte %llu)", address, seek_byte);
+            u64 offset = m_pBinFileDevice->Seek(seek_byte);
 
             // When we seek, the contents of our read and write buffer are now invalid.
             memset(m_WriteChunk, 0, total_frames * BYTES_PER_FRAME);
@@ -448,7 +453,7 @@ void CCDPlayer::Run(void) {
                 LOGNOTE("Seeking successful");
                 state = (state == SEEKING_PLAYING) ? PLAYING : STOPPED_OK;
             } else {
-                LOGERR("Error seeking to byte position %u", address * SECTOR_SIZE);
+                LOGERR("Error seeking to byte position %llu", seek_byte);
                 state = STOPPED_ERROR;
             }
         }
@@ -472,9 +477,10 @@ void CCDPlayer::Run(void) {
 
                 // Because another task could have moved the file pointer after a Yield(),
                 // we MUST seek to our intended address before every read operation.
-                u64 offset = m_pBinFileDevice->Seek(unsigned(address * SECTOR_SIZE));
+                u64 seek_byte = m_pBinFileDevice->GetByteOffsetForLBA(address);
+                u64 offset = m_pBinFileDevice->Seek(seek_byte);
                 if (offset == (u64)(-1)) {
-                    LOGERR("Pre-read seek failed at position %u", address * SECTOR_SIZE);
+                    LOGERR("Pre-read seek failed at position %llu", seek_byte);
                     state = STOPPED_ERROR;
                     continue; // Re-evaluate state in the next loop iteration.
                 }

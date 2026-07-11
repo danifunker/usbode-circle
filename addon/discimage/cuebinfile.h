@@ -34,6 +34,7 @@ class CCueBinFileDevice : public ICueDevice {
     u64 Seek(u64 ullOffset) override;
     u64 GetSize(void) const override;
     u64 Tell() const override;
+    u64 GetByteOffsetForLBA(u32 lba) const override;
     MEDIA_TYPE GetMediaType() const override { return m_mediaType; }
     FileType GetFileType() const override { 
         return m_FileType; // Can be ISO or CUEBIN
