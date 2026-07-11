@@ -112,6 +112,12 @@ class CUEParser {
     const char *m_parse_pos;
     CUETrackInfo m_track_info;
 
+    // File-relative INDEX 01 time of the previously parsed track, which is
+    // the position m_track_info.file_offset corresponds to. Used by
+    // next_track() to advance file_offset in raw file time; reset on
+    // restart() and on each FILE line (INDEX times restart per file).
+    uint32_t m_prev_index01_time;
+
     // Skip any whitespace at beginning of line.
     // Returns false if at end of string.
     bool start_line();
