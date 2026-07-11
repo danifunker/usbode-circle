@@ -28,6 +28,13 @@ public:
     virtual u64 Seek(u64 ullOffset) = 0;
     virtual u64 GetSize(void) const = 0;
     virtual u64 Tell() const = 0;
+
+    /// Translate a CD frame LBA to the byte offset in this device's Seek()
+    /// space. CHD and MDS devices present a uniform 2352-bytes-per-frame
+    /// logical space, so the default applies to them. CUE/BIN overrides
+    /// this: its Seek() space is the raw BIN file, where per-track sector
+    /// sizes differ (e.g. a MODE1/2048 data track before 2352-byte audio).
+    virtual u64 GetByteOffsetForLBA(u32 lba) const { return (u64)lba * 2352ULL; }
     
     // ========================================================================
     // Media Information

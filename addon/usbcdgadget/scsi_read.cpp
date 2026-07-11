@@ -367,8 +367,12 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
         }
     }
 
-    // Ensure read doesn't exceed image size
-    u64 readEnd = (u64)gadget->m_nblock_address * trackInfo.sector_length +
+    // Ensure read doesn't exceed image size. Use the device's track-aware
+    // LBA translation: with a flat LBA * sector_length the end-of-image
+    // bound lands too high on mixed-mode BIN/CUE images (2048-byte data
+    // track before 2352-byte audio), falsely rejecting every read of the
+    // last track as out of range.
+    u64 readEnd = gadget->m_pDevice->GetByteOffsetForLBA(gadget->m_nblock_address) +
                   (u64)gadget->m_nnumber_blocks * trackInfo.sector_length;
     if (readEnd > gadget->m_pDevice->GetSize())
     {

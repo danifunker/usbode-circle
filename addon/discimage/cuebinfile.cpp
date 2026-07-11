@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <circle/stdarg.h>
 #include <circle/util.h>
+#include <cueparser/cueutil.h>
 #include <stdlib.h>
 #include <string.h>
 #include <circle/timer.h>
@@ -154,11 +155,26 @@ u64 CCueBinFileDevice::Seek(u64 nOffset) {
         return static_cast<u64>(-1);
     }
 
+    // Reject seeks beyond the end of the image: a position past EOF can
+    // only come from a wrong LBA-to-byte translation, and failing here
+    // (callers handle it) beats stalling in short reads later.
+    if (nOffset > GetSize()) {
+        LOGERR("Seek to offset %llu beyond image size %llu", nOffset, GetSize());
+        return static_cast<u64>(-1);
+    }
+
     // Just record the position; Read() lazily seeks the underlying file
     // only on a cache miss, so a Seek() into an already-cached region
     // costs nothing.
     m_nLogicalPos = nOffset;
     return nOffset;
+}
+
+u64 CCueBinFileDevice::GetByteOffsetForLBA(u32 lba) const {
+    // The Seek() space of this device is the raw BIN file, where each
+    // track's stored sector size can differ (mixed-mode images). Translate
+    // through the cue sheet; falls back to lba * 2352 for trackless cues.
+    return CueLBAToByteOffset(m_cue_str, lba);
 }
 
 u64 CCueBinFileDevice::GetSize(void) const {

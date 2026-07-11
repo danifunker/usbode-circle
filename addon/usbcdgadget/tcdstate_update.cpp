@@ -106,7 +106,10 @@ void CUSBCDGadget::Update()
                                 old_count, m_nnumber_blocks);
             }
 
-            offset = m_pDevice->Seek(block_size * m_nblock_address);
+            // Track-aware LBA translation: on mixed-mode BIN/CUE images the
+            // tracks have different stored sector sizes, so a flat
+            // block_size * LBA is wrong for every track after the first.
+            offset = m_pDevice->Seek(m_pDevice->GetByteOffsetForLBA(m_nblock_address));
 
             if (offset != (u64)(-1))
             {
