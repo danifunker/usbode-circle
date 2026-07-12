@@ -56,6 +56,15 @@ void CUSBCDGadget::Update()
                          elapsed);
                 break;
 
+            case MediaState::MEDIUM_PRESENT_READY:
+                // Host consumed the UNIT ATTENTION with a REQUEST SENSE
+                // inside the settle window - the swap already completed.
+                m_bPendingDiscSwap = false;
+                CDROM_DEBUG_LOG("CUSBCDGadget::Update",
+                         "Disc swap: Host cleared UNIT_ATTENTION early, complete after %u ms",
+                         elapsed);
+                break;
+
             default:
                 // Shouldn't happen
                 m_bPendingDiscSwap = false;

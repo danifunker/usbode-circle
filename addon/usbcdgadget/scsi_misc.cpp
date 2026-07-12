@@ -77,6 +77,13 @@ void SCSIMisc::PreventAllowMediumRemoval(CUSBCDGadget *gadget)
 
 void SCSIMisc::ReadCapacity(CUSBCDGadget *gadget)
 {
+    if (!gadget->m_CDReady)
+    {
+        gadget->setSenseData(0x02, 0x3A, 0x00); // MEDIUM NOT PRESENT
+        gadget->sendCheckCondition();
+        return;
+    }
+
     gadget->m_ReadCapReply.nLastBlockAddr = htonl(CDUtils::GetLeadoutLBA(gadget) - 1); // this value is the Start address of last recorded lead-out minus 1
     memcpy(gadget->m_InBuffer, &gadget->m_ReadCapReply, SIZE_READCAPREP);
     gadget->m_nnumber_blocks = 0; // nothing more after this send
