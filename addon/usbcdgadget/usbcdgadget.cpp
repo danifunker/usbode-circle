@@ -519,6 +519,7 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
 
         // SCSI commands arrive in IRQ context and gate on m_CDReady, so the
         // unit must read as not-ready before the old device is torn down.
+        CTraceLab::Get()->TraceMediaState((u8)m_mediaState, (u8)MediaState::NO_MEDIUM);
         m_CDReady = false;
         m_mediaState = MediaState::NO_MEDIUM;
         m_SenseParams.bSenseKey = 0x02;
@@ -821,6 +822,7 @@ void CUSBCDGadget::OnActivate()
     // Set media ready NOW - USB endpoints are active
     if (m_pDevice && !m_CDReady)
     {
+        CTraceLab::Get()->TraceMediaState((u8)m_mediaState, (u8)MediaState::MEDIUM_PRESENT_UNIT_ATTENTION);
         m_CDReady = true;
         m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
         m_SenseParams.bSenseKey = 0x06;

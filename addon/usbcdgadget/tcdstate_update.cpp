@@ -38,6 +38,7 @@ void CUSBCDGadget::Update()
             {
             case MediaState::NO_MEDIUM:
                 // Stage 2: Transition from NO_MEDIUM to UNIT_ATTENTION
+                CTraceLab::Get()->TraceMediaState((u8)m_mediaState, (u8)MediaState::MEDIUM_PRESENT_UNIT_ATTENTION);
                 m_CDReady = true;
                 m_mediaState = MediaState::MEDIUM_PRESENT_UNIT_ATTENTION;
                 setSenseData(0x06, 0x28, 0x00); // UNIT ATTENTION / MEDIUM CHANGED

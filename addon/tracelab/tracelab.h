@@ -57,6 +57,7 @@ public:
     void TraceCDBReceived(u8 lun, const u8 *pCDB, u8 nCDBLength);
     void TraceCommandComplete(u8 opcode, u8 status, u32 residue);
     void TraceSenseSet(u8 senseKey, u8 asc, u8 ascq);
+    void TraceMediaState(u8 fromState, u8 toState); // disc-swap transitions
 
     // Phase 2: USB bus/device state (rare events, recorded in any mode).
     void TraceUSBSuspend();

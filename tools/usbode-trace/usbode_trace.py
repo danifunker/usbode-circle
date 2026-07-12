@@ -36,6 +36,7 @@ EVENT_NAMES = {
     0x0400: "SCSI_CDB_RECEIVED",
     0x0401: "SCSI_COMMAND_COMPLETE",
     0x0402: "SCSI_SENSE_SET",
+    0x0403: "SCSI_MEDIA_STATE",
     0x0500: "IMAGE_READ_START",
     0x0501: "IMAGE_READ_COMPLETE",
     0x0502: "IMAGE_READ_ERROR",
@@ -102,6 +103,11 @@ def format_payload(eventType, payload):
     if eventType == 0x0402 and len(payload) >= struct.calcsize(SENSE_PAYLOAD_FMT):
         senseKey, asc, ascq = struct.unpack(SENSE_PAYLOAD_FMT, payload[:struct.calcsize(SENSE_PAYLOAD_FMT)])
         return f"sense={senseKey:02x}/{asc:02x}/{ascq:02x}"
+    if eventType == 0x0403 and len(payload) >= 2:
+        states = {0: "NO_MEDIUM", 1: "UNIT_ATTENTION", 2: "READY"}
+        frm = states.get(payload[0], f"?{payload[0]}")
+        to = states.get(payload[1], f"?{payload[1]}")
+        return f"{frm} -> {to}"
     if eventType == 0x0103 and len(payload) >= 1:
         return "full-speed (USB 1.1)" if payload[0] else "high-speed (USB 2.0)"
     if eventType in (0x0300, 0x0301) and len(payload) >= 4:

@@ -56,6 +56,7 @@ enum TTraceEventType : u16
     SCSI_CDB_RECEIVED = 0x0400,
     SCSI_COMMAND_COMPLETE = 0x0401,
     SCSI_SENSE_SET = 0x0402,
+    SCSI_MEDIA_STATE = 0x0403, // TraceMediaStatePayload; disc-swap transitions
 
     // Image/storage access (start/complete deep mode only; error always)
     IMAGE_READ_START = 0x0500,    // TraceImageReadPayload
@@ -92,6 +93,14 @@ struct TraceSCSISensePayload
     u8 senseKey;
     u8 asc;
     u8 ascq;
+} PACKED;
+
+// Payload for SCSI_MEDIA_STATE. Values follow CUSBCDGadget::MediaState:
+// 0 = NO_MEDIUM, 1 = MEDIUM_PRESENT_UNIT_ATTENTION, 2 = MEDIUM_PRESENT_READY
+struct TraceMediaStatePayload
+{
+    u8 fromState;
+    u8 toState;
 } PACKED;
 
 // Payload for USB_SPEED_NEGOTIATED

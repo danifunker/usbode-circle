@@ -244,6 +244,20 @@ void CTraceLab::TraceSenseSet(u8 senseKey, u8 asc, u8 ascq)
     m_RingBuffer.WriteRecord(SCSI_SENSE_SET, &payload, sizeof(payload));
 }
 
+void CTraceLab::TraceMediaState(u8 fromState, u8 toState)
+{
+    if (!m_bEnabled)
+    {
+        return;
+    }
+
+    TraceMediaStatePayload payload;
+    payload.fromState = fromState;
+    payload.toState = toState;
+
+    m_RingBuffer.WriteRecord(SCSI_MEDIA_STATE, &payload, sizeof(payload));
+}
+
 void CTraceLab::TraceUSBSuspend()
 {
     if (!m_bEnabled)
