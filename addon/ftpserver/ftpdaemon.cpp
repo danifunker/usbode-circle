@@ -33,7 +33,10 @@
 LOGMODULE("ftpd");
 
 constexpr u16 ListenPort = 21;
-constexpr u8 MaxConnections = 1;
+// FTP clients like FileZilla open several connections at once (browsing +
+// parallel transfers); a limit of 1 made them fail with 421 whenever a
+// second connection or a not-yet-timed-out stale session existed.
+constexpr u8 MaxConnections = CFTPWorker::MaxSessions;
 
 CFTPDaemon::CFTPDaemon(const char* pUser, const char* pPassword)
     : CTask(TASK_STACK_SIZE, true),

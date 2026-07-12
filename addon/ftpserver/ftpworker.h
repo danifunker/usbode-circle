@@ -88,6 +88,11 @@ class CFTPWorker : protected CTask {
 
     static u8 GetInstanceCount() { return s_nInstanceCount; }
 
+    // Concurrent session limit; each session owns a slot that fixes its
+    // passive-mode data port (PassivePortBase + slot), so slots must never
+    // be shared between live sessions.
+    static constexpr u8 MaxSessions = 4;
+
    private:
     CSocket* OpenDataConnection();
 
@@ -159,6 +164,8 @@ class CFTPWorker : protected CTask {
 
     static const TFTPCommand Commands[];
     static u8 s_nInstanceCount;
+    static u8 s_nSlotsInUse; // bitmask of live sessions' slots
+    u8 m_nSlot;
 };
 
 #endif
