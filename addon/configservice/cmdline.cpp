@@ -54,6 +54,15 @@ bool CmdLine::Load(const char* filename) {
                 strcpy(pairs[count].value, equal + 1);
                 ++count;
             }
+        } else {
+            // Keep bare tokens (options without a value) so that Save()
+            // doesn't silently drop them when rewriting the file
+            size_t key_len = strlen(token);
+            if (key_len > 0 && key_len < MAX_KEY_LEN) {
+                strcpy(pairs[count].key, token);
+                pairs[count].value[0] = '\0';
+                ++count;
+            }
         }
         token = strtok_r(nullptr, " ", &saveptr);
     }
@@ -90,7 +99,9 @@ bool CmdLine::Save() {
     size_t pos = 0;
 
     for (int i = 0; i < count; ++i) {
-        int n = sprintf(line + pos, "%s=%s", pairs[i].key, pairs[i].value);
+        int n = (pairs[i].value[0] != '\0')
+                    ? sprintf(line + pos, "%s=%s", pairs[i].key, pairs[i].value)
+                    : sprintf(line + pos, "%s", pairs[i].key);
         if (n < 0 || pos + (size_t)n >= sizeof(line)) {
             f_close(&file);
             LOGNOTE("Failed: buffer overflow");
