@@ -154,7 +154,7 @@ it back to a bin/cue. Example command lines:
 
 `chdman createcd -i MultiBin.cue -o MultiBin.chd` 
 Note CHD files are compatible with USBODE, but performance isn't perfect yet. So to convert back to .bin/cue use:
-`chdman extractct -i MultiBin.chd -o SingleBin.cue -ob SingleBin.bin`
+`chdman extractcd -i MultiBin.chd -o SingleBin.cue -ob SingleBin.bin`
 
 If there are issues with CD playback, please try this first. The previous recommendation was to use an old unsupported software which does not properly support conversion.
 

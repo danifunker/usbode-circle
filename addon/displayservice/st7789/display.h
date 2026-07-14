@@ -59,8 +59,9 @@ class ST7789Display : public IDisplay {
 
     ConfigService* configservice;
 
-    int m_backlight_pin;
-    CGPIOPin* m_Backlight;
+    // 0 = no backlight control (backlight_pin=0 in config disables it)
+    int m_backlight_pin = 0;
+    CGPIOPin* m_Backlight = nullptr;
     int backlightTimer;
     int lowPowerTimer;
     bool sleeping = false;

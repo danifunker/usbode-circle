@@ -91,6 +91,7 @@ const TFTPCommand CFTPWorker::Commands[] =
 };
 
 u8 CFTPWorker::s_nInstanceCount = 0;
+u8 CFTPWorker::s_nSlotsInUse = 0;
 
 // Volume names from ffconf.h
 // TODO: Share with soundfontmanager.cpp
@@ -133,7 +134,20 @@ CFTPWorker::CFTPWorker(CSocket* pControlSocket, const char* pExpectedUser, const
       m_CurrentPath("1:"),
       m_RenameFrom() {
     ++s_nInstanceCount;
-    m_LogName.Format("ftpd[%d]", s_nInstanceCount);
+
+    // Claim the lowest free session slot; it determines the passive-mode
+    // data port, so it must stay stable for the whole session even as
+    // other sessions come and go. (Task context only, so no locking.)
+    m_nSlot = 0;
+    for (u8 i = 0; i < MaxSessions; ++i) {
+        if (!(s_nSlotsInUse & (1 << i))) {
+            m_nSlot = i;
+            break;
+        }
+    }
+    s_nSlotsInUse |= (1 << m_nSlot);
+
+    m_LogName.Format("ftpd[%d]", m_nSlot + 1);
     
     // Allocate buffers
     WriteBuffer = new (HEAP_LOW) BYTE[WRITE_BUFFER_SIZE];
@@ -157,6 +171,7 @@ CFTPWorker::~CFTPWorker() {
     if (WriteBuffer != nullptr)
         delete[] WriteBuffer;
 
+    s_nSlotsInUse &= ~(1 << m_nSlot);
     --s_nInstanceCount;
     LOGNOTE("Instance count is now %d", s_nInstanceCount);
 }
@@ -164,7 +179,7 @@ CFTPWorker::~CFTPWorker() {
 void CFTPWorker::Run() {
     assert(m_pControlSocket != nullptr);
 
-    const size_t nWorkerNumber = s_nInstanceCount;
+    const size_t nWorkerNumber = m_nSlot + 1;
     CScheduler* const pScheduler = CScheduler::Get();
 
     LOGNOTE("Worker task %d spawned", nWorkerNumber);
@@ -547,7 +562,7 @@ bool CFTPWorker::Passive(const char* pArgs) {
 
     if (m_pDataSocket == nullptr) {
         m_TransferMode = TTransferMode::Passive;
-        m_nDataSocketPort = PassivePortBase + s_nInstanceCount - 1;
+        m_nDataSocketPort = PassivePortBase + m_nSlot;
 
         CNetSubSystem* const pNet = CNetSubSystem::Get();
         m_pDataSocket = new CSocket(pNet, IPPROTO_TCP);

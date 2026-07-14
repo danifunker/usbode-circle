@@ -510,16 +510,22 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     if (bDiscSwap || !m_CDReady)
     {
         MLOGNOTE("CUSBCDGadget::SetDevice", "Disc swap detected - ejecting old media");
-        delete m_pDevice;
-        m_pDevice = nullptr;
 
+        // SCSI commands arrive in IRQ context and gate on m_CDReady, so the
+        // unit must read as not-ready before the old device is torn down.
         m_CDReady = false;
         m_mediaState = MediaState::NO_MEDIUM;
         m_SenseParams.bSenseKey = 0x02;
         m_SenseParams.bAddlSenseCode = 0x3a;
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
-        discChanged = true;
+
+        delete m_pDevice;
+        m_pDevice = nullptr;
+
+        // discChanged (the GESN NewMedia event) is armed when the new medium
+        // becomes present, not here: signalling NewMedia while the drive still
+        // reports NO_MEDIUM makes hosts mount twice per swap.
 
         MLOGNOTE("CUSBCDGadget::SetDevice", "Media ejected: state=NO_MEDIUM, sense=02/3a/00");
     }

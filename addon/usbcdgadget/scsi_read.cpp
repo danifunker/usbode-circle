@@ -145,6 +145,13 @@ void SCSIRead::DoPlayAudio(CUSBCDGadget* gadget, int cdbSize)
 {
     MLOGNOTE("SCSIRead::DoPlayAudio", cdbSize == 12 ? "PLAY AUDIO (12)" : "PLAY AUDIO (10)");
 
+    if (!gadget->m_CDReady)
+    {
+        gadget->setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+        gadget->sendCheckCondition();
+        return;
+    }
+
     // Where to start reading (LBA)
     gadget->m_nblock_address = (u32)(gadget->m_CBW.CBWCB[2] << 24) | (u32)(gadget->m_CBW.CBWCB[3] << 16) | (u32)(gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
 
