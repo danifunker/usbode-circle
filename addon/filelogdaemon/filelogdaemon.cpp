@@ -32,14 +32,23 @@ LOGMODULE("filelogdaemon");
 
 CFileLogDaemon *CFileLogDaemon::s_pThis = nullptr;
 
-CFileLogDaemon::CFileLogDaemon(const char *pLogFilePath)
-    : m_pLogFilePath(pLogFilePath) {
+CFileLogDaemon::CFileLogDaemon(const char *pLogFilePath, unsigned uiLogLevel)
+    : m_pLogFilePath(pLogFilePath),
+      m_uiLogLevel(uiLogLevel > 5 ? 5 : uiLogLevel) {
     // I am the one and only!
     assert(s_pThis == nullptr);
     s_pThis = this;
 
     SetName(FromFileLogDaemon);
     Initialize();
+}
+
+CFileLogDaemon *CFileLogDaemon::Get(void) {
+    return s_pThis;
+}
+
+void CFileLogDaemon::SetLogLevel(unsigned uiLogLevel) {
+    m_uiLogLevel = uiLogLevel > 5 ? 5 : uiLogLevel;
 }
 
 boolean CFileLogDaemon::Initialize() {
@@ -96,6 +105,13 @@ void CFileLogDaemon::Run(void) {
         int nTimeZone;
         while (pLogger->ReadEvent(&Severity, Source, Message,
                                   &Time, &nHundredthTime, &nTimeZone)) {
+            // CLogger queues every event regardless of its loglevel (that
+            // only filters the serial/screen target), so the configured
+            // level is applied here. Severity LogPanic(0)..LogDebug(4)
+            // maps to config levels 1..5; level 0 drops everything.
+            if ((unsigned)Severity >= m_uiLogLevel) {
+                continue;
+            }
             if (!LogMessage(Severity, Time, nHundredthTime, nTimeZone, Source, Message)) {
                 CScheduler::Get()->Sleep(20);
             }
