@@ -161,7 +161,9 @@ bool ST7789Display::Initialize() {
         LOGNOTE("Registered buttons");
     }
 
-    if (bOK) {
+    // backlight_pin=0 means no backlight control; pwm_configured stays false
+    // so the sleep/low-power paths never touch the PWM either
+    if (bOK && m_backlight_pin) {
         m_Backlight = new CGPIOPin(m_backlight_pin, GPIOModeAlternateFunction0, m_GPIOManager);
         m_PWMOutput.Start();
         unsigned brightness = configservice->GetST7789Brightness(1024);
