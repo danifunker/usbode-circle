@@ -34,6 +34,7 @@
 #include <setupstatus/setupstatus.h>
 #include <upgradestatus/upgradestatus.h>
 #include <circle/memory.h>
+#include <circle/machineinfo.h>
 
 #include <circle/time.h>
 
@@ -263,6 +264,25 @@ TShutdownMode CKernel::Run(void)
 
     // Initialize the CD Player service
     const char *pSoundDevice = m_Options.GetSoundDevice();
+
+#ifndef USE_PWM_AUDIO_ON_ZERO
+    // Zero-family boards have no headphone jack, so Circle maps PWM audio to
+    // the Pi 3 jack pins GPIO 40/41 - but on these boards GPIO 41 is WL_REG_ON,
+    // the onboard WLAN chip's regulator enable. Starting PWM sound there cuts
+    // power to the WLAN chip and panics the ether4330 driver within
+    // milliseconds (SDIO I/O errors, then error-stack overflow).
+    if (strcmp(pSoundDevice, "sndpwm") == 0)
+    {
+        TMachineModel model = CMachineInfo::Get()->GetMachineModel();
+        if (model == MachineModelZero || model == MachineModelZeroW
+            || model == MachineModelZero2W || model == MachineModelCM0)
+        {
+            LOGWARN("sounddev=sndpwm is not supported on this board "
+                    "(PWM audio pins control the onboard WLAN regulator) - audio disabled");
+            pSoundDevice = "";
+        }
+    }
+#endif
 
     // Currently supporting PWM and I2S sound devices. HDMI needs more work.
     if (strcmp(pSoundDevice, "sndi2s") == 0 || strcmp(pSoundDevice, "sndpwm") == 0)
