@@ -56,6 +56,13 @@ class CWebServer : public CHTTPDaemon {
                           u8          *pBuffer,
                           unsigned    *pLength,
                           const char **ppContentType);
+
+    // Chunked image upload (/api/images/upload); lives here because it
+    // needs the protected CHTTPDaemon::GetMultipartFormPart().
+    THTTPStatus HandleImageUpload (const char *pParams,
+                                   u8 *pBuffer,
+                                   unsigned *pLength,
+                                   const char **ppContentType);
 private:
     CActLED *m_pActLED;
     CDROMService *cdromservice = nullptr;

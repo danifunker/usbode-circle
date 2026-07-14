@@ -26,7 +26,8 @@ OBJS    = webserver.o \
 	handlers/listapi.o \
 	handlers/traceapi.o \
 	handlers/tracepage.o \
-	handlers/discarthandler.o
+	handlers/discarthandler.o \
+	handlers/deleteapi.o
 
 libwebserver.a: $(OBJS)
 	@echo "  AR    $@"

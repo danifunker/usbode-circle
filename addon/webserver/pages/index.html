@@ -25,10 +25,10 @@
 			{{/is_folder}}
 			{{^is_folder}}
 			{{#flat_display_path}}
-			<div class="file{{{style}}}"><a href="/mount?file={{file_path_encoded}}">{{file_path}}</a>{{current}}</div>
+			<div class="file{{{style}}}"><a href="/mount?file={{file_path_encoded}}">{{file_path}}</a>{{current}} <a href="#" class="delete-image" title="Delete image" onclick="deleteImage('{{file_path_encoded}}');return false">&#10006;</a></div>
 			{{/flat_display_path}}
 			{{^flat_display_path}}
-			<div class="file{{{style}}}"><a href="/mount?file={{file_path_encoded}}">{{file_name}}</a>{{current}}</div>
+			<div class="file{{{style}}}"><a href="/mount?file={{file_path_encoded}}">{{file_name}}</a>{{current}} <a href="#" class="delete-image" title="Delete image" onclick="deleteImage('{{file_path_encoded}}');return false">&#10006;</a></div>
 			{{/flat_display_path}}
 			{{/is_folder}}
 		{{/links}}
@@ -50,4 +50,74 @@
 		{{/pages}}
 	</div>
 	{{/pagination}}
+
+	<h4>Upload Image</h4>
+	<div class="info-box">
+		<input type="file" id="upload-file" accept=".iso,.bin,.cue,.chd,.mds,.mdf,.img">
+		<button type="button" id="upload-btn" onclick="uploadImage()">Upload</button>
+		<div id="upload-status"></div>
+	</div>
+	<script>
+	async function uploadImage() {
+		var input = document.getElementById('upload-file');
+		var st = document.getElementById('upload-status');
+		var btn = document.getElementById('upload-btn');
+		if (!input.files.length) { st.textContent = 'Choose a file first.'; return; }
+		var f = input.files[0];
+		// Server multipart buffer is ~1 MB; chunk + boundary must fit.
+		var CHUNK = 1024 * 1024;
+		var name = encodeURIComponent(f.name);
+		btn.disabled = true;
+		try {
+			var off = 0;
+			do {
+				var end = Math.min(off + CHUNK, f.size);
+				var done = (end >= f.size) ? 1 : 0;
+				// Retry transient network failures (WiFi hiccups abort
+				// Safari fetches easily); server-side errors still abort.
+				var j = null;
+				for (var attempt = 1; ; attempt++) {
+					try {
+						var fd = new FormData();
+						fd.append('chunk', f.slice(off, end), f.name);
+						var r = await fetch('/api/images/upload?name=' + name +
+						                    '&offset=' + off + '&done=' + done,
+						                    { method: 'POST', body: fd });
+						j = await r.json();
+						break;
+					} catch (e) {
+						if (attempt >= 5) throw e;
+						st.textContent = 'Uploading ' + f.name + ': retrying chunk (attempt ' +
+							(attempt + 1) + ' of 5) ...';
+						await new Promise(function (res) { setTimeout(res, attempt * 2000); });
+					}
+				}
+				if (j.status !== 'ok') {
+					st.textContent = 'Upload failed: ' + (j.error || 'server error');
+					return;
+				}
+				off = end;
+				st.textContent = 'Uploading ' + f.name + ': ' +
+					(f.size ? Math.round(off / f.size * 100) : 100) + '%';
+			} while (off < f.size);
+			st.textContent = 'Upload complete: ' + f.name;
+			setTimeout(function () { location.reload(); }, 800);
+		} catch (e) {
+			st.textContent = 'Upload failed after retries: ' + e;
+		} finally {
+			btn.disabled = false;
+		}
+	}
+	async function deleteImage(encodedPath) {
+		var name = decodeURIComponent(encodedPath);
+		if (!confirm('Delete ' + name + ' from the SD card?')) return;
+		var r = await fetch('/api/images/delete?file=' + encodedPath);
+		var j = await r.json();
+		if (j.status !== 'ok') {
+			alert(j.error || 'Delete failed');
+			return;
+		}
+		location.reload();
+	}
+	</script>
 {{/cdrom}}

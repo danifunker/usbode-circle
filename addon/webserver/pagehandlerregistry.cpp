@@ -23,6 +23,7 @@
 #include "handlers/traceapi.h"
 #include "handlers/tracepage.h"
 #include "handlers/discarthandler.h"
+#include "handlers/deleteapi.h"
 
 // instances of your page handlers
 static HomePageHandler s_homePageHandler;
@@ -42,6 +43,7 @@ static TraceAPIHandler s_traceAPIHandler;
 static TraceDownloadHandler s_traceDownloadHandler;
 static TracePageHandler s_tracePageHandler;
 static DiscArtHandler s_discArtHandler;
+static DeleteImageAPIHandler s_deleteImageAPIHandler;
 
 // routes for your handlers
 static const std::map<std::string, IPageHandler*> g_pageHandlers = {
@@ -66,6 +68,9 @@ static const std::map<std::string, IPageHandler*> g_pageHandlers = {
     { "/api/trace/save", &s_traceAPIHandler },
     { "/usbode.utrace", &s_traceDownloadHandler },
     { "/trace", &s_tracePageHandler },
+    // /api/images/upload is dispatched directly in CWebServer::GetContent
+    // (it needs the protected multipart API), not through this registry.
+    { "/api/images/delete", &s_deleteImageAPIHandler },
 
     // Disc art
     { "/discart", &s_discArtHandler },
