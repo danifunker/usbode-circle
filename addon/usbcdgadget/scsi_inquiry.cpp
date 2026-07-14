@@ -9,6 +9,7 @@
 #include <circle/util.h>
 #include <cdplayer/cdplayer.h>
 #include <circle/sched/scheduler.h>
+#include <tracelab/tracelab.h>
 
 #define MLOGNOTE(From, ...) CLogger::Get()->Write(From, LogNotice, __VA_ARGS__)
 #define MLOGDEBUG(From, ...) // CLogger::Get ()->Write (From, LogDebug, __VA_ARGS__)
@@ -189,6 +190,8 @@ void SCSIInquiry::RequestSense(CUSBCDGadget *gadget)
 
     if (gadget->m_mediaState == CUSBCDGadget::MediaState::MEDIUM_PRESENT_UNIT_ATTENTION)
     {
+        CTraceLab::Get()->TraceMediaState((u8)gadget->m_mediaState,
+                                          (u8)CUSBCDGadget::MediaState::MEDIUM_PRESENT_READY);
         gadget->clearSenseData();
         gadget->m_mediaState = CUSBCDGadget::MediaState::MEDIUM_PRESENT_READY;
         gadget->bmCSWStatus = CD_CSW_STATUS_OK;

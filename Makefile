@@ -67,7 +67,7 @@ USBODE_ADDONS = sdcardservice cdromservice scsitbservice usbcdgadget \
                 shutdown usbmsdgadget \
 				lzma zlib zstd libchdr discimage mdsparser cueparser filelogdaemon \
                 webserver ftpserver configservice libsh1106 libssd1306 displayservice cdplayer \
-                upgradestatus setupstatus discart
+                upgradestatus setupstatus discart tracelab
 
 # Only the Circle addons we actually need
 # Note: wlan/firmware is handled specially in circle-deps to avoid re-downloading
@@ -123,7 +123,12 @@ reset-patches:
 check-patches:
 	@scripts/apply-patches.sh check
 
-# Configure Circle for target architecture
+# Configure Circle for target architecture.
+# HEAP_BLOCK_BUCKET_SIZES: Circle's heap only recycles freed blocks whose size
+# matches a bucket; anything larger than the biggest bucket is lost forever on
+# free. The webserver's content and upload-multipart buffers are 1114112 bytes
+# (0x110000), so that size is added to the default buckets - without it every
+# HTTP request leaks ~1 MB until the device runs out of memory.
 configure: check-vars check-config
 	@echo "Configuring for RASPPI=$(RASPPI) ($(ARCH_MODE)-bit mode)$(if $(DEBUG_FLAGS), with debug flags: $(DEBUG_FLAGS))"
 	@echo "Using PREFIX=$(CURRENT_PREFIX)"
@@ -133,9 +138,9 @@ configure: check-vars check-config
 	rm -rf build && \
 	mkdir -p build/circle-newlib && \
 	if [ "$(RASPPI)" = "4" ]; then \
-		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(foreach f,$(DEBUG_FLAGS),-o $(f)) -o OPTIMIZE=O3 -o KERNEL_MAX_SIZE=0x400000 -o MAX_TASKS=40 -o SCREEN_HEADLESS ; \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(foreach f,$(DEBUG_FLAGS),-o $(f)) -o OPTIMIZE=O3 -o "HEAP_BLOCK_BUCKET_SIZES=0x40,0x400,0x1000,0x4000,0x10000,0x40000,0x80000,0x110000" -o KERNEL_MAX_SIZE=0x400000 -o MAX_TASKS=40 -o SCREEN_HEADLESS ; \
 	else \
-		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(foreach f,$(DEBUG_FLAGS),-o $(f)) -o OPTIMIZE=O3 -o KERNEL_MAX_SIZE=0x400000 -o MAX_TASKS=40  -o SCREEN_HEADLESS ; \
+		./configure -r $(RASPPI) --prefix "$(CURRENT_PREFIX)" $(foreach f,$(DEBUG_FLAGS),-o $(f)) -o OPTIMIZE=O3 -o "HEAP_BLOCK_BUCKET_SIZES=0x40,0x400,0x1000,0x4000,0x10000,0x40000,0x80000,0x110000" -o KERNEL_MAX_SIZE=0x400000 -o MAX_TASKS=40  -o SCREEN_HEADLESS ; \
 	fi
 
 # Build Circle stdlib

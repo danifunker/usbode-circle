@@ -104,3 +104,5 @@ buildinfo.json
 
 addon/webserver/pages/*.h
 addon/webserver/assets/*.h
+__pycache__/
+
