@@ -103,8 +103,10 @@ THTTPStatus CWebServer::HandleImageUpload (const char *pParams,
 {
     auto params = parse_query_params(pParams);
     std::string name = params.count("name") ? params["name"] : "";
-    unsigned long offset = params.count("offset")
-        ? strtoul(params["offset"].c_str(), nullptr, 10) : 0;
+    // strtoull, not strtoul: unsigned long is 32-bit on AARCH32 kernels,
+    // which silently clamped offsets of >4 GB uploads.
+    unsigned long long offset = params.count("offset")
+        ? strtoull(params["offset"].c_str(), nullptr, 10) : 0;
     boolean bDone = params.count("done") && params["done"] == "1";
 
     // Uploads land in the root of the images volume; reject anything that
@@ -139,7 +141,7 @@ THTTPStatus CWebServer::HandleImageUpload (const char *pParams,
         res = f_open(&file, partPath.c_str(), FA_WRITE | FA_OPEN_EXISTING);
         if (res == FR_OK && f_size(&file) != offset)
         {
-            unsigned long haveSize = (unsigned long)f_size(&file);
+            unsigned long long haveSize = f_size(&file);
             f_close(&file);
             if (haveSize == offset + nDataLength && !bDone)
             {
@@ -147,12 +149,12 @@ THTTPStatus CWebServer::HandleImageUpload (const char *pParams,
                 // response got lost - acknowledge it instead of failing.
                 char reply[96];
                 snprintf(reply, sizeof(reply),
-                         "{\"status\":\"ok\",\"received\":%u,\"size\":%lu}",
+                         "{\"status\":\"ok\",\"received\":%u,\"size\":%llu}",
                          nDataLength, haveSize);
                 return UploadReply(pBuffer, pLength, ppContentType, reply);
             }
             // Chunk out of sequence; the uploader must restart.
-            LOGERR("Upload %s: offset %lu != file size %lu",
+            LOGERR("Upload %s: offset %llu != file size %llu",
                    name.c_str(), offset, haveSize);
             return UploadReply(pBuffer, pLength, ppContentType,
                                "{\"status\":\"error\",\"error\":\"chunk out of sequence, restart upload\"}");
@@ -172,7 +174,7 @@ THTTPStatus CWebServer::HandleImageUpload (const char *pParams,
         {
             f_close(&file);
             f_unlink(partPath.c_str());
-            LOGERR("Upload %s: write failed at offset %lu (res=%d, wrote %u/%u)",
+            LOGERR("Upload %s: write failed at offset %llu (res=%d, wrote %u/%u)",
                    name.c_str(), offset, (int)res, written, nDataLength);
             return UploadReply(pBuffer, pLength, ppContentType,
                                "{\"status\":\"error\",\"error\":\"write failed (card full?)\"}");
@@ -202,7 +204,7 @@ THTTPStatus CWebServer::HandleImageUpload (const char *pParams,
                                "{\"status\":\"error\",\"error\":\"rename failed\"}");
         }
 
-        LOGNOTE("Upload complete: %s (%lu bytes)",
+        LOGNOTE("Upload complete: %s (%llu bytes)",
                 finalPath.c_str(), offset + nDataLength);
         if (svc)
             svc->RefreshCache();
@@ -210,7 +212,7 @@ THTTPStatus CWebServer::HandleImageUpload (const char *pParams,
 
     char reply[96];
     snprintf(reply, sizeof(reply),
-             "{\"status\":\"ok\",\"received\":%u,\"size\":%lu}",
+             "{\"status\":\"ok\",\"received\":%u,\"size\":%llu}",
              nDataLength, offset + nDataLength);
     return UploadReply(pBuffer, pLength, ppContentType, reply);
 }
