@@ -35,9 +35,14 @@ public:
     void ResetReadCursor();
     boolean ReadNextRecord(TraceRecordHeader *pHeaderOut, u8 *pPayloadOut, u16 nPayloadOutCapacity);
 
+    // Discards all recorded data (keeps the allocation) so a new capture
+    // starts from an empty buffer. Caller must ensure no writer is active.
+    void Reset();
+
     u32 GetRecordCount() const { return m_nRecordCount; }
     u32 GetDroppedRecordCount() const { return m_nDroppedRecordCount; }
     u32 GetCapacity() const { return m_nCapacity; }
+    u32 GetUsedBytes() const { return m_nWriteOffset; }
 
 private:
     u8 *m_pBuffer;

@@ -15,11 +15,18 @@ static const char FromTraceLab[] = "tracelab";
 
 #define DEFAULT_TRACE_BUFFER_KB 128
 
+// After the error trigger fires, keep recording this many more records
+// (the immediate aftermath: REQUEST SENSE, retries) before auto-stopping.
+#define POST_TRIGGER_RECORDS 64
+
 CTraceLab *CTraceLab::s_pThis = nullptr;
 
 CTraceLab::CTraceLab()
     : m_bEnabled(FALSE),
       m_bDeepMode(FALSE),
+      m_bErrorTrigger(FALSE),
+      m_bTriggerFired(FALSE),
+      m_nStopAtRecordCount(0),
       m_nCaptureStartTime(0)
 {
     assert(s_pThis == nullptr);
@@ -64,10 +71,42 @@ boolean CTraceLab::Initialize()
 
     if (!m_bEnabled)
     {
+        // Not capturing from boot, but StartCapture() via the web UI can
+        // still allocate and begin a capture later.
         return TRUE;
     }
 
-    unsigned nBufferKB = pConfig->GetProperty("trace_buffer_kb", (unsigned)DEFAULT_TRACE_BUFFER_KB);
+    m_bErrorTrigger = strcmp(pConfig->GetProperty("trace_trigger", "manual"), "error") == 0;
+
+    if (!AllocateBuffer())
+    {
+        m_bEnabled = FALSE;
+        return FALSE;
+    }
+
+    m_nCaptureStartTime = CTimer::GetClockTicks();
+    m_RingBuffer.WriteRecord(TRACE_CAPTURE_START, nullptr, 0);
+
+    CLogger::Get()->Write(FromTraceLab, LogNotice, "Trace Lab enabled (%u KB buffer, %s mode%s)",
+                          m_RingBuffer.GetCapacity() / 1024, m_bDeepMode ? "deep" : "standard",
+                          m_bErrorTrigger ? ", error trigger" : "");
+
+    return TRUE;
+}
+
+boolean CTraceLab::AllocateBuffer()
+{
+    if (m_RingBuffer.GetCapacity() > 0)
+    {
+        return TRUE;
+    }
+
+    unsigned nBufferKB = DEFAULT_TRACE_BUFFER_KB;
+    ConfigService *pConfig = (ConfigService *)CScheduler::Get()->GetTask("configservice");
+    if (pConfig != nullptr)
+    {
+        nBufferKB = pConfig->GetProperty("trace_buffer_kb", (unsigned)DEFAULT_TRACE_BUFFER_KB);
+    }
     if (nBufferKB == 0)
     {
         nBufferKB = DEFAULT_TRACE_BUFFER_KB;
@@ -76,17 +115,74 @@ boolean CTraceLab::Initialize()
     if (!m_RingBuffer.Initialize(nBufferKB * 1024))
     {
         CLogger::Get()->Write(FromTraceLab, LogError, "Failed to allocate %u KB trace buffer", nBufferKB);
-        m_bEnabled = FALSE;
         return FALSE;
     }
 
+    return TRUE;
+}
+
+boolean CTraceLab::StartCapture(boolean bDeep, boolean bErrorTrigger)
+{
+    if (!AllocateBuffer())
+    {
+        return FALSE;
+    }
+
+    // Stop any running capture before resetting so no writer races the
+    // reset. (Web handlers run in task context; hot-path writers check
+    // m_bEnabled first.)
+    m_bEnabled = FALSE;
+    m_bDeepMode = bDeep;
+    m_bErrorTrigger = bErrorTrigger;
+    m_bTriggerFired = FALSE;
+    m_nStopAtRecordCount = 0;
+
+    m_RingBuffer.Reset();
+
     m_nCaptureStartTime = CTimer::GetClockTicks();
     m_RingBuffer.WriteRecord(TRACE_CAPTURE_START, nullptr, 0);
+    m_bEnabled = TRUE;
 
-    CLogger::Get()->Write(FromTraceLab, LogNotice, "Trace Lab enabled (%u KB buffer, %s mode)",
-                          nBufferKB, m_bDeepMode ? "deep" : "standard");
+    CLogger::Get()->Write(FromTraceLab, LogNotice, "Capture started (%s mode%s)",
+                          bDeep ? "deep" : "standard",
+                          bErrorTrigger ? ", error trigger" : "");
 
     return TRUE;
+}
+
+void CTraceLab::StopCapture()
+{
+    if (!m_bEnabled)
+    {
+        return;
+    }
+
+    m_RingBuffer.WriteRecord(TRACE_CAPTURE_STOP, nullptr, 0);
+    m_bEnabled = FALSE;
+    m_nStopAtRecordCount = 0;
+
+    CLogger::Get()->Write(FromTraceLab, LogNotice, "Capture stopped (%u records, %u dropped)",
+                          m_RingBuffer.GetRecordCount(), m_RingBuffer.GetDroppedRecordCount());
+}
+
+void CTraceLab::FireErrorTrigger()
+{
+    if (!m_bErrorTrigger || m_bTriggerFired)
+    {
+        return;
+    }
+
+    m_bTriggerFired = TRUE;
+    m_RingBuffer.WriteRecord(TRACE_TRIGGER_FIRED, nullptr, 0);
+    m_nStopAtRecordCount = m_RingBuffer.GetRecordCount() + POST_TRIGGER_RECORDS;
+}
+
+void CTraceLab::CheckAutoStop()
+{
+    if (m_nStopAtRecordCount != 0 && m_RingBuffer.GetRecordCount() >= m_nStopAtRecordCount)
+    {
+        StopCapture();
+    }
 }
 
 void CTraceLab::TraceCDBReceived(u8 lun, const u8 *pCDB, u8 nCDBLength)
@@ -125,6 +221,12 @@ void CTraceLab::TraceCommandComplete(u8 opcode, u8 status, u32 residue)
     payload.residue = residue;
 
     m_RingBuffer.WriteRecord(SCSI_COMMAND_COMPLETE, &payload, sizeof(payload));
+
+    if (status != 0)
+    {
+        FireErrorTrigger();
+    }
+    CheckAutoStop();
 }
 
 void CTraceLab::TraceSenseSet(u8 senseKey, u8 asc, u8 ascq)
@@ -174,7 +276,7 @@ void CTraceLab::TraceUSBSpeed(boolean bFullSpeed)
 
 void CTraceLab::TraceImageReadStart(u32 lba, u32 bytes)
 {
-    if (!m_bDeepMode)
+    if (!m_bEnabled || !m_bDeepMode)
     {
         return;
     }
@@ -187,7 +289,7 @@ void CTraceLab::TraceImageReadStart(u32 lba, u32 bytes)
 
 void CTraceLab::TraceImageReadComplete(u32 lba, u32 bytesRead)
 {
-    if (!m_bDeepMode)
+    if (!m_bEnabled || !m_bDeepMode)
     {
         return;
     }
@@ -213,7 +315,7 @@ void CTraceLab::TraceImageReadError(u32 lba, u32 bytes)
 
 void CTraceLab::TraceTransferStart(u32 bytes)
 {
-    if (!m_bDeepMode)
+    if (!m_bEnabled || !m_bDeepMode)
     {
         return;
     }
@@ -225,7 +327,7 @@ void CTraceLab::TraceTransferStart(u32 bytes)
 
 void CTraceLab::TraceTransferComplete(u32 bytes)
 {
-    if (!m_bDeepMode)
+    if (!m_bEnabled || !m_bDeepMode)
     {
         return;
     }
@@ -237,7 +339,8 @@ void CTraceLab::TraceTransferComplete(u32 bytes)
 
 u32 CTraceLab::ExportToBuffer(u8 *pBuffer, u32 nMaxLength)
 {
-    if (!m_bEnabled || pBuffer == nullptr || nMaxLength < sizeof(TraceFileHeader))
+    // Export works on any captured data, including after StopCapture().
+    if (!HasCapture() || pBuffer == nullptr || nMaxLength < sizeof(TraceFileHeader))
     {
         return 0;
     }
@@ -297,7 +400,8 @@ u32 CTraceLab::ExportToBuffer(u8 *pBuffer, u32 nMaxLength)
 
 boolean CTraceLab::SaveToSD(const char *pFilePath)
 {
-    if (!m_bEnabled)
+    // Export works on any captured data, including after StopCapture().
+    if (!HasCapture())
     {
         return FALSE;
     }

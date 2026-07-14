@@ -104,6 +104,18 @@ boolean CTraceRingBuffer::WriteRecord(u16 eventType, const void *pPayload, u16 n
     return TRUE;
 }
 
+void CTraceRingBuffer::Reset()
+{
+    EnterCritical();
+
+    m_nWriteOffset = 0;
+    m_nRecordCount = 0;
+    m_nDroppedRecordCount = 0;
+    m_nLastTimestamp = CTimer::GetClockTicks();
+
+    LeaveCritical();
+}
+
 void CTraceRingBuffer::ResetReadCursor()
 {
     m_nReadOffset = 0;

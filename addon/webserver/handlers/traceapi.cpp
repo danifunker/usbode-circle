@@ -4,7 +4,10 @@
 #include <json/json.hpp>
 #include <tracelab/tracelab.h>
 #include <string>
+#include <cstring>
+#include <map>
 #include "traceapi.h"
+#include "../util.h"
 
 LOGMODULE("traceapi");
 
@@ -22,23 +25,57 @@ THTTPStatus TraceAPIHandler::GetJson(nlohmann::json& j,
 
     std::string path(pPath);
     CTraceLab *pTraceLab = CTraceLab::Get();
-    bool enabled = pTraceLab != nullptr && pTraceLab->IsEnabled();
+    if (pTraceLab == nullptr) {
+        j["status"] = "error";
+        j["error"] = "trace lab not present";
+        return HTTPOK;
+    }
 
     if (path == "/api/trace") {
-        j["enabled"] = enabled;
-        if (enabled) {
-            j["records"] = pTraceLab->GetRecordCount();
-            j["dropped"] = pTraceLab->GetDroppedRecordCount();
-            j["buffer_bytes"] = pTraceLab->GetBufferCapacity();
+        j["capturing"] = (bool)pTraceLab->IsCapturing();
+        j["mode"] = pTraceLab->IsDeepMode() ? "deep" : "standard";
+        j["records"] = pTraceLab->GetRecordCount();
+        j["dropped"] = pTraceLab->GetDroppedRecordCount();
+        j["buffer_bytes"] = pTraceLab->GetBufferCapacity();
+        j["used_bytes"] = pTraceLab->GetUsedBytes();
+        j["trigger_armed"] = (bool)pTraceLab->IsErrorTriggerArmed();
+        j["trigger_fired"] = (bool)pTraceLab->HasTriggerFired();
+        if (pTraceLab->HasCapture()) {
             j["download"] = "/usbode.utrace";
         }
         return HTTPOK;
     }
 
-    if (path == "/api/trace/save") {
-        if (!enabled) {
+    if (path == "/api/trace/start") {
+        // /api/trace/start?mode=deep&trigger=error
+        auto params = parse_query_params(pParams);
+        bool deep = params.count("mode") && params["mode"] == "deep";
+        bool trigger = params.count("trigger") && params["trigger"] == "error";
+
+        if (pTraceLab->StartCapture(deep, trigger)) {
+            j["status"] = "capturing";
+            j["mode"] = deep ? "deep" : "standard";
+            j["trigger_armed"] = trigger;
+        } else {
             j["status"] = "error";
-            j["error"] = "tracing is not enabled; set trace_mode=standard in config.txt";
+            j["error"] = "failed to allocate trace buffer";
+        }
+        return HTTPOK;
+    }
+
+    if (path == "/api/trace/stop") {
+        pTraceLab->StopCapture();
+        j["status"] = "stopped";
+        j["records"] = pTraceLab->GetRecordCount();
+        j["dropped"] = pTraceLab->GetDroppedRecordCount();
+        j["download"] = "/usbode.utrace";
+        return HTTPOK;
+    }
+
+    if (path == "/api/trace/save") {
+        if (!pTraceLab->HasCapture()) {
+            j["status"] = "error";
+            j["error"] = "no capture in buffer; start one at /api/trace/start";
             return HTTPOK;
         }
 
@@ -71,8 +108,8 @@ THTTPStatus TraceDownloadHandler::GetContent(const char* pPath,
     }
 
     CTraceLab *pTraceLab = CTraceLab::Get();
-    if (pTraceLab == nullptr || !pTraceLab->IsEnabled()) {
-        LOGNOTE("Trace download requested but tracing is not enabled");
+    if (pTraceLab == nullptr || !pTraceLab->HasCapture()) {
+        LOGNOTE("Trace download requested but no capture in buffer");
         return HTTPNotFound;
     }
 

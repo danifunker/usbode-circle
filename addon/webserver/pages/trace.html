@@ -1,0 +1,68 @@
+<h3>SCSI Trace Capture</h3>
+<p>Low-overhead binary event tracing for debugging. Start a capture, reproduce the problem, stop, then download the <code>.utrace</code> file and decode it with <code>tools/usbode-trace/usbode_trace.py</code>.</p>
+
+<div class="form-section">
+    <div class="form-group">
+        <div id="trace_status" class="current-value">Loading status&hellip;</div>
+    </div>
+    <div class="buttons">
+        <button type="button" class="button" onclick="traceStart('standard','manual')">Start (Standard)</button>
+        <button type="button" class="button" onclick="traceStart('deep','manual')">Start (Deep)</button>
+        <button type="button" class="button" onclick="traceStart('deep','error')">Start (Deep, stop on error)</button>
+        <button type="button" class="button danger" onclick="traceStop()">Stop</button>
+    </div>
+    <div class="buttons">
+        <a class="button" href="/usbode.utrace" download>Download capture</a>
+        <button type="button" class="button" onclick="traceSave()">Save to SD card</button>
+    </div>
+    <div class="form-group">
+        <div id="trace_result" class="current-value"></div>
+    </div>
+</div>
+
+<div class="navigation">
+    <a class="button" href="/">Return to File List</a>
+</div>
+
+<script>
+function fmtKB(b) { return (b / 1024).toFixed(0) + ' KB'; }
+
+function traceRefresh() {
+    fetch('/api/trace').then(function (r) { return r.json(); }).then(function (s) {
+        var line;
+        if (s.capturing) {
+            line = 'CAPTURING (' + s.mode + ' mode' +
+                   (s.trigger_armed ? ', stops on error' : '') + ') - ' +
+                   s.records + ' records, ' + fmtKB(s.used_bytes) + ' of ' +
+                   fmtKB(s.buffer_bytes) + ' used, ' + s.dropped + ' dropped';
+        } else if (s.records > 0) {
+            line = 'Stopped - ' + s.records + ' records in buffer' +
+                   (s.trigger_fired ? ' (error trigger fired)' : '') +
+                   ', ' + s.dropped + ' dropped. Ready to download.';
+        } else {
+            line = 'Idle - no capture in buffer.';
+        }
+        document.getElementById('trace_status').textContent = line;
+    }).catch(function () {
+        document.getElementById('trace_status').textContent = 'Status unavailable.';
+    });
+}
+
+function traceCall(url) {
+    fetch(url).then(function (r) { return r.json(); }).then(function (s) {
+        document.getElementById('trace_result').textContent = JSON.stringify(s);
+        traceRefresh();
+    }).catch(function (e) {
+        document.getElementById('trace_result').textContent = 'Request failed: ' + e;
+    });
+}
+
+function traceStart(mode, trigger) {
+    traceCall('/api/trace/start?mode=' + mode + '&trigger=' + trigger);
+}
+function traceStop() { traceCall('/api/trace/stop'); }
+function traceSave() { traceCall('/api/trace/save'); }
+
+traceRefresh();
+setInterval(traceRefresh, 2000);
+</script>

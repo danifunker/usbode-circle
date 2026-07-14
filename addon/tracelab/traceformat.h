@@ -41,6 +41,8 @@ struct TraceFileHeader
 enum TTraceEventType : u16
 {
     TRACE_CAPTURE_START = 0x0001,
+    TRACE_CAPTURE_STOP = 0x0002,   // no payload
+    TRACE_TRIGGER_FIRED = 0x0005,  // no payload; error trigger matched
 
     // USB bus/device state (rare; recorded in standard and deep mode)
     USB_SUSPEND = 0x0101,          // no payload

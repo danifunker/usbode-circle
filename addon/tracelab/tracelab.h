@@ -35,6 +35,19 @@ public:
 
     boolean IsEnabled() const { return m_bEnabled; }
     boolean IsDeepMode() const { return m_bDeepMode; }
+    boolean IsCapturing() const { return m_bEnabled; }
+    boolean IsErrorTriggerArmed() const { return m_bErrorTrigger && !m_bTriggerFired; }
+    boolean HasTriggerFired() const { return m_bTriggerFired; }
+    boolean HasCapture() const { return m_RingBuffer.GetRecordCount() > 0; }
+    u32 GetUsedBytes() const { return m_RingBuffer.GetUsedBytes(); }
+
+    // Runtime capture control (task context only). StartCapture() allocates
+    // the ring buffer on first use if trace_mode was off at boot, resets it,
+    // and begins recording; bDeep selects deep mode, bErrorTrigger arms
+    // auto-stop shortly after a failed command. StopCapture() stops
+    // recording but keeps the buffer for export.
+    boolean StartCapture(boolean bDeep, boolean bErrorTrigger);
+    void StopCapture();
 
     u32 GetRecordCount() const { return m_RingBuffer.GetRecordCount(); }
     u32 GetDroppedRecordCount() const { return m_RingBuffer.GetDroppedRecordCount(); }
@@ -70,10 +83,17 @@ public:
     u32 ExportToBuffer(u8 *pBuffer, u32 nMaxLength);
 
 private:
+    boolean AllocateBuffer();
+    void FireErrorTrigger();
+    void CheckAutoStop();
+
     static CTraceLab *s_pThis;
 
     boolean m_bEnabled;
     boolean m_bDeepMode;
+    boolean m_bErrorTrigger;
+    boolean m_bTriggerFired;
+    u32 m_nStopAtRecordCount; // auto-stop threshold, 0 = none
     CTraceRingBuffer m_RingBuffer;
     u64 m_nCaptureStartTime;
 };

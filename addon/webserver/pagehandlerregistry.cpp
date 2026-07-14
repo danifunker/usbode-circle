@@ -21,6 +21,7 @@
 #include "handlers/shutdownapi.h"
 #include "handlers/imagenameapi.h"
 #include "handlers/traceapi.h"
+#include "handlers/tracepage.h"
 #include "handlers/discarthandler.h"
 
 // instances of your page handlers
@@ -39,6 +40,7 @@ static ShutdownAPIHandler s_shutdownAPIHandler;
 static ImageNameAPIHandler s_imageNameAPIHandler;
 static TraceAPIHandler s_traceAPIHandler;
 static TraceDownloadHandler s_traceDownloadHandler;
+static TracePageHandler s_tracePageHandler;
 static DiscArtHandler s_discArtHandler;
 
 // routes for your handlers
@@ -59,8 +61,11 @@ static const std::map<std::string, IPageHandler*> g_pageHandlers = {
     { "/api/reboot", &s_shutdownAPIHandler },
     { "/api/imagename", &s_imageNameAPIHandler },
     { "/api/trace", &s_traceAPIHandler },
+    { "/api/trace/start", &s_traceAPIHandler },
+    { "/api/trace/stop", &s_traceAPIHandler },
     { "/api/trace/save", &s_traceAPIHandler },
     { "/usbode.utrace", &s_traceDownloadHandler },
+    { "/trace", &s_tracePageHandler },
 
     // Disc art
     { "/discart", &s_discArtHandler },

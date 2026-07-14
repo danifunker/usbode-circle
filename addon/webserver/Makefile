@@ -25,6 +25,7 @@ OBJS    = webserver.o \
 	handlers/imagenameapi.o \
 	handlers/listapi.o \
 	handlers/traceapi.o \
+	handlers/tracepage.o \
 	handlers/discarthandler.o
 
 libwebserver.a: $(OBJS)
@@ -45,6 +46,7 @@ handlers/homepage.o: pages/index.h
 handlers/configpage.o: pages/config.h
 handlers/shutdownpage.o: pages/shutdown.h
 handlers/logpage.o: pages/log.h
+handlers/tracepage.o: pages/trace.h
 handlers/asset.o: assets/logo.h
 handlers/asset.o: assets/favicon.h
 handlers/asset.o: assets/style.h

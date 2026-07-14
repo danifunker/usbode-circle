@@ -152,7 +152,13 @@
                 <option value="standard" {{#trace_mode_standard}}selected{{/trace_mode_standard}}>Standard (SCSI commands)</option>
                 <option value="deep" {{#trace_mode_deep}}selected{{/trace_mode_deep}}>Deep (adds storage + USB transfer timing)</option>
             </select>
-            <div class="current-value">Low-overhead binary capture for debugging. Download at <a href="/usbode.utrace">/usbode.utrace</a> or save to SD via /api/trace/save.</div>
+            <div class="current-value">Low-overhead binary capture for debugging. Start/stop captures and download from the <a href="/trace">Trace page</a>. This setting controls capture-from-boot.</div>
+        </div>
+        <div class="form-group">
+            <label for="trace_buffer_kb">Trace Buffer Size (KB):</label>
+            <div class="current-value">Current: {{current_trace_buffer_kb}}</div>
+            <input type="number" name="trace_buffer_kb" id="trace_buffer_kb" value="{{trace_buffer_kb}}" min="16" max="16384" step="16">
+            <div class="current-value">RAM reserved for the capture (default 128). Use 1024 for long Deep captures; capture stops recording when full. Downloads over WiFi work up to 1024.</div>
         </div>
     </div>
 
