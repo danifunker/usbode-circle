@@ -34,10 +34,19 @@
 
 class CFileLogDaemon : public CTask {
    public:
-    CFileLogDaemon(const char *pLogFilePath);
+    // uiLogLevel uses the USBODE config scale (0=no logging, 1=panic only,
+    // 2=+errors, 3=+warnings, 4=+notices, 5=+debug). This is one more than
+    // Circle's TLogSeverity, whose scale has no "off" value.
+    CFileLogDaemon(const char *pLogFilePath, unsigned uiLogLevel = 4);
     ~CFileLogDaemon(void);
     boolean Initialize();
     void Run(void);
+
+    // Takes effect immediately; only affects the log file, not the
+    // loglevel= filtering Circle applies to the serial/screen target.
+    void SetLogLevel(unsigned uiLogLevel);
+
+    static CFileLogDaemon *Get(void);
 
    private:
     boolean LogMessage(TLogSeverity Severity,
@@ -52,6 +61,7 @@ class CFileLogDaemon : public CTask {
     static CFileLogDaemon *s_pThis;
     boolean m_bFileInitialized;
     const char *m_pLogFilePath;
+    unsigned m_uiLogLevel;
     FIL m_LogFile;
 };
 

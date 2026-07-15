@@ -76,10 +76,21 @@ class CCueBinFileDevice : public ICueDevice {
     // Redbook streaming) becomes a cache hit instead of another SD card
     // access - this avoids the additional read latency showing up as
     // stutter on the low-bandwidth USB 1.1 link.
+    //
+    // Two windows, LRU-replaced: CD audio playback and host data reads are
+    // both sequential but run at different file positions, so a single
+    // window thrashes (each stream's miss evicts the other stream's
+    // window). One window per stream keeps both sequential.
+    struct CacheWindow {
+        u8* pBuffer = nullptr;
+        u64 nStart = 0;
+        size_t nLen = 0;
+        unsigned nLastUse = 0;
+    };
     static constexpr size_t CacheSize = 128 * 1024;
-    u8* m_pCacheBuffer = nullptr;
-    u64 m_nCacheStart = 0;
-    size_t m_nCacheLen = 0;
+    static constexpr int NumCacheWindows = 2;
+    CacheWindow m_CacheWindows[NumCacheWindows];
+    unsigned m_nCacheUseCounter = 0;
     u64 m_nLogicalPos = 0;
     
     static constexpr const char* default_cue_sheet =

@@ -309,13 +309,13 @@ int CDUtils::GetSkipbytesForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo)
 
 int CDUtils::GetMediumType(CUSBCDGadget* gadget)
 {
-    // Modern MMC: Medium Type should be 0x00, rely on GET CONFIGURATION
-    if (gadget->m_USBTargetOS != USBTargetOS::Apple)
-    {
-        return 0x13;  // Modern drives return 0x13
-    }
-    
-    // Legacy Mac OS 9 needs actual detection
+    // Report the actual medium type (SFF-8020i codes) for every target OS.
+    // Win9x MCICDA reads this byte from the MODE SENSE header to decide
+    // whether a disc can play audio, and only accepts the classic codes
+    // (0x02 audio, 0x03 data+audio): the previous hardcoded 0x13
+    // ("CD-R data & audio") made it treat every disc as data-only
+    // ("data or no disc loaded", PLAY AUDIO never issued). Modern hosts
+    // ignore this byte in favor of GET CONFIGURATION.
     bool hasAudio = false;
     bool hasData = false;
     

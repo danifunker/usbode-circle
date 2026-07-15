@@ -652,6 +652,10 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         case TCDState::DataIn:
         {
             CTraceLab::Get()->TraceTransferComplete((u32)nLength);
+            if (m_CSW.dCSWDataResidue >= (u32)nLength)
+                m_CSW.dCSWDataResidue -= (u32)nLength;
+            else
+                m_CSW.dCSWDataResidue = 0;
             if (m_nnumber_blocks > 0)
             {
                 if (m_CDReady)
@@ -711,6 +715,12 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
                 break;
             }
             m_CSW.dCSWTag = m_CBW.dCBWTag;
+            // BOT 6.7: dCSWDataResidue = expected transfer length minus the
+            // amount actually transferred. Start at the full expected length;
+            // the data-phase completions below subtract what was moved.
+            // Strict hosts (Win98 USB storage stacks) discard a short
+            // response whose CSW claims residue 0 and retry the command.
+            m_CSW.dCSWDataResidue = m_CBW.dCBWDataTransferLength;
             if (m_CBW.bCBWCBLength <= 16 && m_CBW.bCBWLUN == 0) // meaningful CBW
             {
                 HandleSCSICommand(); // will update m_nstate
@@ -724,6 +734,11 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
             CDROM_DEBUG_LOG("OnXferComplete", "state = %i, dir = %s, len=%i ", m_nState, bIn ? "IN" : "OUT", nLength);
             // process block from host
             // assert(m_nnumber_blocks>0);
+
+            if (m_CSW.dCSWDataResidue >= (u32)nLength)
+                m_CSW.dCSWDataResidue -= (u32)nLength;
+            else
+                m_CSW.dCSWDataResidue = 0;
 
             ProcessOut(nLength);
 
@@ -907,7 +922,9 @@ void CUSBCDGadget::sendCheckCondition()
 void CUSBCDGadget::sendGoodStatus()
 {
     m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
-    m_CSW.dCSWDataResidue = 0; // Command succeeded, all data (if any) transferred
+    // dCSWDataResidue was initialized to the expected transfer length when
+    // the CBW arrived and decremented by the data-phase completions, so it
+    // is already correct here (full length if no data phase happened).
 
     SendCSW();
 }

@@ -50,6 +50,15 @@ void SCSITOC::ReadTOC(CUSBCDGadget *gadget)
         useBCD = true;
         CDROM_DEBUG_LOG("SCSITOC::ReadTOC", "Matshita vendor extension: Full TOC with BCD");
     }
+    else if (format == 0 && (gadget->m_CBW.CBWCB[9] & 0xC0) == 0x40)
+    {
+        // Old SFF-8020i/ATAPI encoding: TOC format in CDB[9] bits 7-6.
+        // Win9x's CD-ROM class driver requests session info this way;
+        // answering with a full TOC makes it misread the session count
+        // and refuse to play audio ("data or no disc loaded").
+        format = 1;
+        CDROM_DEBUG_LOG("SCSITOC::ReadTOC", "Legacy CDB[9] encoding: Session Info");
+    }
 
     CDROM_DEBUG_LOG("SCSITOC::ReadTOC", "Format=%d MSF=%d StartTrack=%d AllocLen=%d Control=0x%02x",
                     format, msf, startingTrack, allocationLength, gadget->m_CBW.CBWCB[9]);

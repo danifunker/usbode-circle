@@ -16,6 +16,7 @@
 #include "../util.h"
 #include <configservice/configservice.h>
 #include <cdplayer/cdplayer.h>
+#include <filelogdaemon/filelogdaemon.h>
 #include "../webglobals.h"
 
 
@@ -149,7 +150,14 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             
             // Log level configuration
             if (form_params.count("loglevel")) {
-                config->SetLogLevel(std::atoi(form_params["loglevel"].c_str()));
+                int loglevel = std::atoi(form_params["loglevel"].c_str());
+                if (loglevel < 0) loglevel = 0;
+                if (loglevel > 5) loglevel = 5;
+                config->SetLogLevel(loglevel);
+                // Apply to the file log immediately; no reboot needed
+                if (CFileLogDaemon::Get() != nullptr) {
+                    CFileLogDaemon::Get()->SetLogLevel(loglevel);
+                }
             }
 
             // Trace Lab configuration
@@ -195,7 +203,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
                 // Schedule a shutdown in 3 seconds
                 new CShutdown(ShutdownHalt, 3000);
             } else {
-                success_message = "Configuration saved successfully. Reboot required for changes to take effect.";
+                success_message = "Configuration saved successfully. Log level applies immediately; other changes take effect after a reboot.";
             }
         }
     }

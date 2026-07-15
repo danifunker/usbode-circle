@@ -55,15 +55,19 @@ CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE media
         m_nLogicalPos = f_tell(m_pFile);
     }
 
-    m_pCacheBuffer = new u8[CacheSize];
+    for (int i = 0; i < NumCacheWindows; i++) {
+        m_CacheWindows[i].pBuffer = new u8[CacheSize];
+    }
 }
 
 CCueBinFileDevice::~CCueBinFileDevice(void) {
     // NEW: Use shared Fast Seek helper
     FatFsOptimizer::DisableFastSeek(&m_pCLMT);
 
-    delete[] m_pCacheBuffer;
-    m_pCacheBuffer = nullptr;
+    for (int i = 0; i < NumCacheWindows; i++) {
+        delete[] m_CacheWindows[i].pBuffer;
+        m_CacheWindows[i].pBuffer = nullptr;
+    }
 
     if (m_pFile) {
         f_close(m_pFile);
@@ -84,16 +88,20 @@ int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
     }
 
     // Cache hit: entirely served from RAM, no SD card access.
-    if (m_pCacheBuffer && nSize <= m_nCacheLen &&
-        m_nLogicalPos >= m_nCacheStart &&
-        m_nLogicalPos + nSize <= m_nCacheStart + m_nCacheLen) {
-        memcpy(pBuffer, m_pCacheBuffer + (m_nLogicalPos - m_nCacheStart), nSize);
-        m_nLogicalPos += nSize;
-        return nSize;
+    for (int i = 0; i < NumCacheWindows; i++) {
+        CacheWindow &win = m_CacheWindows[i];
+        if (win.pBuffer && nSize <= win.nLen &&
+            m_nLogicalPos >= win.nStart &&
+            m_nLogicalPos + nSize <= win.nStart + win.nLen) {
+            memcpy(pBuffer, win.pBuffer + (m_nLogicalPos - win.nStart), nSize);
+            m_nLogicalPos += nSize;
+            win.nLastUse = ++m_nCacheUseCounter;
+            return nSize;
+        }
     }
 
     // Requests larger than the cache go straight through and don't disturb it.
-    if (!m_pCacheBuffer || nSize > CacheSize) {
+    if (!m_CacheWindows[0].pBuffer || nSize > CacheSize) {
         FRESULT result = f_lseek(m_pFile, m_nLogicalPos);
         if (result != FR_OK) {
             LOGERR("Seek to offset %llu failed, err %d", m_nLogicalPos, result);
@@ -110,8 +118,29 @@ int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
         return nBytesRead;
     }
 
-    // Cache miss: read a larger window than requested, so the next
-    // sequential read (the common case) is served from the cache.
+    // Cache miss: refill a window with a larger read than requested, so
+    // the next sequential read of this stream (the common case) is served
+    // from the cache. Prefer the window this stream just ran off the end
+    // of - plain LRU would pick the other stream's window here, since our
+    // own was touched most recently - and fall back to least recently
+    // used, so the window the other stream is running in is left alone.
+    CacheWindow *pVictim = nullptr;
+    for (int i = 0; i < NumCacheWindows; i++) {
+        CacheWindow &win = m_CacheWindows[i];
+        if (win.pBuffer && win.nLen > 0 && win.nStart + win.nLen == m_nLogicalPos) {
+            pVictim = &win;
+            break;
+        }
+    }
+    if (pVictim == nullptr) {
+        for (int i = 0; i < NumCacheWindows; i++) {
+            CacheWindow &win = m_CacheWindows[i];
+            if (win.pBuffer && (!pVictim || win.nLastUse < pVictim->nLastUse)) {
+                pVictim = &win;
+            }
+        }
+    }
+
     FRESULT result = f_lseek(m_pFile, m_nLogicalPos);
     if (result != FR_OK) {
         LOGERR("Seek to offset %llu failed, err %d", m_nLogicalPos, result);
@@ -119,18 +148,19 @@ int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
     }
 
     UINT nBytesRead = 0;
-    result = f_read(m_pFile, m_pCacheBuffer, CacheSize, &nBytesRead);
+    result = f_read(m_pFile, pVictim->pBuffer, CacheSize, &nBytesRead);
     if (result != FR_OK) {
         LOGERR("Failed to read %d bytes into memory, err %d", (int)CacheSize, result);
-        m_nCacheLen = 0;
+        pVictim->nLen = 0;
         return -1;
     }
 
-    m_nCacheStart = m_nLogicalPos;
-    m_nCacheLen = nBytesRead;
+    pVictim->nStart = m_nLogicalPos;
+    pVictim->nLen = nBytesRead;
+    pVictim->nLastUse = ++m_nCacheUseCounter;
 
     size_t nServe = ((size_t)nBytesRead < nSize) ? (size_t)nBytesRead : nSize;
-    memcpy(pBuffer, m_pCacheBuffer, nServe);
+    memcpy(pBuffer, pVictim->pBuffer, nServe);
     m_nLogicalPos += nServe;
     return nServe;
 }
