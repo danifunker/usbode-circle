@@ -680,6 +680,19 @@ void SCSIInquiry::ModeSense10(CUSBCDGadget *gadget)
     if (allocationLength < length)
         length = allocationLength;
 
+    // Pad short responses up to the allocation length (BOT case Hi > Di:
+    // real drives pad instead of short-terminating). The Win9x/WinME
+    // usbstor.sys stack rejects and retries a MODE SENSE whose data phase
+    // ends short of the requested length, which blocked CD audio playback
+    // (volume query fails, PLAY is never sent). The mode data length
+    // field above still reports the true length, so padding bytes are
+    // ignored by well-behaved hosts.
+    if (length < allocationLength && allocationLength <= (int)sizeof(gadget->m_InBuffer))
+    {
+        memset(gadget->m_InBuffer + length, 0, allocationLength - length);
+        length = allocationLength;
+    }
+
     CDROM_DEBUG_LOG("SCSIInquiry::ModeSense10", "Mode Sense (%d), Sending response with length %d", cdbSize, length);
 
     gadget->m_nnumber_blocks = 0; // nothing more after this send
