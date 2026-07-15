@@ -203,7 +203,7 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
                 // Schedule a shutdown in 3 seconds
                 new CShutdown(ShutdownHalt, 3000);
             } else {
-                success_message = "Configuration saved successfully. Reboot required for changes to take effect.";
+                success_message = "Configuration saved successfully. Log level applies immediately; other changes take effect after a reboot.";
             }
         }
     }
