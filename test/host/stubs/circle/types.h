@@ -8,6 +8,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// On the device the mem/str/printf functions arrive transitively through
+// Circle headers; provide them the same way here so firmware sources
+// compile with both libc++ (macOS) and libstdc++ (Linux).
+#include <stdio.h>
+#include <string.h>
+
 // The host libc provides htons/htonl (as macros on macOS); tell
 // usbcdgadget.h not to define its own fallback inlines.
 #include <arpa/inet.h>
