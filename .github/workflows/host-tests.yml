@@ -1,0 +1,27 @@
+name: Host regression tests
+
+on:
+  push:
+    paths:
+      - "addon/usbcdgadget/**"
+      - "addon/cueparser/**"
+      - "addon/discimage/**"
+      - "test/host/**"
+      - ".github/workflows/host-tests.yml"
+  pull_request:
+    paths:
+      - "addon/usbcdgadget/**"
+      - "addon/cueparser/**"
+      - "addon/discimage/**"
+      - "test/host/**"
+      - ".github/workflows/host-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run SCSI/BOT regression tests
+        run: make -C test/host

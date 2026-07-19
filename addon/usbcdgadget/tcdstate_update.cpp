@@ -356,8 +356,10 @@ void CUSBCDGadget::Update()
                 {
 #if AARCH == 64
                     asm volatile("dc cvac, %0" : : "r"(addr) : "memory");
-#else
+#elif AARCH == 32
                     asm volatile("mcr p15, 0, %0, c7, c10, 1" : : "r"(addr) : "memory");
+#else
+                    (void)addr; // host test build: no cache maintenance needed
 #endif
                 }
 

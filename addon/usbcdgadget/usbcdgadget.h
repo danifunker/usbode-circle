@@ -150,6 +150,7 @@ private:
     friend class SCSIToolbox;
     friend class SCSIMisc;
     friend class CDUtils;
+    friend class CGadgetTestBench; // host regression tests (test/host)
 
     boolean m_bPendingDiscSwap = false;
     unsigned m_nDiscSwapStartTick = 0;
