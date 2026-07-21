@@ -110,76 +110,40 @@ bug USBODE actually shipped:
 | `real_audio_from_repo_pcm_sample` | Real CD-DA read back byte-exact against its source, built from the sound-test sample already in the repo rather than a new fixture. Covers READ CD (0xBE) with expected sector type CD-DA, the command a player or ripper uses to pull raw 2352-byte audio, which READ(10) does not do (it returns 2048 bytes of cooked user data) |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
-The bench itself has found eight latent firmware bugs. None is fixed here —
-this branch stays tests-only, so that the test changes and the behavior
-changes can be reviewed and hardware-tested separately.
+The bench found eight latent firmware bugs. All eight are fixed now, each in
+its own commit with the test that pins it, so any one of them can be reviewed
+or reverted on its own.
 
-- The toolbox data-in handlers never clear the pending block count. Every
-  other data-in handler sets `m_nnumber_blocks = 0` before its transfer
-  ("nothing more after this send"): 9 times in `scsi_inquiry.cpp`, 11 in
-  `scsi_toc.cpp`, twice in `scsi_misc.cpp`, and zero times in
-  `scsi_toolbox.cpp`. So when a toolbox transfer completes with a count still
-  pending, `OnTransferComplete()` moves to `DataInRead` and streams disc
-  sectors onto the end of the response instead of sending the CSW. Measured:
-  LIST DEVICES returning 10248 bytes instead of 8, being the device list plus
-  five 2048-byte sectors of disc data, which the picker then parses as its
-  catalog. If the stale LBA is out of range the command answers CHECK
-  CONDITION instead and enumeration just fails. `m_nblock_address`,
-  `m_nnumber_blocks` and `m_nbyteCount` are also the only three members of the
-  transfer-state block declared without an initializer and no constructor
-  assigns them, so at boot, before any read, all three are heap garbage and
-  the first toolbox command the picker sends can hit either outcome. The bench
-  zeroes them at construction so the suite does not depend on heap layout;
-  that is what surfaced this, since adding an unrelated fixture changed the
-  allocation pattern and turned three toolbox tests red. A test that sets the
-  count explicitly is held out until the fix.
-- A CBW with a non-zero LUN, or a CDB length above 16, is dropped silently:
-  `usbcdgadget.cpp` runs `HandleSCSICommand()` only when both are in range and
-  otherwise falls through with the author's own `// TODO: response for not
-  meaningful CBW`. No CSW and no stall, so the host waits for a status that
-  never comes; BOT requires a stall. Deliberately *not* encoded as a test,
-  since a test would pin the current behavior and fight the fix.
-- Passing a device to the `CUSBCDGadget` constructor makes `SetDevice()`
-  delete the device it was just handed and continue using the freed pointer
-  (production code always passes `nullptr` and calls `SetDevice()` later, so
-  the path is dormant — see `harness/bench.cpp`).
-- `CDUtils::GetSkipbytes()` and `CDUtils::GetBlocksize()` dereference
-  `CUEParser::next_track()` without a null check, so mounting a cue sheet
-  with no parseable tracks — an empty `.cue`, one whose `TRACK` lines never
-  made it, or a file that is not a cue sheet at all — faults inside
-  `SetDevice()`. `GetTrackInfoForLBA()` in the same file handles the same
-  null correctly, so this looks like an oversight. Three tests covering
-  those images are written but held out of `test_badimages.cpp` until the
-  check is added, because a fault aborts the whole run.
-- `SCSIToolbox::ListFiles()` allocates its entry array with plain `new[]` and
-  writes only each name's characters plus a terminator, so the padding
-  between an entry's NUL and its size field is uninitialized heap that goes
-  out on the wire — up to roughly 2 KB across a full 100-entry catalog, and
-  different on every call. Found because a byte-exact assertion on the LIST
-  FILES response failed about one run in three. `test_toolbox.cpp` checks the
-  defined fields only and holds out the padding assertion; the fix is
-  `new TUSBCDToolboxFileEntry[MAX_ENTRIES]()`.
-- Multi-`FILE` cue sheets produce a nonsense TOC. `CUEParser::next_track()`
-  derives each file's start from a `prev_file_size` argument that no caller in
-  the firmware passes, so from the second `FILE` onward the unsigned
-  subtraction underflows and a third track is reported at LBA 2308179703.
-  Mostly unreachable today because the loader ignores the `FILE` names and
-  always opens `<cuename>.bin`, so a split-track rip fails to mount instead —
-  safe, but opaque to the user, and split rips are a common layout.
-- `ProcessOut()` picks which mode page a MODE SELECT is setting by reading
-  `m_OutBuffer[9]` — the page's *length* byte. The page *code* is at
-  `m_OutBuffer[8]`, where the `ModePage0x0EData` cast on the next line already
-  points. It goes unnoticed because the CD Audio Control page's standard
-  length (`0x0E`) happens to equal its page code. So the audio page sent with
-  any other declared length is silently ignored, and an unrelated page that
-  declares length `0x0E` moves the CD volume. Both directions verified on the
-  bench; two tests held out of `test_mediacontrol.cpp` until the fix
-  (`m_OutBuffer[8] & 0x3F`). The same function also ignores the header's block
-  descriptor length, so every offset shifts if a host sends one.
-- `SCSIInquiry::ModeSelect10()` passes the CDB's 16-bit parameter list length
-  straight to `BeginTransfer()` on `m_OutBuffer`, which is 2048 bytes, with no
-  clamp. No test is provided: exercising it would corrupt the test process
-  rather than report a failure.
+| Bug | Fixed in | Pinned by |
+| --- | --- | --- |
+| Mounting a cue sheet with no parseable tracks faulted at mount time: `CDUtils::GetSkipbytes()` and `GetBlocksize()` dereferenced `CUEParser::next_track()` with no null check, from `SetDevice()` | `cd_utils.cpp` | `cue_with_no_tracks`, `empty_cue_sheet`, `garbage_cue_sheet` |
+| The toolbox data-in handlers never cleared the pending block count, so a toolbox transfer resumed the read path afterwards and streamed disc sectors onto the end of the reply (LIST DEVICES measured at 10248 bytes instead of 8). The three transfer-state members also had no initializers, making it reachable at boot | `scsi_toolbox.cpp`, `usbcdgadget.h` | `toolbox_command_does_not_resume_a_pending_read` |
+| A CBW with a non-zero LUN or a CDB length above 16 was dropped silently: no CSW and no stall, so the host waited for a status that never came | `usbcdgadget.cpp` | `cbw_nonzero_lun_stalls`, `cbw_oversized_cb_length_stalls` |
+| `SCSIToolbox::ListFiles()` shipped uninitialized heap in every entry's name padding, up to roughly 2 KB per catalog, different bytes each call | `scsi_toolbox.cpp` | `toolbox_list_files_name_padding_is_zeroed`, `toolbox_list_files_is_deterministic` |
+| MODE SELECT dispatched on the page *length* where it meant the page *code*, so the audio page was ignored with any other declared length and an unrelated page declaring length 0x0E was mistaken for it. The page offset also ignored block descriptors and was never bounded against what arrived | `usbcdgadget.cpp` | `mode_select10_audio_page_with_nonstandard_length_still_applies`, `mode_select10_page_length_0e_is_not_the_audio_page`, `mode_select10_audio_page_after_block_descriptor`, `mode_select10_truncated_audio_page_ignored` |
+| The MODE SELECT parameter list length was taken from the CDB unbounded, so a host could write past the 2048-byte OUT buffer | `scsi_inquiry.cpp` | none, deliberately: exercising the unclamped path corrupts the test process rather than reporting a failure |
+| Multi-`FILE` cue sheets underflowed once a stored `INDEX 00` had advanced `file_offset`, reporting a track at LBA 2308179703 | `cueparser.cpp` | `multifile_cue_does_not_underflow_into_a_nonsense_lba` |
+| Passing a device to the `CUSBCDGadget` constructor made `SetDevice()` free it and carry on using the pointer | `usbcdgadget.cpp` | `device_passed_to_constructor_is_not_freed` |
+
+Two of these change what a real host sees and want a bench check before they
+ship: the MODE SELECT page-code fix, which changes which MODE SELECTs take
+effect (the Descent 2 volume sequence and the retail Win98 MCICDA path are
+both covered here, but neither is a substitute for hardware), and the CBW
+stall, which changes how the device answers a host that addresses a LUN it
+does not have.
+
+Two of the fixes are partial by choice. The multi-`FILE` cue fix bounds the
+arithmetic but cannot place those tracks correctly, because the loader ignores
+`FILE` names and always opens the bin named after the cue, so the real sizes
+are not available; placing them properly means teaching the loader to open
+each file, which is a feature rather than a fix. The MODE SELECT length is
+clamped rather than answered with `05/24/00 INVALID FIELD IN CDB`, since the
+memory safety is the actual bug and no observed host produces the case.
+
+Note for anyone verifying a fix by reverting it: `git stash` can restore a
+source file within the same filesystem timestamp second as the object built
+from the reverted version, and `make` then keeps the stale object and reports
+a false green. Run `make clean` between the revert and the rebuild.
 
 ## Layout
 
