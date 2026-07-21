@@ -11,7 +11,8 @@
 
 CGadgetTestBench::CGadgetTestBench(IImageDevice *pDisc, bool bFullSpeed,
                                    CCDPlayer *pPlayer, ConfigService *pConfig,
-                                   SCSITBService *pTBService)
+                                   SCSITBService *pTBService,
+                                   bool bPassDiscToConstructor)
 {
     TestBus::Get().Reset();
     CTimer::Get()->TestReset();
@@ -34,12 +35,12 @@ CGadgetTestBench::CGadgetTestBench(IImageDevice *pDisc, bool bFullSpeed,
     // destroyed on the device), so bench instances leak it. Tests are
     // short-lived processes; that is fine.
     //
-    // Construct with nullptr and attach the disc via SetDevice(),
-    // mirroring CDROMService::Initialize(). Passing the device to the
-    // constructor takes SetDevice()'s eject path with m_pDevice == dev
-    // and deletes the device it was just given (latent use-after-free;
-    // production never uses that path).
-    gadget = new CUSBCDGadget(&m_Interrupt, bFullSpeed, nullptr);
+    // Construct with nullptr and attach the disc via SetDevice(), mirroring
+    // CDROMService::Initialize(). bPassDiscToConstructor takes the other path
+    // instead, where SetDevice() is reached with m_pDevice == dev; production
+    // never does that, and one test pins that it stays harmless.
+    gadget = new CUSBCDGadget(&m_Interrupt, bFullSpeed,
+                              bPassDiscToConstructor ? pDisc : nullptr);
 
     // m_nblock_address, m_nnumber_blocks and m_nbyteCount used to be the only
     // three members of the transfer-state block declared without an

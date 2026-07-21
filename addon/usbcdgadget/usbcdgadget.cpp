@@ -527,7 +527,16 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
 
-        delete m_pDevice;
+        // Only free the old device when it really is a different one.
+        // Constructing the gadget with a device and then calling SetDevice()
+        // with that same pointer reaches here through !m_CDReady with
+        // m_pDevice == dev, and would free the device before adopting it
+        // below. Production always constructs with nullptr, so this is
+        // dormant rather than live.
+        if (m_pDevice != dev)
+        {
+            delete m_pDevice;
+        }
         m_pDevice = nullptr;
 
         // discChanged (the GESN NewMedia event) is armed when the new medium

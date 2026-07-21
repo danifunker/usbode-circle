@@ -28,6 +28,20 @@ public:
     {
     }
 
+    // Set when this device is deleted. Lets a test assert that the gadget did
+    // not free a device it is still using, deterministically rather than by
+    // hoping a use-after-free happens to crash in a build with no sanitizer.
+    // Points at a caller-owned flag so it stays readable after the delete.
+    ~CFakeImageDevice() override
+    {
+        if (m_pDeletedFlag != nullptr)
+        {
+            *m_pDeletedFlag = true;
+        }
+    }
+
+    void NotifyDeleteVia(bool *pFlag) { m_pDeletedFlag = pFlag; }
+
     // CDevice
     int Read(void *pBuffer, size_t nCount) override
     {
@@ -73,6 +87,7 @@ public:
     int m_numTracks = 1;
 
 private:
+    bool *m_pDeletedFlag = nullptr;
     std::string m_cue;
     std::vector<u8> m_image;
     u32 m_sectorSize;

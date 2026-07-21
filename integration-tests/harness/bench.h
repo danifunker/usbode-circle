@@ -51,7 +51,8 @@ public:
                      bool bFullSpeed = false,
                      CCDPlayer *pPlayer = nullptr,
                      ConfigService *pConfig = nullptr,
-                     SCSITBService *pTBService = nullptr);
+                     SCSITBService *pTBService = nullptr,
+                     bool bPassDiscToConstructor = false);
 
     // AddEndpoints + endpoint activation: after this the drive is in
     // UNIT ATTENTION state with a CBW transfer armed, same as right after
