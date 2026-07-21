@@ -1,0 +1,151 @@
+# Host-compiled regression tests for the USBODE SCSI/BOT layer.
+#
+#   make -C integration-tests            build + run
+#   make -C integration-tests build      build only
+#   make -C integration-tests WITH_CHD=1 build + run including CHD tests
+#
+# Compiles the real gadget sources (addon/usbcdgadget + cueparser) and the
+# real CUE/BIN/ISO reader (addon/discimage/cuebinfile.cpp) for the build
+# machine against the stub Circle headers in harness/stubs/, links them with
+# the test harness, and runs the resulting binary. The real-image tests drive
+# those readers with actual image files. No cross-compiler or circle-stdlib
+# checkout is needed.
+#
+# CHD support (WITH_CHD=1) additionally compiles addon/discimage/chdfile.cpp
+# and libchdr with its vendored zlib/zstd/lzma decoders, so .chd images load
+# through the real decompressor. It is opt-in only because those decoders add
+# a heavier first-build cost.
+
+CXX ?= c++
+CC  ?= cc
+CXXFLAGS ?= -O1 -g
+CXXFLAGS += -std=c++17 -Wall -Wno-format -Wno-unused-variable -Wno-unused-but-set-variable
+CFLAGS   ?= -O1 -g -w
+
+ADDON := ../addon
+BUILD := out
+IMAGES := $(BUILD)/images
+
+INCLUDES := -Iharness/stubs -I$(ADDON) -Iharness
+DEFINES  := -DUSBODE_TESTDATA=\"$(IMAGES)\" -DUSBODE_SDCARD=\"../sdcard\"
+
+# ---------------------------------------------------------------------------
+# Real firmware sources under test (compiled from the repo, unchanged)
+# ---------------------------------------------------------------------------
+GADGET_SRCS := \
+	$(ADDON)/usbcdgadget/usbcdgadget.cpp \
+	$(ADDON)/usbcdgadget/usbcdgadgetendpoint.cpp \
+	$(ADDON)/usbcdgadget/tcdstate_update.cpp \
+	$(ADDON)/usbcdgadget/scsi_inquiry.cpp \
+	$(ADDON)/usbcdgadget/scsi_read.cpp \
+	$(ADDON)/usbcdgadget/scsi_toc.cpp \
+	$(ADDON)/usbcdgadget/scsi_misc.cpp \
+	$(ADDON)/usbcdgadget/scsi_toolbox.cpp \
+	$(ADDON)/usbcdgadget/cd_utils.cpp \
+	$(ADDON)/cueparser/cueparser.cpp \
+	$(ADDON)/cueparser/cueutil.cpp
+
+# Real CUE/BIN/ISO reader. Its only host-side dependency is the FatFs seam
+# (harness/fatfs_host.cpp) plus the two FatFsOptimizer entry points provided
+# in harness/discimage_host.cpp. No reader logic is reimplemented.
+DISCIMAGE_SRCS := $(ADDON)/discimage/cuebinfile.cpp
+
+CHDR_OBJS :=
+ifeq ($(WITH_CHD),1)
+DISCIMAGE_SRCS += $(ADDON)/discimage/chdfile.cpp
+DEFINES += -DWITH_CHD=1
+LIBCHDR_DIR  := $(ADDON)/libchdr-src
+LIBCHDR_SRCS := \
+	$(LIBCHDR_DIR)/src/libchdr_chd.c \
+	$(LIBCHDR_DIR)/src/libchdr_cdrom.c \
+	$(LIBCHDR_DIR)/src/libchdr_flac.c \
+	$(LIBCHDR_DIR)/src/libchdr_huffman.c \
+	$(LIBCHDR_DIR)/src/libchdr_bitstream.c
+ZLIB_DIR  := $(LIBCHDR_DIR)/deps/zlib-1.3.1
+ZLIB_SRCS := $(ZLIB_DIR)/adler32.c $(ZLIB_DIR)/crc32.c $(ZLIB_DIR)/inflate.c \
+	$(ZLIB_DIR)/inftrees.c $(ZLIB_DIR)/inffast.c $(ZLIB_DIR)/zutil.c
+ZSTD_DIR  := $(LIBCHDR_DIR)/deps/zstd-1.5.6/lib
+ZSTD_SRCS := $(wildcard $(ZSTD_DIR)/common/*.c) $(wildcard $(ZSTD_DIR)/decompress/*.c)
+LZMA_DIR  := $(LIBCHDR_DIR)/deps/lzma-24.05
+LZMA_SRCS := $(LZMA_DIR)/src/LzmaDec.c $(LZMA_DIR)/src/LzmaEnc.c $(LZMA_DIR)/src/LzFind.c \
+	$(LZMA_DIR)/src/Sort.c $(LZMA_DIR)/src/Alloc.c $(LZMA_DIR)/src/CpuArch.c \
+	$(LZMA_DIR)/src/Delta.c
+C_SRCS := $(LIBCHDR_SRCS) $(ZLIB_SRCS) $(ZSTD_SRCS) $(LZMA_SRCS)
+LIBCHDR_INC := -I$(LIBCHDR_DIR)/include -I$(ZLIB_DIR) -I$(ZSTD_DIR) -I$(ZSTD_DIR)/common \
+	-I$(LZMA_DIR)/include
+CHDR_OBJS := $(addprefix $(BUILD)/,$(notdir $(C_SRCS:.c=.o)))
+endif
+
+HARNESS_SRCS := $(wildcard harness/*.cpp)
+TEST_SRCS    := $(wildcard test-suite/*.cpp)
+
+CXX_SRCS := $(GADGET_SRCS) $(DISCIMAGE_SRCS) $(HARNESS_SRCS) $(TEST_SRCS)
+CXX_OBJS := $(addprefix $(BUILD)/,$(notdir $(CXX_SRCS:.cpp=.o)))
+OBJS := $(CXX_OBJS) $(CHDR_OBJS)
+
+VPATH := $(sort $(dir $(CXX_SRCS) $(C_SRCS)))
+
+BINARY := $(BUILD)/usbode-host-tests
+
+# Prepared test images (real files the real readers open at run time).
+# The .gz sources live in testdata/ and are decompressed here; the .cue and
+# .chd are copied as-is so the readers find them next to their data.
+TEST_IMAGES := $(IMAGES)/image.iso \
+	$(IMAGES)/freedos-test.iso \
+	$(IMAGES)/audiocd.bin $(IMAGES)/audiocd.cue \
+	$(IMAGES)/mixed.bin $(IMAGES)/mixed.cue \
+	$(IMAGES)/mixed.chd
+
+all: run
+
+build: $(BINARY)
+
+run: $(BINARY) $(TEST_IMAGES)
+	./$(BINARY)
+
+$(BINARY): $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJS)
+
+# -MMD/-MP emit .d dependency files so edits to a header (a stub, a firmware
+# header) trigger the right recompiles; without this an incremental build can
+# silently keep a stale object when only a header changed.
+$(BUILD)/%.o: %.cpp
+	@mkdir -p $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(LIBCHDR_INC) $(DEFINES) -MMD -MP -c $< -o $@
+
+# Z7_ST builds the LZMA SDK single-threaded, so LzFindMt (the multithreaded
+# matcher) is not pulled in — libchdr only needs the decoder anyway.
+$(BUILD)/%.o: %.c
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -DZ7_ST $(LIBCHDR_INC) -MMD -MP -c $< -o $@
+
+-include $(OBJS:.o=.d)
+
+# Real ISO image: decompress the tracked sdcard/image.iso.gz so the reader
+# opens an actual ISO9660 disc.
+$(IMAGES)/image.iso: ../sdcard/image.iso.gz
+	@mkdir -p $(IMAGES)
+	gzip -dc $< > $@
+
+# Real disc-image fixtures under testdata/ (see testdata/README-testdata.md).
+# .gz images are decompressed; .cue/.chd are copied as-is next to their data.
+$(IMAGES)/%.iso: testdata/%.iso.gz
+	@mkdir -p $(IMAGES)
+	gzip -dc $< > $@
+
+$(IMAGES)/%.bin: testdata/%.bin.gz
+	@mkdir -p $(IMAGES)
+	gzip -dc $< > $@
+
+$(IMAGES)/%.cue: testdata/%.cue
+	@mkdir -p $(IMAGES)
+	cp $< $@
+
+$(IMAGES)/%.chd: testdata/%.chd
+	@mkdir -p $(IMAGES)
+	cp $< $@
+
+clean:
+	rm -rf $(BUILD)
+
+.PHONY: all build run clean

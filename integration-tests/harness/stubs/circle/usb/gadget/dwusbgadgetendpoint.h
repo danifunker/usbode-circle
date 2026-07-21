@@ -15,16 +15,22 @@ class CDWUSBGadget;
 class CDWUSBGadgetEndpoint
 {
 public:
+    // Enumerator order/values mirror Circle's real header so the numeric
+    // values match the device build (the firmware only names these
+    // symbolically, but keeping them identical avoids any drift).
     enum TTransferMode
     {
+        TransferSetupOut,
         TransferDataOut,
-        TransferDataIn
+        TransferDataIn,
+        TransferUnknown
     };
 
     enum TDirection
     {
         DirectionOut,
-        DirectionIn
+        DirectionIn,
+        DirectionInOut
     };
 
     CDWUSBGadgetEndpoint(const TUSBEndpointDescriptor *pDesc, CDWUSBGadget *pGadget);

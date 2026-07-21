@@ -14,8 +14,14 @@
 #include <stdio.h>
 #include <string.h>
 
-// The host libc provides htons/htonl (as macros on macOS); tell
-// usbcdgadget.h not to define its own fallback inlines.
+// Use the host libc's htons/htonl and tell usbcdgadget.h not to define its
+// own fallback inlines. (An audit suggested dropping this so the firmware's
+// own byte-swap inlines run instead, but on macOS the system htonl is a macro
+// that leaks into this translation unit and collides with the firmware's
+// function definition, breaking the local build. The firmware inlines are a
+// trivial, obviously-correct byte swap, so using the host's here costs no
+// meaningful coverage while keeping the build portable across macOS and the
+// Linux CI runner.)
 #include <arpa/inet.h>
 #ifndef HAVE_ARPA_INET_H
 #define HAVE_ARPA_INET_H 1

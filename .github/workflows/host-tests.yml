@@ -6,14 +6,16 @@ on:
       - "addon/usbcdgadget/**"
       - "addon/cueparser/**"
       - "addon/discimage/**"
-      - "test/host/**"
+      - "addon/libchdr-src/**"
+      - "integration-tests/**"
       - ".github/workflows/host-tests.yml"
   pull_request:
     paths:
       - "addon/usbcdgadget/**"
       - "addon/cueparser/**"
       - "addon/discimage/**"
-      - "test/host/**"
+      - "addon/libchdr-src/**"
+      - "integration-tests/**"
       - ".github/workflows/host-tests.yml"
   workflow_dispatch:
 
@@ -23,5 +25,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and run SCSI/BOT regression tests
-        run: make -C test/host
+      # Command-layer + real-image tests (ISO and synthetic CUE/BIN). Fully
+      # self-contained: no external libraries needed.
+      - name: Build and run SCSI/BOT + real-image regression tests
+        run: make -C integration-tests
+
+      # Same suite plus the real CHD image, compiling libchdr with its
+      # vendored zlib/zstd/lzma decoders (still no system dependencies).
+      - name: Build and run including CHD image tests
+        run: make -C integration-tests clean && make -C integration-tests WITH_CHD=1

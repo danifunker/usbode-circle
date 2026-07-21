@@ -9,7 +9,7 @@
 #include <assert.h>
 #include <string.h>
 
-CGadgetTestBench::CGadgetTestBench(CFakeImageDevice *pDisc, bool bFullSpeed,
+CGadgetTestBench::CGadgetTestBench(IImageDevice *pDisc, bool bFullSpeed,
                                    CCDPlayer *pPlayer, ConfigService *pConfig,
                                    SCSITBService *pTBService)
 {

@@ -20,6 +20,8 @@
 #include "fakedisc.h"
 #include "testbus.h"
 
+#include <discimage/imagedevice.h>
+
 #include <cdplayer/cdplayer.h>
 #include <configservice/configservice.h>
 #include <scsitbservice/scsitbservice.h>
@@ -40,10 +42,12 @@ public:
         int dataChunks = 0; // number of IN data transfers (not counting CSW)
     };
 
-    // Takes ownership of nothing; disc must outlive the bench. Optional
-    // fakes are registered with the scheduler stub under their production
-    // task names before the gadget is constructed.
-    CGadgetTestBench(CFakeImageDevice *pDisc,
+    // Takes ownership of nothing; disc must outlive the bench. Accepts any
+    // IImageDevice: the in-memory CFakeImageDevice for command-layer tests,
+    // or a real reader (CCueBinFileDevice/CCHDFileDevice/...) for the
+    // real-image tests. Optional fakes are registered with the scheduler
+    // stub under their production task names before the gadget is constructed.
+    CGadgetTestBench(IImageDevice *pDisc,
                      bool bFullSpeed = false,
                      CCDPlayer *pPlayer = nullptr,
                      ConfigService *pConfig = nullptr,
