@@ -22,10 +22,11 @@
 // apply by reading m_OutBuffer[9], which is the page's *length* byte; the
 // page *code* is at m_OutBuffer[8] (and the struct it casts, ModePage0x0EData,
 // starts there). This works only because the CD Audio Control page's standard
-// length, 0x0E, happens to equal its page code. Verified both ways: the audio
-// page sent with any other declared length is ignored, and an unrelated page
-// that declares length 0x0E moves the volume. Full versions of both tests are
-// in the scratchpad; add them with the one-line fix on the firmware branch.
+// length, 0x0E, happens to equal its page code. The two held-out tests assert
+// the mirror-image cases, both verified to fail today: an audio page sent
+// with any other declared length must still apply, and an unrelated page that
+// declares length 0x0E must not move the volume. They belong with the
+// one-line fix -- `m_OutBuffer[8] & 0x3F` -- on the firmware branch.
 //
 #include "bench.h"
 #include "framework.h"

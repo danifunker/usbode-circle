@@ -20,9 +20,10 @@
 // terminator, so every byte between an entry's NUL and its size field is
 // uninitialized heap that goes out on the wire. The response therefore
 // differs between two otherwise identical calls, which is both a small
-// information leak and a source of flakiness. The held-out test fails today
-// (verified: ~1 run in 3 with a two-entry catalog); the full version lives in
-// the scratchpad and should be added back with the one-line fix, on the
+// information leak and a source of flakiness. The held-out test asserts that
+// every byte between an entry's NUL and its size field is zero, and fails
+// today: about one run in three with a two-entry catalog. It belongs with the
+// one-line fix -- `new TUSBCDToolboxFileEntry[MAX_ENTRIES]()` -- on the
 // firmware branch rather than here. Until then CheckEntry() below stops at
 // the NUL rather than pinning heap contents.
 //

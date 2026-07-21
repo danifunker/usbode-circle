@@ -24,17 +24,19 @@ CFLAGS   ?= -O1 -g -w
 
 ADDON := ../addon
 
-# Objects live in a per-mode directory. Toggling WITH_CHD changes -DWITH_CHD
-# and the source list, which is not a header dependency, so a shared object
-# directory would let an incremental build link objects compiled for the other
-# mode -- an undefined-CCHDFileDevice link error, or worse a binary that still
-# contains the other mode's tests. (A timestamp stamp file does not fix this:
-# make 3.81 compares mtimes at one-second resolution, so a stamp touched in
-# the same second the objects compile looks up to date.) Separate directories
-# make the two modes independent, so switching needs no `make clean` and
-# neither build invalidates the other.
+# Objects live in a directory keyed to the build settings. Neither WITH_CHD
+# nor a change of CXXFLAGS is a header dependency, so a shared object
+# directory would let an incremental build link objects compiled with
+# different settings -- an undefined-CCHDFileDevice link error, or worse a
+# binary that silently still contains the other mode's tests, or (the trap
+# that motivated the flag hash) a "clean" run that is really measuring
+# yesterday's objects after someone added -fsanitize. A timestamp stamp file
+# does not fix this: make 3.81 compares mtimes at one-second resolution, so a
+# stamp touched in the same second the objects compile looks up to date.
+# Distinct directories sidestep mtimes entirely, and each build leaves the
+# others intact, so switching needs no `make clean`.
 OUT := out
-BUILD := $(OUT)/$(if $(filter 1,$(WITH_CHD)),chd,nochd)
+BUILD := $(OUT)/$(if $(filter 1,$(WITH_CHD)),chd,nochd)-$(shell printf '%s' "$(CXXFLAGS) $(CFLAGS)" | cksum | cut -d' ' -f1)
 IMAGES := $(OUT)/images
 
 INCLUDES := -Iharness/stubs -I$(ADDON) -Iharness
@@ -111,10 +113,22 @@ TEST_IMAGES := $(IMAGES)/image.iso \
 
 all: run
 
-build: $(BINARY)
+build: $(BINARY) latest
 
-run: $(BINARY) $(TEST_IMAGES)
+run: $(BINARY) latest $(TEST_IMAGES)
 	./$(BINARY)
+
+# The object directory name carries a hash of the build settings, so the
+# binary path is not something a human can type. Keep a stable symlink at
+# out/usbode-host-tests pointing at the build this invocation selected, for
+# running the suite directly (e.g. USBODE_TEST_VERBOSE=1 out/usbode-host-tests).
+#
+# This has to run on every invocation rather than as part of the link rule:
+# when the binary is already up to date the link rule does not fire, and the
+# symlink would be left pointing at whatever mode was built last -- so running
+# it would silently exercise the wrong binary.
+latest: $(BINARY)
+	@ln -sf $(patsubst $(OUT)/%,%,$(BINARY)) $(OUT)/usbode-host-tests
 
 $(BINARY): $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS)
@@ -164,4 +178,4 @@ $(IMAGES)/%.chd: testdata/%.chd
 clean:
 	rm -rf $(OUT)
 
-.PHONY: all build run clean
+.PHONY: all build run clean latest

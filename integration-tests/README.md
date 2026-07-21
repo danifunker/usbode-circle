@@ -102,8 +102,16 @@ bug USBODE actually shipped:
 | `mode_select10_*` | The one command with a data-out phase: the parameter list has to be consumed and the residue accounted for or the host waits forever. Also the Descent 2 volume quirk (four MODE SELECTs in a row with the channels swapped, lower of each pair wins) and a zero-length parameter list, which is legal |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
-The bench itself has found six latent firmware bugs:
+The bench itself has found seven latent firmware bugs. None is fixed here —
+this branch stays tests-only, so that the test changes and the behavior
+changes can be reviewed and hardware-tested separately.
 
+- A CBW with a non-zero LUN, or a CDB length above 16, is dropped silently:
+  `usbcdgadget.cpp` runs `HandleSCSICommand()` only when both are in range and
+  otherwise falls through with the author's own `// TODO: response for not
+  meaningful CBW`. No CSW and no stall, so the host waits for a status that
+  never comes; BOT requires a stall. Deliberately *not* encoded as a test,
+  since a test would pin the current behavior and fight the fix.
 - Passing a device to the `CUSBCDGadget` constructor makes `SetDevice()`
   delete the device it was just handed and continue using the freed pointer
   (production code always passes `nullptr` and calls `SetDevice()` later, so
