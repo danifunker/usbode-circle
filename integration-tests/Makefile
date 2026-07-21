@@ -115,10 +115,13 @@ $(BUILD)/%.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(LIBCHDR_INC) $(DEFINES) -MMD -MP -c $< -o $@
 
 # Z7_ST builds the LZMA SDK single-threaded, so LzFindMt (the multithreaded
-# matcher) is not pulled in — libchdr only needs the decoder anyway.
+# matcher) is not pulled in; libchdr only needs the decoder anyway.
+# ZSTD_DISABLE_ASM keeps zstd on its portable C decode path: on x86-64 zstd
+# otherwise enables an assembly Huffman fast-loop (huf_decompress_amd64.S)
+# that we do not build, which fails at link time. The C path is equivalent.
 $(BUILD)/%.o: %.c
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -DZ7_ST $(LIBCHDR_INC) -MMD -MP -c $< -o $@
+	$(CC) $(CFLAGS) -DZ7_ST -DZSTD_DISABLE_ASM=1 $(LIBCHDR_INC) -MMD -MP -c $< -o $@
 
 -include $(OBJS:.o=.d)
 
