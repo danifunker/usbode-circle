@@ -46,6 +46,11 @@ Two flavours of disc back the bench, both driven through the same
     disc** (`testdata/freedos-test.iso.gz`, built from genuine FreeDOS 1.3 GPL
     files — see `testdata/README-testdata.md`), checked against real
     on-disc structure (primary + Joliet volume descriptors, volume id);
+  - a **real game disc** (`testdata/shareware.iso.gz`: the Descent shareware
+    episode and the SkyRoads freeware game, both cleared for redistribution)
+    read back in full and compared byte-for-byte against the file — a real
+    ~3.5 MB filesystem with multi-megabyte files spanning many sectors and
+    read-ahead-cache refills;
   - synthetic CUE/BIN pairs written at run time, plus committed **real cue
     sheets loaded off the filesystem through the FatFs shim**
     (`testdata/audiocd.*`, `testdata/mixed.*`), with known bytes so reads,

@@ -404,6 +404,70 @@ TEST(real_freedos_iso9660_filesystem)
 }
 
 // ---------------------------------------------------------------------------
+// Real shareware/freeware game disc (testdata/shareware.iso.gz): the Descent
+// shareware episode and the SkyRoads freeware game. Reads the ENTIRE disc
+// through the reader and checks it byte-for-byte against the raw file - an
+// extent-agnostic oracle that stresses a real ~3.5 MB filesystem with
+// multi-megabyte files spanning many sectors and read-ahead-cache refills.
+// See testdata/README-testdata.md.
+// ---------------------------------------------------------------------------
+
+TEST(real_shareware_game_disc_full_readback)
+{
+    const std::string iso = TestDataDir() + "/shareware.iso";
+    u64 size = FileSize(iso);
+    CHECK(size > 0);
+    if (size == 0) {
+        return;
+    }
+
+    CCueBinFileDevice *disc = OpenReader(iso, "");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // PVD sanity: "CD001" and the volume id we authored.
+    const u8 pvdCdb[10] = {0x28, 0, 0, 0, 0, 16, 0, 0, 1, 0};
+    auto pvd = bench.SendCommand(pvdCdb, sizeof(pvdCdb), 2048);
+    CHECK_EQ(pvd.csw.bmCSWStatus, 0);
+    CHECK(memcmp(pvd.data.data() + 1, "CD001", 5) == 0);
+    CHECK(memcmp(pvd.data.data() + 40, "SHAREWARE", 9) == 0);
+
+    // Whole-disc readback: pull every byte through the real reader in an
+    // odd-sized chunk (deliberately not aligned to the 128 KiB cache window,
+    // so refills and cross-window reads are exercised) and compare against the
+    // raw file read with plain stdio. Every sector of the real disc must match.
+    FILE *raw = fopen(iso.c_str(), "rb");
+    CHECK(raw != nullptr);
+    if (!raw) {
+        return;
+    }
+    disc->Seek(0);
+    const size_t chunk = 7000;
+    std::vector<u8> got(chunk), want(chunk);
+    u64 pos = 0;
+    bool mismatch = false;
+    while (pos < size) {
+        size_t n = (size_t)((size - pos < chunk) ? (size - pos) : chunk);
+        int rn = disc->Read(got.data(), n);
+        size_t wn = fread(want.data(), 1, n, raw);
+        if (rn != (int)n || wn != n || memcmp(got.data(), want.data(), n) != 0) {
+            mismatch = true;
+            break;
+        }
+        pos += n;
+    }
+    fclose(raw);
+    CHECK(!mismatch);
+    CHECK_EQ(pos, size); // read the whole disc
+}
+
+// ---------------------------------------------------------------------------
 // Real audio CD, cue sheet loaded off disk through the FatFs shim
 // ---------------------------------------------------------------------------
 

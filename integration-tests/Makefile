@@ -92,6 +92,7 @@ BINARY := $(BUILD)/usbode-host-tests
 # .chd are copied as-is so the readers find them next to their data.
 TEST_IMAGES := $(IMAGES)/image.iso \
 	$(IMAGES)/freedos-test.iso \
+	$(IMAGES)/shareware.iso \
 	$(IMAGES)/audiocd.bin $(IMAGES)/audiocd.cue \
 	$(IMAGES)/mixed.bin $(IMAGES)/mixed.cue \
 	$(IMAGES)/mixed.chd
