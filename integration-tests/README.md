@@ -97,9 +97,10 @@ bug USBODE actually shipped:
 | `cue_stored_pregap_*`, `cue_unstored_pregap_*` | Pregap arithmetic: a stored `INDEX 00` gap must not be reported as the track start (that begins every track early, inside the silence), and an unstored `PREGAP` must shift all following tracks *and* the leadout, since it occupies disc addresses but no file bytes |
 | `truncated_bin_*`, `zero_length_image`, `read_straddling_end_of_file` | Damaged and half-copied images must fail as a read error, not as a device that stops answering: every CBW still gets a CSW, and reads stay inside the file that actually exists |
 | `real_flac_chd_audio_decodes_byte_exact` | libchdr's FLAC decoder was compiled but never executed: chdman picks the winning codec per hunk, and synthetic data always picks LZMA or deflate. Real music rips pick FLAC, so this is the path a user's audio CD image actually takes |
+| `toolbox_*` | The vendor toolbox command set (0xD0/0xD2/0xD7/0xD8/0xD9) — how the host-side picker enumerates SD-card images and swaps discs. It is USBODE's own protocol, so there is no standard for a client to fall back on: the fixed device list, the one-byte count and its 100-entry cap, and the 40-byte directory entry with its 40-bit big-endian size are all parsed at fixed offsets by the client |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
-The bench itself has found two latent firmware bugs:
+The bench itself has found four latent firmware bugs:
 
 - Passing a device to the `CUSBCDGadget` constructor makes `SetDevice()`
   delete the device it was just handed and continue using the freed pointer
@@ -113,6 +114,21 @@ The bench itself has found two latent firmware bugs:
   null correctly, so this looks like an oversight. Three tests covering
   those images are written but held out of `test_badimages.cpp` until the
   check is added, because a fault aborts the whole run.
+- `SCSIToolbox::ListFiles()` allocates its entry array with plain `new[]` and
+  writes only each name's characters plus a terminator, so the padding
+  between an entry's NUL and its size field is uninitialized heap that goes
+  out on the wire — up to roughly 2 KB across a full 100-entry catalog, and
+  different on every call. Found because a byte-exact assertion on the LIST
+  FILES response failed about one run in three. `test_toolbox.cpp` checks the
+  defined fields only and holds out the padding assertion; the fix is
+  `new TUSBCDToolboxFileEntry[MAX_ENTRIES]()`.
+- Multi-`FILE` cue sheets produce a nonsense TOC. `CUEParser::next_track()`
+  derives each file's start from a `prev_file_size` argument that no caller in
+  the firmware passes, so from the second `FILE` onward the unsigned
+  subtraction underflows and a third track is reported at LBA 2308179703.
+  Mostly unreachable today because the loader ignores the `FILE` names and
+  always opens `<cuename>.bin`, so a split-track rip fails to mount instead —
+  safe, but opaque to the user, and split rips are a common layout.
 
 ## Layout
 
