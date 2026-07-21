@@ -56,9 +56,12 @@ Two flavours of disc back the bench, both driven through the same
     (`testdata/audiocd.*`, `testdata/mixed.*`), with known bytes so reads,
     per-track offsets across the 2048->2352 boundary, and TOC/medium-type are
     checked exactly;
-  - with `WITH_CHD=1`, the tracked `sdcard/usbode-audio-test.chd` and a
+  - with `WITH_CHD=1`, the tracked `sdcard/usbode-audio-test.chd`, a
     **mixed-mode CHD built with `chdman`** (`testdata/mixed.chd`), whose data
-    track is decoded through real libchdr and checked byte-exact.
+    track is decoded through real libchdr and checked byte-exact, and a
+    **FLAC-only CHD** (`testdata/audiocd-flac.chd`, `chdman createcd -c cdfl`)
+    whose audio decodes through libchdr's FLAC path and is compared against
+    the original `audiocd.bin` bytes.
 
   All committed test images are free-to-redistribute (FreeDOS GPL files or
   generated content); see `testdata/README-testdata.md`.
@@ -93,6 +96,7 @@ bug USBODE actually shipped:
 | `cue_crlf_*`, `cue_lowercase_*`, `cue_irregular_whitespace`, `cue_metadata_lines_ignored`, `cue_filename_with_spaces_and_dot_slash` | Cosmetic cue-sheet variation (CRLF, casing, tabs, `REM`/`TITLE`/`FLAGS` lines, quoted paths) must not change the disc layout reported to the host. Asserted as equality with the canonical sheet's TOC, so a parser that mangled both alike could not satisfy it |
 | `cue_stored_pregap_*`, `cue_unstored_pregap_*` | Pregap arithmetic: a stored `INDEX 00` gap must not be reported as the track start (that begins every track early, inside the silence), and an unstored `PREGAP` must shift all following tracks *and* the leadout, since it occupies disc addresses but no file bytes |
 | `truncated_bin_*`, `zero_length_image`, `read_straddling_end_of_file` | Damaged and half-copied images must fail as a read error, not as a device that stops answering: every CBW still gets a CSW, and reads stay inside the file that actually exists |
+| `real_flac_chd_audio_decodes_byte_exact` | libchdr's FLAC decoder was compiled but never executed: chdman picks the winning codec per hunk, and synthetic data always picks LZMA or deflate. Real music rips pick FLAC, so this is the path a user's audio CD image actually takes |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
 The bench itself has found two latent firmware bugs:

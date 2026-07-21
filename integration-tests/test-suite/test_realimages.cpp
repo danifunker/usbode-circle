@@ -722,4 +722,76 @@ TEST(real_mixed_chd_through_libchdr)
     }
     CHECK_BYTES(aud, sizeof(aud), aexp, sizeof(aexp));
 }
+
+// A CHD compressed with cdfl (FLAC) only.
+//
+// The other CHD fixtures list cdlz/cdzl/cdfl in their headers, but chdman
+// picks whichever codec wins per hunk, and for synthetic pattern data that is
+// essentially always LZMA or deflate -- so libchdr's FLAC decoder
+// (libchdr_flac.c, plus the CD-specific de-interleave in libchdr_cdrom.c) was
+// compiled but never actually executed by the suite. Real audio rips are the
+// opposite: FLAC is what wins on genuine 16-bit stereo audio, so this is the
+// path a user's music CD image most likely takes.
+//
+// Built with `chdman createcd -c cdfl` from the same audiocd.bin the CUE/BIN
+// tests use, which lets the decoded audio be checked against the original
+// bytes rather than merely against itself.
+TEST(real_flac_chd_audio_decodes_byte_exact)
+{
+    const std::string chd = TestDataDir() + "/audiocd-flac.chd";
+    CHECK(FileSize(chd) > 0);
+    if (FileSize(chd) == 0) {
+        return;
+    }
+
+    CCHDFileDevice *disc = new CCHDFileDevice(chd.c_str(), MEDIA_TYPE::CD);
+    bool ok = disc->Init();
+    CHECK(ok);
+    if (!ok) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // All-audio disc -> medium type 0x02, three tracks.
+    const u8 msCdb[10] = {0x5A, 0x00, 0x2A, 0, 0, 0, 0, 0, 128, 0};
+    auto ms = bench.SendCommand(msCdb, sizeof(msCdb), 128);
+    CHECK_EQ(ms.csw.bmCSWStatus, 0);
+    CHECK_EQ(ms.data[2], 0x02);
+
+    const u8 tocCdb[10] = {0x43, 0x00, 0, 0, 0, 0, 0, 0, (u8)200, 0};
+    auto toc = bench.SendCommand(tocCdb, sizeof(tocCdb), 200);
+    CHECK_EQ(toc.csw.bmCSWStatus, 0);
+    CHECK_EQ(toc.data[2], 0x01); // first track
+    CHECK_EQ(toc.data[3], 0x03); // last track
+
+    // Sector 0 of track 1, FLAC-decoded and byte-swapped back to little
+    // endian, must equal the original audiocd.bin bytes. FLAC is lossless, so
+    // anything less than an exact match means the decode, the de-interleave,
+    // or the pair swap is wrong.
+    disc->Seek(0);
+    u8 first[2352];
+    CHECK_EQ(disc->Read(first, sizeof(first)), (int)sizeof(first));
+    u8 fexp[2352];
+    for (u32 i = 0; i < 2352; i++) {
+        fexp[i] = PatternByte(i);
+    }
+    CHECK_BYTES(first, sizeof(first), fexp, sizeof(fexp));
+
+    // A sector well inside track 2, so the read lands in a later hunk and the
+    // decoder has to seek rather than replay the first block it decoded.
+    const u32 lba = 100 + 17;
+    const u64 off = (u64)lba * 2352;
+    CHECK_EQ(disc->GetByteOffsetForLBA(lba), off);
+    CHECK_EQ(disc->Seek(off), off);
+    u8 mid[2352];
+    CHECK_EQ(disc->Read(mid, sizeof(mid)), (int)sizeof(mid));
+    u8 mexp[2352];
+    for (u32 i = 0; i < 2352; i++) {
+        mexp[i] = PatternByte(off + i);
+    }
+    CHECK_BYTES(mid, sizeof(mid), mexp, sizeof(mexp));
+}
 #endif // WITH_CHD

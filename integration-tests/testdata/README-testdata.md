@@ -12,6 +12,7 @@ decompresses/copies these into `out/images/` before the tests run.
 | `audiocd.cue` + `audiocd.bin.gz` | Real CD-DA layout: 3 contiguous audio tracks (2352 B/sector) | Generated (deterministic byte pattern in a real Red Book sector layout). Public domain. |
 | `mixed.cue` + `mixed.bin.gz` | Real mixed-mode CD: one `MODE1/2048` data track + 2 audio tracks | Generated. Public domain. |
 | `mixed.chd` | The mixed CD compressed with **chdman** (real MAME CHD, cdlz/cdzl/cdfl codecs) | Generated from `mixed.cue`/`mixed.bin` by `chdman createcd`. Public domain. |
+| `audiocd-flac.chd` | The audio CD compressed with **FLAC only**, so every hunk decodes through libchdr's FLAC path | Generated from `audiocd.cue`/`audiocd.bin` by `chdman createcd -c cdfl`. Public domain. |
 
 The generated images use the same `PatternByte(off) = (off*31 + 7) & 0xFF`
 fill the harness expects, so reads can be checked byte-exact.

@@ -23,8 +23,19 @@ CXXFLAGS += -std=c++17 -Wall -Wno-format -Wno-unused-variable -Wno-unused-but-se
 CFLAGS   ?= -O1 -g -w
 
 ADDON := ../addon
-BUILD := out
-IMAGES := $(BUILD)/images
+
+# Objects live in a per-mode directory. Toggling WITH_CHD changes -DWITH_CHD
+# and the source list, which is not a header dependency, so a shared object
+# directory would let an incremental build link objects compiled for the other
+# mode -- an undefined-CCHDFileDevice link error, or worse a binary that still
+# contains the other mode's tests. (A timestamp stamp file does not fix this:
+# make 3.81 compares mtimes at one-second resolution, so a stamp touched in
+# the same second the objects compile looks up to date.) Separate directories
+# make the two modes independent, so switching needs no `make clean` and
+# neither build invalidates the other.
+OUT := out
+BUILD := $(OUT)/$(if $(filter 1,$(WITH_CHD)),chd,nochd)
+IMAGES := $(OUT)/images
 
 INCLUDES := -Iharness/stubs -I$(ADDON) -Iharness
 DEFINES  := -DUSBODE_TESTDATA=\"$(IMAGES)\" -DUSBODE_SDCARD=\"../sdcard\"
@@ -87,15 +98,6 @@ VPATH := $(sort $(dir $(CXX_SRCS) $(C_SRCS)))
 
 BINARY := $(BUILD)/usbode-host-tests
 
-# Toggling WITH_CHD changes -DWITH_CHD and the source list, but that is not a
-# header dependency, so an incremental build would otherwise keep objects
-# compiled for the other mode -- which shows up as a confusing link error
-# (undefined CCHDFileDevice) or, worse, a binary that silently still contains
-# the previous mode's tests. Objects depend on a stamp file whose name encodes
-# the mode, so switching modes rebuilds everything and no `make clean` is
-# needed between the two.
-CHD_STAMP := $(BUILD)/.mode-$(if $(filter 1,$(WITH_CHD)),chd,nochd)
-
 # Prepared test images (real files the real readers open at run time).
 # The .gz sources live in testdata/ and are decompressed here; the .cue and
 # .chd are copied as-is so the readers find them next to their data.
@@ -104,7 +106,8 @@ TEST_IMAGES := $(IMAGES)/image.iso \
 	$(IMAGES)/shareware.iso \
 	$(IMAGES)/audiocd.bin $(IMAGES)/audiocd.cue \
 	$(IMAGES)/mixed.bin $(IMAGES)/mixed.cue \
-	$(IMAGES)/mixed.chd
+	$(IMAGES)/mixed.chd \
+	$(IMAGES)/audiocd-flac.chd
 
 all: run
 
@@ -115,15 +118,6 @@ run: $(BINARY) $(TEST_IMAGES)
 
 $(BINARY): $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS)
-
-# Rebuild everything when WITH_CHD is toggled (see CHD_STAMP above). Declared
-# after `all` so it does not become the default goal.
-$(OBJS): $(CHD_STAMP)
-
-$(CHD_STAMP):
-	@mkdir -p $(BUILD)
-	@rm -f $(BUILD)/.mode-chd $(BUILD)/.mode-nochd
-	@touch $@
 
 # -MMD/-MP emit .d dependency files so edits to a header (a stub, a firmware
 # header) trigger the right recompiles; without this an incremental build can
@@ -168,6 +162,6 @@ $(IMAGES)/%.chd: testdata/%.chd
 	cp $< $@
 
 clean:
-	rm -rf $(BUILD)
+	rm -rf $(OUT)
 
 .PHONY: all build run clean
