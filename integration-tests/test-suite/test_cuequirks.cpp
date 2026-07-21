@@ -18,6 +18,8 @@
 #include "bench.h"
 #include "framework.h"
 
+#include <cueparser/cueparser.h>
+
 #include <string>
 #include <vector>
 
@@ -209,4 +211,54 @@ TEST(cue_unstored_pregap_shifts_following_tracks)
         0x00, 0x00, 0x05, 0x46, // LBA 1350 = 950 + 400 remaining file sectors
     };
     CHECK_BYTES(toc.data(), toc.size(), expected, sizeof(expected));
+}
+
+// The shape every redump-style split rip has: one FILE per track, with the
+// audio track's pregap stored in its own file. The parser derives each file's
+// start from a prev_file_size argument that no caller in the firmware passes,
+// so once a stored INDEX 00 has advanced file_offset the unsigned subtraction
+// underflows: track 3 came back at LBA 2308179703 instead of 150.
+//
+// Asserted against the parser directly rather than through a TOC, because
+// this is parser arithmetic and the numbers are exact.
+//
+// The parser cannot place these tracks correctly without the real file sizes,
+// and the loader does not have them (it ignores the FILE names and always
+// opens the bin named after the cue). So the guarantee here is the one that
+// can be met today: every track lands somewhere sane on the disc.
+TEST(multifile_cue_does_not_underflow_into_a_nonsense_lba)
+{
+    const char *cue =
+        "FILE \"Game (Track 1).bin\" BINARY\n"
+        "  TRACK 01 MODE1/2352\n"
+        "    INDEX 01 00:00:00\n"
+        "FILE \"Game (Track 2).bin\" BINARY\n"
+        "  TRACK 02 AUDIO\n"
+        "    INDEX 00 00:00:00\n"
+        "    INDEX 01 00:02:00\n"
+        "FILE \"Game (Track 3).bin\" BINARY\n"
+        "  TRACK 03 AUDIO\n"
+        "    INDEX 01 00:00:00\n";
+
+    CUEParser parser(cue);
+    const CUETrackInfo *t;
+    int seen = 0;
+    while ((t = parser.next_track()) != nullptr)
+    {
+        seen++;
+        // A CD holds 74 to 80 minutes, so about 360000 sectors. Anything past
+        // that is arithmetic gone wrong, not a real address.
+        CHECK(t->track_start < 400000);
+        CHECK(t->data_start < 400000);
+        CHECK(t->file_start < 400000);
+    }
+    CHECK_EQ(seen, 3);
+
+    // Track 3 follows track 2's 150-sector pregap rather than restarting at 0.
+    parser.restart();
+    parser.next_track();
+    parser.next_track();
+    const CUETrackInfo *third = parser.next_track();
+    CHECK_EQ(third->track_number, 3);
+    CHECK_EQ(third->track_start, 150u);
 }

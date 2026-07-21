@@ -79,7 +79,19 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
         if (strncasecmp(m_parse_pos, "FILE ", 5) == 0) {
             if (m_track_info.file_index > 0) {
                 // Take into account the length of last track in previous file.
-                uint32_t last_track_blocks = (prev_file_size - m_track_info.file_offset) / m_track_info.sector_length;
+                //
+                // prev_file_size is 0 whenever the caller does not know the
+                // previous file's size, which is every caller in the firmware:
+                // they all use the no-argument next_track(). The subtraction is
+                // unsigned, so without this guard it underflows and the next
+                // file's tracks are reported at an LBA in the billions, which
+                // takes the capacity and TOC arithmetic with it. Contributing
+                // nothing is wrong too, but it is bounded and monotonic, so the
+                // host gets a plausible TOC and reads fail sensibly.
+                uint32_t last_track_blocks = 0;
+                if (prev_file_size > m_track_info.file_offset && m_track_info.sector_length > 0) {
+                    last_track_blocks = (prev_file_size - m_track_info.file_offset) / m_track_info.sector_length;
+                }
                 m_track_info.file_start = m_track_info.data_start + last_track_blocks;
             }
 
