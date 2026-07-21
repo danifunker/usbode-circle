@@ -524,9 +524,13 @@ private:
     // Instance Variables - Transfer State
     // ========================================================================
 
-    u32 m_nblock_address;
-    u32 m_nnumber_blocks;
-    u32 m_nbyteCount;
+    // Zeroed explicitly: nothing in the constructor assigns these, so before
+    // the first read they would otherwise hold whatever was in the heap, and
+    // a stale block count sends the gadget back into the read path after an
+    // unrelated command's transfer completes.
+    u32 m_nblock_address = 0;
+    u32 m_nnumber_blocks = 0;
+    u32 m_nbyteCount = 0;
     const char *desc_name = "";
     u8 bmCSWStatus = 0;
     SenseParameters m_SenseParams; // Current sense data
