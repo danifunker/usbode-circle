@@ -317,3 +317,50 @@ TEST(toolbox_command_does_not_resume_a_pending_read)
     CHECK_EQ(files.csw.bmCSWStatus, 0);
     CHECK_EQ(files.data.size(), (size_t)(3 * 40));
 }
+
+// The name field is 33 bytes but only each name's characters and its
+// terminator are written, so with plain new[] everything after the NUL was
+// whatever happened to be in the heap: up to roughly 2 KB of Pi memory per
+// full catalog, shipped to any host that asks.
+TEST(toolbox_list_files_name_padding_is_zeroed)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    SCSITBService tbservice;
+    FillCatalog(tbservice, 2);
+    CGadgetTestBench bench(disc, false, nullptr, nullptr, &tbservice);
+    bench.Activate();
+    bench.RequestSense();
+
+    auto r = Toolbox(bench, 0xD0, 2 * 40);
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    CHECK_EQ(r.data.size(), (size_t)80);
+
+    // Everything from each name's NUL up to the size field at offset 35 must
+    // be zero rather than heap residue.
+    for (size_t slot = 0; slot < 2; slot++)
+    {
+        const u8 *e = r.data.data() + slot * 40;
+        size_t len = strlen((const char *)e + 2);
+        for (size_t i = 2 + len + 1; i < 35; i++)
+        {
+            CHECK_EQ(e[i], 0);
+        }
+    }
+}
+
+// The same catalog asked for twice must come back byte for byte identical.
+// This is the assertion that originally failed about one run in three.
+TEST(toolbox_list_files_is_deterministic)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    SCSITBService tbservice;
+    FillCatalog(tbservice, 8);
+    CGadgetTestBench bench(disc, false, nullptr, nullptr, &tbservice);
+    bench.Activate();
+    bench.RequestSense();
+
+    auto first = Toolbox(bench, 0xD0, 8 * 40);
+    auto second = Toolbox(bench, 0xD0, 8 * 40);
+    CHECK_BYTES(second.data.data(), second.data.size(),
+                first.data.data(), first.data.size());
+}

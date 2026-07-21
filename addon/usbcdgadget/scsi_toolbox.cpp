@@ -73,7 +73,11 @@ void SCSIToolbox::ListFiles(CUSBCDGadget* gadget)
     if (count > MAX_ENTRIES)
         count = MAX_ENTRIES;
 
-    TUSBCDToolboxFileEntry *entries = new TUSBCDToolboxFileEntry[MAX_ENTRIES];
+    // Value-initialized: only the characters of each name and its terminator
+    // are written below, so with plain new[] the padding between an entry's
+    // NUL and its size field would be uninitialized heap going out on the
+    // wire - up to roughly 2 KB across a full catalog, different every call.
+    TUSBCDToolboxFileEntry *entries = new TUSBCDToolboxFileEntry[MAX_ENTRIES]();
     for (u8 i = 0; i < count; ++i)
     {
         TUSBCDToolboxFileEntry *entry = &entries[i];
