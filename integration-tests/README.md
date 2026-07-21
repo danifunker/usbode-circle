@@ -42,6 +42,13 @@ Two flavours of disc back the bench, both driven through the same
   SCSI/BOT layer in isolation.
 - **Real-image tests** (`test-suite/test_realimages.cpp`) load actual files
   through the real readers:
+  - a **real CD-DA disc built from the tracked `sdcard/test.pcm.gz`**, the
+    sound-test sample `CCDPlayer::SoundTest()` plays on hardware. It is 16-bit
+    stereo at 44.1 kHz, which is Red Book audio, so the Makefile decompresses
+    it and cuts it into a three-track disc at build time. Nothing extra is
+    committed, and the audio path runs over real signal data instead of a
+    generated pattern. Checked byte-exact against the source PCM through the
+    reader and on the wire via READ CD (0xBE);
   - the tracked `sdcard/image.iso.gz` and a **real FreeDOS ISO9660 + Joliet
     disc** (`testdata/freedos-test.iso.gz`, built from genuine FreeDOS 1.3 GPL
     files — see `testdata/README-testdata.md`), checked against real
@@ -100,12 +107,32 @@ bug USBODE actually shipped:
 | `toolbox_*` | The vendor toolbox command set (0xD0/0xD2/0xD7/0xD8/0xD9) — how the host-side picker enumerates SD-card images and swaps discs. It is USBODE's own protocol, so there is no standard for a client to fall back on: the fixed device list, the one-byte count and its 100-entry cap, and the 40-byte directory entry with its 40-bit big-endian size are all parsed at fixed offsets by the client |
 | `start_stop_unit_*`, `prevent_allow_*`, `medium_removal_lock_does_not_block_disc_swap` | The mount/eject handshake. USBODE has no tray, so these are no-ops — and the no-op is the load-bearing part: Windows sends START STOP UNIT while bringing the drive online and locks the door whenever a volume is open, so an eject that really ejected, or a lock that really locked, would kill the web UI's disc swap and leave the host holding an unusable drive |
 | `mode_select10_*` | The one command with a data-out phase: the parameter list has to be consumed and the residue accounted for or the host waits forever. Also the Descent 2 volume quirk (four MODE SELECTs in a row with the channels swapped, lower of each pair wins) and a zero-length parameter list, which is legal |
+| `real_audio_from_repo_pcm_sample` | Real CD-DA read back byte-exact against its source, built from the sound-test sample already in the repo rather than a new fixture. Covers READ CD (0xBE) with expected sector type CD-DA, the command a player or ripper uses to pull raw 2352-byte audio, which READ(10) does not do (it returns 2048 bytes of cooked user data) |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
-The bench itself has found seven latent firmware bugs. None is fixed here —
+The bench itself has found eight latent firmware bugs. None is fixed here —
 this branch stays tests-only, so that the test changes and the behavior
 changes can be reviewed and hardware-tested separately.
 
+- The toolbox data-in handlers never clear the pending block count. Every
+  other data-in handler sets `m_nnumber_blocks = 0` before its transfer
+  ("nothing more after this send"): 9 times in `scsi_inquiry.cpp`, 11 in
+  `scsi_toc.cpp`, twice in `scsi_misc.cpp`, and zero times in
+  `scsi_toolbox.cpp`. So when a toolbox transfer completes with a count still
+  pending, `OnTransferComplete()` moves to `DataInRead` and streams disc
+  sectors onto the end of the response instead of sending the CSW. Measured:
+  LIST DEVICES returning 10248 bytes instead of 8, being the device list plus
+  five 2048-byte sectors of disc data, which the picker then parses as its
+  catalog. If the stale LBA is out of range the command answers CHECK
+  CONDITION instead and enumeration just fails. `m_nblock_address`,
+  `m_nnumber_blocks` and `m_nbyteCount` are also the only three members of the
+  transfer-state block declared without an initializer and no constructor
+  assigns them, so at boot, before any read, all three are heap garbage and
+  the first toolbox command the picker sends can hit either outcome. The bench
+  zeroes them at construction so the suite does not depend on heap layout;
+  that is what surfaced this, since adding an unrelated fixture changed the
+  allocation pattern and turned three toolbox tests red. A test that sets the
+  count explicitly is held out until the fix.
 - A CBW with a non-zero LUN, or a CDB length above 16, is dropped silently:
   `usbcdgadget.cpp` runs `HandleSCSICommand()` only when both are in range and
   otherwise falls through with the author's own `// TODO: response for not

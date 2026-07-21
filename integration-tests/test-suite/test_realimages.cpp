@@ -519,6 +519,103 @@ TEST(real_audiocd_cue_loaded_via_fatfs)
 }
 
 // ---------------------------------------------------------------------------
+// Real CD-DA disc built from the sound-test sample already in the repo
+// ---------------------------------------------------------------------------
+
+// sdcard/test.pcm.gz is the sample CCDPlayer::SoundTest() plays on hardware,
+// and it is 16-bit stereo at 44.1 kHz, which is Red Book audio. The Makefile
+// decompresses it and cuts it into a three-track disc, so this exercises the
+// audio path with the same real signal data the device itself ships instead
+// of a generated pattern, and without committing another image.
+//
+// The oracle is the decompressed PCM itself: every byte the drive returns is
+// compared against the same offset in the source file. That is independent of
+// how the reader computes the offset, so a wrong-but-consistent seek cannot
+// satisfy it.
+TEST(real_audio_from_repo_pcm_sample)
+{
+    const std::string cue = TestDataDir() + "/realaudio.cue";
+    const std::string bin = TestDataDir() + "/realaudio.bin";
+    CHECK(FileSize(cue) > 0);
+
+    const u64 binSize = FileSize(bin);
+    CHECK_EQ(binSize, (u64)438 * 2352); // whole sectors only
+
+    CCueBinFileDevice *disc = OpenReaderFromCueFile(cue, bin);
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CCDPlayer player;
+    CGadgetTestBench bench(disc, false, &player);
+    bench.Activate();
+    bench.RequestSense();
+
+    // All-audio disc -> medium type 0x02, the code Win9x MCICDA needs before
+    // it will treat the disc as playable.
+    const u8 msCdb[10] = {0x5A, 0x00, 0x2A, 0, 0, 0, 0, 0, 128, 0};
+    auto ms = bench.SendCommand(msCdb, sizeof(msCdb), 128);
+    CHECK_EQ(ms.csw.bmCSWStatus, 0);
+    CHECK_EQ(ms.data[2], 0x02);
+
+    // Three tracks, and the leadout is where the audio actually ends.
+    const u8 tocCdb[10] = {0x43, 0x00, 0, 0, 0, 0, 0, 0, (u8)200, 0};
+    auto toc = bench.SendCommand(tocCdb, sizeof(tocCdb), 200);
+    CHECK_EQ(toc.csw.bmCSWStatus, 0);
+    CHECK_EQ(toc.data[2], 0x01); // first track
+    CHECK_EQ(toc.data[3], 0x03); // last track
+    const u8 expectedToc[36] = {
+        0x00, 0x22, 0x01, 0x03,
+        0x00, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // track 1, LBA 0
+        0x00, 0x10, 0x02, 0x00, 0x00, 0x00, 0x00, 0x96, // track 2, LBA 150
+        0x00, 0x10, 0x03, 0x00, 0x00, 0x00, 0x01, 0x2C, // track 3, LBA 300
+        0x00, 0x10, 0xAA, 0x00, 0x00, 0x00, 0x01, 0xB6, // leadout, LBA 438
+    };
+    CHECK_BYTES(toc.data.data(), toc.data.size(), expectedToc, sizeof(expectedToc));
+
+    // Read the source PCM once and use it as the oracle.
+    std::vector<u8> pcm(binSize);
+    FILE *f = fopen(bin.c_str(), "rb");
+    CHECK(f != nullptr);
+    if (!f) {
+        return;
+    }
+    size_t got = fread(pcm.data(), 1, pcm.size(), f);
+    fclose(f);
+    CHECK_EQ(got, pcm.size());
+
+    // Sectors at the start, across the track 1/2 boundary, inside track 3,
+    // and the very last addressable sector on the disc.
+    const u32 lbas[] = {0, 149, 150, 305, 437};
+    for (u32 lba : lbas) {
+        const u64 off = disc->GetByteOffsetForLBA(lba);
+        CHECK_EQ(off, (u64)lba * 2352); // contiguous audio
+        CHECK_EQ(disc->Seek(off), off);
+        u8 buf[2352];
+        int n = disc->Read(buf, sizeof(buf));
+        CHECK_EQ(n, (int)sizeof(buf));
+        CHECK_BYTES(buf, (size_t)n, pcm.data() + off, 2352);
+    }
+
+    // And the same bytes on the wire through READ CD (0xBE) with expected
+    // sector type 1, CD-DA. That is the command a ripper or a player uses to
+    // pull raw audio, and unlike READ(10) it returns the full 2352-byte
+    // sector rather than 2048 bytes of cooked user data. Two sectors at once
+    // so the per-block stride is covered as well as the start offset.
+    const u32 lba = 200;
+    const u8 readCdb[12] = {0xBE, 0x01 << 2,
+                            (u8)(lba >> 24), (u8)(lba >> 16), (u8)(lba >> 8), (u8)lba,
+                            0x00, 0x00, 0x02, // two blocks
+                            0x10,             // MCS: user data
+                            0x00, 0x00};
+    auto r = bench.SendCommand(readCdb, sizeof(readCdb), 2 * 2352);
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    CHECK_EQ(r.data.size(), (size_t)(2 * 2352));
+    CHECK_BYTES(r.data.data(), r.data.size(), pcm.data() + (u64)lba * 2352, 2 * 2352);
+}
+
+// ---------------------------------------------------------------------------
 // Real mixed-mode CD, cue sheet loaded off disk through the FatFs shim
 // ---------------------------------------------------------------------------
 

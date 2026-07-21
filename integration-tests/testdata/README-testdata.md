@@ -17,6 +17,19 @@ decompresses/copies these into `out/images/` before the tests run.
 The generated images use the same `PatternByte(off) = (off*31 + 7) & 0xFF`
 fill the harness expects, so reads can be checked byte-exact.
 
+## Fixtures built from files already in the repo
+
+Two test discs are not stored here at all. They are produced at build time
+from assets the repo already ships, so they cost nothing in tracked bytes:
+
+| Built file | Source | What it becomes |
+| --- | --- | --- |
+| `out/images/image.iso` | `sdcard/image.iso.gz` | The ISO9660 disc used by the reader tests |
+| `out/images/realaudio.bin` + `.cue` | `sdcard/test.pcm.gz` | A three-track CD-DA disc. That sample is what `CCDPlayer::SoundTest()` plays on hardware, and it is 16-bit stereo at 44.1 kHz, which is exactly Red Book audio. It is 1030984 bytes, so it is trimmed to 438 whole 2352-byte sectors and given a generated cue with tracks at 00:00:00, 00:02:00 and 00:04:00. |
+
+With `WITH_CHD=1` the tracked `sdcard/usbode-audio-test.chd` is read in place
+as a third such fixture.
+
 ## Rebuilding
 
 The audio/mixed images and the CHD are reproducible with a short script
