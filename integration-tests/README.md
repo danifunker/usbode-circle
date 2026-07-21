@@ -92,13 +92,23 @@ bug USBODE actually shipped:
 | `play_audio_*`, `read_subchannel_*` | The full MCICDA analog-audio sequence (the one Win98 QuickInstall's replaced USB stack never sends — oerg866/win98-quickinstall#151) |
 | `cue_crlf_*`, `cue_lowercase_*`, `cue_irregular_whitespace`, `cue_metadata_lines_ignored`, `cue_filename_with_spaces_and_dot_slash` | Cosmetic cue-sheet variation (CRLF, casing, tabs, `REM`/`TITLE`/`FLAGS` lines, quoted paths) must not change the disc layout reported to the host. Asserted as equality with the canonical sheet's TOC, so a parser that mangled both alike could not satisfy it |
 | `cue_stored_pregap_*`, `cue_unstored_pregap_*` | Pregap arithmetic: a stored `INDEX 00` gap must not be reported as the track start (that begins every track early, inside the silence), and an unstored `PREGAP` must shift all following tracks *and* the leadout, since it occupies disc addresses but no file bytes |
+| `truncated_bin_*`, `zero_length_image`, `read_straddling_end_of_file` | Damaged and half-copied images must fail as a read error, not as a device that stops answering: every CBW still gets a CSW, and reads stay inside the file that actually exists |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
-The bench itself found one latent firmware bug on day one: passing a
-device to the `CUSBCDGadget` constructor makes `SetDevice()` delete the
-device it was just handed and continue using the freed pointer
-(production code always passes `nullptr` and calls `SetDevice()` later,
-so the path is dormant — see `harness/bench.cpp`).
+The bench itself has found two latent firmware bugs:
+
+- Passing a device to the `CUSBCDGadget` constructor makes `SetDevice()`
+  delete the device it was just handed and continue using the freed pointer
+  (production code always passes `nullptr` and calls `SetDevice()` later, so
+  the path is dormant — see `harness/bench.cpp`).
+- `CDUtils::GetSkipbytes()` and `CDUtils::GetBlocksize()` dereference
+  `CUEParser::next_track()` without a null check, so mounting a cue sheet
+  with no parseable tracks — an empty `.cue`, one whose `TRACK` lines never
+  made it, or a file that is not a cue sheet at all — faults inside
+  `SetDevice()`. `GetTrackInfoForLBA()` in the same file handles the same
+  null correctly, so this looks like an oversight. Three tests covering
+  those images are written but held out of `test_badimages.cpp` until the
+  check is added, because a fault aborts the whole run.
 
 ## Layout
 

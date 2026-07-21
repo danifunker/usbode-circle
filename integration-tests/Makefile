@@ -87,6 +87,15 @@ VPATH := $(sort $(dir $(CXX_SRCS) $(C_SRCS)))
 
 BINARY := $(BUILD)/usbode-host-tests
 
+# Toggling WITH_CHD changes -DWITH_CHD and the source list, but that is not a
+# header dependency, so an incremental build would otherwise keep objects
+# compiled for the other mode -- which shows up as a confusing link error
+# (undefined CCHDFileDevice) or, worse, a binary that silently still contains
+# the previous mode's tests. Objects depend on a stamp file whose name encodes
+# the mode, so switching modes rebuilds everything and no `make clean` is
+# needed between the two.
+CHD_STAMP := $(BUILD)/.mode-$(if $(filter 1,$(WITH_CHD)),chd,nochd)
+
 # Prepared test images (real files the real readers open at run time).
 # The .gz sources live in testdata/ and are decompressed here; the .cue and
 # .chd are copied as-is so the readers find them next to their data.
@@ -106,6 +115,15 @@ run: $(BINARY) $(TEST_IMAGES)
 
 $(BINARY): $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS)
+
+# Rebuild everything when WITH_CHD is toggled (see CHD_STAMP above). Declared
+# after `all` so it does not become the default goal.
+$(OBJS): $(CHD_STAMP)
+
+$(CHD_STAMP):
+	@mkdir -p $(BUILD)
+	@rm -f $(BUILD)/.mode-chd $(BUILD)/.mode-nochd
+	@touch $@
 
 # -MMD/-MP emit .d dependency files so edits to a header (a stub, a firmware
 # header) trigger the right recompiles; without this an incremental build can
