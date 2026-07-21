@@ -14,7 +14,12 @@
 #include <sstream>
 #include <string>
 
-int RegisterTest(const char *pName, void (*pfnTest)());
+// pFile is the registering source file; the runner turns it into the group
+// heading a test is listed under (see kGroupNames in framework.cpp). Taking it
+// from __FILE__ at the TEST() site rather than from a per-file declaration
+// keeps grouping independent of static initialization order across
+// translation units, which is unspecified.
+int RegisterTest(const char *pName, void (*pfnTest)(), const char *pFile);
 void ReportFailure(const char *pFile, int nLine, const std::string &message);
 int RunAllTests();
 
@@ -22,9 +27,9 @@ void CheckBytesImpl(const char *pFile, int nLine, const char *pWhat,
                     const uint8_t *pActual, size_t nActualLen,
                     const uint8_t *pExpected, size_t nExpectedLen);
 
-#define TEST(name)                                                  \
-    static void test_##name();                                      \
-    static const int reg_##name = RegisterTest(#name, test_##name); \
+#define TEST(name)                                                            \
+    static void test_##name();                                                \
+    static const int reg_##name = RegisterTest(#name, test_##name, __FILE__); \
     static void test_##name()
 
 #define CHECK(cond)                                                 \
