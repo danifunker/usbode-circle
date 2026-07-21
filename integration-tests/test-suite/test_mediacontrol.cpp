@@ -245,10 +245,9 @@ TEST(mode_select10_descent2_volume_sequence)
 // and error-recovery parameters routinely -- but it must not be mistaken for
 // the audio page and move the volume.
 //
-// This case passes both before and after the page-code fix described at the
-// top of the file, since page 0x01 differs from the audio page in code *and*
-// in declared length. The sharper version, an unrelated page that declares
-// length 0x0E, is one of the held-out tests.
+// Page 0x01 differs from the audio page in code *and* in declared length, so
+// this passes either way; mode_select10_page_length_0e_is_not_the_audio_page
+// below is the sharper version.
 TEST(mode_select10_unrelated_page_does_not_touch_volume)
 {
     CFakeImageDevice *disc = MakeAudioCD(3, 3000);
@@ -324,4 +323,89 @@ TEST(mode_select6_rejected_as_invalid_opcode)
     auto sense = bench.RequestSense();
     CHECK_EQ(sense.data[2], 0x05);  // ILLEGAL REQUEST
     CHECK_EQ(sense.data[12], 0x20); // INVALID COMMAND OPERATION CODE
+}
+
+// The page code identifies the page. The declared length is the initiator's
+// business and may legitimately be shorter than the full page, so the audio
+// page must still be applied when a host declares some other length. The
+// firmware used to dispatch on the length byte, which silently dropped the
+// host's volume change in exactly this case.
+TEST(mode_select10_audio_page_with_nonstandard_length_still_applies)
+{
+    CFakeImageDevice *disc = MakeAudioCD(3, 3000);
+    CCDPlayer player;
+    CGadgetTestBench bench(disc, false, &player);
+    bench.Activate();
+    bench.RequestSense();
+
+    auto r = ModeSelect10(bench, ModeSelectPayload(0x0E, 0x0A, 55, 55));
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    CHECK_EQ(player.setVolumeCalls, 1);
+    CHECK_EQ(player.volume, 55);
+}
+
+// The same bug in the other direction: page 0x0D (CD-ROM parameters)
+// declaring a 14-byte page is not the audio page, and must not move the
+// volume just because its length matches the audio page's code.
+TEST(mode_select10_page_length_0e_is_not_the_audio_page)
+{
+    CFakeImageDevice *disc = MakeAudioCD(3, 3000);
+    CCDPlayer player;
+    CGadgetTestBench bench(disc, false, &player);
+    bench.Activate();
+    bench.RequestSense();
+
+    auto r = ModeSelect10(bench, ModeSelectPayload(0x0D, 0x0E, 7, 7));
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    CHECK_EQ(player.setVolumeCalls, 0);
+}
+
+// When the host includes block descriptors, the mode page starts after them,
+// not at a fixed offset 8. Reading the page code at 8 regardless would find a
+// block descriptor byte instead and either miss the page or act on the wrong
+// one.
+TEST(mode_select10_audio_page_after_block_descriptor)
+{
+    CFakeImageDevice *disc = MakeAudioCD(3, 3000);
+    CCDPlayer player;
+    CGadgetTestBench bench(disc, false, &player);
+    bench.Activate();
+    bench.RequestSense();
+
+    // 8-byte header declaring one 8-byte block descriptor, then the audio page.
+    std::vector<u8> payload(8 + 8 + 16, 0);
+    payload[7] = 8; // block descriptor length
+    payload[8 + 0] = 0x00; // density code, then a 2048-byte block length
+    payload[8 + 6] = 0x08;
+    payload[16 + 0] = 0x0E; // page code
+    payload[16 + 1] = 0x0E; // page length
+    payload[16 + 8] = 0x01; // CDDA output 0 channel select
+    payload[16 + 9] = 33;   // volume 0
+    payload[16 + 10] = 0x02;
+    payload[16 + 11] = 33;  // volume 1
+
+    auto r = ModeSelect10(bench, payload);
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    CHECK_EQ(player.setVolumeCalls, 1);
+    CHECK_EQ(player.volume, 33);
+}
+
+// A truncated audio page must be ignored rather than read past what arrived.
+TEST(mode_select10_truncated_audio_page_ignored)
+{
+    CFakeImageDevice *disc = MakeAudioCD(3, 3000);
+    CCDPlayer player;
+    CGadgetTestBench bench(disc, false, &player);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Header plus only the page code and length: the volume fields never
+    // arrived, so there is nothing to apply.
+    std::vector<u8> payload(10, 0);
+    payload[8] = 0x0E;
+    payload[9] = 0x0E;
+
+    auto r = ModeSelect10(bench, payload);
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    CHECK_EQ(player.setVolumeCalls, 0);
 }
