@@ -80,6 +80,33 @@ CGadgetTestBench::Result CGadgetTestBench::SendCommand(const u8 *pCDB, size_t nC
     bus.outTransfer.valid = false;
     gadget->OnTransferComplete(FALSE, SIZE_CBW);
 
+    Pump(result, pOutData, nOutLength);
+    return result;
+}
+
+CGadgetTestBench::Result CGadgetTestBench::SendRawCBW(const void *pData, size_t nLength)
+{
+    Result result;
+    TestBus &bus = TestBus::Get();
+
+    bus.inStalled = false;
+    bus.outStalled = false;
+
+    assert(bus.outTransfer.valid && "gadget is not waiting for a CBW");
+    assert(nLength <= bus.outTransfer.length);
+
+    memcpy(bus.outTransfer.buffer, pData, nLength);
+    bus.outTransfer.valid = false;
+    gadget->OnTransferComplete(FALSE, nLength);
+
+    Pump(result, nullptr, 0);
+    return result;
+}
+
+void CGadgetTestBench::Pump(Result &result, const u8 *pOutData, size_t nOutLength)
+{
+    TestBus &bus = TestBus::Get();
+
     // Pump the state machine until the CSW has been transferred.
     for (int guard = 0; guard < 100000; guard++)
     {
@@ -131,7 +158,6 @@ CGadgetTestBench::Result CGadgetTestBench::SendCommand(const u8 *pCDB, size_t nC
 
     result.stalledIn = bus.inStalled;
     result.stalledOut = bus.outStalled;
-    return result;
 }
 
 CGadgetTestBench::Result CGadgetTestBench::RequestSense()

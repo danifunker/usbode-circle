@@ -62,6 +62,15 @@ public:
                        bool bDirIn = true,
                        const u8 *pOutData = nullptr, size_t nOutLength = 0);
 
+    // Deliver arbitrary bytes where the host would put a CBW, bypassing the
+    // well-formed-CBW construction in SendCommand(). Exercises the gadget's
+    // malformed-CBW path (BOT 6.6.1): a rejected CBW stalls and produces no
+    // CSW, so the returned Result normally has gotCSW == false and
+    // stalledIn == true. The gadget does not re-arm a CBW transfer after a
+    // stall (the host is expected to issue a reset recovery), so a test that
+    // calls this cannot send further commands afterwards.
+    Result SendRawCBW(const void *pData, size_t nLength);
+
     // Convenience: REQUEST SENSE (also clears unit attention, like a host
     // would after the first CHECK CONDITION).
     Result RequestSense();
@@ -69,6 +78,10 @@ public:
     CUSBCDGadget *gadget = nullptr;
 
 private:
+    // Runs the state machine until the CSW arrives or no progress is
+    // possible, filling in data phases from pOutData.
+    void Pump(Result &result, const u8 *pOutData, size_t nOutLength);
+
     CInterruptSystem m_Interrupt;
     u32 m_nNextTag = 1;
 };

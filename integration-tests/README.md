@@ -85,6 +85,10 @@ bug USBODE actually shipped:
 | `disc_swap_media_change_full_sequence` | The runtime image-swap handshake (`SetDevice()` -> NO_MEDIUM `02/3a/00` -> settle -> UNIT ATTENTION `06/28/00` blocking reads -> REQUEST SENSE clears to READY): a regression here silently serves the previous disc's capacity/TOC/data after a swap |
 | `gesn_*` | GET EVENT STATUS NOTIFICATION (0x4A) media-change polling — NewMedia / Media Removal / No Change byte-exact, and async (non-polled) requests rejected `05/24/00`; this is how Windows and macOS auto-detect a swapped disc |
 | `read10_*` | Boundary clamping, multi-chunk `Update()` batching (32 blocks HS / 16 blocks FS), residue on truncated reads |
+| `cbw_invalid_signature_stalls`, `cbw_short_packet_stalls` | A malformed CBW must stall rather than be executed (BOT 6.6.1). Running `CBWCB[0]` out of an unvalidated buffer issues an arbitrary opcode; skipping the length check acts on stale bytes from the previous command |
+| `read12_*` | READ(12) parses LBA and block count from four bytes each — a byte-order or offset slip there reads the wrong sectors, or misreads the count as huge and runs off the disc |
+| `read10_last_sector_is_addressable` | The disc-edge off-by-one: last valid LBA is leadout - 1. A `>=` where `>` belongs makes a full-disc copy fail at the very end |
+| `*_zero_allocation_length` | Allocation length 0 is a legal "send no data" request, not an error; answering CHECK CONDITION or a short transfer leaves strict hosts waiting |
 | `play_audio_*`, `read_subchannel_*` | The full MCICDA analog-audio sequence (the one Win98 QuickInstall's replaced USB stack never sends — oerg866/win98-quickinstall#151) |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
