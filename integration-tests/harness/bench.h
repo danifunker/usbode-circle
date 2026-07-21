@@ -51,7 +51,8 @@ public:
                      bool bFullSpeed = false,
                      CCDPlayer *pPlayer = nullptr,
                      ConfigService *pConfig = nullptr,
-                     SCSITBService *pTBService = nullptr);
+                     SCSITBService *pTBService = nullptr,
+                     bool bPassDiscToConstructor = false);
 
     // AddEndpoints + endpoint activation: after this the drive is in
     // UNIT ATTENTION state with a CBW transfer armed, same as right after
@@ -61,6 +62,12 @@ public:
     Result SendCommand(const u8 *pCDB, size_t nCDBLength, u32 nTransferLength,
                        bool bDirIn = true,
                        const u8 *pOutData = nullptr, size_t nOutLength = 0);
+
+    // Leave a read pending, as an aborted or partially consumed transfer
+    // does. Any command that answers with data has to clear this before its
+    // own transfer, or the gadget resumes the read afterwards and streams
+    // disc sectors onto the end of the reply.
+    void SetPendingBlocks(u32 n) { gadget->m_nnumber_blocks = n; }
 
     // Deliver arbitrary bytes where the host would put a CBW, bypassing the
     // well-formed-CBW construction in SendCommand(). Exercises the gadget's

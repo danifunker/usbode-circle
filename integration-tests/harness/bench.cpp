@@ -11,7 +11,8 @@
 
 CGadgetTestBench::CGadgetTestBench(IImageDevice *pDisc, bool bFullSpeed,
                                    CCDPlayer *pPlayer, ConfigService *pConfig,
-                                   SCSITBService *pTBService)
+                                   SCSITBService *pTBService,
+                                   bool bPassDiscToConstructor)
 {
     TestBus::Get().Reset();
     CTimer::Get()->TestReset();
@@ -34,33 +35,20 @@ CGadgetTestBench::CGadgetTestBench(IImageDevice *pDisc, bool bFullSpeed,
     // destroyed on the device), so bench instances leak it. Tests are
     // short-lived processes; that is fine.
     //
-    // Construct with nullptr and attach the disc via SetDevice(),
-    // mirroring CDROMService::Initialize(). Passing the device to the
-    // constructor takes SetDevice()'s eject path with m_pDevice == dev
-    // and deletes the device it was just given (latent use-after-free;
-    // production never uses that path).
-    gadget = new CUSBCDGadget(&m_Interrupt, bFullSpeed, nullptr);
+    // Construct with nullptr and attach the disc via SetDevice(), mirroring
+    // CDROMService::Initialize(). bPassDiscToConstructor takes the other path
+    // instead, where SetDevice() is reached with m_pDevice == dev; production
+    // never does that, and one test pins that it stays harmless.
+    gadget = new CUSBCDGadget(&m_Interrupt, bFullSpeed,
+                              bPassDiscToConstructor ? pDisc : nullptr);
 
-    // m_nblock_address, m_nnumber_blocks and m_nbyteCount are the only three
-    // members of the transfer-state block declared without an initializer,
-    // and no constructor assigns them, so a fresh gadget starts with whatever
-    // was in the heap. Every data-in handler except the toolbox ones sets
-    // m_nnumber_blocks = 0 before its transfer ("nothing more after this
-    // send"), which normally papers over it; a toolbox command reached with a
-    // non-zero count re-enters the chunked read path afterwards, reads from a
-    // garbage LBA and answers CHECK CONDITION.
-    //
-    // Defining them here is not cosmetic. Left alone, whether the toolbox
-    // tests pass depends on the heap layout, which changes when any unrelated
-    // test allocates differently: adding the real-audio fixture flipped three
-    // of them red. The bug is real and tracked (see README); a held-out test
-    // sets a non-zero count explicitly and pins the behavior. Until that is
-    // fixed the bench gives the gadget the defined starting state its
-    // constructor should have.
-    gadget->m_nblock_address = 0;
-    gadget->m_nnumber_blocks = 0;
-    gadget->m_nbyteCount = 0;
-
+    // m_nblock_address, m_nnumber_blocks and m_nbyteCount used to be the only
+    // three members of the transfer-state block declared without an
+    // initializer, so a fresh gadget started with whatever was in the heap and
+    // the bench had to zero them itself. They now have initializers, and the
+    // bench deliberately does not touch them: the toolbox tests only mean
+    // something if they run against the state a real gadget actually boots
+    // with.
     gadget->SetDevice(pDisc);
 }
 

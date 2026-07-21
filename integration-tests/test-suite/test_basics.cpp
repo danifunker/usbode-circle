@@ -146,3 +146,40 @@ TEST(toolbox_set_next_cd)
     CHECK_EQ(tbservice.setNextCDCalls, 1);
     CHECK_EQ(tbservice.lastSetNextCD, 3);
 }
+
+// Constructing the gadget with a device and then calling SetDevice() with that
+// same pointer reaches the eject path with m_pDevice == dev. It used to free
+// the device there and then adopt the freed pointer on the next line, so every
+// subsequent read was a use-after-free.
+//
+// Production always constructs with nullptr and calls SetDevice() afterwards,
+// so this is a latent path rather than a live bug - but it is the obvious way
+// to use the constructor's device argument, and nothing warns you off it.
+//
+// The deletion flag catches the case where the freed memory stays readable,
+// which is what a use-after-free usually looks like in a build with no
+// sanitizer. Note that if this regresses it may well abort the run instead of
+// failing it: the gadget dereferences the device inside SetDevice(), so the
+// crash lands in the bench constructor before any assertion here is reached.
+TEST(device_passed_to_constructor_is_not_freed)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    bool deleted = false;
+    disc->NotifyDeleteVia(&deleted);
+
+    CGadgetTestBench bench(disc, false, nullptr, nullptr, nullptr, true);
+    CHECK(!deleted);
+
+    bench.Activate();
+    bench.RequestSense();
+
+    // And the disc still reads, rather than serving freed memory.
+    const u8 cdb[10] = {0x28, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x01, 0x00};
+    auto r = bench.SendCommand(cdb, sizeof(cdb), 2048);
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    CHECK(!deleted);
+
+    u8 expected[2048];
+    FillPatternSector(expected, 5, 2048);
+    CHECK_BYTES(r.data.data(), r.data.size(), expected, sizeof(expected));
+}

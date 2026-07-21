@@ -871,6 +871,18 @@ void SCSIInquiry::ModeSelect10(CUSBCDGadget *gadget)
     u16 transferLength = gadget->m_CBW.CBWCB[7] << 8 | (gadget->m_CBW.CBWCB[8]);
     CDROM_DEBUG_LOG("SCSIInquiry::ModeSelect10", "Mode Select (10), transferLength is %u", transferLength);
 
+    // The parameter list length comes straight off the wire and can name up
+    // to 65535 bytes, while m_OutBuffer holds 2048. Clamp it, or a host that
+    // asks for more overruns the buffer. Real mode pages are tens of bytes,
+    // so this only ever trims a host that is already misbehaving.
+    if (transferLength > CUSBCDGadget::MaxOutMessageSize)
+    {
+        MLOGERR("SCSIInquiry::ModeSelect10",
+                "Parameter list length %u exceeds the %u-byte buffer, clamping",
+                transferLength, (unsigned)CUSBCDGadget::MaxOutMessageSize);
+        transferLength = CUSBCDGadget::MaxOutMessageSize;
+    }
+
     // Read the data from the host but don't do anything with it (yet!)
     gadget->m_nState = CUSBCDGadget::TCDState::DataOut;
     gadget->m_pEP[CUSBCDGadget::EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataOut,

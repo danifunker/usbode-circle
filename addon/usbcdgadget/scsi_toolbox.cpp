@@ -29,6 +29,7 @@ void SCSIToolbox::ListDevices(CUSBCDGadget* gadget)
 
     memcpy(gadget->m_InBuffer, devices, sizeof(devices));
 
+    gadget->m_nnumber_blocks = 0; // nothing more after this send
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                gadget->m_InBuffer, sizeof(devices));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
@@ -53,6 +54,7 @@ void SCSIToolbox::NumberOfFiles(CUSBCDGadget* gadget)
 
     memcpy(gadget->m_InBuffer, &num, sizeof(num));
 
+    gadget->m_nnumber_blocks = 0; // nothing more after this send
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                gadget->m_InBuffer, sizeof(num));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;
@@ -71,7 +73,11 @@ void SCSIToolbox::ListFiles(CUSBCDGadget* gadget)
     if (count > MAX_ENTRIES)
         count = MAX_ENTRIES;
 
-    TUSBCDToolboxFileEntry *entries = new TUSBCDToolboxFileEntry[MAX_ENTRIES];
+    // Value-initialized: only the characters of each name and its terminator
+    // are written below, so with plain new[] the padding between an entry's
+    // NUL and its size field would be uninitialized heap going out on the
+    // wire - up to roughly 2 KB across a full catalog, different every call.
+    TUSBCDToolboxFileEntry *entries = new TUSBCDToolboxFileEntry[MAX_ENTRIES]();
     for (u8 i = 0; i < count; ++i)
     {
         TUSBCDToolboxFileEntry *entry = &entries[i];
@@ -98,6 +104,7 @@ void SCSIToolbox::ListFiles(CUSBCDGadget* gadget)
 
     memcpy(gadget->m_InBuffer, entries, count * sizeof(TUSBCDToolboxFileEntry));
 
+    gadget->m_nnumber_blocks = 0; // nothing more after this send
     gadget->m_pEP[CUSBCDGadget::EPIn]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataIn,
                                gadget->m_InBuffer, count * sizeof(TUSBCDToolboxFileEntry));
     gadget->m_nState = CUSBCDGadget::TCDState::DataIn;

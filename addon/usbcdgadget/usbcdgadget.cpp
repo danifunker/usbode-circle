@@ -527,7 +527,16 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         m_SenseParams.bAddlSenseCodeQual = 0x00;
         bmCSWStatus = CD_CSW_STATUS_FAIL;
 
-        delete m_pDevice;
+        // Only free the old device when it really is a different one.
+        // Constructing the gadget with a device and then calling SetDevice()
+        // with that same pointer reaches here through !m_CDReady with
+        // m_pDevice == dev, and would free the device before adopting it
+        // below. Production always constructs with nullptr, so this is
+        // dormant rather than live.
+        if (m_pDevice != dev)
+        {
+            delete m_pDevice;
+        }
         m_pDevice = nullptr;
 
         // discChanged (the GESN NewMedia event) is armed when the new medium
@@ -725,7 +734,14 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
             {
                 HandleSCSICommand(); // will update m_nstate
                 break;
-            } // TODO: response for not meaningful CBW
+            }
+            // BOT 6.6.1: a CBW that is valid but not meaningful gets the same
+            // treatment as an invalid one. Falling through without a CSW and
+            // without a stall leaves the host waiting for a status that never
+            // arrives, which hangs it rather than failing the command.
+            MLOGERR("ReceiveCBW", "CBW not meaningful: LUN = %i, CB length = %i",
+                    m_CBW.bCBWLUN, m_CBW.bCBWCBLength);
+            m_pEP[EPIn]->StallRequest(true);
             break;
         }
 
@@ -787,15 +803,43 @@ void CUSBCDGadget::ProcessOut(size_t nLength)
                     m_OutBuffer[16], m_OutBuffer[17], m_OutBuffer[18], m_OutBuffer[19],
                     m_OutBuffer[20], m_OutBuffer[21], m_OutBuffer[22], m_OutBuffer[23]);
 
-    // Process our Parameter List
-    u8 modePage = m_OutBuffer[9];
+    // The MODE SELECT(10) parameter list is an 8-byte header, then any block
+    // descriptors, then the mode pages. Bytes 6-7 of the header give the
+    // block descriptor length, so the first page starts after them; hosts
+    // normally send none, which is why assuming offset 8 has worked so far.
+    u16 blockDescriptorLength = (m_OutBuffer[6] << 8) | m_OutBuffer[7];
+    size_t pageOffset = 8 + (size_t)blockDescriptorLength;
+
+    // Two bytes of page (code and length) have to be there to read at all,
+    // and nLength is what the host actually sent.
+    if (pageOffset + 2 > nLength || pageOffset + 2 > MaxOutMessageSize)
+    {
+        MLOGERR("ProcessOut",
+                "Mode page starts at %u but only %u bytes arrived, ignoring",
+                (unsigned)pageOffset, (unsigned)nLength);
+        return;
+    }
+
+    // Byte 0 of the page is the page code in its low 6 bits (bit 7 is PS, bit
+    // 6 is SPF); byte 1 is the page length. This read the length byte and
+    // compared it against a page code, which only worked because the CD audio
+    // control page's standard length (0x0E) happens to equal its page code -
+    // so the page was silently ignored whenever a host declared any other
+    // length, and an unrelated page declaring length 0x0E was mistaken for it.
+    u8 modePage = m_OutBuffer[pageOffset] & 0x3F;
 
     switch (modePage)
     {
     // CDROM Audio Control Page
     case 0x0e:
     {
-        ModePage0x0EData *modePage = (ModePage0x0EData *)(m_OutBuffer + 8);
+        if (pageOffset + sizeof(ModePage0x0EData) > nLength)
+        {
+            MLOGERR("ProcessOut", "Audio page truncated at %u bytes, ignoring",
+                    (unsigned)nLength);
+            break;
+        }
+        ModePage0x0EData *modePage = (ModePage0x0EData *)(m_OutBuffer + pageOffset);
         CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "Mode Select (10), Volume is %u,%u", modePage->Output0Volume, modePage->Output1Volume);
         CCDPlayer *cdplayer = static_cast<CCDPlayer *>(CScheduler::Get()->GetTask("cdplayer"));
         if (cdplayer)

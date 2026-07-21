@@ -211,3 +211,56 @@ TEST(read_toc_zero_allocation_length)
     CHECK_EQ(r.csw.dCSWDataResidue, 0u);
     CHECK_EQ(r.data.size(), (size_t)0);
 }
+
+// A CBW that is well-formed but addresses a LUN this device does not have.
+// USBODE is a single-LUN device, so anything but LUN 0 is "valid but not
+// meaningful" (BOT 6.6.1) and must be stalled. Falling through silently, as
+// the firmware used to, leaves the host waiting for a status that never
+// arrives: no CSW, no stall, nothing to time out against except the host's
+// own command timer.
+TEST(cbw_nonzero_lun_stalls)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+
+    TUSBCDCBW cbw;
+    memset(&cbw, 0, sizeof(cbw));
+    cbw.dCBWSignature = VALID_CBW_SIG;
+    cbw.dCBWTag = 0x2345;
+    cbw.dCBWDataTransferLength = 2048;
+    cbw.bmCBWFlags = 0x80;
+    cbw.bCBWLUN = 1; // this device only has LUN 0
+    cbw.bCBWCBLength = 10;
+    cbw.CBWCB[0] = 0x28; // READ(10), which must not be executed
+
+    auto r = bench.SendRawCBW(&cbw, SIZE_CBW);
+
+    CHECK(r.stalledIn);
+    CHECK(!r.gotCSW);
+}
+
+// Same rule for a command block longer than the 16-byte CBWCB field. The
+// length is used to bound the CDB, so an out-of-range value has no valid
+// interpretation and must not reach the command dispatcher.
+TEST(cbw_oversized_cb_length_stalls)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+
+    TUSBCDCBW cbw;
+    memset(&cbw, 0, sizeof(cbw));
+    cbw.dCBWSignature = VALID_CBW_SIG;
+    cbw.dCBWTag = 0x3456;
+    cbw.dCBWDataTransferLength = 2048;
+    cbw.bmCBWFlags = 0x80;
+    cbw.bCBWLUN = 0;
+    cbw.bCBWCBLength = 17; // CBWCB is 16 bytes
+    cbw.CBWCB[0] = 0x28;
+
+    auto r = bench.SendRawCBW(&cbw, SIZE_CBW);
+
+    CHECK(r.stalledIn);
+    CHECK(!r.gotCSW);
+}
