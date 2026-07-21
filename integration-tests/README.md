@@ -90,6 +90,8 @@ bug USBODE actually shipped:
 | `read10_last_sector_is_addressable` | The disc-edge off-by-one: last valid LBA is leadout - 1. A `>=` where `>` belongs makes a full-disc copy fail at the very end |
 | `*_zero_allocation_length` | Allocation length 0 is a legal "send no data" request, not an error; answering CHECK CONDITION or a short transfer leaves strict hosts waiting |
 | `play_audio_*`, `read_subchannel_*` | The full MCICDA analog-audio sequence (the one Win98 QuickInstall's replaced USB stack never sends — oerg866/win98-quickinstall#151) |
+| `cue_crlf_*`, `cue_lowercase_*`, `cue_irregular_whitespace`, `cue_metadata_lines_ignored`, `cue_filename_with_spaces_and_dot_slash` | Cosmetic cue-sheet variation (CRLF, casing, tabs, `REM`/`TITLE`/`FLAGS` lines, quoted paths) must not change the disc layout reported to the host. Asserted as equality with the canonical sheet's TOC, so a parser that mangled both alike could not satisfy it |
+| `cue_stored_pregap_*`, `cue_unstored_pregap_*` | Pregap arithmetic: a stored `INDEX 00` gap must not be reported as the track start (that begins every track early, inside the silence), and an unstored `PREGAP` must shift all following tracks *and* the leadout, since it occupies disc addresses but no file bytes |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
 The bench itself found one latent firmware bug on day one: passing a
