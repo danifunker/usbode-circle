@@ -245,6 +245,16 @@ int CDUtils::GetBlocksize(CUSBCDGadget* gadget)
 {
     gadget->cueParser.restart();
     const CUETrackInfo *trackInfo = gadget->cueParser.next_track();
+    if (trackInfo == nullptr)
+    {
+        // No parseable tracks: an empty .cue, one whose TRACK lines never
+        // made it, or a file that is not a cue sheet at all. Fall back to a
+        // zeroed track, which is what GetTrackInfoForLBA() hands the rest of
+        // the code for the same image, so the whole mount stays consistent
+        // instead of faulting here.
+        CUETrackInfo empty = {};
+        return GetBlocksizeForTrack(gadget, empty);
+    }
     return GetBlocksizeForTrack(gadget, *trackInfo);
 }
 
@@ -282,6 +292,12 @@ int CDUtils::GetSkipbytes(CUSBCDGadget* gadget)
 {
     gadget->cueParser.restart();
     const CUETrackInfo *trackInfo = gadget->cueParser.next_track();
+    if (trackInfo == nullptr)
+    {
+        // See GetBlocksize(): same unparseable-cue case, same fallback.
+        CUETrackInfo empty = {};
+        return GetSkipbytesForTrack(gadget, empty);
+    }
     return GetSkipbytesForTrack(gadget, *trackInfo);
 }
 

@@ -114,17 +114,50 @@ TEST(zero_length_image)
     CHECK_EQ(r.csw.bmCSWStatus, 1);
 }
 
-// NOTE: three further cases belong here -- a cue with a FILE line but no
-// TRACK, an empty cue sheet, and a .cue that is not a cue sheet at all (say
-// an HTML error page from a failed download). All three describe a disc with
-// no parseable tracks, and all three currently fault in
-// CDUtils::GetSkipbytes()/GetBlocksize(), which dereference
-// CUEParser::next_track() without checking it for null. Both are called from
-// SetDevice(), so the fault happens at mount time.
-//
-// They are held out of the suite until that null check is added, because a
-// segfault aborts the whole run and CI then reports nothing at all rather
-// than one failure. See the note in the pull request.
+// A cue sheet with a FILE line and nothing else: no TRACK, so the parser
+// yields no tracks at all and every TOC/capacity answer has to be synthesized
+// from nothing.
+TEST(cue_with_no_tracks)
+{
+    CFakeImageDevice *disc = MakeDisc("FILE \"image.bin\" BINARY\n", 600, 2048, 0);
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    CheckAnswersCommands(bench);
+}
+
+// An empty cue sheet -- a zero-byte .cue, or one the user truncated.
+TEST(empty_cue_sheet)
+{
+    CFakeImageDevice *disc = MakeDisc("", 600, 2048, 0);
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    CheckAnswersCommands(bench);
+}
+
+// A cue full of text that is not a cue sheet (wrong file mounted, or a .cue
+// that is actually an HTML error page from a failed download).
+TEST(garbage_cue_sheet)
+{
+    CFakeImageDevice *disc = MakeDisc(
+        "<!DOCTYPE html>\n"
+        "<html><body><h1>404 Not Found</h1>\n"
+        "TRACK the package here\n"
+        "INDEX of /downloads\n"
+        "</body></html>\n",
+        600, 2048, 0);
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    CheckAnswersCommands(bench);
+}
 
 // A read that starts inside the file and runs off the end of it. The drive
 // must clamp to what exists and report the shortfall in the residue, so the
