@@ -98,9 +98,11 @@ bug USBODE actually shipped:
 | `truncated_bin_*`, `zero_length_image`, `read_straddling_end_of_file` | Damaged and half-copied images must fail as a read error, not as a device that stops answering: every CBW still gets a CSW, and reads stay inside the file that actually exists |
 | `real_flac_chd_audio_decodes_byte_exact` | libchdr's FLAC decoder was compiled but never executed: chdman picks the winning codec per hunk, and synthetic data always picks LZMA or deflate. Real music rips pick FLAC, so this is the path a user's audio CD image actually takes |
 | `toolbox_*` | The vendor toolbox command set (0xD0/0xD2/0xD7/0xD8/0xD9) — how the host-side picker enumerates SD-card images and swaps discs. It is USBODE's own protocol, so there is no standard for a client to fall back on: the fixed device list, the one-byte count and its 100-entry cap, and the 40-byte directory entry with its 40-bit big-endian size are all parsed at fixed offsets by the client |
+| `start_stop_unit_*`, `prevent_allow_*`, `medium_removal_lock_does_not_block_disc_swap` | The mount/eject handshake. USBODE has no tray, so these are no-ops — and the no-op is the load-bearing part: Windows sends START STOP UNIT while bringing the drive online and locks the door whenever a volume is open, so an eject that really ejected, or a lock that really locked, would kill the web UI's disc swap and leave the host holding an unusable drive |
+| `mode_select10_*` | The one command with a data-out phase: the parameter list has to be consumed and the residue accounted for or the host waits forever. Also the Descent 2 volume quirk (four MODE SELECTs in a row with the channels swapped, lower of each pair wins) and a zero-length parameter list, which is legal |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
-The bench itself has found four latent firmware bugs:
+The bench itself has found six latent firmware bugs:
 
 - Passing a device to the `CUSBCDGadget` constructor makes `SetDevice()`
   delete the device it was just handed and continue using the freed pointer
@@ -129,6 +131,20 @@ The bench itself has found four latent firmware bugs:
   Mostly unreachable today because the loader ignores the `FILE` names and
   always opens `<cuename>.bin`, so a split-track rip fails to mount instead —
   safe, but opaque to the user, and split rips are a common layout.
+- `ProcessOut()` picks which mode page a MODE SELECT is setting by reading
+  `m_OutBuffer[9]` — the page's *length* byte. The page *code* is at
+  `m_OutBuffer[8]`, where the `ModePage0x0EData` cast on the next line already
+  points. It goes unnoticed because the CD Audio Control page's standard
+  length (`0x0E`) happens to equal its page code. So the audio page sent with
+  any other declared length is silently ignored, and an unrelated page that
+  declares length `0x0E` moves the CD volume. Both directions verified on the
+  bench; two tests held out of `test_mediacontrol.cpp` until the fix
+  (`m_OutBuffer[8] & 0x3F`). The same function also ignores the header's block
+  descriptor length, so every offset shifts if a host sends one.
+- `SCSIInquiry::ModeSelect10()` passes the CDB's 16-bit parameter list length
+  straight to `BeginTransfer()` on `m_OutBuffer`, which is 2048 bytes, with no
+  clamp. No test is provided: exercising it would corrupt the test process
+  rather than report a failure.
 
 ## Layout
 
