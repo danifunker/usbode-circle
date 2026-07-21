@@ -82,6 +82,8 @@ bug USBODE actually shipped:
 | `read_toc_legacy_cdb9_session_info` | Win9x session-info request encoded in CDB[9] answered with a full TOC |
 | `read_toc_format0_lba` residue check | CSW residue reported as 0 on short responses made Win98 usbstor.sys discard and retry forever |
 | `read_blocked_by_unit_attention` | Missing STALL before CSW reset the device on Windows 11 xHCI |
+| `disc_swap_media_change_full_sequence` | The runtime image-swap handshake (`SetDevice()` -> NO_MEDIUM `02/3a/00` -> settle -> UNIT ATTENTION `06/28/00` blocking reads -> REQUEST SENSE clears to READY): a regression here silently serves the previous disc's capacity/TOC/data after a swap |
+| `gesn_*` | GET EVENT STATUS NOTIFICATION (0x4A) media-change polling — NewMedia / Media Removal / No Change byte-exact, and async (non-polled) requests rejected `05/24/00`; this is how Windows and macOS auto-detect a swapped disc |
 | `read10_*` | Boundary clamping, multi-chunk `Update()` batching (32 blocks HS / 16 blocks FS), residue on truncated reads |
 | `play_audio_*`, `read_subchannel_*` | The full MCICDA analog-audio sequence (the one Win98 QuickInstall's replaced USB stack never sends — oerg866/win98-quickinstall#151) |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
