@@ -725,7 +725,14 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
             {
                 HandleSCSICommand(); // will update m_nstate
                 break;
-            } // TODO: response for not meaningful CBW
+            }
+            // BOT 6.6.1: a CBW that is valid but not meaningful gets the same
+            // treatment as an invalid one. Falling through without a CSW and
+            // without a stall leaves the host waiting for a status that never
+            // arrives, which hangs it rather than failing the command.
+            MLOGERR("ReceiveCBW", "CBW not meaningful: LUN = %i, CB length = %i",
+                    m_CBW.bCBWLUN, m_CBW.bCBWCBLength);
+            m_pEP[EPIn]->StallRequest(true);
             break;
         }
 
