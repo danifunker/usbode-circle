@@ -745,6 +745,83 @@ TEST(mds_subchannel_image_strips_and_exposes_subchannel_data)
     }
 }
 
+// READ CD (0xBE) asking for the subchannel data alongside the user data.
+// This is the whole point of the format - it is how a copy-protection check
+// gets at the P-W subchannel - and it is the only path that carries those
+// bytes to the host, so an MDS image is only as useful as this command.
+//
+// The reply interleaves one sector at a time: 2048 bytes of Mode 1 user data
+// followed by that sector's 96 subchannel bytes.
+TEST(mds_read_cd_returns_interleaved_subchannel_data)
+{
+    const u32 nSectors = 32;
+    const std::string mds = TestDataDir() + "/mdsreadcd.mds";
+    const std::string mdf = TestDataDir() + "/mdsreadcd.mdf";
+
+    std::vector<u8> raw = RawMode1Sectors(kIso, 0, nSectors);
+    if (raw.empty()) {
+        CHECK(false);
+        return;
+    }
+    std::vector<u8> image((size_t)nSectors * 2448);
+    for (u32 lba = 0; lba < nSectors; lba++) {
+        memcpy(image.data() + (size_t)lba * 2448, raw.data() + (size_t)lba * 2352, 2352);
+        for (u32 i = 0; i < 96; i++) {
+            image[(size_t)lba * 2448 + 2352 + i] = SubchannelByte(lba, i);
+        }
+    }
+    WriteBytes(mdf, image);
+
+    MdsTrackSpec track;
+    track.mode = 0xAA;
+    track.subchannel = 0x08;
+    track.point = 1;
+    track.sectorSize = 2448;
+    track.length = nSectors;
+    WriteMdsFile(mds, {track}, "mdsreadcd.mdf");
+
+    CMDSFileDevice *disc = OpenMds(mds);
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Expected sector type 2 (Mode 1), MCS user-data, and subchannel
+    // selection 0x01 (raw P-W) in byte 10 - which is where MMC puts it.
+    const u32 lba = 16;
+    const u32 blocks = 2;
+    const u8 cdb[12] = {0xBE, 0x02 << 2,
+                        (u8)(lba >> 24), (u8)(lba >> 16), (u8)(lba >> 8), (u8)lba,
+                        0x00, 0x00, (u8)blocks,
+                        0x10,  // MCS: user data
+                        0x01,  // subchannel selection: raw P-W, 96 bytes
+                        0x00};
+    auto r = bench.SendCommand(cdb, sizeof(cdb), blocks * (2048 + 96));
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    CHECK_EQ(r.data.size(), (size_t)(blocks * (2048 + 96)));
+    if (r.data.size() != blocks * (2048 + 96)) {
+        return;
+    }
+
+    std::vector<u8> expected((size_t)blocks * (2048 + 96));
+    for (u32 i = 0; i < blocks; i++) {
+        u8 *out = expected.data() + (size_t)i * (2048 + 96);
+        memcpy(out, raw.data() + (size_t)(lba + i) * 2352 + 16, 2048);
+        for (u32 j = 0; j < 96; j++) {
+            out[2048 + j] = SubchannelByte(lba + i, j);
+        }
+    }
+    CHECK_BYTES(r.data.data(), r.data.size(), expected.data(), expected.size());
+
+    // Sanity: the user-data half really is the ISO's volume descriptor, so a
+    // reply that happened to be the right length is not mistaken for a pass.
+    CHECK(memcmp(r.data.data() + 1, "CD001", 5) == 0);
+}
+
 // ---------------------------------------------------------------------------
 // Malformed and hostile .mds files
 //

@@ -118,6 +118,10 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
         gadget->block_size = gadget->data_block_size; // set at SetDevice
         gadget->skip_bytes = gadget->data_skip_bytes; // set at SetDevice
         gadget->mcs = 0;
+        // READ(10)/(12) never carry subchannel data. Clear it alongside mcs
+        // so a preceding READ CD cannot leave a selection behind for the
+        // assembly pass to act on.
+        gadget->subchannel_selection = 0;
         gadget->m_nbyteCount = gadget->m_CBW.dCBWDataTransferLength;
 
         // Recalculate byte count based on potentially truncated block count
@@ -315,6 +319,7 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
 
     // Subchannel selection from byte 10
     u8 subChannelSelection = gadget->m_CBW.CBWCB[10] & 0x07;
+    gadget->subchannel_selection = subChannelSelection;
 
     CDROM_DEBUG_LOG("SCSIRead::ReadCD",
                     "READ CD: USB=%s, LBA=%u, blocks=%u, type=0x%02x, MCS=0x%02x, subchan=0x%02x",
