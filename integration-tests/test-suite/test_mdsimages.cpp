@@ -870,6 +870,151 @@ TEST(mds_track_mode_bytes_map_to_the_published_types)
     }
 }
 
+// A real Alcohol 120% image does not store the pregap between two tracks, so
+// its MDF is sparse: the disc has frames the file has no bytes for, and every
+// track after the hole sits at a file offset well below lba * 2352. Alcohol
+// writing a Video CD produced exactly this - 976 frames stored for a
+// 1126-frame disc, track 2 at file offset 1237152 where the naive arithmetic
+// says 1589952.
+//
+// Those frames are still part of the disc and READ CAPACITY counts them, so a
+// host reading a little past the end of a track lands in the hole. That used
+// to fail the whole transfer: FindTrackForLBA returned nothing, Seek returned
+// (u64)-1, and the read errored. A real drive answers instead.
+//
+// Track modes here are 0xEC / 0xED because that is what Alcohol actually
+// writes for Mode 2 Form 1 and Form 2 - not the 0xAC / 0xAD the published
+// table lists.
+TEST(mds_unstored_pregap_reads_as_zeros)
+{
+    std::vector<u8> raw = ReadAllBytes(kXa);
+    if (raw.empty()) {
+        return;
+    }
+
+    // Track 1 stops at LBA 24 rather than running the whole Form 1 run,
+    // because LBA 25 onward in this image is empty ISO9660 system area. Ending
+    // on a frame with real content is what makes "stored" and "hole"
+    // distinguishable: both would otherwise read back as zeros.
+    const u32 kTrack1Len = 25;
+    const u32 kGap = 150;                       // frames Alcohol omits
+    const u32 kTrack2LBA = kTrack1Len + kGap;
+    const u32 kTotal = kTrack2LBA + kXaForm2Sectors;
+
+    const std::string mds = TestDataDir() + "/mdsgap.mds";
+    const std::string mdf = TestDataDir() + "/mdsgap.mdf";
+    WriteBytes(mdf, raw);                        // only the stored frames
+
+    MdsTrackSpec t1;
+    t1.mode = 0xEC;
+    t1.point = 1;
+    t1.sectorSize = 2352;
+    t1.startSector = 0;
+    t1.startOffset = 0;
+    t1.length = kTrack1Len;
+
+    MdsTrackSpec t2;
+    t2.mode = 0xED;
+    t2.point = 2;
+    t2.sectorSize = 2352;
+    t2.startSector = kTrack2LBA;                 // 150 frames later on the disc
+    t2.startOffset = (u64)kXaForm1Sectors * 2352; // but straight after in the file
+    t2.pregap = kGap;
+    t2.length = kXaForm2Sectors;
+
+    WriteMdsFile(mds, {t1, t2}, "mdsgap.mdf");
+
+    CMDSFileDevice *disc = OpenMds(mds);
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // The hole counts toward capacity: the disc is 206 frames even though the
+    // MDF holds 56.
+    const u8 capCdb[10] = {0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    auto cap = bench.SendCommand(capCdb, sizeof(capCdb), 8);
+    CHECK_EQ(cap.csw.bmCSWStatus, 0);
+    u32 lastLBA = (cap.data[0] << 24) | (cap.data[1] << 16) | (cap.data[2] << 8) | cap.data[3];
+    CHECK_EQ(lastLBA, kTotal - 1);
+
+    auto read = [&bench](u32 lba, u32 blocks) {
+        const u8 cdb[10] = {0x28, 0, (u8)(lba >> 24), (u8)(lba >> 16), (u8)(lba >> 8), (u8)lba,
+                            0, (u8)(blocks >> 8), (u8)blocks, 0};
+        return bench.SendCommand(cdb, sizeof(cdb), blocks * 2048);
+    };
+    auto allZero = [](const std::vector<u8> &d, size_t from, size_t len) {
+        for (size_t i = from; i < from + len && i < d.size(); i++) {
+            if (d[i] != 0) return false;
+        }
+        return true;
+    };
+    // A stored frame has to come back as the fixture's own bytes, not merely
+    // as something non-zero: most of this image is legitimately zero-filled,
+    // so "not zeros" would not tell a stored frame from a hole.
+    auto matchesFixture = [&raw](const std::vector<u8> &d, size_t block, u32 lba) {
+        const size_t at = block * 2048;
+        if (d.size() < at + 2048) return false;
+        return memcmp(d.data() + at, raw.data() + (size_t)lba * 2352 + 24, 2048) == 0;
+    };
+
+    // Real data before the hole, so the fixture is known good.
+    auto pvd = read(16, 1);
+    CHECK_EQ(pvd.csw.bmCSWStatus, 0);
+    if (pvd.data.size() == 2048) {
+        CHECK(memcmp(pvd.data.data() + 1, "CD001", 5) == 0);
+    }
+
+    // The regression: the first frame of the hole. This used to fail the
+    // command outright.
+    auto gap = read(kTrack1Len, 1);
+    CHECK_EQ(gap.csw.bmCSWStatus, 0);
+    CHECK_EQ(gap.data.size(), (size_t)2048);
+    CHECK(allZero(gap.data, 0, 2048));
+
+    // Track 2 still resolves through its own start_offset, so the hole did not
+    // shift the file mapping.
+    // Disc LBA kTrack2LBA lives at fixture frame kXaForm1Sectors, which is the
+    // whole point: the hole moved the disc address without moving the file.
+    auto mpeg = read(kTrack2LBA, 1);
+    CHECK_EQ(mpeg.csw.bmCSWStatus, 0);
+    CHECK(matchesFixture(mpeg.data, 0, kXaForm1Sectors));
+
+    // Data running into the hole: two real frames then two empty ones.
+    auto intoGap = read(kTrack1Len - 2, 4);
+    CHECK_EQ(intoGap.csw.bmCSWStatus, 0);
+    CHECK_EQ(intoGap.data.size(), (size_t)(4 * 2048));
+    if (intoGap.data.size() == 4 * 2048) {
+        CHECK(matchesFixture(intoGap.data, 0, kTrack1Len - 2)); // last stored frames
+        CHECK(matchesFixture(intoGap.data, 1, kTrack1Len - 1));
+        CHECK(allZero(intoGap.data, 2 * 2048, 2048));           // first of the hole
+        CHECK(allZero(intoGap.data, 3 * 2048, 2048));
+    }
+
+    // The harder direction: out of the hole and back into real data. Nothing
+    // advanced the file pointer across the empty frames, so this only works if
+    // the reader re-seeks for the frames that do have bytes.
+    auto outOfGap = read(kTrack2LBA - 2, 4);
+    CHECK_EQ(outOfGap.csw.bmCSWStatus, 0);
+    CHECK_EQ(outOfGap.data.size(), (size_t)(4 * 2048));
+    if (outOfGap.data.size() == 4 * 2048) {
+        CHECK(allZero(outOfGap.data, 0, 2048));
+        CHECK(allZero(outOfGap.data, 1 * 2048, 2048));
+        CHECK(matchesFixture(outOfGap.data, 2, kXaForm1Sectors));
+        CHECK(matchesFixture(outOfGap.data, 3, kXaForm1Sectors + 1));
+    }
+
+    // Past the disc is still an error, not another hole.
+    auto beyond = read(kTotal + 4, 1);
+    CHECK(beyond.csw.bmCSWStatus != 0);
+
+    delete disc;
+}
+
 // ---------------------------------------------------------------------------
 // Subchannel images (2448-byte sectors)
 // ---------------------------------------------------------------------------

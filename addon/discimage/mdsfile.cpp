@@ -324,10 +324,75 @@ CMDSFileDevice::~CMDSFileDevice(void) {
     delete m_parser;
 }
 
+bool CMDSFileDevice::TouchesUnstoredGap(u32 firstLBA, size_t nSectors) const {
+    if (!m_parser) {
+        return false;
+    }
+    for (size_t i = 0; i < nSectors; i++) {
+        u32 lba = firstLBA + (u32)i;
+        if (lba >= m_nTotalFrames) {
+            break;  // past the disc: DoRead rejects that before reaching here
+        }
+        int session, trackIdx;
+        if (FindTrackForLBA(lba, &session, &trackIdx) == nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int CMDSFileDevice::ReadAcrossGaps(void *pBuffer, size_t nSize) {
+    u8* dest = (u8*)pBuffer;
+    const size_t sectors = nSize / 2352;
+    size_t total_read = 0;
+
+    for (size_t i = 0; i < sectors; i++) {
+        int session, trackIdx;
+        MDS_TrackBlock* track = FindTrackForLBA(m_nCurrentLBA, &session, &trackIdx);
+
+        if (!track) {
+            // Unstored pregap. Zeros are what the pregap of a data track holds
+            // anyway, and they keep the transfer whole instead of failing it.
+            memset(dest, 0, 2352);
+        } else {
+            // Seek per frame rather than trusting the file pointer: a gap
+            // consumed no file position, so it is stale after one.
+            u64 offset = track->start_offset +
+                         (u64)(m_nCurrentLBA - track->start_sector) * track->sector_size;
+            if (f_lseek(m_pFile, offset) != FR_OK) {
+                LOGERR("Gap-aware read: seek to %llu for LBA %u failed",
+                       (unsigned long long)offset, m_nCurrentLBA);
+                return total_read > 0 ? (int)total_read : -1;
+            }
+            UINT bytes_read = 0;
+            FRESULT result = f_read(m_pFile, dest, 2352, &bytes_read);
+            if (result != FR_OK || bytes_read != 2352) {
+                LOGERR("Gap-aware read: LBA %u returned %u bytes (err %d)",
+                       m_nCurrentLBA, bytes_read, result);
+                return total_read > 0 ? (int)total_read : -1;
+            }
+        }
+
+        dest += 2352;
+        total_read += 2352;
+        m_nCurrentLBA++;
+    }
+
+    return (int)total_read;
+}
+
 int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
     if (!m_pFile) {
         LOGERR("Read !m_pFile");
         return -1;
+    }
+
+    // A transfer that crosses a pregap the MDF does not store cannot be one
+    // f_read, because part of it has no bytes behind it. That is rare enough
+    // to be worth detecting rather than paying for frame-by-frame reads on
+    // every transfer, so the paths below are left as they were.
+    if (nSize >= 2352 && TouchesUnstoredGap(m_nCurrentLBA, nSize / 2352)) {
+        return ReadAcrossGaps(pBuffer, nSize);
     }
 
     // For images with subchannels, we need special handling
@@ -423,10 +488,20 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
     MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
     
     if (!track) {
+        // An LBA inside the disc but outside every track is a pregap the
+        // imaging tool chose not to store - Alcohol omits them by default, so
+        // a two-track image typically has a 150-frame hole before track 2.
+        // READ CAPACITY counts those frames, so a host reading slightly past a
+        // track lands here legitimately, and a real drive answers rather than
+        // failing. There is no file position to take up; Read() serves zeros.
+        if (lba < m_nTotalFrames) {
+            m_nCurrentLBA = lba;
+            return nOffset;
+        }
         LOGERR("Seek: LBA %u not found in any track", lba);
         return static_cast<u64>(-1);
     }
-    
+
     // Calculate offset into MDF file
     u32 sectors_from_track_start = lba - track->start_sector;
     u64 actual_file_offset = track->start_offset + 

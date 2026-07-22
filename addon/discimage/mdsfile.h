@@ -89,6 +89,15 @@ class CMDSFileDevice : public IMDSDevice {
 
     // Helper to find track containing an LBA
     MDS_TrackBlock* FindTrackForLBA(u32 lba, int* sessionOut, int* trackOut) const;
+
+    /// True if any of nSectors frames from firstLBA is on the disc but absent
+    /// from the MDF, i.e. inside a pregap the imaging tool did not store.
+    bool TouchesUnstoredGap(u32 firstLBA, size_t nSectors) const;
+
+    /// Read that walks frame by frame, serving zeros for unstored ones and
+    /// seeking explicitly for the rest. Only worth using when the transfer
+    /// actually crosses a gap; Read() keeps its single-f_read path otherwise.
+    int ReadAcrossGaps(void* pBuffer, size_t nSize);
 };
 
 #endif
