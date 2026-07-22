@@ -7,9 +7,13 @@ pulling the SD card for every test build.
 
 The kernel is uploaded under a temporary name, downloaded back and
 MD5-verified against the local file, and only then renamed into place, so
-a corrupted transfer can't produce an unbootable card. The previous
-kernel is kept as <name>.bak: if a deploy ever goes bad, rename it back
-over FTP instead of pulling the SD card.
+a corrupted transfer can't produce an unbootable card.
+
+The kernel being replaced is kept as <name>.bak, but only the FIRST time:
+once a backup exists it is never overwritten, so a run of test builds
+can't erase the last known-good image. If a deploy goes bad, rename the
+backup over the live name via FTP instead of pulling the SD card. Delete
+the .bak by hand when you want a new baseline.
 
 Usage:
     tools/deploy-kernel.py <usbode-ip> [kernel-image]
@@ -84,20 +88,43 @@ def main():
 
     # Keep the old kernel as .bak so a bad deploy is recoverable over FTP
     # (rename it back) instead of requiring an SD pull.
+    #
+    # The backup is written ONCE and never overwritten. It used to be replaced
+    # on every deploy, which meant two deploys in a row silently destroyed the
+    # only copy of the kernel you started with: the first deploy backed up the
+    # good kernel, the second overwrote that backup with the first test build,
+    # and there was no way back to a known-good image without an SD pull.
+    # Preserving the first backup keeps that escape hatch no matter how many
+    # test builds get deployed on top of it.
+    #
     # (USBODE's FTP server reports missing files as 450, not 550, so catch
     # both the temp- and perm-error classes.)
     backup = target + ".bak"
-    try:
-        ftp.delete(backup)
-    except (ftplib.error_perm, ftplib.error_temp):
-        pass  # no previous backup
-    try:
-        ftp.rename(target, backup)
-    except (ftplib.error_perm, ftplib.error_temp):
-        pass  # no existing kernel with that name
+    existing = set(ftp.nlst())
+    have_backup = backup in existing
+
+    if not have_backup:
+        try:
+            ftp.rename(target, backup)
+            backup_note = f"previous kernel saved as {backup}"
+        except (ftplib.error_perm, ftplib.error_temp):
+            backup_note = "no existing kernel to back up"
+    else:
+        # A backup already exists and is not ours to clobber. Drop the kernel
+        # being replaced rather than keeping a second copy: space on the boot
+        # partition is tight and only the original is worth preserving.
+        try:
+            ftp.delete(target)
+        except (ftplib.error_perm, ftplib.error_temp):
+            pass
+        backup_note = f"kept the existing {backup} (not overwritten)"
+
     ftp.rename(temp, target)
     ftp.quit()
-    print(f"Upload verified (md5 {local_md5}); previous kernel kept as {backup}.")
+    print(f"Upload verified (md5 {local_md5}); {backup_note}.")
+    if have_backup:
+        print(f"NOTE: {backup} still holds whatever was there before the FIRST "
+              f"deploy. Delete it by hand if you want a fresh baseline.")
 
     print("Rebooting USBODE ...")
     try:
