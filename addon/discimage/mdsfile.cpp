@@ -10,15 +10,20 @@
 
 LOGMODULE("CMDSFileDevice");
 
-CMDSFileDevice::CMDSFileDevice(const char* mds_filename, char *mds_str, MEDIA_TYPE mediaType) :
+CMDSFileDevice::CMDSFileDevice(const char* mds_filename, char *mds_str, size_t mds_size,
+                               MEDIA_TYPE mediaType) :
     m_mds_str(mds_str),
-    m_mds_filename(mds_filename),
+    m_mds_size(mds_size),
     m_mediaType(mediaType)
 {
+    if (mds_filename) {
+        strncpy(m_mds_filename, mds_filename, sizeof(m_mds_filename) - 1);
+        m_mds_filename[sizeof(m_mds_filename) - 1] = '\0';
+    }
 }
 
 bool CMDSFileDevice::Init() {
-    m_parser = new MDSParser(m_mds_str);
+    m_parser = new MDSParser(m_mds_str, m_mds_size);
     if (!m_parser->isValid()) {
         LOGERR("Invalid MDS file");
         return false;
@@ -30,8 +35,12 @@ bool CMDSFileDevice::Init() {
     // Open MDF file
     const char* mdf_filename_from_mds = m_parser->getMDFilename();
     LOGNOTE("MDF filename from parser: %s", mdf_filename_from_mds);
-    char mdf_path[255];
-    char mdf_filename[255];  // For CUE sheet - just the filename without path
+    // Both sized to hold anything m_mds_filename can, plus room for the
+    // ".mdf" the wildcard case below swaps in for the original extension.
+    // At 255 a long path was silently truncated and the open then failed
+    // with a confusing "file not found".
+    char mdf_path[sizeof(m_mds_filename) + sizeof(".mdf")];
+    char mdf_filename[sizeof(m_mds_filename) + sizeof(".mdf")];  // For CUE sheet - just the filename without path
 
     if (strcmp(mdf_filename_from_mds, "*.mdf") == 0) {
         // Handle wildcard filename - derive from MDS filename
@@ -89,15 +98,40 @@ bool CMDSFileDevice::Init() {
         FatFsOptimizer::EnableFastSeek(m_pFile, &m_pCLMT, 256, "MDS: ");
     }
 
-    // Generate CUE sheet from MDS data
-    char cue_buffer[4096];
+    // Generate CUE sheet from MDS data.
+    //
+    // Sized from the disc rather than fixed. A full Red Book disc is 99
+    // tracks of roughly 40 characters each, which did not fit the old 4 KB
+    // buffer once the FILE line carried a long name - and the appends below
+    // advanced by snprintf's return value, which is the length it WOULD have
+    // written, so overflowing it walked the cursor past the end and drove
+    // `remaining` negative. It is on the heap because a task stack here is
+    // only 32 KB.
+    size_t total_blocks = 0;
+    for (int i = 0; i < m_parser->getNumSessions(); i++) {
+        total_blocks += m_parser->getSession(i)->num_all_blocks;
+    }
+    const size_t cue_size = 512 + total_blocks * 64;
+    char* cue_buffer = new char[cue_size];
+    cue_buffer[0] = '\0';
     char* cue_ptr = cue_buffer;
-    int remaining = sizeof(cue_buffer);
+    int remaining = (int)cue_size;
+
+    // Append `len` bytes already written at cue_ptr, or stop cleanly if the
+    // buffer is full. snprintf truncates rather than overflowing, so the
+    // guard is only ever about the cursor arithmetic.
+    auto advance = [&cue_ptr, &remaining](int len) -> bool {
+        if (len < 0 || len >= remaining) {
+            remaining = 0;  // full: leave the buffer terminated and stop
+            return false;
+        }
+        cue_ptr += len;
+        remaining -= len;
+        return true;
+    };
 
     // Use the resolved filename (not wildcard) in the CUE sheet
-    int len = snprintf(cue_ptr, remaining, "FILE \"%s\" BINARY\n", mdf_filename);
-    cue_ptr += len;
-    remaining -= len;
+    advance(snprintf(cue_ptr, remaining, "FILE \"%s\" BINARY\n", mdf_filename));
 
     // Process all sessions
     for (int i = 0; i < m_parser->getNumSessions(); i++) {
@@ -136,9 +170,11 @@ bool CMDSFileDevice::Init() {
                 mode_str = "MODE1/2352";
             }
 
-            len = snprintf(cue_ptr, remaining, "  TRACK %02d %s\n", track->point, mode_str);
-            cue_ptr += len;
-            remaining -= len;
+            if (!advance(snprintf(cue_ptr, remaining, "  TRACK %02d %s\n", track->point, mode_str))) {
+                LOGERR("CUE sheet buffer full at track %d - disc has more tracks than fit",
+                       track->point);
+                break;
+            }
 
             // Do NOT emit a PREGAP line: start_sector below is already a
             // final disc LBA (pregaps included), so a PREGAP keyword would
@@ -158,15 +194,19 @@ bool CMDSFileDevice::Init() {
             int minutes = track->start_sector / (75 * 60);
             int seconds = (track->start_sector / 75) % 60;
             int frames = track->start_sector % 75;
-            len = snprintf(cue_ptr, remaining, "    INDEX 01 %02d:%02d:%02d\n", minutes, seconds, frames);
-            cue_ptr += len;
-            remaining -= len;
+            if (!advance(snprintf(cue_ptr, remaining, "    INDEX 01 %02d:%02d:%02d\n",
+                                  minutes, seconds, frames))) {
+                LOGERR("CUE sheet buffer full at track %d - disc has more tracks than fit",
+                       track->point);
+                break;
+            }
         }
     }
 
     m_cue_sheet = new char[strlen(cue_buffer) + 1];
     strcpy(m_cue_sheet, cue_buffer);
-    
+    delete[] cue_buffer;
+
     LOGNOTE("Generated CUE sheet:\n%s", m_cue_sheet);
     
     // Detect if this image has subchannel data (SafeDisc support)
@@ -193,8 +233,37 @@ bool CMDSFileDevice::Init() {
         }
     }
     
-    LOGNOTE("=== Image has subchannel data: %s ===", 
+    // Length of the disc in frames, taken from the track table. The MDF's
+    // own length cannot stand in for it: with subchannels each sector
+    // occupies 2448 bytes on disc but one 2352-byte frame, so dividing the
+    // file size by 2352 claims about 4% more sectors than exist and lets a
+    // host read off the end.
+    m_nTotalFrames = 0;
+    for (int i = 0; i < m_parser->getNumSessions(); i++) {
+        MDS_SessionBlock* session = m_parser->getSession(i);
+        for (int j = 0; j < session->num_all_blocks; j++) {
+            MDS_TrackBlock* track = m_parser->getTrack(i, j);
+            if (track->point == 0 || track->point >= 0xA0) {
+                continue;
+            }
+            MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
+            u32 end = track->start_sector + (extra ? extra->length : 0);
+            if (end > m_nTotalFrames) {
+                m_nTotalFrames = end;
+            }
+        }
+    }
+    if (m_nTotalFrames == 0) {
+        // No track lengths recorded. Fall back to the old behaviour rather
+        // than presenting an empty disc.
+        m_nTotalFrames = (u32)(f_size(m_pFile) / 2352);
+        LOGWARN("No track lengths in MDS; deriving %u frames from the MDF size",
+                m_nTotalFrames);
+    }
+
+    LOGNOTE("=== Image has subchannel data: %s ===",
             m_hasSubchannels ? "YES (SafeDisc compatible)" : "NO");
+    LOGNOTE("=== Disc length: %u frames ===", m_nTotalFrames);
     LOGNOTE("=== End MDS Debug ===");
     
     return true;
@@ -230,13 +299,16 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
     // For images with subchannels, we need special handling
     // The file has 2448-byte sectors (2352 + 96), but callers expect 2352
     if (m_hasSubchannels) {
-        // Determine current position to find which track we're in
-        u64 current_pos = Tell();
-        u32 lba = current_pos / 2352;  // Logical sector number
-        
+        // The track comes from the LBA Seek() resolved, not from the file
+        // position. Tell() reports a PHYSICAL offset in the MDF, and on a
+        // 2448-byte-per-sector track that runs ahead of lba * 2352 by one
+        // sector every 24.5 - so dividing it by 2352 drifts, and in the last
+        // few percent of the image it lands outside every track. That used to
+        // fall through to the raw read below, which returned the subchannel
+        // bytes as if they were user data.
         int session, trackIdx;
-        MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
-        
+        MDS_TrackBlock* track = FindTrackForLBA(m_nCurrentLBA, &session, &trackIdx);
+
         if (track && track->sector_size == 2448) {
             // This track has subchannel data embedded
             // We need to read only the user data (2352 bytes) and skip subchannel (96 bytes)
@@ -267,8 +339,9 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
                 
                 dest += 2352;
                 total_read += 2352;
+                m_nCurrentLBA++;  // the reads below continue from here
             }
-            
+
             return total_read;
         }
     }
@@ -334,7 +407,11 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
         LOGERR("Seek to file offset %llu failed, err %d", actual_file_offset, result);
         return static_cast<u64>(-1);
     }
-    
+
+    // Remember which frame this was: Read() cannot recover it from the file
+    // position once subchannel data makes the physical stride 2448 bytes.
+    m_nCurrentLBA = lba;
+
     // Return the logical offset that was requested (not the physical file offset)
     return nOffset;
 }
@@ -345,13 +422,13 @@ u64 CMDSFileDevice::GetSize(void) const {
         return 0;
     }
 
-    u64 size = f_size(m_pFile);
-    if (size < 0) {
-        LOGERR("GetSize f_size < 0");
-        return 0;
-    }
-
-    return size;
+    // The size of the disc as callers see it, which is the same space Seek()
+    // and GetByteOffsetForLBA() work in: 2352 bytes per frame. That is NOT
+    // the size of the MDF whenever the image carries subchannel data, since
+    // each frame then occupies 2448 bytes on disc. Returning the file size
+    // there made READ CAPACITY report about 4% more sectors than the disc
+    // has.
+    return (u64)m_nTotalFrames * 2352ULL;
 }
 
 int CMDSFileDevice::GetNumTracks() const {

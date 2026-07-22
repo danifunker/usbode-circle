@@ -77,7 +77,12 @@ typedef struct
 
 class MDSParser {
    public:
-    MDSParser(const char *mds_file);
+    /// \param mds_file  The complete contents of the .mds file.
+    /// \param mds_size  Its length in bytes. Every offset in an MDS is an
+    ///                  absolute file offset, and a truncated or hand-edited
+    ///                  image can point them anywhere, so each one is checked
+    ///                  against this before it is followed.
+    MDSParser(const char *mds_file, size_t mds_size);
     ~MDSParser();
     bool isValid();
     const char* getMDFilename();
@@ -88,12 +93,21 @@ class MDSParser {
 
 
    private:
+    /// True if [offset, offset+bytes) lies inside the .mds buffer.
+    bool canRead(uint64_t offset, uint64_t bytes) const;
+
     MDS_Header m_header;
     MDS_SessionBlock* m_sessions = nullptr;
     MDS_TrackBlock** m_tracks = nullptr;
     MDS_TrackExtraBlock** m_track_extras = nullptr;
     const char* m_mdf_filename = nullptr;
     char m_mdf_filename_utf8[256];
-    bool m_valid;
-    const char* m_mds_file;
+    bool m_valid = false;
+    const char* m_mds_file = nullptr;
+    size_t m_mds_size = 0;
+    /// Sessions whose per-session arrays were actually allocated. The
+    /// destructor walks this, never m_header.num_sessions: the header field
+    /// comes from the file and is non-zero even on an image rejected before
+    /// anything was allocated.
+    int m_num_sessions = 0;
 };

@@ -19,7 +19,11 @@
 /// MDS format includes subchannel data, making it suitable for copy-protected discs
 class CMDSFileDevice : public IMDSDevice {
    public:
-    CMDSFileDevice(const char* mds_filename, char* mds_str, MEDIA_TYPE mediaType = MEDIA_TYPE::CD);
+    /// \param mds_str   The .mds file contents. Takes ownership; freed with delete[].
+    /// \param mds_size  Length of mds_str in bytes, so the parser can range
+    ///                  check the file offsets it is about to follow.
+    CMDSFileDevice(const char* mds_filename, char* mds_str, size_t mds_size,
+                   MEDIA_TYPE mediaType = MEDIA_TYPE::CD);
     ~CMDSFileDevice(void);
     bool Init();
 
@@ -57,15 +61,32 @@ class CMDSFileDevice : public IMDSDevice {
     const char* GetCueSheet() const override { return m_cue_sheet; }
 
    private:
-    FIL* m_pFile;
+    // Init() can fail before any of these are set - an invalid .mds, or a
+    // missing MDF - and the caller then destroys the device, so every member
+    // the destructor touches has to start out safe to free.
+    FIL* m_pFile = nullptr;
     char* m_mds_str = nullptr;
     char* m_cue_sheet = nullptr;  // Generated for compatibility
-    const char* m_mds_filename;
-    MEDIA_TYPE m_mediaType;
-    MDSParser* m_parser;    
-    DWORD* m_pCLMT;
+    /// Copied, not aliased: the loader in util.cpp builds the path in a local
+    /// buffer that is gone by the time it returns the device. Sized to match
+    /// that buffer.
+    char m_mds_filename[512] = {0};
+    size_t m_mds_size = 0;
+    MEDIA_TYPE m_mediaType = MEDIA_TYPE::CD;
+    MDSParser* m_parser = nullptr;
+    DWORD* m_pCLMT = nullptr;
     bool m_hasSubchannels = false;
-    
+
+    /// Total frames on the disc, from the track table. The MDF is not a
+    /// reliable substitute: with subchannels every sector occupies 2448
+    /// bytes, so its length divided by 2352 over-reports the disc.
+    u32 m_nTotalFrames = 0;
+
+    /// The LBA Seek() last resolved. Read() needs it because Tell() reports
+    /// a PHYSICAL offset in the MDF, which on a 2448-byte-per-sector track
+    /// is not lba * 2352.
+    u32 m_nCurrentLBA = 0;
+
     // Helper to find track containing an LBA
     MDS_TrackBlock* FindTrackForLBA(u32 lba, int* sessionOut, int* trackOut) const;
 };
