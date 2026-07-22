@@ -89,6 +89,18 @@ Two flavours of disc back the bench, both driven through the same
   file browser lists every `.mds` on the card, so anything a user renames
   reaches this parser.
 
+  Mode 2 is the exception to the author-your-own-fixture rule. The question a
+  Mode 2 test has to settle is whether user data starts 24 bytes into the
+  sector instead of 16, and a fixture built from the same belief the reader
+  holds could not settle it — so `testdata/videocd-xa.bin.gz` is real sectors
+  off a real Video CD, taken from libcdio's test corpus (GPLv3, as we are):
+  its ISO9660 track, which is Mode 2 Form 1, followed by part of its MPEG
+  track, which is Form 2. The oracles are the disc's own: the primary volume
+  descriptor at LBA 16, the `CD-RTOS CD-BRIDGE` system identifier a Video CD
+  carries, and the `00 00 01 BA` pack header every MPEG sector opens with.
+  A companion test sweeps the whole published mode-byte table so a disc is
+  described correctly whichever of the recognised codes its writer used.
+
 The only host-side seams the readers get are the raw file-access boundary
 (`harness/fatfs_host.cpp`, a FatFs shim over stdio) and the two
 `FatFsOptimizer` fast-seek entry points (`harness/discimage_host.cpp`, a no-op

@@ -115,6 +115,7 @@ TEST_IMAGES := $(IMAGES)/image.iso \
 	$(IMAGES)/audiocd.bin $(IMAGES)/audiocd.cue \
 	$(IMAGES)/mixed.bin $(IMAGES)/mixed.cue \
 	$(IMAGES)/mixed.chd \
+	$(IMAGES)/videocd-xa.bin \
 	$(IMAGES)/audiocd-flac.chd
 
 # Red Book audio is 16-bit stereo at 44.1 kHz, which is exactly what

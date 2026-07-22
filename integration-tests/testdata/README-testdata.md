@@ -13,9 +13,38 @@ decompresses/copies these into `out/images/` before the tests run.
 | `mixed.cue` + `mixed.bin.gz` | Real mixed-mode CD: one `MODE1/2048` data track + 2 audio tracks | Generated. Public domain. |
 | `mixed.chd` | The mixed CD compressed with **chdman** (real MAME CHD, cdlz/cdzl/cdfl codecs) | Generated from `mixed.cue`/`mixed.bin` by `chdman createcd`. Public domain. |
 | `audiocd-flac.chd` | The audio CD compressed with **FLAC only**, so every hunk decodes through libchdr's FLAC path | Generated from `audiocd.cue`/`audiocd.bin` by `chdman createcd -c cdfl`. Public domain. |
+| `videocd-xa.bin.gz` | Real **CD-ROM XA / Mode 2** sectors: 32 sectors of a Video CD's ISO9660 track (Form 1) followed by 24 sectors of its MPEG track (Form 2) | Sliced from `test/data/videocd.nrg` in the **libcdio** test suite (github.com/libcdio/libcdio), GPLv3, the same license as this project. See the note below. |
 
 The generated images use the same `PatternByte(off) = (off*31 + 7) & 0xFF`
 fill the harness expects, so reads can be checked byte-exact.
+
+### About `videocd-xa.bin.gz`
+
+Mode 2 is the one sector layout that cannot honestly be synthesized here: the
+whole point of the test is that user data begins 24 bytes into the sector
+rather than 16, so a fixture written by the same understanding the code under
+test uses would prove nothing. These are real sectors off a real Video CD,
+mastered by a real authoring tool, taken from libcdio's test corpus.
+
+Two things were done to them, both mechanical and both verifiable from the file
+itself:
+
+* **Re-framed from 2336 to 2352 bytes.** The source `.nrg` stores Mode 2
+  sectors without their sync pattern and header. Those 16 bytes were prepended
+  back (12-byte sync, then the sector's MSF address and the mode byte `0x02`),
+  which is what an `.mdf` holds. The 8-byte subheader, the user data and the
+  EDC/ECC are untouched originals -- and the subheader is precisely the part
+  that distinguishes Mode 2 from Mode 1.
+* **Sliced and restitched into two tracks.** Sectors 0-31 of the Video CD's
+  data track, then the first 24 sectors of its second track. The headers carry
+  the MSF of the new positions.
+
+What makes it a real oracle: the ISO9660 primary volume descriptor sits at
+LBA 16 and the terminator at LBA 17, so a reader that skips 16 bytes instead of
+24 does not find `CD001` where it must be. The Form 2 sectors are genuine
+MPEG-1, each starting with the `00 00 01 BA` pack header. The subheaders are
+the real duplicated 4+4 pairs, with submode `0x08`/`0x09` on the data sectors
+and `0x62`/`0x64` (real-time video / real-time audio) on the MPEG ones.
 
 ## Fixtures built from files already in the repo
 

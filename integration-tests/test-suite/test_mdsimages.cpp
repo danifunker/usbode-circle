@@ -623,6 +623,254 @@ TEST(mds_mixed_data_and_audio_disc)
 }
 
 // ---------------------------------------------------------------------------
+// Mode 2 / CD-ROM XA discs
+// ---------------------------------------------------------------------------
+
+// Every other fixture in this file is assembled here from parts. This one is
+// not, and deliberately: the whole question a Mode 2 test has to answer is
+// whether user data starts 24 bytes into the sector instead of 16, and a
+// fixture built from the same belief the reader holds could not answer it.
+// out/images/videocd-xa.bin is real sectors off a real Video CD (libcdio's
+// test corpus, GPLv3 as we are) -- 32 sectors of its ISO9660 track, which is
+// Mode 2 Form 1, then 24 sectors of its MPEG track, which is Form 2.
+// testdata/README-testdata.md records exactly what was done to them.
+static const std::string kXa = TestDataDir() + "/videocd-xa.bin";
+
+static const u32 kXaForm1Sectors = 32;
+static const u32 kXaForm2Sectors = 24;
+
+static std::vector<u8> ReadAllBytes(const std::string &path)
+{
+    std::vector<u8> out;
+    FILE *f = fopen(path.c_str(), "rb");
+    if (!f) {
+        return out;
+    }
+    fseeko(f, 0, SEEK_END);
+    off_t size = ftello(f);
+    fseeko(f, 0, SEEK_SET);
+    if (size > 0) {
+        out.resize((size_t)size);
+        if (fread(out.data(), 1, out.size(), f) != out.size()) {
+            out.clear();
+        }
+    }
+    fclose(f);
+    return out;
+}
+
+TEST(mds_mode2_disc_reads_user_data_from_offset_24)
+{
+    std::vector<u8> raw = ReadAllBytes(kXa);
+    CHECK_EQ(raw.size(), (size_t)(kXaForm1Sectors + kXaForm2Sectors) * 2352);
+    if (raw.empty()) {
+        return;
+    }
+
+    // Guard the fixture itself before trusting it as an oracle. If the file
+    // ever gets rebuilt wrong, this fails here with an obvious message instead
+    // of showing up as a mysterious reader bug.
+    CHECK_EQ(raw[15], 0x02);            // mode byte in the sector header
+    CHECK_EQ(raw[16 + 2], raw[16 + 6]); // subheader is the duplicated 4+4 pair
+    CHECK_EQ(raw[16 * 2352 + 24], 0x01);
+    CHECK(memcmp(raw.data() + 16 * 2352 + 25, "CD001", 5) == 0);
+
+    const std::string mds = TestDataDir() + "/mdsmode2.mds";
+    const std::string mdf = TestDataDir() + "/mdsmode2.mdf";
+    WriteBytes(mdf, raw);
+
+    MdsTrackSpec form1;
+    form1.mode = 0xAC; // Mode 2 Form 1
+    form1.point = 1;
+    form1.sectorSize = 2352;
+    form1.startSector = 0;
+    form1.startOffset = 0;
+    form1.length = kXaForm1Sectors;
+
+    MdsTrackSpec form2;
+    form2.mode = 0xAD; // Mode 2 Form 2
+    form2.point = 2;
+    form2.sectorSize = 2352;
+    form2.startSector = kXaForm1Sectors;
+    form2.startOffset = (u64)kXaForm1Sectors * 2352;
+    form2.length = kXaForm2Sectors;
+
+    WriteMdsFile(mds, {form1, form2}, "mdsmode2.mdf");
+
+    CMDSFileDevice *disc = OpenMds(mds);
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CHECK_EQ(disc->GetNumTracks(), 2);
+    // Mode 2 is data in both forms. Reporting Form 2 as audio would send the
+    // whole MPEG track to the CD player as if it were PCM.
+    CHECK(!disc->IsAudioTrack(0));
+    CHECK(!disc->IsAudioTrack(1));
+
+    // Both tracks are described MODE2/2352, which is what makes the rest of
+    // the stack skip 24 bytes per sector rather than 16. Before this mapping
+    // existed every non-audio track came out MODE1/2352.
+    const char *expectedCue =
+        "FILE \"mdsmode2.mdf\" BINARY\n"
+        "  TRACK 01 MODE2/2352\n"
+        "    INDEX 01 00:00:00\n"
+        "  TRACK 02 MODE2/2352\n"
+        "    INDEX 01 00:00:32\n";
+    CHECK(disc->GetCueSheet() != nullptr);
+    if (disc->GetCueSheet()) {
+        CHECK(strcmp(disc->GetCueSheet(), expectedCue) == 0);
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 capCdb[10] = {0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    auto cap = bench.SendCommand(capCdb, sizeof(capCdb), 8);
+    CHECK_EQ(cap.csw.bmCSWStatus, 0);
+    u32 lastLBA = (cap.data[0] << 24) | (cap.data[1] << 16) | (cap.data[2] << 8) | cap.data[3];
+    CHECK_EQ(lastLBA, kXaForm1Sectors + kXaForm2Sectors - 1);
+
+    // The oracle, and the assertion this whole fixture exists for. The Video
+    // CD's Primary Volume Descriptor is at LBA 16. It is only at offset 24 of
+    // that sector; at offset 16 sits the subheader. A reader that skips 16
+    // returns the subheader followed by the first 2040 bytes of user data, so
+    // data[0] is a submode byte and "CD001" lands 8 bytes late.
+    const u8 pvdCdb[10] = {0x28, 0, 0, 0, 0, 16, 0, 0, 1, 0};
+    auto pvd = bench.SendCommand(pvdCdb, sizeof(pvdCdb), 2048);
+    CHECK_EQ(pvd.csw.bmCSWStatus, 0);
+    CHECK_EQ(pvd.data.size(), (size_t)2048);
+    if (pvd.data.size() == 2048) {
+        CHECK_EQ(pvd.data[0], 0x01); // volume descriptor type: primary
+        CHECK(memcmp(pvd.data.data() + 1, "CD001", 5) == 0);
+        // CD-i Bridge: the system identifier a real Video CD carries.
+        CHECK(memcmp(pvd.data.data() + 8, "CD-RTOS CD-BRIDGE", 17) == 0);
+        CHECK(memcmp(pvd.data.data() + 40, "SVIDEOCD", 8) == 0);
+    }
+
+    // LBA 17 is the volume descriptor set terminator, so the per-sector stride
+    // is covered too and not just the offset into the first one.
+    const u8 termCdb[10] = {0x28, 0, 0, 0, 0, 17, 0, 0, 1, 0};
+    auto term = bench.SendCommand(termCdb, sizeof(termCdb), 2048);
+    CHECK_EQ(term.csw.bmCSWStatus, 0);
+    if (term.data.size() == 2048) {
+        CHECK_EQ(term.data[0], 0xFF);
+        CHECK(memcmp(term.data.data() + 1, "CD001", 5) == 0);
+    }
+
+    // Two sectors in one command: the stride within a single batched read.
+    const u8 twoCdb[10] = {0x28, 0, 0, 0, 0, 16, 0, 0, 2, 0};
+    auto two = bench.SendCommand(twoCdb, sizeof(twoCdb), 2 * 2048);
+    CHECK_EQ(two.csw.bmCSWStatus, 0);
+    CHECK_EQ(two.data.size(), (size_t)(2 * 2048));
+    if (two.data.size() == 2 * 2048) {
+        CHECK(memcmp(two.data.data() + 1, "CD001", 5) == 0);
+        CHECK_EQ(two.data[2048], 0xFF);
+    }
+
+    // The Form 2 track. Its user data starts at offset 24 as well, and these
+    // are real MPEG-1 program stream sectors, so each one opens with the pack
+    // start code 00 00 01 BA.
+    const u8 mpegCdb[10] = {0x28, 0, 0, 0, 0, (u8)kXaForm1Sectors, 0, 0, 1, 0};
+    auto mpeg = bench.SendCommand(mpegCdb, sizeof(mpegCdb), 2048);
+    CHECK_EQ(mpeg.csw.bmCSWStatus, 0);
+    if (mpeg.data.size() == 2048) {
+        static const u8 kPackHeader[4] = {0x00, 0x00, 0x01, 0xBA};
+        CHECK(memcmp(mpeg.data.data(), kPackHeader, 4) == 0);
+    }
+
+    // Both tracks report as data in the TOC.
+    const u8 tocCdb[10] = {0x43, 0x00, 0, 0, 0, 0, 0, 0, 100, 0};
+    auto toc = bench.SendCommand(tocCdb, sizeof(tocCdb), 100);
+    CHECK_EQ(toc.csw.bmCSWStatus, 0);
+    CHECK_EQ(toc.data[2], 0x01);        // first track
+    CHECK_EQ(toc.data[3], 0x02);        // last track
+    CHECK_EQ(toc.data[5] & 0x04, 0x04); // track 1 control: data
+}
+
+// The mode byte is not a single value per track type. libmirage -- the
+// reference open-source MDS reader -- selects on the low nibble only, and
+// every code has an alias 8 higher; the 0xA9/0xAA that Alcohol writes are the
+// +8 forms of 0x01/0x02. Sweeping the table here means a disc whose writer
+// used any of the recognised codes is described correctly, rather than only
+// the two values that happened to be hardcoded.
+TEST(mds_track_mode_bytes_map_to_the_published_types)
+{
+    std::vector<u8> raw = RawMode1Sectors(kIso, 0, 4);
+    if (raw.empty()) {
+        return;
+    }
+    const std::string mdf = TestDataDir() + "/mdsmodes.mdf";
+    WriteBytes(mdf, raw);
+
+    struct Case
+    {
+        u8 mode;
+        const char *cue;
+        bool audio;
+    };
+    const Case cases[] = {
+        {0xA9, "AUDIO", true},        // audio, as Alcohol writes it
+        {0x01, "AUDIO", true},        // same code without the +8 offset
+        {0xAA, "MODE1/2352", false},  // Mode 1
+        {0x02, "MODE1/2352", false},
+        {0xA8, "MODE2/2352", false},  // Mode 2, formless
+        {0x00, "MODE2/2352", false},
+        {0xAB, "MODE2/2352", false},  // Mode 2
+        {0x03, "MODE2/2352", false},
+        {0xAC, "MODE2/2352", false},  // Mode 2 Form 1
+        {0x04, "MODE2/2352", false},
+        {0xAD, "MODE2/2352", false},  // Mode 2 Form 2
+        {0x05, "MODE2/2352", false},
+        {0xAF, "MODE2/2352", false},
+        {0x07, "MODE2/2352", false},
+    };
+
+    for (const Case &c : cases) {
+        const std::string mds = TestDataDir() + "/mdsmodes.mds";
+        MdsTrackSpec track;
+        track.mode = c.mode;
+        track.point = 1;
+        track.sectorSize = 2352;
+        track.startSector = 0;
+        track.startOffset = 0;
+        track.length = 4;
+        WriteMdsFile(mds, {track}, "mdsmodes.mdf");
+
+        CMDSFileDevice *disc = OpenMds(mds);
+        CHECK(disc != nullptr);
+        if (!disc) {
+            continue;
+        }
+
+        char expected[128];
+        snprintf(expected, sizeof(expected),
+                 "FILE \"mdsmodes.mdf\" BINARY\n"
+                 "  TRACK 01 %s\n"
+                 "    INDEX 01 00:00:00\n",
+                 c.cue);
+        // Report the mode byte on failure; a bare string mismatch across
+        // fourteen cases would not say which one broke.
+        char msg[512];
+        CHECK(disc->GetCueSheet() != nullptr);
+        if (disc->GetCueSheet() && strcmp(disc->GetCueSheet(), expected) != 0) {
+            snprintf(msg, sizeof(msg), "mode 0x%02x: expected TRACK 01 %s, got:\n%s",
+                     c.mode, c.cue, disc->GetCueSheet());
+            ReportFailure(__FILE__, __LINE__, msg);
+        }
+        if (disc->IsAudioTrack(0) != c.audio) {
+            snprintf(msg, sizeof(msg), "mode 0x%02x: IsAudioTrack returned %d, expected %d",
+                     c.mode, (int)disc->IsAudioTrack(0), (int)c.audio);
+            ReportFailure(__FILE__, __LINE__, msg);
+        }
+
+        delete disc;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Subchannel images (2448-byte sectors)
 // ---------------------------------------------------------------------------
 
