@@ -10,6 +10,48 @@
 
 LOGMODULE("CMDSFileDevice");
 
+// Map an MDS track mode byte to the CUE track type describing the sectors as
+// they are stored in the MDF.
+//
+// The encoding is the one libmirage's MDS parser implements: only the low
+// nibble selects the mode, and every value has an alias 8 higher, so the 0xA9
+// / 0xAA that Alcohol actually writes are the +8 forms of 0x01 / 0x02. Matching
+// the nibble rather than the whole byte means an image written with the
+// un-offset codes is read correctly instead of having its audio tracks served
+// as data.
+//
+// Mode 2 in any of its flavours puts user data 24 bytes into the sector (12
+// sync + 4 header + 8 subheader) where Mode 1 puts it at 16. Every one of them
+// is described as MODE2/2352: the offset is what the reader needs and it is the
+// same for all three, while Form 1 vs Form 2 differs only in how much of the
+// sector past that offset is user data, which is a per-sector property that no
+// CUE track type can express. Getting this wrong is not subtle -- describing a
+// Video CD or a PlayStation disc as MODE1/2352 shifts every sector by 8 bytes.
+static const char* CueTrackModeForMDSMode(u8 mode)
+{
+    // Masking with 0x07 rather than 0x0F folds each alias onto its base code in
+    // one step: the pair differs only in bit 3, so this is the same test
+    // libmirage spells out as "nibble == code || nibble == code + 8".
+    switch (mode & 0x07) {
+    case 0x01:  // 0x09, so 0xA9: what Alcohol writes for audio
+        return "AUDIO";
+    case 0x02:  // 0xAA
+        return "MODE1/2352";
+    case 0x00:  // 0xA8
+    case 0x03:  // 0xAB, Mode 2
+    case 0x04:  // 0xAC (and 0xEC), Mode 2 Form 1
+    case 0x05:  // 0xAD, Mode 2 Form 2
+    case 0x07:  // 0xAF
+        return "MODE2/2352";
+    default:
+        // Not a mode libmirage recognises either. Mode 1 is the safer guess for
+        // a data track: it is by far the commonest, and the alternative is
+        // refusing to mount the disc at all.
+        LOGWARN("Unknown MDS track mode 0x%02x, describing it as MODE1/2352", mode);
+        return "MODE1/2352";
+    }
+}
+
 CMDSFileDevice::CMDSFileDevice(const char* mds_filename, char *mds_str, size_t mds_size,
                                MEDIA_TYPE mediaType) :
     m_mds_str(mds_str),
@@ -160,15 +202,7 @@ bool CMDSFileDevice::Init() {
                 continue;
             }
 
-            // Determine track mode string
-            const char* mode_str;
-            if (track->mode == 0xA9) {
-                // Audio track
-                mode_str = "AUDIO";
-            } else {
-                // Data track - use MODE1/2352 for raw sector data
-                mode_str = "MODE1/2352";
-            }
+            const char* mode_str = CueTrackModeForMDSMode(track->mode);
 
             if (!advance(snprintf(cue_ptr, remaining, "  TRACK %02d %s\n", track->point, mode_str))) {
                 LOGERR("CUE sheet buffer full at track %d - disc has more tracks than fit",
@@ -497,7 +531,10 @@ bool CMDSFileDevice::IsAudioTrack(int track) const {
             MDS_TrackBlock* trackBlock = m_parser->getTrack(i, j);
             if (trackBlock->point > 0 && trackBlock->point < 0xA0) {
                 if (current == track) {
-                    return trackBlock->mode == 0xA9; // 0xA9 = audio mode
+                    // Same encoding CueTrackModeForMDSMode() folds, so an image
+                    // written with the un-offset mode codes reports its audio
+                    // tracks as audio here too.
+                    return (trackBlock->mode & 0x07) == 0x01;
                 }
                 current++;
             }
