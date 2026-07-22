@@ -58,10 +58,15 @@ GADGET_SRCS := \
 	$(ADDON)/cueparser/cueparser.cpp \
 	$(ADDON)/cueparser/cueutil.cpp
 
-# Real CUE/BIN/ISO reader. Its only host-side dependency is the FatFs seam
-# (harness/fatfs_host.cpp) plus the two FatFsOptimizer entry points provided
-# in harness/discimage_host.cpp. No reader logic is reimplemented.
-DISCIMAGE_SRCS := $(ADDON)/discimage/cuebinfile.cpp
+# Real CUE/BIN/ISO and MDS/MDF readers. Their only host-side dependency is
+# the FatFs seam (harness/fatfs_host.cpp) plus the two FatFsOptimizer entry
+# points provided in harness/discimage_host.cpp. No reader logic is
+# reimplemented. util.cpp's format-dispatch factory is still left out: the
+# tests construct the reader for the format they are exercising directly.
+DISCIMAGE_SRCS := \
+	$(ADDON)/discimage/cuebinfile.cpp \
+	$(ADDON)/discimage/mdsfile.cpp \
+	$(ADDON)/mdsparser/mdsparser.cpp
 
 CHDR_OBJS :=
 ifeq ($(WITH_CHD),1)

@@ -73,6 +73,22 @@ Two flavours of disc back the bench, both driven through the same
   All committed test images are free-to-redistribute (FreeDOS GPL files or
   generated content); see `testdata/README-testdata.md`.
 
+- **MDS/MDF tests** (`test-suite/test_mdsimages.cpp`) drive the Alcohol 120%
+  reader (`addon/discimage/mdsfile.cpp` + `addon/mdsparser/mdsparser.cpp`).
+  There is no MDS fixture to commit — the format is proprietary and the
+  images people mount are game discs — so the `.mds` files are authored by
+  the test out of the format's own structures. Two things keep that from
+  being circular: the structure sizes are asserted against the published
+  on-disc layout (88/24/80/8/16 bytes), so a change that would misparse a
+  real Alcohol image still fails; and the `.mdf` payload is real, raw
+  2352-byte MODE1 sectors wrapping the FreeDOS ISO, so a read at the wrong
+  offset is caught by ISO9660's own volume descriptors. Covers data and
+  mixed data+audio discs, wildcard and UTF-16 data-file names, 2448-byte
+  subchannel images (stripped from user data, and readable on request), and
+  a set of malformed images that must be rejected without crashing — the
+  file browser lists every `.mds` on the card, so anything a user renames
+  reaches this parser.
+
 The only host-side seams the readers get are the raw file-access boundary
 (`harness/fatfs_host.cpp`, a FatFs shim over stdio) and the two
 `FatFsOptimizer` fast-seek entry points (`harness/discimage_host.cpp`, a no-op
@@ -160,6 +176,7 @@ integration-tests/
     bench.*            the virtual USB host
     framework.*        tiny TEST()/CHECK() runner
   test-suite/          one file per command family, plus test_realimages.cpp
+                       and test_mdsimages.cpp
 ```
 
 Two production accommodations (both inert on the device):
@@ -207,12 +224,11 @@ stood in for by a stdio shim; genuine on-SD-card behavior like fragmentation
 and fast-seek still only runs on hardware.) A few production paths are also
 deliberately out of scope here and only run on hardware:
 
-- **The image-loader factory** (`util.cpp` `loadCueBinIsoFileDevice`): format
-  dispatch by file extension and `.cue`->`.bin` filename resolution. The
-  real-image tests now read a `.cue` off the filesystem through the FatFs shim
-  and parse it, but they open the matching `.bin` by known name rather than
-  going through the production factory (it pulls in the MDS chain, which host
-  tests don't build).
+- **The image-loader factory** (`util.cpp` `loadImageDevice`): format dispatch
+  by file extension and `.cue`->`.bin` filename resolution. The tests read a
+  `.cue` (and a `.mds`) off the filesystem through the FatFs shim and parse
+  it, but they construct the reader for the format under test directly rather
+  than going through the production factory.
 - **`FatFsOptimizer` fast-seek**: CLMT allocation, `CREATE_LINKMAP`, and
   fragmented-file seeking. The host shim makes fast-seek a no-op, so the
   reader falls back to plain seeks.
