@@ -138,9 +138,9 @@ bug USBODE actually shipped:
 | `real_audio_from_repo_pcm_sample` | Real CD-DA read back byte-exact against its source, built from the sound-test sample already in the repo rather than a new fixture. Covers READ CD (0xBE) with expected sector type CD-DA, the command a player or ripper uses to pull raw 2352-byte audio, which READ(10) does not do (it returns 2048 bytes of cooked user data) |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
-The bench found eight latent firmware bugs. All eight are fixed now, each in
-its own commit with the test that pins it, so any one of them can be reviewed
-or reverted on its own.
+The bench found eight latent firmware bugs in the SCSI, BOT, toolbox and cue
+layers. All eight are fixed now, each in its own commit with the test that pins
+it, so any one of them can be reviewed or reverted on its own.
 
 | Bug | Fixed in | Pinned by |
 | --- | --- | --- |
@@ -167,6 +167,24 @@ are not available; placing them properly means teaching the loader to open
 each file, which is a feature rather than a fix. The MODE SELECT length is
 clamped rather than answered with `05/24/00 INVALID FIELD IN CDB`, since the
 memory safety is the actual bug and no observed host produces the case.
+
+The MDS/MDF and Mode 2 readers came later, and the same bench found more,
+fixed the same way — one commit each with its pinning test in
+`test_mdsimages.cpp`. The Alcohol reader (`mdsfile.cpp`, `mdsparser.cpp`) had
+several faults, the worst a destructor segfault on any non-MDS file renamed to
+`.mds` and reads that ran past the allocation because every file offset was
+bounded against a fixed 1 MB ceiling rather than the length of the image being
+parsed — both reachable from the file browser, which lists every `.mds` on the
+card. READ CD (0xBE) took its subchannel selection from the MCS byte (CDB[9])
+instead of CDB[10], so a raw P-W request returned the sector's EDC/ECC area
+where the 96 subchannel bytes belonged, the one command that makes an MDS worth
+keeping over an ISO (`mds_read_cd_returns_interleaved_subchannel_data`). Every
+non-audio track was labelled MODE1/2352, so a CD-ROM XA disc — a Video CD or a
+PlayStation disc — was read 16 bytes in where Mode 2's subheader needs 24 and
+would not mount. And a read crossing into an unstored pregap, which a real
+Alcohol MDF leaves sparse (the frames count toward READ CAPACITY but hold no
+file bytes), failed the whole transfer; an XP host hit it within seconds of
+mounting a Video CD, and those frames are served as zeros now.
 
 Note for anyone verifying a fix by reverting it: `git stash` can restore a
 source file within the same filesystem timestamp second as the object built
