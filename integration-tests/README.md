@@ -73,6 +73,34 @@ Two flavours of disc back the bench, both driven through the same
   All committed test images are free-to-redistribute (FreeDOS GPL files or
   generated content); see `testdata/README-testdata.md`.
 
+- **MDS/MDF tests** (`test-suite/test_mdsimages.cpp`) drive the Alcohol 120%
+  reader (`addon/discimage/mdsfile.cpp` + `addon/mdsparser/mdsparser.cpp`).
+  There is no MDS fixture to commit — the format is proprietary and the
+  images people mount are game discs — so the `.mds` files are authored by
+  the test out of the format's own structures. Two things keep that from
+  being circular: the structure sizes are asserted against the published
+  on-disc layout (88/24/80/8/16 bytes), so a change that would misparse a
+  real Alcohol image still fails; and the `.mdf` payload is real, raw
+  2352-byte MODE1 sectors wrapping the FreeDOS ISO, so a read at the wrong
+  offset is caught by ISO9660's own volume descriptors. Covers data and
+  mixed data+audio discs, wildcard and UTF-16 data-file names, 2448-byte
+  subchannel images (stripped from user data, and readable on request), and
+  a set of malformed images that must be rejected without crashing — the
+  file browser lists every `.mds` on the card, so anything a user renames
+  reaches this parser.
+
+  Mode 2 is the exception to the author-your-own-fixture rule. The question a
+  Mode 2 test has to settle is whether user data starts 24 bytes into the
+  sector instead of 16, and a fixture built from the same belief the reader
+  holds could not settle it — so `testdata/videocd-xa.bin.gz` is real sectors
+  off a real Video CD, taken from libcdio's test corpus (GPLv3, as we are):
+  its ISO9660 track, which is Mode 2 Form 1, followed by part of its MPEG
+  track, which is Form 2. The oracles are the disc's own: the primary volume
+  descriptor at LBA 16, the `CD-RTOS CD-BRIDGE` system identifier a Video CD
+  carries, and the `00 00 01 BA` pack header every MPEG sector opens with.
+  A companion test sweeps the whole published mode-byte table so a disc is
+  described correctly whichever of the recognised codes its writer used.
+
 The only host-side seams the readers get are the raw file-access boundary
 (`harness/fatfs_host.cpp`, a FatFs shim over stdio) and the two
 `FatFsOptimizer` fast-seek entry points (`harness/discimage_host.cpp`, a no-op
@@ -110,9 +138,9 @@ bug USBODE actually shipped:
 | `real_audio_from_repo_pcm_sample` | Real CD-DA read back byte-exact against its source, built from the sound-test sample already in the repo rather than a new fixture. Covers READ CD (0xBE) with expected sector type CD-DA, the command a player or ripper uses to pull raw 2352-byte audio, which READ(10) does not do (it returns 2048 bytes of cooked user data) |
 | `real_iso_*`, `real_cuebin_*`, `real_chd_*` | The reader path: cue parsing, per-track offsets across the 2048->2352 boundary, the read-ahead cache, and real CHD hunk decompression, driven from real files rather than a fake |
 
-The bench found eight latent firmware bugs. All eight are fixed now, each in
-its own commit with the test that pins it, so any one of them can be reviewed
-or reverted on its own.
+The bench found eight latent firmware bugs in the SCSI, BOT, toolbox and cue
+layers. All eight are fixed now, each in its own commit with the test that pins
+it, so any one of them can be reviewed or reverted on its own.
 
 | Bug | Fixed in | Pinned by |
 | --- | --- | --- |
@@ -140,6 +168,24 @@ each file, which is a feature rather than a fix. The MODE SELECT length is
 clamped rather than answered with `05/24/00 INVALID FIELD IN CDB`, since the
 memory safety is the actual bug and no observed host produces the case.
 
+The MDS/MDF and Mode 2 readers came later, and the same bench found more,
+fixed the same way — one commit each with its pinning test in
+`test_mdsimages.cpp`. The Alcohol reader (`mdsfile.cpp`, `mdsparser.cpp`) had
+several faults, the worst a destructor segfault on any non-MDS file renamed to
+`.mds` and reads that ran past the allocation because every file offset was
+bounded against a fixed 1 MB ceiling rather than the length of the image being
+parsed — both reachable from the file browser, which lists every `.mds` on the
+card. READ CD (0xBE) took its subchannel selection from the MCS byte (CDB[9])
+instead of CDB[10], so a raw P-W request returned the sector's EDC/ECC area
+where the 96 subchannel bytes belonged, the one command that makes an MDS worth
+keeping over an ISO (`mds_read_cd_returns_interleaved_subchannel_data`). Every
+non-audio track was labelled MODE1/2352, so a CD-ROM XA disc — a Video CD or a
+PlayStation disc — was read 16 bytes in where Mode 2's subheader needs 24 and
+would not mount. And a read crossing into an unstored pregap, which a real
+Alcohol MDF leaves sparse (the frames count toward READ CAPACITY but hold no
+file bytes), failed the whole transfer; an XP host hit it within seconds of
+mounting a Video CD, and those frames are served as zeros now.
+
 Note for anyone verifying a fix by reverting it: `git stash` can restore a
 source file within the same filesystem timestamp second as the object built
 from the reverted version, and `make` then keeps the stale object and reports
@@ -160,6 +206,7 @@ integration-tests/
     bench.*            the virtual USB host
     framework.*        tiny TEST()/CHECK() runner
   test-suite/          one file per command family, plus test_realimages.cpp
+                       and test_mdsimages.cpp
 ```
 
 Two production accommodations (both inert on the device):
@@ -207,12 +254,11 @@ stood in for by a stdio shim; genuine on-SD-card behavior like fragmentation
 and fast-seek still only runs on hardware.) A few production paths are also
 deliberately out of scope here and only run on hardware:
 
-- **The image-loader factory** (`util.cpp` `loadCueBinIsoFileDevice`): format
-  dispatch by file extension and `.cue`->`.bin` filename resolution. The
-  real-image tests now read a `.cue` off the filesystem through the FatFs shim
-  and parse it, but they open the matching `.bin` by known name rather than
-  going through the production factory (it pulls in the MDS chain, which host
-  tests don't build).
+- **The image-loader factory** (`util.cpp` `loadImageDevice`): format dispatch
+  by file extension and `.cue`->`.bin` filename resolution. The tests read a
+  `.cue` (and a `.mds`) off the filesystem through the FatFs shim and parse
+  it, but they construct the reader for the format under test directly rather
+  than going through the production factory.
 - **`FatFsOptimizer` fast-seek**: CLMT allocation, `CREATE_LINKMAP`, and
   fragmented-file seeking. The host shim makes fast-seek a no-op, so the
   reader falls back to plain seeks.

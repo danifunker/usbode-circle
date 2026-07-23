@@ -57,6 +57,7 @@ namespace
         {"test_badimages", "Damaged and truncated images"},
         {"test_toolbox", "Vendor toolbox commands"},
         {"test_realimages", "Real disc images"},
+        {"test_mdsimages", "MDS/MDF images"},
     };
 
     // "test-suite/test_read10.cpp" -> "SCSI read commands"

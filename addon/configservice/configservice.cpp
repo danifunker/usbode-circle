@@ -75,7 +75,10 @@ void ConfigService::SetUSBFullSpeed(bool value)
 
 void ConfigService::SetSoundDev(const char* value)
 {
-    if (value != nullptr && strcmp(value, "none") == 0) {
+    // "none" is written explicitly rather than deleting the option: an absent
+    // sounddev is ambiguous to users editing cmdline.txt by hand (issue #198),
+    // and the kernel treats "none" and absent identically (no CD player).
+    if (value == nullptr || *value == '\0') {
         m_cmdline->DeleteValue("sounddev");
     } else {
         m_cmdline->SetValue("sounddev", value);

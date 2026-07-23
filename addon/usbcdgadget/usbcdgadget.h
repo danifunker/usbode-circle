@@ -544,6 +544,12 @@ private:
     int file_mode = 1;              // File/track mode
     int numTracks = 0;              // Number of tracks on disc
     uint8_t mcs = 0;
+    /// READ CD subchannel data selection, CDB byte 10 bits 2-0 (0x01 = raw
+    /// P-W). Parsed once when the command is sized and kept here, because
+    /// the data-assembly pass in Update() needs the same value: it used to
+    /// re-derive it as `mcs & 0x07`, but mcs comes from CDB byte 9, so the
+    /// two passes were reading different fields.
+    uint8_t subchannel_selection = 0;
 
     // ========================================================================
     // Instance Variables - CUE Parsing and Device Identification

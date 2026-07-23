@@ -141,7 +141,11 @@ bool hasDvdHint(const char* imageName) {
     return false;
 }
 
-bool ReadFileToString(const char* fullPath, char** out_str) {
+// Read a whole file into a NUL-terminated heap buffer. out_size, when given,
+// receives the file's length: a cue sheet is text and its length is implied
+// by the terminator, but an MDS is binary and the parser needs the real
+// length to range check the offsets stored inside it.
+bool ReadFileToString(const char* fullPath, char** out_str, size_t* out_size = nullptr) {
     if (!out_str) return false;  // safeguard
 
     FIL* file = new FIL();
@@ -172,6 +176,9 @@ bool ReadFileToString(const char* fullPath, char** out_str) {
 
     buffer[file_size] = '\0';  // null-terminate
     *out_str = buffer;
+    if (out_size) {
+        *out_size = file_size;
+    }
     return true;
 }
 
@@ -190,13 +197,14 @@ IImageDevice* loadMDSFileDevice(const char* imagePath) {
 
     // Read MDS file into memory
     char* mds_str = nullptr;
-    if (!ReadFileToString(fullPath, &mds_str)) {
+    size_t mds_size = 0;
+    if (!ReadFileToString(fullPath, &mds_str, &mds_size)) {
         LOGERR("Failed to read MDS file: %s", fullPath);
         return nullptr;
     }
 
     // Create MDS device
-    CMDSFileDevice* mdsDevice = new CMDSFileDevice(fullPath, mds_str, mediaType);
+    CMDSFileDevice* mdsDevice = new CMDSFileDevice(fullPath, mds_str, mds_size, mediaType);
     if (!mdsDevice->Init()) {
         LOGERR("Failed to initialize MDS device: %s", imagePath);
         delete mdsDevice;

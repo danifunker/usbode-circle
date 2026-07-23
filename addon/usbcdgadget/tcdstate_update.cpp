@@ -234,8 +234,14 @@ void CUSBCDGadget::Update()
                 u8 *dest_ptr = m_InBuffer;
                 u32 total_copied = 0;
 
-                // Check if we need subchannel data interleaved with sectors
-                u8 subChannelSelection = mcs & 0x07;
+                // Check if we need subchannel data interleaved with sectors.
+                // This is the selection parsed from CDB byte 10 when the
+                // command was sized, NOT `mcs & 0x07`: mcs comes from byte 9,
+                // so that read a different field and disagreed with the
+                // sizing pass. A host asking for raw P-W got a reply of the
+                // right length whose subchannel half was really the data
+                // sector's EDC/ECC bytes.
+                u8 subChannelSelection = subchannel_selection;
                 bool need_subchannels = (subChannelSelection != 0 && m_pDevice->HasSubchannelData());
                 
                 // Calculate base sector size (without subchannel)
