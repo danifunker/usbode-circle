@@ -112,11 +112,28 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
                         gadget->m_nblock_address, gadget->m_nnumber_blocks, max_lba);
 
         // Transfer Block Size is the size of data to return to host
-        // Block Size and Skip Bytes is worked out from cue sheet
         // For a CDROM, this is always 2048
         gadget->transfer_block_size = 2048;
-        gadget->block_size = gadget->data_block_size; // set at SetDevice
-        gadget->skip_bytes = gadget->data_skip_bytes; // set at SetDevice
+
+        // Sector layout comes from the track the read starts in, not from
+        // track 1. The cached data_block_size/data_skip_bytes are taken from
+        // the first track at SetDevice time, which is right only when the data
+        // track is first. On a CD Extra the first track is audio, so every
+        // read of the data track skipped 0 bytes instead of 24 and handed the
+        // host a sector shifted by its sync, header and subheader -- the
+        // volume descriptor never had "CD001" where the host looked, and the
+        // disc mounted as audio only.
+        CUETrackInfo trackInfo = CDUtils::GetTrackInfoForLBA(gadget, gadget->m_nblock_address);
+        if (trackInfo.track_number != -1)
+        {
+            gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, trackInfo);
+            gadget->skip_bytes = CDUtils::GetSkipbytesForTrack(gadget, trackInfo);
+        }
+        else
+        {
+            gadget->block_size = gadget->data_block_size; // set at SetDevice
+            gadget->skip_bytes = gadget->data_skip_bytes; // set at SetDevice
+        }
         gadget->mcs = 0;
         // READ(10)/(12) never carry subchannel data. Clear it alongside mcs
         // so a preceding READ CD cannot leave a selection behind for the

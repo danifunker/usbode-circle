@@ -16,6 +16,8 @@
 #include "bench.h"
 #include "framework.h"
 
+#include <string.h>
+
 #include <string>
 #include <vector>
 
@@ -332,6 +334,63 @@ TEST(cdextra_data_track_is_readable_at_its_lba)
 
     CHECK_EQ(r.csw.bmCSWStatus, 0);
     CHECK_EQ(r.data.size(), 2048u);
+}
+
+// A CD Extra whose data track carries a real Mode 2 Form 1 sector: 12 bytes of
+// sync, a 4-byte header, an 8-byte subheader, then 2048 bytes of user data
+// beginning with an ISO 9660 volume descriptor. This is the layout of the
+// reporter's disc, and the shape the reader has to get right.
+static CFakeImageDevice *MakeCDExtraWithFilesystem()
+{
+    const u32 totalSectors = kDataTrackLBA + 600;
+    std::vector<u8> image((size_t)totalSectors * 2352);
+    for (u32 lba = 0; lba < totalSectors; lba++)
+    {
+        FillPatternSector(image.data() + (size_t)lba * 2352, lba, 2352);
+    }
+
+    // Volume descriptor 16 sectors into the data track.
+    u8 *sector = image.data() + (size_t)(kDataTrackLBA + 16) * 2352;
+    static const u8 kSync[12] = {0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00};
+    memcpy(sector, kSync, sizeof(kSync));
+    sector[12] = 0x61; // minute
+    sector[13] = 0x01; // second
+    sector[14] = 0x29; // frame
+    sector[15] = 0x02; // mode 2
+    memset(sector + 16, 0, 8);
+    sector[18] = 0x09; // subheader submode: data, end of record
+    sector[22] = 0x09;
+    u8 *user = sector + 24;
+    user[0] = 0x01; // primary volume descriptor
+    memcpy(user + 1, "CD001", 5);
+    user[6] = 0x01; // version
+
+    CFakeImageDevice *disc = new CFakeImageDevice(kCDExtraCueWithMarkers, std::move(image), 2352);
+    disc->m_numTracks = 4;
+    return disc;
+}
+
+TEST(cdextra_read10_returns_user_data_not_the_sector_header)
+{
+    // The whole failure mode of issue #91 in one assertion: the sector layout
+    // has to come from the track the read lands in, not from track 1. With
+    // track 1 audio, a reader keyed on it skips 0 bytes instead of 24 and the
+    // host sees sync bytes where the volume descriptor should be.
+    CGadgetTestBench bench(MakeCDExtraWithFilesystem());
+    bench.Activate();
+    bench.RequestSense();
+
+    const u32 lba = kDataTrackLBA + 16;
+    const u8 cdb[10] = {0x28, 0x00,
+                        (u8)(lba >> 24), (u8)(lba >> 16), (u8)(lba >> 8), (u8)lba,
+                        0x00, 0x00, 0x01, 0x00};
+    auto r = bench.SendCommand(cdb, sizeof(cdb), 2048);
+
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    CHECK_EQ(r.data.size(), 2048u);
+    const u8 expected[7] = {0x01, 'C', 'D', '0', '0', '1', 0x01};
+    CHECK_BYTES(r.data.data(), 7, expected, sizeof(expected));
 }
 
 TEST(mixed_mode_data_first_stays_single_session)
