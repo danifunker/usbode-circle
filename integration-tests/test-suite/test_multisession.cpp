@@ -50,6 +50,22 @@ static const char *const kCDExtraCueNoMarkers =
     "  TRACK 04 MODE1/2352\n"
     "    INDEX 01 02:48:00\n";
 
+// Same disc again, but the ripper wrote down where session 1's lead-out sits.
+// 02:20:00 = LBA 10500, which is 2100 frames before the data track.
+static const char *const kCDExtraCueWithLeadout =
+    "REM SESSION 01\n"
+    "FILE \"image.bin\" BINARY\n"
+    "  TRACK 01 AUDIO\n"
+    "    INDEX 01 00:00:00\n"
+    "  TRACK 02 AUDIO\n"
+    "    INDEX 01 00:05:25\n"
+    "  TRACK 03 AUDIO\n"
+    "    INDEX 01 00:10:50\n"
+    "  REM LEAD-OUT 02:20:00\n"
+    "REM SESSION 02\n"
+    "  TRACK 04 MODE2/2352\n"
+    "    INDEX 01 02:48:00\n";
+
 static const u32 kDataTrackLBA = 12600; // 02:48:00
 
 static std::vector<u8> PatternImage(u32 sectors, u32 sectorSize)
@@ -180,6 +196,66 @@ TEST(cdextra_session_split_inferred_without_rem_markers)
         CHECK_EQ(without[i].session, withMarkers[i].session);
         CHECK_EQ(without[i].point, withMarkers[i].point);
     }
+}
+
+// MSF in a full TOC entry is absolute: LBA 0 is 00:02:00, so add 150 frames.
+static u32 MSFToLBA(u8 m, u8 s, u8 f)
+{
+    return (u32)m * 60 * 75 + (u32)s * 75 + f - 150;
+}
+
+TEST(cdextra_session1_leadout_precedes_session2)
+{
+    // A lead-out sitting on the next session's first track describes two
+    // sessions that touch, which cannot physically happen -- hosts are
+    // entitled to reject the whole session structure over it.
+    auto entries = ParseFullTOC(FullTOCFor(MakeCDExtra(kCDExtraCueWithMarkers)));
+
+    RawTOCEntry leadout1, track4;
+    CHECK(FindPointer(entries, 1, 0xA2, &leadout1));
+    CHECK(FindPointer(entries, 2, 0x04, &track4));
+
+    u32 leadoutLBA = MSFToLBA(leadout1.pmin, leadout1.psec, leadout1.pframe);
+    u32 trackLBA = MSFToLBA(track4.pmin, track4.psec, track4.pframe);
+
+    CHECK_EQ(trackLBA, kDataTrackLBA);
+    CHECK(leadoutLBA < trackLBA);
+    // No marker in this cue, so the standard 11250-frame gap is assumed.
+    CHECK_EQ(leadoutLBA, kDataTrackLBA - 11250);
+}
+
+TEST(cdextra_session1_leadout_uses_rem_marker_when_present)
+{
+    auto entries = ParseFullTOC(FullTOCFor(MakeCDExtra(kCDExtraCueWithLeadout)));
+
+    RawTOCEntry leadout1;
+    CHECK(FindPointer(entries, 1, 0xA2, &leadout1));
+    // REM LEAD-OUT 02:20:00 = LBA 10500, not the assumed gap position.
+    CHECK_EQ(MSFToLBA(leadout1.pmin, leadout1.psec, leadout1.pframe), 10500u);
+}
+
+TEST(cdextra_leadout_never_lands_inside_the_last_audio_track)
+{
+    // A merged image can place the sessions closer together than the standard
+    // gap. Subtracting it blindly would report a lead-out in the middle of the
+    // audio, truncating the last track for anything that plays it.
+    static const char *const kTightCue =
+        "FILE \"image.bin\" BINARY\n"
+        "  TRACK 01 AUDIO\n"
+        "    INDEX 01 00:00:00\n"
+        "  TRACK 02 AUDIO\n"
+        "    INDEX 01 02:00:00\n"
+        "  TRACK 03 MODE1/2352\n"
+        "    INDEX 01 02:10:00\n"; // only 750 frames after track 2
+
+    auto entries = ParseFullTOC(FullTOCFor(MakeCDExtra(kTightCue, 3)));
+
+    RawTOCEntry leadout1;
+    CHECK(FindPointer(entries, 1, 0xA2, &leadout1));
+    u32 leadoutLBA = MSFToLBA(leadout1.pmin, leadout1.psec, leadout1.pframe);
+
+    CHECK(leadoutLBA > 9000u);  // track 2 starts at LBA 9000
+    CHECK(leadoutLBA <= 9750u); // and the data track at 9750
 }
 
 TEST(cdextra_session_info_names_the_data_track)

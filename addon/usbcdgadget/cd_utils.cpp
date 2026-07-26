@@ -264,18 +264,25 @@ int CDUtils::GetSessionCount(CUSBCDGadget* gadget)
 
 // Lead-out position of a given session.
 //
-// The last session's lead-out is the disc lead-out. For session 1 of a
-// two-session disc the lead-out sits at the end of the last audio track, well
-// before the next session starts: between them lie session 1's lead-out area
-// and session 2's lead-in, around 11250 frames that hold no track data.
+// The last session's lead-out is the disc lead-out. Session 1 of a two-session
+// disc is the interesting case: its lead-out sits at the end of the last audio
+// track, and between it and the next session's first track lie session 1's
+// lead-out area and session 2's lead-in -- around 11250 frames carrying no
+// track data. Reporting session 1's lead-out at the next session's first track
+// describes a disc where the two sessions touch, which cannot physically
+// happen, so hosts are entitled to reject the whole session structure.
 //
-// Deriving that end from LBAs alone would just measure the gap, so measure the
-// stored data instead: the byte distance between the last track of this session
-// and the first track of the next is exactly the audio that precedes the gap.
-// When an image does store the gap this collapses to the next session's start,
-// which is the same answer a single-session disc would give.
+// The gap cannot be measured from a single-file cue: INDEX times are
+// file-relative, the gap is stored as ordinary sectors, and the byte distance
+// between tracks therefore always equals the LBA distance. Only a
+// "REM LEAD-OUT" marker states it. Without one, fall back on the standard gap
+// so the layout is at least structurally valid.
 u32 CDUtils::GetSessionLeadoutLBA(CUSBCDGadget* gadget, int session)
 {
+    // Orange Book: 90 seconds of lead-out (6750 frames) then 60 seconds of
+    // lead-in (4500). Real CD Extra discs sit at or just above this.
+    static const u32 kSessionGapFrames = 11250;
+
     if (session != 1 || GetSessionCount(gadget) < 2)
         return GetLeadoutLBA(gadget);
 
@@ -302,20 +309,24 @@ u32 CDUtils::GetSessionLeadoutLBA(CUSBCDGadget* gadget, int session)
         }
     }
 
-    if (!haveLast || !haveNext || lastOfSession.sector_length == 0)
+    if (!haveLast || !haveNext)
         return GetLeadoutLBA(gadget);
 
-    // Different source files means the byte offsets are not comparable; fall
-    // back on the next session's start, which errs long by the gap rather than
-    // reporting a lead-out inside the audio.
-    if (lastOfSession.file_index != firstOfNext.file_index ||
-        firstOfNext.file_offset <= lastOfSession.file_offset)
-        return firstOfNext.track_start;
+    // The cue sheet said so outright. This is the only exact source.
+    if (firstOfNext.prev_session_leadout > lastOfSession.data_start &&
+        firstOfNext.prev_session_leadout < firstOfNext.track_start)
+    {
+        return firstOfNext.prev_session_leadout;
+    }
 
-    u64 storedBytes = firstOfNext.file_offset - lastOfSession.file_offset;
-    u32 storedFrames = (u32)(storedBytes / lastOfSession.sector_length);
+    // No marker: assume the standard gap. Guard against a merged image whose
+    // sessions sit closer together than that, where subtracting the full gap
+    // would put the lead-out inside the last audio track -- there, place it at
+    // the start of the next session's pregap, the latest defensible position.
+    if (firstOfNext.track_start > lastOfSession.data_start + kSessionGapFrames)
+        return firstOfNext.track_start - kSessionGapFrames;
 
-    return lastOfSession.data_start + storedFrames;
+    return firstOfNext.track_start;
 }
 
 u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)

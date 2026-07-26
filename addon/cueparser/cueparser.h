@@ -70,6 +70,15 @@ struct CUETrackInfo {
     // should fall back on the track layout (see CDUtils::GetLastSessionStart).
     int session;
 
+    // Lead-out position of the session that ended before this track, in CD
+    // frames, or 0 if the cue sheet did not say. Written from a
+    // "REM LEAD-OUT mm:ss:ff" line. Only the first track of a session carries
+    // it, and only rippers that emit the marker provide it at all -- the gap
+    // between a session's lead-out and the next session's first track is not
+    // recoverable from a single-file cue otherwise, because INDEX times are
+    // file-relative and the gap is stored as ordinary sectors.
+    uint32_t prev_session_leadout;
+
     // Sector length for this track in bytes, assuming BINARY or MOTOROLA file modes.
     uint32_t sector_length;
 
@@ -128,6 +137,10 @@ class CUEParser {
     // Session number most recently announced by a "REM SESSION nn" line.
     // Applied to each track as it is parsed; 1 until a marker says otherwise.
     int m_current_session;
+
+    // Lead-out time from the most recent "REM LEAD-OUT" line, consumed by the
+    // next TRACK. 0 when none is pending.
+    uint32_t m_pending_leadout;
 
     // Skip any whitespace at beginning of line.
     // Returns false if at end of string.

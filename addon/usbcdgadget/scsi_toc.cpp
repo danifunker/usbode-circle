@@ -585,15 +585,29 @@ void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
     gadget->m_DiscInfoReply.first_track_last_session = (uint8_t)CDUtils::GetLastSessionStartTrack(gadget);
     gadget->m_DiscInfoReply.last_track_last_session = CDUtils::GetLastTrackNumber(gadget);
 
-    // Set disc type based on track 1 mode
-    CUETrackInfo trackInfo = CDUtils::GetTrackInfoForTrack(gadget, 1);
-    if (trackInfo.track_number != -1 && trackInfo.track_mode == CUETrack_AUDIO)
+    // Disc type of the last session, matching the value carried in that
+    // session's A0 pointer in the full TOC. MMC defines only three: 0x00 for
+    // CD-DA or CD-ROM, 0x10 for CD-i, 0x20 for CD-ROM XA. Plain data discs
+    // were being reported as 0x10, which claims CD-i.
+    CUETrackInfo lastSessionTrack =
+        CDUtils::GetTrackInfoForTrack(gadget, CDUtils::GetLastSessionStartTrack(gadget));
+    if (lastSessionTrack.track_number != -1 &&
+        (lastSessionTrack.track_mode == CUETrack_MODE2_2048 ||
+         lastSessionTrack.track_mode == CUETrack_MODE2_2324 ||
+         lastSessionTrack.track_mode == CUETrack_MODE2_2336 ||
+         lastSessionTrack.track_mode == CUETrack_MODE2_2352))
     {
-        gadget->m_DiscInfoReply.disc_type = 0x00; // CD-DA (audio)
+        gadget->m_DiscInfoReply.disc_type = 0x20; // CD-ROM XA
+    }
+    else if (lastSessionTrack.track_number != -1 &&
+             (lastSessionTrack.track_mode == CUETrack_CDI_2336 ||
+              lastSessionTrack.track_mode == CUETrack_CDI_2352))
+    {
+        gadget->m_DiscInfoReply.disc_type = 0x10; // CD-i
     }
     else
     {
-        gadget->m_DiscInfoReply.disc_type = 0x10; // CD-ROM (data)
+        gadget->m_DiscInfoReply.disc_type = 0x00; // CD-DA or CD-ROM
     }
 
     u32 leadoutLBA = CDUtils::GetLeadoutLBA(gadget);
