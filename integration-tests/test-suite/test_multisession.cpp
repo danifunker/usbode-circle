@@ -260,6 +260,84 @@ TEST(cdextra_leadout_never_lands_inside_the_last_audio_track)
     CHECK(leadoutLBA <= 9750u); // and the data track at 9750
 }
 
+TEST(cdextra_bcd_full_toc_encodes_track_numbers_in_bcd)
+{
+    // macOS asks for the full TOC through the legacy byte-9 encoding, which
+    // answers in BCD. Every numeric field has to be BCD then, POINT included:
+    // track 31 as binary 0x1F is not a valid BCD value, and a host decoding it
+    // cannot find the data track. Tracks 1-9 are identical in both encodings,
+    // so only a disc with more than nine tracks shows the difference.
+    // Two-digit track numbers, as on the reporter's 31-track disc: the data
+    // track is number 11, which is 0x0B in binary and 0x11 in BCD.
+    static const char *const kCue =
+        "REM SESSION 01\n"
+        "FILE \"image.bin\" BINARY\n"
+        "  TRACK 09 AUDIO\n"
+        "    INDEX 01 00:00:00\n"
+        "  TRACK 10 AUDIO\n"
+        "    INDEX 01 00:05:25\n"
+        "REM SESSION 02\n"
+        "  TRACK 11 MODE2/2352\n"
+        "    INDEX 01 02:48:00\n";
+
+    CGadgetTestBench bench(MakeCDExtra(kCue, 3));
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 cdb[10] = {0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x80};
+    auto r = bench.SendCommand(cdb, sizeof(cdb), 768);
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+
+    bool sawDataTrack = false;
+    for (const RawTOCEntry &e : ParseFullTOC(r.data))
+    {
+        if (e.session == 2 && e.point == 0x11)
+        {
+            sawDataTrack = true;
+            CHECK_EQ(e.control_adr, 0x14);
+        }
+        // Nothing in a BCD reply may carry a nibble above 9.
+        CHECK((e.point & 0x0F) <= 9);
+        CHECK((e.pmin & 0x0F) <= 9);
+        CHECK((e.psec & 0x0F) <= 9 || e.point == 0xA0); // A0 PSEC is the disc type
+        CHECK((e.pframe & 0x0F) <= 9);
+    }
+    CHECK(sawDataTrack);
+}
+
+TEST(bcd_full_toc_track_numbers_above_nine)
+{
+    // The plain case the CD Extra test cannot show on its own: a two-digit
+    // track number has to come back as BCD, not binary.
+    static const char *const kTwelveTrackCue =
+        "FILE \"image.bin\" BINARY\n"
+        "  TRACK 09 AUDIO\n"
+        "    INDEX 01 00:00:00\n"
+        "  TRACK 10 AUDIO\n"
+        "    INDEX 01 00:05:00\n"
+        "  TRACK 12 AUDIO\n"
+        "    INDEX 01 00:10:00\n";
+
+    CGadgetTestBench bench(MakeCDExtra(kTwelveTrackCue, 3));
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 cdb[10] = {0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x80};
+    auto r = bench.SendCommand(cdb, sizeof(cdb), 768);
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+
+    bool saw09 = false, saw10 = false, saw12 = false;
+    for (const RawTOCEntry &e : ParseFullTOC(r.data))
+    {
+        if (e.point == 0x09) saw09 = true;
+        if (e.point == 0x10) saw10 = true; // BCD 10, not binary 0x0A
+        if (e.point == 0x12) saw12 = true; // BCD 12, not binary 0x0C
+    }
+    CHECK(saw09);
+    CHECK(saw10);
+    CHECK(saw12);
+}
+
 TEST(cdextra_session_info_names_the_data_track)
 {
     CGadgetTestBench bench(MakeCDExtra(kCDExtraCueWithMarkers));

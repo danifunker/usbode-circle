@@ -158,11 +158,15 @@ void SCSITOC::FormatRawTOCEntry(CUSBCDGadget *gadget, const CUETrackInfo *track,
         control_adr = 0x10; // Audio track
     }
 
-    dest[0] = 0x01; // Session always 1
+    dest[0] = 0x01; // Session; the caller overwrites this per session
     dest[1] = control_adr;
-    dest[2] = 0x00;                // TNO, always 0
-    dest[3] = track->track_number; // POINT
-    dest[4] = 0x00;                // ATIME (unused)
+    dest[2] = 0x00; // TNO, always 0
+    // POINT. In BCD mode every numeric field is BCD, this one included: a
+    // binary track number above 9 is not even valid BCD (31 -> 0x1F), so a
+    // host decoding it cannot identify the track. Tracks 1-9 encode
+    // identically either way, which is why this stayed hidden.
+    dest[3] = useBCD ? CDUtils::ToBCD(track->track_number) : (uint8_t)track->track_number;
+    dest[4] = 0x00; // ATIME (unused)
     dest[5] = 0x00;
     dest[6] = 0x00;
     dest[7] = 0; // HOUR
