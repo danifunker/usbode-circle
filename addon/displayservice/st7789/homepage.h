@@ -45,5 +45,6 @@ class ST7789HomePage : public IPage {
     char pISOPathDisplay[128];           // Truncated path for display
     const char* pUSBSpeed;
     const char* pTitle;
+    bool m_bEjectedShown = false;        // last-drawn eject state (redraw trigger)
 };
 #endif

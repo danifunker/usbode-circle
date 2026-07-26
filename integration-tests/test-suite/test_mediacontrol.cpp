@@ -11,11 +11,23 @@
 // with START=1 as part of bringing the drive online, and PREVENT ALLOW
 // MEDIUM REMOVAL whenever a volume is opened.
 //
-// USBODE has no tray and no motor, so all three are largely no-ops. The point
-// of pinning them is the opposite of the usual one: it is the *no-op* that is
-// load-bearing. An eject that really ejected, or a lock that really locked,
-// would break the web UI's disc swap and leave Windows holding a drive it
-// cannot use.
+// USBODE has no tray and no motor. START STOP UNIT with LOEJ=1/START=0
+// performs a real eject: the drive drops to NO_MEDIUM (MEDIUM NOT PRESENT)
+// while keeping the image file internally. This lets a host, a game, or the
+// device's own button present an empty drive to fix hosts that cache a stale
+// disc across a swap.
+//
+// LOEJ=1/START=1 (load) is accepted but deliberately does NOT bring the medium
+// back: an eject models the user taking the disc out, so the tray is empty.
+// Re-inserting is a physical act -- the button, the web UI, or mounting an
+// image -- which all go through Insert() and the normal media-change
+// (UNIT ATTENTION -> READY) sequence.
+//
+// The door lock still matters, though: like a real drive, a host eject is
+// refused (05/53/02, MEDIUM REMOVAL PREVENTED) while the host holds a PREVENT
+// ALLOW MEDIUM REMOVAL lock. The web UI / button eject bypass the lock on
+// purpose (there is no physical pinhole), and a lock must never block the web
+// UI's out-of-band disc swap.
 //
 // NOTE: two MODE SELECT tests are held out here, for the same reason as in
 // test_toolbox.cpp -- they fail today. ProcessOut() selects the mode page to
@@ -122,33 +134,96 @@ TEST(start_stop_unit_immed_accepted)
     CHECK_EQ(r.csw.dCSWDataResidue, 0u);
 }
 
-// The load-bearing no-op. USBODE's "disc" is a file chosen in the web UI, and
-// there is nothing to eject: after a host asks for an eject the drive must
-// still be ready and still serving the same image. Implementing eject
-// literally -- dropping to NO_MEDIUM on LOEJ=1 -- would mean a user pressing
-// Eject in Explorer, or any host that ejects during shutdown, leaves the
-// drive dead until it is unplugged.
-TEST(start_stop_unit_eject_leaves_medium_readable)
+// A host eject (LOEJ=1, START=0) really ejects: the command itself succeeds,
+// but the drive then reports NO_MEDIUM (02/3a/00, MEDIUM NOT PRESENT) and
+// refuses reads, exactly as an empty drive would. This is what lets a host or
+// a game clear a stale cached disc.
+TEST(start_stop_unit_eject_reports_no_medium)
 {
     CFakeImageDevice *disc = MakeDataISO(1200);
     CGadgetTestBench bench(disc);
     bench.Activate();
     bench.RequestSense();
 
-    const u8 capCDB[10] = {0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    auto before = bench.SendCommand(capCDB, sizeof(capCDB), 8);
-    CHECK_EQ(before.csw.bmCSWStatus, 0);
-
+    // The eject command completes with GOOD status.
     CHECK_EQ(StartStopUnit(bench, 0x02).csw.bmCSWStatus, 0); // LOEJ=1, START=0
 
-    // Still ready, same capacity, and the data still reads correctly.
+    // The drive now reads as empty.
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);
+    auto sense = bench.RequestSense();
+    CHECK_EQ(sense.data[2], 0x02);  // NOT READY
+    CHECK_EQ(sense.data[12], 0x3a); // MEDIUM NOT PRESENT
+
+    // Reads are refused while ejected.
+    const u8 readCDB[10] = {0x28, 0x00, 0x00, 0x00, 0x00, 0x05,
+                            0x00, 0x00, 0x01, 0x00};
+    auto read = bench.SendCommand(readCDB, sizeof(readCDB), 2048);
+    CHECK_EQ(read.csw.bmCSWStatus, 1);
+}
+
+// LOEJ=1, START=1 (load) closes an empty tray: it succeeds, but it does NOT
+// bring the medium back. Ejecting on USBODE models the user taking the disc
+// out, so there is nothing left for the host to load. This matters because
+// hosts poll with LOAD while hunting for new media -- macOS does it after its
+// own eject -- and honoring it made the drive silently re-mount the image the
+// user had just ejected, then persist "inserted" over the saved ejected state.
+TEST(start_stop_unit_load_after_eject_leaves_drive_empty)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    CHECK_EQ(StartStopUnit(bench, 0x02).csw.bmCSWStatus, 0); // eject
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);       // empty
+    bench.RequestSense();
+
+    CHECK_EQ(StartStopUnit(bench, 0x03).csw.bmCSWStatus, 0); // load
+    SettleDiscSwap(bench);
+
+    // Still empty, and still reporting MEDIUM NOT PRESENT.
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);
+    auto sense = bench.RequestSense();
+    CHECK_EQ(sense.data[2], 0x02);  // NOT READY
+    CHECK_EQ(sense.data[12], 0x3a); // MEDIUM NOT PRESENT
+    CHECK_EQ(bench.gadget->IsEjected(), true);
+
+    // Repeated LOAD polling cannot wear the eject down either.
+    for (int i = 0; i < 5; ++i)
+    {
+        CHECK_EQ(StartStopUnit(bench, 0x03).csw.bmCSWStatus, 0);
+        SettleDiscSwap(bench);
+    }
+    CHECK_EQ(bench.gadget->IsEjected(), true);
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);
+}
+
+// Insert() -- the button, the web UI, mounting an image -- is the only way the
+// medium comes back. It comes back through the same media-change path a disc
+// swap uses: UNIT ATTENTION reported once, cleared by REQUEST SENSE, then READY
+// and readable again, serving the same image that was ejected.
+TEST(device_insert_after_eject_restores_medium)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    CHECK_EQ(StartStopUnit(bench, 0x02).csw.bmCSWStatus, 0); // eject
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);       // empty
+    bench.RequestSense();
+
+    bench.gadget->Insert();
+    SettleDiscSwap(bench);
+
+    // Media change reported, then cleared the way a host would.
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);
+    auto sense = bench.RequestSense();
+    CHECK_EQ(sense.data[2], 0x06);  // UNIT ATTENTION
+    CHECK_EQ(sense.data[12], 0x28); // NOT READY TO READY CHANGE
     CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 0);
 
-    auto after = bench.SendCommand(capCDB, sizeof(capCDB), 8);
-    CHECK_EQ(after.csw.bmCSWStatus, 0);
-    CHECK_BYTES(after.data.data(), after.data.size(),
-                before.data.data(), before.data.size());
-
+    // The same image reads correctly again.
     const u8 readCDB[10] = {0x28, 0x00, 0x00, 0x00, 0x00, 0x05,
                             0x00, 0x00, 0x01, 0x00};
     auto read = bench.SendCommand(readCDB, sizeof(readCDB), 2048);
@@ -157,6 +232,170 @@ TEST(start_stop_unit_eject_leaves_medium_readable)
     u8 expected[2048];
     FillPatternSector(expected, 5, 2048);
     CHECK_BYTES(read.data.data(), read.data.size(), expected, sizeof(expected));
+}
+
+// An ejected drive must not answer any of the "is there a disc?" probes as if
+// one were loaded. GET CONFIGURATION's Current Profile is the decisive one on
+// macOS: it reported CD-ROM (0x0008) unconditionally, which reads as "medium
+// present" no matter what TEST UNIT READY says, and macOS re-mounted the image
+// on every poll. MMC requires 0000h with no medium, and no profile descriptor
+// marked current.
+TEST(ejected_drive_reports_no_current_profile)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 getConfig[10] = {0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
+                              0x00, 0x00, 0x20, 0x00};
+
+    // With a disc loaded the CD-ROM profile is current.
+    auto loaded = bench.SendCommand(getConfig, sizeof(getConfig), 0x20);
+    CHECK_EQ(loaded.csw.bmCSWStatus, 0);
+    CHECK_EQ((loaded.data[6] << 8) | loaded.data[7], 0x0008); // PROFILE_CDROM
+
+    bench.gadget->Eject();
+
+    auto empty = bench.SendCommand(getConfig, sizeof(getConfig), 0x20);
+    CHECK_EQ(empty.csw.bmCSWStatus, 0);
+    CHECK_EQ((empty.data[6] << 8) | empty.data[7], 0x0000); // no current profile
+
+    // The profile descriptor inside the Profile List feature must agree: byte
+    // 2 of each descriptor carries the Current bit in bit 0. Header is 8 bytes,
+    // then the feature header is 4, then the first profile descriptor.
+    CHECK_EQ(empty.data[8 + 4 + 2] & 0x01, 0);
+}
+
+// The other media-presence probes an ejected drive must refuse. READ DISC
+// INFORMATION described a finalized single-session disc while the drive was
+// empty; macOS calls it while working out the media type.
+TEST(ejected_drive_refuses_disc_probes)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    bench.gadget->Eject();
+
+    const u8 discInfo[10] = {0x51, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0x00, 0x00, 0x20, 0x00};
+    CHECK_EQ(bench.SendCommand(discInfo, sizeof(discInfo), 0x20).csw.bmCSWStatus, 1);
+    auto sense = bench.RequestSense();
+    CHECK_EQ(sense.data[2], 0x02);  // NOT READY
+    CHECK_EQ(sense.data[12], 0x3a); // MEDIUM NOT PRESENT
+
+    const u8 subChannel[10] = {0x42, 0x02, 0x40, 0x01, 0x00, 0x00,
+                               0x00, 0x00, 0x10, 0x00};
+    CHECK_EQ(bench.SendCommand(subChannel, sizeof(subChannel), 0x10).csw.bmCSWStatus, 1);
+    bench.RequestSense();
+
+    // MODE SENSE still answers (it describes the drive, not the disc), but the
+    // medium type byte must not claim a data or audio disc is loaded.
+    const u8 modeSense[6] = {0x1A, 0x00, 0x2A, 0x00, 0x20, 0x00};
+    auto ms = bench.SendCommand(modeSense, sizeof(modeSense), 0x20);
+    CHECK_EQ(ms.csw.bmCSWStatus, 0);
+    CHECK_EQ(ms.data[1], 0x00); // medium type: none
+}
+
+// Boot restore: the drive was ejected at power-off, so it must come up empty
+// even though the remembered image is loaded behind the scenes. The arm is set
+// before SetDevice() precisely so there is no window -- not even across
+// enumeration -- in which the host can see a disc and mount it.
+TEST(boot_eject_arm_keeps_drive_empty_through_enumeration)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc, false, nullptr, nullptr, nullptr, false,
+                           /* bBootEjected */ true);
+    bench.Activate(); // enumeration: OnActivate() must not make the disc ready
+
+    CHECK_EQ(bench.gadget->IsEjected(), true);
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);
+    auto sense = bench.RequestSense();
+    CHECK_EQ(sense.data[2], 0x02);  // NOT READY
+    CHECK_EQ(sense.data[12], 0x3a); // MEDIUM NOT PRESENT
+
+    // A host LOAD still cannot conjure the disc back at boot.
+    CHECK_EQ(StartStopUnit(bench, 0x03).csw.bmCSWStatus, 0);
+    SettleDiscSwap(bench);
+    CHECK_EQ(bench.gadget->IsEjected(), true);
+
+    // The user inserting restores the remembered image immediately - it was
+    // loaded all along, which is why Insert needs no disc reload.
+    bench.gadget->Insert();
+    SettleDiscSwap(bench);
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);
+    bench.RequestSense();
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 0);
+    delete disc;
+}
+
+// The arm is one-shot. A later deliberate mount (user picks an image) must
+// insert normally rather than inheriting the boot-time eject.
+TEST(boot_eject_arm_is_consumed_by_first_set_device)
+{
+    CFakeImageDevice *first = MakeDataISO(1200);
+    CFakeImageDevice *second = MakeDataISO(1200);
+    CGadgetTestBench bench(first, false, nullptr, nullptr, nullptr, false,
+                           /* bBootEjected */ true);
+    bench.Activate();
+    CHECK_EQ(bench.gadget->IsEjected(), true);
+
+    // User mounts a different image: that is a disc insertion.
+    bench.gadget->SetDevice(second);
+    SettleDiscSwap(bench);
+    CHECK_EQ(bench.gadget->IsEjected(), false);
+    delete second;
+}
+
+// Like a real drive, a host-issued eject is refused while the host holds the
+// PREVENT ALLOW MEDIUM REMOVAL lock: CHECK CONDITION 05/53/02, and the medium
+// stays readable. Once the host unlocks, the eject goes through.
+TEST(start_stop_unit_eject_refused_while_locked)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    CHECK_EQ(PreventAllow(bench, 0x01).csw.bmCSWStatus, 0); // lock
+
+    auto refused = StartStopUnit(bench, 0x02); // eject while locked
+    CHECK_EQ(refused.csw.bmCSWStatus, 1);
+    auto sense = bench.RequestSense();
+    CHECK_EQ(sense.data[2], 0x05);  // ILLEGAL REQUEST
+    CHECK_EQ(sense.data[12], 0x53); // MEDIA LOAD OR EJECT FAILED
+    CHECK_EQ(sense.data[13], 0x02); // MEDIUM REMOVAL PREVENTED
+
+    // Still readable - the eject did not happen.
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 0);
+
+    // After unlocking, the eject succeeds.
+    CHECK_EQ(PreventAllow(bench, 0x00).csw.bmCSWStatus, 0); // unlock
+    CHECK_EQ(StartStopUnit(bench, 0x02).csw.bmCSWStatus, 0);
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1); // now empty
+}
+
+// The device's own eject (button / web UI) is the emergency override: it must
+// work even while the host holds the removal lock, since there is no physical
+// pinhole. Exercised directly through the gadget's Eject(), which is what the
+// button and web paths call.
+TEST(device_eject_overrides_medium_removal_lock)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    CHECK_EQ(PreventAllow(bench, 0x01).csw.bmCSWStatus, 0); // host locks
+
+    bench.gadget->Eject(); // device-initiated eject bypasses the lock
+
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);
+    auto sense = bench.RequestSense();
+    CHECK_EQ(sense.data[2], 0x02);  // NOT READY
+    CHECK_EQ(sense.data[12], 0x3a); // MEDIUM NOT PRESENT
 }
 
 // ---------------------------------------------------------------------------

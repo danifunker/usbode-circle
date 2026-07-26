@@ -85,6 +85,28 @@ public:
     /// \note Call this, if pDevice has not been specified in the constructor.
     void SetDevice(IImageDevice *pDevice);
 
+    /// \brief Eject the current medium: report NO_MEDIUM to the host without
+    /// freeing the underlying image device. No-op if already ejected.
+    void Eject(void);
+
+    /// \brief Re-insert the previously ejected medium, driving the normal
+    /// media-change (UNIT ATTENTION -> READY) sequence. No-op if not ejected.
+    void Insert(void);
+
+    /// \brief True while the medium is ejected (drive reports empty).
+    boolean IsEjected(void) const { return m_bEjected; }
+
+    /// \brief Come up empty: the drive was ejected when it was last powered
+    /// off, so the next SetDevice() adopts the image (geometry, cue sheet)
+    /// without ever presenting it to the host. Must be called before the first
+    /// SetDevice() so there is no window in which the host can see a disc.
+    void ArmBootEject(void);
+
+    /// \brief Consume a boot-eject arm that was never used (the remembered
+    /// image failed to load, so no SetDevice() came). Leaves the drive ejected
+    /// but lets the next deliberate mount insert normally.
+    void DisarmBootEject(void);
+
     /// \brief Call this periodically from TASK_LEVEL to allow I/O operations!
     void Update(void);
     boolean m_bNeedsAudioInit = FALSE;
@@ -141,6 +163,9 @@ private:
     void clearSenseData();
     void sendCheckCondition();
     void sendGoodStatus();
+    // Fail a command because the unit is not ready: sends 02/3a/00 (MEDIUM NOT
+    // PRESENT) when the drive is empty/ejected, else 02/04/00 (LU NOT READY).
+    void sendNotReady();
     USBTargetOS m_USBTargetOS;
     
     // Friend declarations for command classes and utilities
@@ -154,6 +179,16 @@ private:
 
     boolean m_bPendingDiscSwap = false;
     unsigned m_nDiscSwapStartTick = 0;
+
+    // Eject / medium-removal state. m_bEjected latches an empty drive (the
+    // image device stays allocated in m_pDevice; the host just sees NO_MEDIUM).
+    // m_bMediumRemovalPrevented mirrors the host's PREVENT ALLOW MEDIUM REMOVAL
+    // lock so a host-issued eject can be refused per SCSI spec.
+    boolean m_bEjected = false;
+    boolean m_bMediumRemovalPrevented = false;
+    // Armed by ArmBootEject() so the first SetDevice() keeps the drive empty
+    // instead of clearing the ejected latch.
+    boolean m_bEjectOnLoad = false;
 
     // ========================================================================
     // Device Initialization

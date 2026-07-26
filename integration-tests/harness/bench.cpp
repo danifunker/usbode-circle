@@ -12,7 +12,8 @@
 CGadgetTestBench::CGadgetTestBench(IImageDevice *pDisc, bool bFullSpeed,
                                    CCDPlayer *pPlayer, ConfigService *pConfig,
                                    SCSITBService *pTBService,
-                                   bool bPassDiscToConstructor)
+                                   bool bPassDiscToConstructor,
+                                   bool bBootEjected)
 {
     TestBus::Get().Reset();
     CTimer::Get()->TestReset();
@@ -49,6 +50,14 @@ CGadgetTestBench::CGadgetTestBench(IImageDevice *pDisc, bool bFullSpeed,
     // bench deliberately does not touch them: the toolbox tests only mean
     // something if they run against the state a real gadget actually boots
     // with.
+    // Boot restore: SCSITBService arms this in its constructor, before the
+    // first mount, so the ordering here has to match - arming after SetDevice()
+    // would leave exactly the window the arm exists to close.
+    if (bBootEjected)
+    {
+        gadget->ArmBootEject();
+    }
+
     gadget->SetDevice(pDisc);
 }
 

@@ -50,6 +50,12 @@ public:
     bool SetNextCD(size_t index);
     bool SetNextCDByName(const char* file_name);
 
+    // Eject / insert the current medium. These queue the request for the Run()
+    // loop (task context), matching how SetNextCD defers the actual work.
+    void SetPendingEject();
+    void SetPendingInsert();
+    bool IsEjected() const;  // delegates to cdromservice
+
     // Task entry point
     void Run(void);
 
@@ -65,12 +71,23 @@ private:
     int next_cd = -1;
     int current_cd = -1;
 
+    bool m_bPendingEject = false;
+    bool m_bPendingInsert = false;
+
+    // Eject-state persistence. m_bBootEjectPending latches the saved "was
+    // ejected" state read once at startup, applied after the initial image
+    // loads so the drive comes up empty. m_bPersistedEjected mirrors what is
+    // currently written to config, so the Run loop only writes on a change.
+    bool m_bBootEjectPending = false;
+    bool m_bPersistedEjected = false;
+
     // Full path of currently mounted image (e.g., "1:/Games/game.iso")
     char m_CurrentImagePath[MAX_PATH_LEN];
 
     mutable CGenericLock m_Lock;
 
     void ClearCache();
+    void ProcessPendingMount();  // called from Run() with m_Lock held
     void ScanDirectoryRecursive(const char* fullPath, const char* relativePath);  // Recursive scanner
 };
 

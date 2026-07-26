@@ -22,6 +22,7 @@ public:
     static ConfigService* Get() { return s_pThis; }
 
     const char* GetCurrentImage(const char *defaultValue="image.iso");
+    bool GetEjected(bool defaultValue=false);
     unsigned GetDefaultVolume(unsigned defaultValue=255);
     const char* GetDisplayHat(const char *defaultValue="none");
     const char* GetTimezone(const char *defaultValue="UTC");
@@ -44,6 +45,7 @@ public:
     void SetLogfile(const char* value);
     void SetFlatFileList(bool value);
     void SetCurrentImage(const char* value);
+    void SetEjected(bool value);
     void SetDefaultVolume(unsigned value);
     void SetDisplayHat(const char* value);
     void SetTimezone(const char* value);

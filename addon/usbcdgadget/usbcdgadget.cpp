@@ -511,6 +511,25 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
         MLOGNOTE("CUSBCDGadget::SetDevice", "Passed CueBinFileDevice to cd player");
     }
 
+    // Loading a device normally means a disc is present, so clear any ejected
+    // latch. The exception is the boot restore: when the drive was ejected at
+    // power-off we adopt the image (so the cue sheet and geometry are known and
+    // Insert is instant) but stay empty to the host. Deciding that here rather
+    // than ejecting again afterwards matters - SetDevice() can yield, and any
+    // window in which the gadget reports ready lets the host mount the disc the
+    // user had ejected.
+    if (m_bEjectOnLoad)
+    {
+        m_bEjectOnLoad = false;
+        m_bEjected = true;
+        MLOGNOTE("CUSBCDGadget::SetDevice",
+                 "Boot restore: adopting image but staying ejected (empty drive)");
+    }
+    else
+    {
+        m_bEjected = false;
+    }
+
     boolean bDiscSwap = (m_pDevice != nullptr && m_pDevice != dev);
 
     if (bDiscSwap || !m_CDReady)
@@ -576,6 +595,85 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
                     "=== EXIT === m_CDReady=%d, mediaState=%d, sense=%02x/%02x/%02x",
                     m_CDReady, (int)m_mediaState,
                     m_SenseParams.bSenseKey, m_SenseParams.bAddlSenseCode, m_SenseParams.bAddlSenseCodeQual);
+}
+
+// Eject the current medium. The image device stays allocated (m_pDevice is
+// left intact) so no SCSI read path can dereference a null device; the host
+// simply sees an empty drive. Called from TASK level (button/web/SCSI-handler),
+// never freeing anything, so it is safe against the IRQ-context command path
+// that gates on m_CDReady.
+void CUSBCDGadget::Eject(void)
+{
+    if (m_bEjected)
+    {
+        MLOGNOTE("CUSBCDGadget::Eject", "Already ejected, ignoring");
+        return;
+    }
+
+    MLOGNOTE("CUSBCDGadget::Eject", "Ejecting medium: state -> NO_MEDIUM, sense=02/3a/00");
+
+    CTraceLab::Get()->TraceMediaState((u8)m_mediaState, (u8)MediaState::NO_MEDIUM);
+    m_bEjected = true;
+    m_bPendingDiscSwap = false; // cancel any in-flight insert/swap sequence
+    // A mechanical tray release clears the host's removal lock the same way
+    // opening the tray does on real hardware: the medium is gone, and the host
+    // re-asserts PREVENT when it next mounts. This keeps a stale lock from
+    // later refusing a legitimate host eject.
+    m_bMediumRemovalPrevented = false;
+    m_CDReady = false;
+    m_mediaState = MediaState::NO_MEDIUM;
+    m_SenseParams.bSenseKey = 0x02;
+    m_SenseParams.bAddlSenseCode = 0x3a; // MEDIUM NOT PRESENT
+    m_SenseParams.bAddlSenseCodeQual = 0x00;
+    bmCSWStatus = CD_CSW_STATUS_FAIL;
+    discChanged = false;
+}
+
+// Re-insert a previously ejected medium. Reuses the disc-swap state machine in
+// Update(): NO_MEDIUM -> UNIT_ATTENTION (with discChanged/NewMedia) -> READY.
+// The device was never freed, so nothing needs reloading here.
+void CUSBCDGadget::Insert(void)
+{
+    if (!m_bEjected)
+    {
+        MLOGNOTE("CUSBCDGadget::Insert", "Not ejected, ignoring");
+        return;
+    }
+    if (m_pDevice == nullptr)
+    {
+        MLOGERR("CUSBCDGadget::Insert", "No device to re-insert");
+        return;
+    }
+
+    MLOGNOTE("CUSBCDGadget::Insert", "Re-inserting medium via media-change sequence");
+
+    m_bEjected = false;
+    m_mediaState = MediaState::NO_MEDIUM;
+    m_CDReady = false;
+    m_bPendingDiscSwap = true;
+    m_nDiscSwapStartTick = CTimer::Get()->GetTicks();
+}
+
+// Arm the boot restore. Called before the first SetDevice(), so the drive is
+// already ejected from the very first moment the host can talk to it - there is
+// no "mounted then ejected" flicker for the host to latch onto.
+void CUSBCDGadget::ArmBootEject(void)
+{
+    MLOGNOTE("CUSBCDGadget::ArmBootEject", "Drive will come up empty (was ejected at power-off)");
+    m_bEjectOnLoad = true;
+    m_bEjected = true;
+    m_CDReady = false;
+    m_mediaState = MediaState::NO_MEDIUM;
+    m_bPendingDiscSwap = false;
+    discChanged = false;
+}
+
+// The arm is one-shot. If the remembered image never loaded there is no
+// SetDevice() to consume it, and leaving it armed would silently eject the next
+// image the user deliberately mounts.
+void CUSBCDGadget::DisarmBootEject(void)
+{
+    m_bEjectOnLoad = false;
 }
 
 void CUSBCDGadget::CreateDevice(void)
@@ -878,8 +976,10 @@ void CUSBCDGadget::OnActivate()
                     IsEffectiveFullSpeed() ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
                     m_CDReady, (int)m_mediaState);
     CTimer::Get()->MsDelay(10);
-    // Set media ready NOW - USB endpoints are active
-    if (m_pDevice && !m_CDReady)
+    // Set media ready NOW - USB endpoints are active.
+    // Skip while ejected: the drive must stay empty across a re-enumeration
+    // until the user (or host) explicitly re-inserts.
+    if (m_pDevice && !m_CDReady && !m_bEjected)
     {
         CTraceLab::Get()->TraceMediaState((u8)m_mediaState, (u8)MediaState::MEDIUM_PRESENT_UNIT_ATTENTION);
         m_CDReady = true;
@@ -961,6 +1061,15 @@ void CUSBCDGadget::sendCheckCondition()
     }
 
     SendCSW();
+}
+
+void CUSBCDGadget::sendNotReady()
+{
+    if (m_mediaState == MediaState::NO_MEDIUM)
+        setSenseData(0x02, 0x3a, 0x00); // MEDIUM NOT PRESENT (empty / ejected)
+    else
+        setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
+    sendCheckCondition();
 }
 
 void CUSBCDGadget::sendGoodStatus()

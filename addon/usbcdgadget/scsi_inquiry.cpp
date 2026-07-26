@@ -707,6 +707,13 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     int startFeature = (gadget->m_CBW.CBWCB[2] << 8) | gadget->m_CBW.CBWCB[3];
     u16 allocationLength = gadget->m_CBW.CBWCB[7] << 8 | (gadget->m_CBW.CBWCB[8]);
 
+    // MMC: with no medium loaded there is no current profile. Reporting one
+    // anyway is read by hosts as "a disc is in the drive" - macOS mounts on it
+    // and keeps re-mounting an ejected image no matter what TEST UNIT READY
+    // says. The feature list itself still describes what the drive can do; only
+    // the "currently active" markers are cleared.
+    bool bNoMedium = (gadget->m_mediaState == CUSBCDGadget::MediaState::NO_MEDIUM);
+
     int dataLength = 0;
     dataLength += sizeof(gadget->header);
 
@@ -746,14 +753,14 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
             if (gadget->m_mediaType == MEDIA_TYPE::DVD)
             {
                 TUSBCProfileDescriptorReply activeDVD = gadget->dvd_profile;
-                activeDVD.currentP = 0x01; // Mark as current profile
+                activeDVD.currentP = bNoMedium ? 0x00 : 0x01; // Mark as current profile
                 memcpy(gadget->m_InBuffer + dataLength, &activeDVD, sizeof(activeDVD));
                 dataLength += sizeof(activeDVD);
             }
 
             // CD profile - always present (our base capability)
             TUSBCProfileDescriptorReply activeCD = gadget->cdrom_profile;
-            activeCD.currentP = (gadget->m_mediaType != MEDIA_TYPE::DVD) ? 0x01 : 0x00;
+            activeCD.currentP = (!bNoMedium && gadget->m_mediaType != MEDIA_TYPE::DVD) ? 0x01 : 0x00;
             memcpy(gadget->m_InBuffer + dataLength, &activeCD, sizeof(activeCD));
             dataLength += sizeof(activeCD);
         }
@@ -842,7 +849,12 @@ void SCSIInquiry::GetConfiguration(CUSBCDGadget *gadget)
     // Build the feature header with current profile and total data length
     TUSBCDFeatureHeaderReply dynHeader = gadget->header;
 
-    if (gadget->m_mediaType == MEDIA_TYPE::DVD)
+    if (bNoMedium)
+    {
+        dynHeader.currentProfile = htons(PROFILE_NONE);
+        CDROM_DEBUG_LOG("SCSIInquiry::GetConfiguration", "GET CONFIGURATION: no medium, current profile 0x0000");
+    }
+    else if (gadget->m_mediaType == MEDIA_TYPE::DVD)
     {
         dynHeader.currentProfile = htons(PROFILE_DVD_ROM);
         CDROM_DEBUG_LOG("SCSIInquiry::GetConfiguration", "GET CONFIGURATION: Returning PROFILE_DVD_ROM (0x0010)");

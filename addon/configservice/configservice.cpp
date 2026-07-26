@@ -213,6 +213,16 @@ void ConfigService::SetCurrentImage(const char* value)
     m_config->SetString("current_image", value);
 }
 
+bool ConfigService::GetEjected(bool defaultValue)
+{
+    return m_config->GetNumber("ejected", defaultValue ? 1 : 0) != 0;
+}
+
+void ConfigService::SetEjected(bool value)
+{
+    m_config->SetNumber("ejected", value ? 1 : 0);
+}
+
 void ConfigService::SetMode(unsigned value)
 {
     m_config->SetNumber("mode", value);

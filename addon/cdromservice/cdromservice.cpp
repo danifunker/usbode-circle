@@ -70,6 +70,35 @@ void CDROMService::SetDevice(IImageDevice *pDevice)
     m_CDGadget->SetDevice(pDevice);
 }
 
+void CDROMService::Eject(void)
+{
+    if (m_CDGadget)
+        m_CDGadget->Eject();
+}
+
+void CDROMService::Insert(void)
+{
+    if (m_CDGadget)
+        m_CDGadget->Insert();
+}
+
+bool CDROMService::IsEjected(void) const
+{
+    return m_CDGadget && m_CDGadget->IsEjected();
+}
+
+void CDROMService::ArmBootEject(void)
+{
+    if (m_CDGadget)
+        m_CDGadget->ArmBootEject();
+}
+
+void CDROMService::DisarmBootEject(void)
+{
+    if (m_CDGadget)
+        m_CDGadget->DisarmBootEject();
+}
+
 boolean CDROMService::Initialize()
 {
     LOGNOTE("CDROM Initializing");

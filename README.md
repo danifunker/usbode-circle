@@ -112,6 +112,12 @@ The browser interface is used to load images, shutdown/reboot the device, config
 
 The Web Interface displays a list of available images, and denotes the currently loaded image. Images can be switched at any time by clicking on them.
 
+### Ejecting a Disc
+
+USBODE can present an empty drive, the same as a real drive with no disc in it. Click *Eject Disc* on the homepage, or press the B button on a display HAT, and the drive stays empty until you click *Insert Disc*, press B again, or load another image. The eject state survives a power cycle: if you power the USBODE off while ejected, it comes back up as an empty drive, and the image you had loaded is remembered so Insert brings it straight back. Ejecting also works from the host itself, so the operating system's own eject command does what you would expect.
+
+**macOS users: eject from Finder, not from USBODE.** macOS locks the drive while a disc is mounted and then stops checking it, on the assumption that a locked disc cannot go anywhere. If you eject from the web interface or the HAT button instead, macOS keeps showing the disc until you click it in Finder, at which point it disappears and you get a "Disk Not Ejected Properly" warning. This is not a USBODE bug; it is what macOS does with any drive whose disc leaves without its permission. DOS, Windows and Linux all notice the eject on their own, so this only affects macOS.
+
 ### Configuration
 - The Configuration page can be used to change HAT settings, configure audio output, USB speed, and whether logging is enabled and how verbose it is.
 - The Display Configuration section lets you change what kind of HAT you have connected, if any. It also lets you change the screen's timeout, brightness when in use, brightness when asleep, and how long the sleep timeout is.
