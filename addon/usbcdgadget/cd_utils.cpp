@@ -41,12 +41,21 @@ void CDUtils::LBA2MSF(int32_t LBA, uint8_t *MSF, bool relative)
     MSF[0] = rem / 60; // Minutes
 }
 
+uint8_t CDUtils::ToBCD(int value)
+{
+    if (value < 0)
+        value = 0;
+    if (value > 99)
+        value = 99;
+    return (uint8_t)(((value / 10) << 4) | (value % 10));
+}
+
 void CDUtils::LBA2MSFBCD(int32_t LBA, uint8_t *MSF, bool relative)
 {
     LBA2MSF(LBA, MSF, relative);
-    MSF[0] = ((MSF[0] / 10) << 4) | (MSF[0] % 10);
-    MSF[1] = ((MSF[1] / 10) << 4) | (MSF[1] % 10);
-    MSF[2] = ((MSF[2] / 10) << 4) | (MSF[2] % 10);
+    MSF[0] = ToBCD(MSF[0]);
+    MSF[1] = ToBCD(MSF[1]);
+    MSF[2] = ToBCD(MSF[2]);
 }
 
 int32_t CDUtils::MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative)
@@ -177,6 +186,136 @@ int CDUtils::GetLastTrackNumber(CUSBCDGadget* gadget)
             lastTrack = trackInfo->track_number;
     }
     return lastTrack;
+}
+
+// Work out which track begins the last session.
+//
+// Two sources, in order of trust. A cue sheet that carries "REM SESSION"
+// markers has told us outright, so believe it. Merging tools routinely drop
+// those markers, though, leaving a CD Extra indistinguishable from a plain
+// mixed-mode disc except by its layout: audio tracks first, then a data track.
+// A data track that follows audio can only be the start of a later session,
+// because a session's tracks are contiguous and a disc never returns to audio
+// after data within one session.
+//
+// Returns the first track number of the last session, which is the first track
+// on the disc for an ordinary single-session image (data-first mixed mode
+// included, since no data track there follows audio).
+int CDUtils::GetLastSessionStartTrack(CUSBCDGadget* gadget)
+{
+    const CUETrackInfo *trackInfo = nullptr;
+    int firstTrack = -1;
+    int markedStart = -1;
+    int maxSession = 1;
+    int inferredStart = -1;
+    bool prevWasAudio = false;
+    bool anyAudio = false;
+
+    gadget->cueParser.restart();
+    while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
+    {
+        if (firstTrack < 0)
+            firstTrack = trackInfo->track_number;
+
+        if (trackInfo->session > maxSession)
+        {
+            maxSession = trackInfo->session;
+            markedStart = trackInfo->track_number;
+        }
+
+        bool isAudio = (trackInfo->track_mode == CUETrack_AUDIO);
+        if (!isAudio && prevWasAudio && anyAudio)
+            inferredStart = trackInfo->track_number;
+
+        prevWasAudio = isAudio;
+        if (isAudio)
+            anyAudio = true;
+    }
+
+    if (firstTrack < 0)
+        return 1; // No tracks at all; caller handles the empty case
+
+    if (markedStart > 0)
+        return markedStart;
+
+    if (inferredStart > 0)
+        return inferredStart;
+
+    return firstTrack;
+}
+
+int CDUtils::GetSessionCount(CUSBCDGadget* gadget)
+{
+    const CUETrackInfo *trackInfo = nullptr;
+    int firstTrack = -1;
+
+    gadget->cueParser.restart();
+    if ((trackInfo = gadget->cueParser.next_track()) != nullptr)
+        firstTrack = trackInfo->track_number;
+
+    if (firstTrack < 0)
+        return 1;
+
+    // We only ever describe one or two sessions. Real CD Extra discs are two,
+    // and the multi-session images this firmware serves have never carried a
+    // third, so a session count is really "does a later session exist".
+    return (GetLastSessionStartTrack(gadget) != firstTrack) ? 2 : 1;
+}
+
+// Lead-out position of a given session.
+//
+// The last session's lead-out is the disc lead-out. For session 1 of a
+// two-session disc the lead-out sits at the end of the last audio track, well
+// before the next session starts: between them lie session 1's lead-out area
+// and session 2's lead-in, around 11250 frames that hold no track data.
+//
+// Deriving that end from LBAs alone would just measure the gap, so measure the
+// stored data instead: the byte distance between the last track of this session
+// and the first track of the next is exactly the audio that precedes the gap.
+// When an image does store the gap this collapses to the next session's start,
+// which is the same answer a single-session disc would give.
+u32 CDUtils::GetSessionLeadoutLBA(CUSBCDGadget* gadget, int session)
+{
+    if (session != 1 || GetSessionCount(gadget) < 2)
+        return GetLeadoutLBA(gadget);
+
+    int nextSessionStart = GetLastSessionStartTrack(gadget);
+
+    const CUETrackInfo *trackInfo = nullptr;
+    CUETrackInfo lastOfSession = {};
+    CUETrackInfo firstOfNext = {};
+    bool haveLast = false;
+    bool haveNext = false;
+
+    gadget->cueParser.restart();
+    while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
+    {
+        if (trackInfo->track_number < nextSessionStart)
+        {
+            lastOfSession = *trackInfo;
+            haveLast = true;
+        }
+        else if (trackInfo->track_number == nextSessionStart)
+        {
+            firstOfNext = *trackInfo;
+            haveNext = true;
+        }
+    }
+
+    if (!haveLast || !haveNext || lastOfSession.sector_length == 0)
+        return GetLeadoutLBA(gadget);
+
+    // Different source files means the byte offsets are not comparable; fall
+    // back on the next session's start, which errs long by the gap rather than
+    // reporting a lead-out inside the audio.
+    if (lastOfSession.file_index != firstOfNext.file_index ||
+        firstOfNext.file_offset <= lastOfSession.file_offset)
+        return firstOfNext.track_start;
+
+    u64 storedBytes = firstOfNext.file_offset - lastOfSession.file_offset;
+    u32 storedFrames = (u32)(storedBytes / lastOfSession.sector_length);
+
+    return lastOfSession.data_start + storedFrames;
 }
 
 u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)

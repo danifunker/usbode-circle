@@ -330,12 +330,30 @@ void SCSITOC::DoReadSessionInfo(CUSBCDGadget *gadget, bool msf, uint16_t allocat
         0x00, 0x0A, 0x01, 0x01, 0x00, 0x14, 0x01, 0x00,
         0x00, 0x00, 0x00, 0x00};
 
+    // This reply names the first track of the LAST session, which is where a
+    // host goes looking for a filesystem. On a CD Extra that is the data track
+    // sitting after the audio, not track 1.
+    int sessionCount = CDUtils::GetSessionCount(gadget);
+    int lastSessionStart = CDUtils::GetLastSessionStartTrack(gadget);
+
+    sessionTOC[2] = 0x01;                  // First session
+    sessionTOC[3] = (uint8_t)sessionCount; // Last session
+
     gadget->cueParser.restart();
-    const CUETrackInfo *trackinfo = gadget->cueParser.next_track();
+    const CUETrackInfo *trackinfo;
+    while ((trackinfo = gadget->cueParser.next_track()) != nullptr)
+    {
+        if (trackinfo->track_number == lastSessionStart)
+            break;
+    }
+
     if (trackinfo)
     {
-        CDROM_DEBUG_LOG("SCSITOC::DoReadSessionInfo", "First track: num=%d, start=%u",
-                        trackinfo->track_number, trackinfo->data_start);
+        sessionTOC[5] = (trackinfo->track_mode == CUETrack_AUDIO) ? 0x10 : 0x14;
+        sessionTOC[6] = (uint8_t)trackinfo->track_number;
+
+        CDROM_DEBUG_LOG("SCSITOC::DoReadSessionInfo", "Last session (%d) first track: num=%d, start=%u",
+                        sessionCount, trackinfo->track_number, trackinfo->data_start);
 
         if (msf)
         {
@@ -379,77 +397,139 @@ void SCSITOC::DoReadFullTOC(CUSBCDGadget *gadget, uint8_t session, uint16_t allo
         return;
     }
 
-    if (session > 1)
+    int sessionCount = CDUtils::GetSessionCount(gadget);
+    int lastSessionStart = CDUtils::GetLastSessionStartTrack(gadget);
+
+    // The session field selects where the reply starts, not a filter: a drive
+    // returns that session and every one after it. Asking beyond the last
+    // session is the only invalid case.
+    if (session > sessionCount)
     {
-        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "INVALID SESSION %d", session);
+        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "INVALID SESSION %d (disc has %d)", session, sessionCount);
         gadget->setSenseData(0x05, 0x24, 0x00);
         gadget->sendCheckCondition();
         return;
     }
 
-    // Base full TOC structure with A0/A1/A2 descriptors
-    uint8_t fullTOCBase[37] = {
-        0x00, 0x2E, 0x01, 0x01,
-        0x01, 0x14, 0x00, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-        0x01, 0x14, 0x00, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-        0x01, 0x14, 0x00, 0xA2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    int firstSession = (session < 1) ? 1 : session;
 
-    uint32_t len = sizeof(fullTOCBase);
-    memcpy(gadget->m_InBuffer, fullTOCBase, len);
-
-    // Find first and last tracks
+    uint32_t len = 4; // Header, filled in once the entries are laid down
+    const CUETrackInfo *trackinfo;
     int firsttrack = -1;
     CUETrackInfo lasttrack = {0};
-    const CUETrackInfo *trackinfo;
 
-    gadget->cueParser.restart();
-    while ((trackinfo = gadget->cueParser.next_track()) != nullptr)
+    CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "Disc has %d session(s), last starts at track %d",
+                    sessionCount, lastSessionStart);
+
+    for (int s = firstSession; s <= sessionCount; s++)
     {
-        if (firsttrack < 0)
+        // Bounds of this session. A single-session disc is the whole track
+        // list; on a two-session disc the split is at lastSessionStart.
+        int sessionFirstTrack = -1;
+        CUETrackInfo sessionLastTrack = {0};
+        CUETrackInfo sessionFirstInfo = {0};
+
+        gadget->cueParser.restart();
+        while ((trackinfo = gadget->cueParser.next_track()) != nullptr)
         {
-            firsttrack = trackinfo->track_number;
-            if (trackinfo->track_mode == CUETrack_AUDIO)
+            int trackSession = (sessionCount < 2 || trackinfo->track_number < lastSessionStart) ? 1 : 2;
+            if (trackSession != s)
+                continue;
+
+            if (sessionFirstTrack < 0)
             {
-                gadget->m_InBuffer[5] = 0x10;  // A0 control for audio
-                gadget->m_InBuffer[16] = 0x10; // A1 control for audio
-                gadget->m_InBuffer[27] = 0x10; // A2 control for audio
+                sessionFirstTrack = trackinfo->track_number;
+                sessionFirstInfo = *trackinfo;
             }
-            CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "First track: %d, mode=%d", firsttrack, trackinfo->track_mode);
+            sessionLastTrack = *trackinfo;
+
+            if (firsttrack < 0)
+                firsttrack = trackinfo->track_number;
+            lasttrack = *trackinfo;
         }
-        lasttrack = *trackinfo;
 
-        // Add track descriptor
-        FormatRawTOCEntry(gadget, trackinfo, &gadget->m_InBuffer[len], useBCD);
+        if (sessionFirstTrack < 0)
+            continue; // No tracks in this session; nothing to describe
 
-        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "  Track %d: mode=%d, start=%u",
-                        trackinfo->track_number, trackinfo->track_mode, trackinfo->data_start);
+        bool sessionIsAudio = (sessionFirstInfo.track_mode == CUETrack_AUDIO);
+        uint8_t control = sessionIsAudio ? 0x10 : 0x14;
 
+        // A CD Extra data session is CD-ROM XA, and hosts read the disc type
+        // out of A0's PSEC field to know that before touching a sector.
+        uint8_t discType = 0x00;
+        if (sessionFirstInfo.track_mode == CUETrack_MODE2_2048 ||
+            sessionFirstInfo.track_mode == CUETrack_MODE2_2324 ||
+            sessionFirstInfo.track_mode == CUETrack_MODE2_2336 ||
+            sessionFirstInfo.track_mode == CUETrack_MODE2_2352)
+        {
+            discType = 0x20; // CD-ROM XA
+        }
+        else if (sessionFirstInfo.track_mode == CUETrack_CDI_2336 ||
+                 sessionFirstInfo.track_mode == CUETrack_CDI_2352)
+        {
+            discType = 0x10; // CD-i
+        }
+
+        u32 sessionLeadout = CDUtils::GetSessionLeadoutLBA(gadget, s);
+
+        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC",
+                        "Session %d: tracks %d-%d, control=%02x, discType=%02x, leadout LBA=%u",
+                        s, sessionFirstTrack, sessionLastTrack.track_number, control, discType, sessionLeadout);
+
+        // A0: first track of this session, plus the disc type
+        uint8_t *p = &gadget->m_InBuffer[len];
+        memset(p, 0, 11);
+        p[0] = (uint8_t)s;
+        p[1] = control;
+        p[3] = 0xA0;
+        p[8] = useBCD ? CDUtils::ToBCD(sessionFirstTrack) : (uint8_t)sessionFirstTrack;
+        p[9] = discType;
         len += 11;
+
+        // A1: last track of this session
+        p = &gadget->m_InBuffer[len];
+        memset(p, 0, 11);
+        p[0] = (uint8_t)s;
+        p[1] = control;
+        p[3] = 0xA1;
+        p[8] = useBCD ? CDUtils::ToBCD(sessionLastTrack.track_number) : (uint8_t)sessionLastTrack.track_number;
+        len += 11;
+
+        // A2: lead-out of this session
+        p = &gadget->m_InBuffer[len];
+        memset(p, 0, 11);
+        p[0] = (uint8_t)s;
+        p[1] = control;
+        p[3] = 0xA2;
+        if (useBCD)
+            CDUtils::LBA2MSFBCD(sessionLeadout, &p[8], false);
+        else
+            CDUtils::LBA2MSF(sessionLeadout, &p[8], false);
+        len += 11;
+
+        // Track descriptors for this session
+        gadget->cueParser.restart();
+        while ((trackinfo = gadget->cueParser.next_track()) != nullptr)
+        {
+            int trackSession = (sessionCount < 2 || trackinfo->track_number < lastSessionStart) ? 1 : 2;
+            if (trackSession != s)
+                continue;
+
+            FormatRawTOCEntry(gadget, trackinfo, &gadget->m_InBuffer[len], useBCD);
+            gadget->m_InBuffer[len] = (uint8_t)s;
+
+            CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "  Session %d Track %d: mode=%d, start=%u",
+                            s, trackinfo->track_number, trackinfo->track_mode, trackinfo->data_start);
+
+            len += 11;
+        }
     }
 
-    // Update A0, A1, A2 descriptors
-    gadget->m_InBuffer[12] = firsttrack;
-    gadget->m_InBuffer[23] = lasttrack.track_number;
+    gadget->m_InBuffer[2] = (uint8_t)firstSession;
+    gadget->m_InBuffer[3] = (uint8_t)sessionCount;
 
-    CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "Header: First=%d, Last=%d. A0: First=%d, A1: Last=%d",
-                    firsttrack, lasttrack.track_number, firsttrack, lasttrack.track_number);
-
-    // A2: Leadout position
-    u32 leadoutLBA = CDUtils::GetLeadoutLBA(gadget);
-    CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "A2: Lead-out LBA=%u", leadoutLBA);
-
-    if (useBCD)
-    {
-        CDUtils::LBA2MSFBCD(leadoutLBA, &gadget->m_InBuffer[34], false);
-        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "A2 MSF (BCD): %02x:%02x:%02x",
-                        gadget->m_InBuffer[34], gadget->m_InBuffer[35], gadget->m_InBuffer[36]);
-    }
-    else
-    {
-        CDUtils::LBA2MSF(leadoutLBA, &gadget->m_InBuffer[34], false);
-        CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "A2 MSF: %02x:%02x:%02x",
-                        gadget->m_InBuffer[34], gadget->m_InBuffer[35], gadget->m_InBuffer[36]);
-    }
+    CDROM_DEBUG_LOG("SCSITOC::DoReadFullTOC", "Header: FirstSession=%d, LastSession=%d, First=%d, Last=%d",
+                    firstSession, sessionCount, firsttrack, lasttrack.track_number);
 
     // Update TOC length
     uint16_t toclen = len - 2;
@@ -499,8 +579,10 @@ void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
     // Update disc information with current media state
     gadget->m_DiscInfoReply.disc_status = 0x0E; // Complete disc, finalized, last session complete
     gadget->m_DiscInfoReply.first_track_number = 0x01;
-    gadget->m_DiscInfoReply.number_of_sessions = 0x01; // Single session
-    gadget->m_DiscInfoReply.first_track_last_session = 0x01;
+    // Must agree with the full TOC, which Windows reads first: a disc that
+    // reports two sessions there and one here gets treated as neither.
+    gadget->m_DiscInfoReply.number_of_sessions = (uint8_t)CDUtils::GetSessionCount(gadget);
+    gadget->m_DiscInfoReply.first_track_last_session = (uint8_t)CDUtils::GetLastSessionStartTrack(gadget);
     gadget->m_DiscInfoReply.last_track_last_session = CDUtils::GetLastTrackNumber(gadget);
 
     // Set disc type based on track 1 mode

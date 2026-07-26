@@ -63,6 +63,13 @@ struct CUETrackInfo {
     int track_number;
     CUETrackMode track_mode;
 
+    // Session this track belongs to, 1-based. Set from "REM SESSION nn"
+    // markers when the cue sheet carries them; every track is session 1 when
+    // it does not. Cue sheets produced by merging a multi-track rip often
+    // lose these markers, so callers that need a reliable session boundary
+    // should fall back on the track layout (see CDUtils::GetLastSessionStart).
+    int session;
+
     // Sector length for this track in bytes, assuming BINARY or MOTOROLA file modes.
     uint32_t sector_length;
 
@@ -117,6 +124,10 @@ class CUEParser {
     // next_track() to advance file_offset in raw file time; reset on
     // restart() and on each FILE line (INDEX times restart per file).
     uint32_t m_prev_index01_time;
+
+    // Session number most recently announced by a "REM SESSION nn" line.
+    // Applied to each track as it is parsed; 1 until a marker says otherwise.
+    int m_current_session;
 
     // Skip any whitespace at beginning of line.
     // Returns false if at end of string.

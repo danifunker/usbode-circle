@@ -14,6 +14,7 @@ public:
     // Address Conversion Utilities
     static void LBA2MSF(int32_t LBA, uint8_t *MSF, bool relative);
     static void LBA2MSFBCD(int32_t LBA, uint8_t *MSF, bool relative);
+    static uint8_t ToBCD(int value);
     static int32_t MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative);
     static u32 GetAddress(u32 lba, int msf, boolean relative);
     static u32 lba_to_msf(u32 lba, boolean relative = false);
@@ -24,6 +25,13 @@ public:
     static CUETrackInfo GetTrackInfoForTrack(CUSBCDGadget* gadget, int track);
     static int GetLastTrackNumber(CUSBCDGadget* gadget);
     static u32 GetLeadoutLBA(CUSBCDGadget* gadget);
+
+    // Session layout. A CD Extra / Enhanced CD holds its audio tracks in
+    // session 1 and a single data track in session 2, and hosts locate the
+    // filesystem through the session structure rather than the track list.
+    static int GetSessionCount(CUSBCDGadget* gadget);
+    static int GetLastSessionStartTrack(CUSBCDGadget* gadget);
+    static u32 GetSessionLeadoutLBA(CUSBCDGadget* gadget, int session);
 
     static int GetBlocksize(CUSBCDGadget* gadget);
     static int GetBlocksizeForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo);
