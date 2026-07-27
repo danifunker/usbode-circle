@@ -690,6 +690,16 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
         }
         case TCDState::SendReqSenseReply:
         {
+            // BOT 6.7: the residue has to account for the sense bytes just
+            // sent, exactly as the DataIn case above does. Leaving it at the
+            // full transfer length tells the host no sense data arrived, so it
+            // cannot see that a failure is permanent and retries a command
+            // that will never succeed.
+            CTraceLab::Get()->TraceTransferComplete((u32)nLength);
+            if (m_CSW.dCSWDataResidue >= (u32)nLength)
+                m_CSW.dCSWDataResidue -= (u32)nLength;
+            else
+                m_CSW.dCSWDataResidue = 0;
             SendCSW();
             break;
         }

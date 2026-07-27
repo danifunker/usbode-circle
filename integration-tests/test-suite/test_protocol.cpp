@@ -264,3 +264,57 @@ TEST(cbw_oversized_cb_length_stalls)
     CHECK(r.stalledIn);
     CHECK(!r.gotCSW);
 }
+
+// ---------------------------------------------------------------------------
+// REQUEST SENSE residue
+// ---------------------------------------------------------------------------
+
+// BOT 6.7: dCSWDataResidue is the difference between what the host asked for
+// and what the device actually sent. REQUEST SENSE answers from a state of its
+// own, and that state never adjusted the residue the way the ordinary data-in
+// path does, so every sense reply arrived with a CSW claiming nothing had been
+// transferred.
+//
+// A host that believes the residue concludes it has no sense data, so it never
+// learns that ILLEGAL REQUEST / LBA OUT OF RANGE is permanent rather than
+// transient. A macOS trace of a read past the end of a disc showed the same
+// sector retried 42 times, each retry followed by a REQUEST SENSE whose CSW
+// said zero bytes had arrived.
+TEST(request_sense_residue_reflects_bytes_sent)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    auto r = Read10(bench, 1200, 1); // first LBA past the leadout
+    CHECK_EQ(r.csw.bmCSWStatus, 1);
+
+    auto sense = bench.RequestSense();
+    CHECK_EQ(sense.csw.bmCSWStatus, 0);
+    CHECK_EQ(sense.data.size(), (size_t)18);
+    CHECK_EQ(sense.csw.dCSWDataResidue, 0u); // 18 asked for, 18 sent
+    CHECK_EQ(sense.data[2], 0x05);
+    CHECK_EQ(sense.data[12], 0x21);
+}
+
+// A host may ask for less than the full 18 bytes. The reply is truncated to
+// what was asked, so the residue is still zero -- not the shortfall against
+// the full sense structure.
+TEST(request_sense_short_allocation_has_no_residue)
+{
+    CFakeImageDevice *disc = MakeDataISO(1200);
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    Read10(bench, 1200, 1);
+
+    const u8 cdb[6] = {0x03, 0x00, 0x00, 0x00, 8, 0x00};
+    auto sense = bench.SendCommand(cdb, sizeof(cdb), 8);
+
+    CHECK_EQ(sense.csw.bmCSWStatus, 0);
+    CHECK_EQ(sense.data.size(), (size_t)8);
+    CHECK_EQ(sense.csw.dCSWDataResidue, 0u);
+    CHECK_EQ(sense.data[2], 0x05);
+}
