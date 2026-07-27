@@ -120,6 +120,23 @@ The browser interface is used to load images, shutdown/reboot the device, config
 
 The Web Interface displays a list of available images, and denotes the currently loaded image. Images can be switched at any time by clicking on them.
 
+### Ejecting a Disc
+
+USBODE can present an empty drive, the same as a real drive with no disc in it. Click *Eject Disc* on the homepage and the drive stays empty until you click *Insert Disc* or load another image. Ejecting also works from the host itself, so the operating system's own eject command does what you would expect.
+
+**Tip: your HAT can eject too.** From the home screen, the same control both ejects and re-inserts:
+
+| HAT | Control |
+|-----|---------|
+| Waveshare OLED (SH1106 / SSD1306) | Push the joystick **down** |
+| Pirate Audio (ST7789) | Press the **B** button |
+
+Press it once to eject, again to insert. It only does this on the home screen — on any other page, down still moves the cursor. It also works even when the host has locked the drive, so it doubles as an emergency eject in the way a real drive's pinhole does. If you have set up a custom button mapping, this follows whichever button you assigned to *Down* rather than the defaults above.
+
+The eject state survives a power cycle: if you power the USBODE off while ejected, it comes back up as an empty drive, and the image you had loaded is remembered so Insert brings it straight back.
+
+**macOS users: eject from Finder, not from USBODE.** macOS locks the drive while a disc is mounted and then stops checking it, on the assumption that a locked disc cannot go anywhere. If you eject from the web interface or the HAT button instead, macOS keeps showing the disc until you click it in Finder, at which point it disappears and you get a "Disk Not Ejected Properly" warning. This is not a USBODE bug; it is what macOS does with any drive whose disc leaves without its permission. DOS, Windows and Linux all notice the eject on their own, so this only affects macOS.
+
 ### Configuration
 - The Configuration page can be used to change HAT settings, configure audio output, USB speed, and whether logging is enabled and how verbose it is.
 - The Display Configuration section lets you change what kind of HAT you have connected, if any. It also lets you change the screen's timeout, brightness when in use, brightness when asleep, and how long the sleep timeout is.

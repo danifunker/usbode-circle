@@ -26,8 +26,7 @@ void SCSITOC::ReadTOC(CUSBCDGadget *gadget)
     if (!gadget->m_CDReady)
     {
         MLOGNOTE("SCSITOC::ReadTOC", "FAILED - CD not ready");
-        gadget->setSenseData(0x02, 0x04, 0x00); // NOT READY, LOGICAL UNIT NOT READY
-        gadget->sendCheckCondition();
+        gadget->sendNotReady();
         return;
     }
 
@@ -66,8 +65,7 @@ void SCSITOC::ReadTOC(CUSBCDGadget *gadget)
     if (!gadget->m_CDReady)
     {
         MLOGNOTE("SCSITOC::ReadTOC", "FAILED - CD not ready");
-        gadget->setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
-        gadget->sendCheckCondition();
+        gadget->sendNotReady();
         return;
     }
 
@@ -580,6 +578,15 @@ void SCSITOC::ReadDiscInformation(CUSBCDGadget *gadget)
 {
     CDROM_DEBUG_LOG("SCSITOC::ReadDiscInformation", "Read Disc Information");
 
+    // Describing a finalized single-session disc while the drive is empty reads
+    // to the host as "a disc is loaded" - macOS calls this while working out the
+    // media type and mounts on a good reply.
+    if (!gadget->m_CDReady)
+    {
+        gadget->sendNotReady();
+        return;
+    }
+
     // Update disc information with current media state
     gadget->m_DiscInfoReply.disc_status = 0x0E; // Complete disc, finalized, last session complete
     gadget->m_DiscInfoReply.first_track_number = 0x01;
@@ -645,8 +652,7 @@ void SCSITOC::ReadTrackInformation(CUSBCDGadget *gadget)
 
     if (!gadget->m_CDReady)
     {
-        gadget->setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
-        gadget->sendCheckCondition();
+        gadget->sendNotReady();
         return;
     }
 
@@ -763,8 +769,7 @@ void SCSITOC::ReadHeader(CUSBCDGadget *gadget)
 
     if (!gadget->m_CDReady)
     {
-        gadget->setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
-        gadget->sendCheckCondition();
+        gadget->sendNotReady();
         return;
     }
 
@@ -827,6 +832,12 @@ void SCSITOC::ReadSubChannel(CUSBCDGadget *gadget)
     // unsigned int track_number = gadget->m_CBW.CBWCB[6]; // Ignore track number for now. It's used only for ISRC
     int allocationLength = (gadget->m_CBW.CBWCB[7] << 8) | gadget->m_CBW.CBWCB[8];
     int length = 0;
+
+    if (!gadget->m_CDReady)
+    {
+        gadget->sendNotReady();
+        return;
+    }
 
     // CDROM_DEBUG_LOG("CUSBCDGadget::HandleSCSICommand", "READ SUB-CHANNEL CMD (0x42), allocationLength = %d, msf = %u, parameter_list = 0x%02x", allocationLength, msf, parameter_list);
 
@@ -942,6 +953,12 @@ void SCSITOC::ReadDiscStructure(CUSBCDGadget *gadget)
     u8 format = gadget->m_CBW.CBWCB[7];
     u16 allocationLength = ((u16)gadget->m_CBW.CBWCB[8] << 8) | gadget->m_CBW.CBWCB[9];
     u8 agid = (gadget->m_CBW.CBWCB[10] >> 6) & 0x03; // Authentication Grant ID
+
+    if (!gadget->m_CDReady)
+    {
+        gadget->sendNotReady();
+        return;
+    }
 
     CDROM_DEBUG_LOG("SCSITOC::ReadDiscStructure",
                     "READ DISC STRUCTURE: media=%d, format=0x%02x, layer=%d, address=0x%08x, alloc=%d, AGID=%d, mediaType=%d",

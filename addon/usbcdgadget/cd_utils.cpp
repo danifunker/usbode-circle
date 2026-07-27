@@ -482,9 +482,16 @@ int CDUtils::GetMediumType(CUSBCDGadget* gadget)
     // ("CD-R data & audio") made it treat every disc as data-only
     // ("data or no disc loaded", PLAY AUDIO never issued). Modern hosts
     // ignore this byte in favor of GET CONFIGURATION.
+    // An empty drive has no medium to describe. 0x00 ("default") is the neutral
+    // code: reporting 0x01/0x02/0x03 while ejected tells the host a data or
+    // audio disc is loaded. Only the no-medium case is special-cased, so the
+    // Win9x MCICDA audio behavior for a real disc is untouched.
+    if (gadget->m_mediaState == CUSBCDGadget::MediaState::NO_MEDIUM)
+        return 0x00;
+
     bool hasAudio = false;
     bool hasData = false;
-    
+
     gadget->cueParser.restart();
     const CUETrackInfo *trackInfo = nullptr;
     

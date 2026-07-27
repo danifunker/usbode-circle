@@ -157,8 +157,7 @@ void SCSIRead::DoRead(CUSBCDGadget* gadget, int cdbSize)
     {
         CDROM_DEBUG_LOG("SCSIRead::DoRead", "failed, %s",
                         gadget->m_CDReady ? "ready" : "not ready");
-        gadget->setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
-        gadget->sendCheckCondition();
+        gadget->sendNotReady();
     }
 }
 
@@ -168,8 +167,7 @@ void SCSIRead::DoPlayAudio(CUSBCDGadget* gadget, int cdbSize)
 
     if (!gadget->m_CDReady)
     {
-        gadget->setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
-        gadget->sendCheckCondition();
+        gadget->sendNotReady();
         return;
     }
 
@@ -323,8 +321,7 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
 {
     if (!gadget->m_CDReady)
     {
-        gadget->setSenseData(0x02, 0x04, 0x00); // LOGICAL UNIT NOT READY
-        gadget->sendCheckCondition();
+        gadget->sendNotReady();
         return;
     }
 

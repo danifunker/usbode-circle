@@ -105,8 +105,25 @@ SCSITBService::SCSITBService()
     m_FileEntries = new FileEntry[MAX_FILES]();
     m_CurrentImagePath[0] = '\0';  // Initialize empty path
 
+    // Read the persisted eject state once at startup, before anything can mount.
+    // If the drive was ejected when last powered off, come up as an empty drive:
+    // the remembered image still loads (so the gadget knows the geometry and
+    // Insert is instant) but the gadget never reports it ready. Arming this
+    // before any SetDevice() is what makes it reliable - ejecting after the
+    // mount left a window in which the host could enumerate, see a disc and
+    // mount it.
+    if (configservice) {
+        m_bBootEjectPending = configservice->GetEjected();
+        m_bPersistedEjected = m_bBootEjectPending;
+        if (m_bBootEjectPending) {
+            LOGNOTE("Boot: drive was ejected at power-off, coming up empty");
+            cdromservice->ArmBootEject();
+        }
+    }
+
     bool ok = RefreshCache();
     assert(ok && "Failed to refresh SCSITBService on construction");
+
     SetName("scsitbservice");
 }
 
@@ -208,6 +225,24 @@ bool SCSITBService::SetNextCD(size_t cd) {
     //TODO bounds checking
     next_cd = cd;
     return true;
+}
+
+void SCSITBService::SetPendingEject() {
+    m_Lock.Acquire();
+    m_bPendingEject = true;
+    m_bPendingInsert = false;
+    m_Lock.Release();
+}
+
+void SCSITBService::SetPendingInsert() {
+    m_Lock.Acquire();
+    m_bPendingInsert = true;
+    m_bPendingEject = false;
+    m_Lock.Release();
+}
+
+bool SCSITBService::IsEjected() const {
+    return cdromservice && cdromservice->IsEjected();
 }
 
 const char* SCSITBService::GetCurrentCDName() {
@@ -402,8 +437,11 @@ bool SCSITBService::RefreshCache() {
         }
     }
 
-    // Fallback to first image file if not found
-    if (!found && m_FileCount > 0) {
+    // Fallback to first image file if not found. Never while ejected: an empty
+    // drive must stay empty, and this path also runs on rescans (upload, delete,
+    // FTP), where auto-mounting a substitute would undo the user's eject and
+    // then persist "inserted" over the saved state.
+    if (!found && m_FileCount > 0 && !IsEjected()) {
         for (size_t i = 0; i < m_FileCount; ++i) {
             if (!m_FileEntries[i].isDirectory) {
                 LOGNOTE("SCSITBService::RefreshCache() Current image not found, using: %s", 
@@ -418,6 +456,51 @@ bool SCSITBService::RefreshCache() {
     return true;
 }
 
+// Mount whatever SetNextCD/SetNextCDByName queued. Split out of Run() so every
+// failure path can simply return: the caller still has to consume the one-shot
+// boot-eject arm, which an early `continue` in the loop used to skip.
+// Called with m_Lock held.
+void SCSITBService::ProcessPendingMount() {
+    if (next_cd <= -1)
+        return;
+
+    if ((size_t)next_cd >= m_FileCount) {
+        next_cd = -1;
+        return;
+    }
+
+    // Build full path using relativePath from cache
+    const char* relativePath = m_FileEntries[next_cd].relativePath;
+    // Ensure we have room for "1:/" prefix (3 chars) + relativePath + null terminator
+    if (strlen(relativePath) > MAX_PATH_LEN - 4) {
+        LOGERR("Path too long: %s", relativePath);
+        next_cd = -1;
+        return;
+    }
+    snprintf(m_CurrentImagePath, sizeof(m_CurrentImagePath), "1:/%s", relativePath);
+
+    IImageDevice* imageDevice = loadImageDevice(m_CurrentImagePath);
+
+    if (imageDevice == nullptr) {
+        LOGERR("Failed to load image: %s", m_CurrentImagePath);
+        next_cd = -1;
+        return;
+    }
+
+    LOGNOTE("Loaded image: %s (format: %d, has subchannels: %s)",
+            m_CurrentImagePath,
+            (int)imageDevice->GetFileType(),
+            imageDevice->HasSubchannelData() ? "yes" : "no");
+
+    cdromservice->SetDevice(imageDevice);
+
+    // Save relative path to config (without "1:/" prefix)
+    configservice->SetCurrentImage(relativePath);
+
+    current_cd = next_cd;
+    next_cd = -1;
+}
+
 void SCSITBService::Run() {
     LOGNOTE("SCSITBService::Run started");
 
@@ -425,45 +508,43 @@ void SCSITBService::Run() {
         m_Lock.Acquire();
 
         // Handle load by index (SetNextCD or SetNextCDByName was called)
-        if (next_cd > -1) {
-            if ((size_t)next_cd >= m_FileCount) {
-                next_cd = -1;
-                m_Lock.Release();
-                continue;
+        ProcessPendingMount();
+
+        // The boot-eject arm is one-shot and is consumed by the first
+        // SetDevice(). If the remembered image never loaded (missing, renamed,
+        // unreadable) no SetDevice() came, so clear it here - otherwise it would
+        // sit armed and silently eject the next image the user mounts by hand.
+        // The drive itself stays ejected either way, which is the saved state.
+        if (m_bBootEjectPending) {
+            m_bBootEjectPending = false;
+            cdromservice->DisarmBootEject();
+        }
+
+        // Handle eject / insert requests (button, web, or deferred here from a
+        // caller). Mounting a new image above implicitly re-inserts, so process
+        // these after the load so a queued eject can't strand a fresh mount.
+        if (m_bPendingEject) {
+            m_bPendingEject = false;
+            LOGNOTE("Ejecting current medium");
+            cdromservice->Eject();
+        }
+        if (m_bPendingInsert) {
+            m_bPendingInsert = false;
+            LOGNOTE("Inserting current medium");
+            cdromservice->Insert();
+        }
+
+        // Persist the eject state whenever it changes. The gadget is the source
+        // of truth, so this captures every source uniformly - button, web, and
+        // the host START STOP UNIT (which runs in IRQ context and must not touch
+        // the SD card itself).
+        if (configservice) {
+            bool ejected = cdromservice->IsEjected();
+            if (ejected != m_bPersistedEjected) {
+                m_bPersistedEjected = ejected;
+                configservice->SetEjected(ejected);
+                LOGNOTE("Persisted eject state: %s", ejected ? "ejected" : "inserted");
             }
-
-            // Build full path using relativePath from cache
-            const char* relativePath = m_FileEntries[next_cd].relativePath;
-            // Ensure we have room for "1:/" prefix (3 chars) + relativePath + null terminator
-            if (strlen(relativePath) > MAX_PATH_LEN - 4) {
-                LOGERR("Path too long: %s", relativePath);
-                next_cd = -1;
-                m_Lock.Release();
-                continue;
-            }
-            snprintf(m_CurrentImagePath, sizeof(m_CurrentImagePath), "1:/%s", relativePath);
-
-            IImageDevice* imageDevice = loadImageDevice(m_CurrentImagePath);
-
-            if (imageDevice == nullptr) {
-                LOGERR("Failed to load image: %s", m_CurrentImagePath);
-                next_cd = -1;
-                m_Lock.Release();
-                continue;
-            }
-
-            LOGNOTE("Loaded image: %s (format: %d, has subchannels: %s)",
-                    m_CurrentImagePath,
-                    (int)imageDevice->GetFileType(),
-                    imageDevice->HasSubchannelData() ? "yes" : "no");
-
-            cdromservice->SetDevice(imageDevice);
-
-            // Save relative path to config (without "1:/" prefix)
-            configservice->SetCurrentImage(relativePath);
-
-            current_cd = next_cd;
-            next_cd = -1;
         }
 
         m_Lock.Release();

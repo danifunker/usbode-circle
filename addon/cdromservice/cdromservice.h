@@ -38,6 +38,14 @@ public:
     ~CDROMService(void);
     boolean Initialize();
     void SetDevice(IImageDevice* pDevice);
+    void Eject(void);
+    void Insert(void);
+    bool IsEjected(void) const;
+
+    // Boot restore: make the drive come up empty because it was ejected when it
+    // was last powered off. Must be armed before the first SetDevice().
+    void ArmBootEject(void);
+    void DisarmBootEject(void);
     void Run(void);
 
 private:

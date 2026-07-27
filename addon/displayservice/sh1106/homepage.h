@@ -51,5 +51,6 @@ class SH1106HomePage : public IPage {
     bool m_ISOScrollDirLeft = true;
     int m_ISOCharWidth = 6;  // Font6x7 char width
     int m_ISOMaxTextPx = 0;  // Max pixels for ISO display area
+    bool m_bEjectedShown = false;  // last-drawn eject state (redraw trigger)
 };
 #endif

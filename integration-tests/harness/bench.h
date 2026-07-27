@@ -52,7 +52,11 @@ public:
                      CCDPlayer *pPlayer = nullptr,
                      ConfigService *pConfig = nullptr,
                      SCSITBService *pTBService = nullptr,
-                     bool bPassDiscToConstructor = false);
+                     bool bPassDiscToConstructor = false,
+                     // Boot restore: arm the "came up ejected" latch before the
+                     // disc is attached, exactly as SCSITBService does when the
+                     // drive was ejected at power-off.
+                     bool bBootEjected = false);
 
     // AddEndpoints + endpoint activation: after this the drive is in
     // UNIT ATTENTION state with a CBW transfer armed, same as right after

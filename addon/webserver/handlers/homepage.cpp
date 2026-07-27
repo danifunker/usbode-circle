@@ -147,6 +147,10 @@ THTTPStatus HomePageHandler::PopulateContext(kainjow::mustache::data& context,
     context.set("image_name", current_image_name);
     context.set("image_path", current_image_path ? current_image_path : "");
 
+    // Eject state: drives the Eject/Insert toggle button in the header
+    bool ejected = svc->IsEjected();
+    context.set("ejected", ejected);
+
     // Check if disc art exists for current image
     bool has_disc_art = false;
     if (current_image_path && current_image_path[0] != '\0') {

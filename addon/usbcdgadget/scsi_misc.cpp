@@ -53,14 +53,49 @@ void SCSIMisc::StartStopUnit(CUSBCDGadget *gadget)
 {
     int start = gadget->m_CBW.CBWCB[4] & 1;
     int loej = (gadget->m_CBW.CBWCB[4] >> 1) & 1;
-    // TODO: Emulate a disk eject/load
     // loej Start Action
     // 0    0     Stop the disc - no action for us
     // 0    1     Start the disc - no action for us
-    // 1    0     Eject the disc - perhaps we need to throw a check condition?
-    // 1    1     Load the disc - perhaps we need to throw a check condition?
+    // 1    0     Eject the disc
+    // 1    1     Load the disc
 
     CDROM_DEBUG_LOG("SCSIMisc::StartStopUnit", "start/stop, start = %d, loej = %d", start, loej);
+
+    if (loej)
+    {
+        if (start)
+        {
+            // Load ("close the tray"). Deliberately does NOT bring the medium
+            // back. Ejecting on USBODE models the user taking the disc out, so
+            // the tray is empty and closing it finds nothing - exactly what a
+            // real drive does. Hosts poll with LOAD while looking for new media
+            // (macOS does this after its own eject), and honoring it made the
+            // drive silently re-mount the image the user had just ejected, then
+            // persist "inserted" over the saved ejected state. Re-inserting is
+            // a physical act: the ODE button, the web UI, or mounting an image.
+            if (gadget->m_bEjected)
+            {
+                MLOGNOTE("SCSIMisc::StartStopUnit",
+                         "Host LOAD ignored - tray is empty until the user re-inserts");
+            }
+        }
+        else
+        {
+            // Eject: honor the host's PREVENT MEDIUM REMOVAL lock like a real
+            // drive - refuse with 05/53/02 (MEDIUM REMOVAL PREVENTED) while
+            // locked. (The physical button / web UI bypass this on purpose.)
+            if (gadget->m_bMediumRemovalPrevented)
+            {
+                MLOGNOTE("SCSIMisc::StartStopUnit",
+                         "Host eject refused - medium removal prevented");
+                gadget->setSenseData(0x05, 0x53, 0x02);
+                gadget->sendCheckCondition();
+                return;
+            }
+            gadget->Eject();
+        }
+    }
+
     gadget->sendGoodStatus();
 }
 
@@ -69,9 +104,11 @@ void SCSIMisc::PreventAllowMediumRemoval(CUSBCDGadget *gadget)
     int prevent = gadget->m_CBW.CBWCB[4] & 0x01;
 
     CDROM_DEBUG_LOG("SCSIMisc::PreventAllowMediumRemoval",
-                    "PREVENT/ALLOW: prevent=%d (accepting but not locking)", prevent);
+                    "PREVENT/ALLOW: prevent=%d", prevent);
 
-    // Accept the command - we just won't actually lock anything
+    // Track the lock so a host-issued eject can be refused per SCSI spec.
+    // We never physically hold anything; this only gates host eject commands.
+    gadget->m_bMediumRemovalPrevented = (prevent != 0);
     gadget->sendGoodStatus();
 }
 
@@ -115,7 +152,10 @@ void SCSIMisc::MechanismStatus(CUSBCDGadget *gadget)
     status.changer_state = 0;      // No changer
     status.current_slot = 0;       // Slot 0
     status.mechanism_state = 0x00; // Idle
-    status.door_open = 0;          // Door closed (tray loaded)
+    // Report the tray as open while ejected - that is what a real drive shows
+    // after the eject button, and it stops hosts probing an "empty but closed"
+    // tray with LOAD commands.
+    status.door_open = gadget->m_bEjected ? 1 : 0;
     status.num_slots = 1;          // Single slot device
     status.slot_table_length = 0;  // No slot table
 
@@ -175,7 +215,10 @@ void SCSIMisc::GetEventStatusNotification(CUSBCDGadget *gadget)
         {
             MLOGNOTE("SCSIMisc::GetEventStatusNotification", "NO_MEDIUM state - sending Media Removal event");
             event.eventCode = 0x03; // Media Removal
-            event.data[0] = 0x00;
+            // Media status: bit 1 = medium present (never set here), bit 0 =
+            // door/tray open. A user eject leaves the tray open; a disc swap in
+            // flight is a closed tray that briefly has no medium.
+            event.data[0] = gadget->m_bEjected ? 0x01 : 0x00;
         }
         else if (gadget->m_CDReady)
         {

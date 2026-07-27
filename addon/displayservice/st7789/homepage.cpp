@@ -35,6 +35,8 @@ void ST7789HomePage::OnEnter() {
     TruncatePathWithEllipsis(pISOPath, pISOPathDisplay, sizeof(pISOPathDisplay), 75);
 
     GetIPAddress(pIPAddress, sizeof(pIPAddress));
+    if (m_Service)
+        m_bEjectedShown = m_Service->IsEjected();
     Draw();
 }
 
@@ -60,8 +62,15 @@ void ST7789HomePage::OnButtonPress(Button button) {
             break;
 
         case Button::Down:
-            m_NextPageName = "imagespage";
-            m_ShouldChangePage = true;
+            // B button: toggle eject / insert. The physical control always
+            // works (acts as the emergency eject), even if the host locked the
+            // door. A/X/Y are unchanged.
+            if (m_Service) {
+                if (m_Service->IsEjected())
+                    m_Service->SetPendingInsert();
+                else
+                    m_Service->SetPendingEject();
+            }
             break;
 
         case Button::Cancel:
@@ -80,6 +89,12 @@ void ST7789HomePage::OnButtonPress(Button button) {
 }
 
 void ST7789HomePage::Refresh() {
+    // Redraw if the eject state changed (path may be unchanged across eject)
+    if (m_Service && m_Service->IsEjected() != m_bEjectedShown) {
+        Draw();
+        return;
+    }
+
     // Check if ISO path changed
     const char* currentPath = GetCurrentImagePath();
     if (strcmp(currentPath, pISOPath) != 0) {
@@ -235,6 +250,15 @@ void ST7789HomePage::Draw() {
         m_Graphics->DrawText(35, cd_y + 40, COLOR2D(0, 0, 0), third_line, C2DGraphics::AlignLeft);
     }
 
+    // Eject status indicator: show a red EJECTED banner when the drive is
+    // empty so the remembered image name still reads as "not currently loaded".
+    bool ejected = m_Service && m_Service->IsEjected();
+    m_bEjectedShown = ejected;
+    if (ejected) {
+        m_Graphics->DrawText(35, cd_y + 60, COLOR2D(200, 0, 0), "EJECTED - No Disc",
+                             C2DGraphics::AlignLeft);
+    }
+
     // Use the helper function to draw navigation bar (false = main screen layout)
     DrawNavigationBar("main");
 
@@ -338,33 +362,19 @@ void ST7789HomePage::DrawNavigationBar(const char* screenType) {
     arrow_y = 225;
 
     if (strcmp(screenType, "main") == 0) {
-        // CHANGED: Show CD icon for B button (same as A button)
-        unsigned cd_x = 85;  // Adjusted X position for B button
-        unsigned cd_y = 215;
-        unsigned cd_radius = 10;
-        
-        // Draw outer circle of CD
-        m_Graphics->DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, cd_radius, COLOR2D(255, 255, 255));
-
-        // Draw middle circle of CD
-        m_Graphics->DrawCircleOutline(cd_x + cd_radius, cd_y + cd_radius, 5, COLOR2D(255, 255, 255));
-
-        // Draw center hole of CD
-        m_Graphics->DrawCircle(cd_x + cd_radius, cd_y + cd_radius, 2, COLOR2D(255, 255, 255));
-
-        // Old power icon for B button
-        /*
-        int radius = 7;            // Adjust radius as needed
-        int cx = arrow_x + radius;  // Center x
-        int cy = arrow_y;          // Center y
-
-        // Draw the circle outline
-        m_Graphics->DrawCircleOutline(cx, cy, radius, COLOR2D(255, 255, 255));
-
-        // Draw the vertical line ("I") - top center of the circle downward
-        int line_length = 6;  // Length of the line
-        m_Graphics->DrawLine(cx, cy - radius - 2, cx, cy - radius + line_length, COLOR2D(255, 255, 255));
-        */
+        // B button is Eject/Insert: draw an eject glyph (triangle above a bar).
+        unsigned eject_cx = 95;
+        unsigned eject_top = 218;
+        int eject_h = 8;      // triangle height
+        int eject_half = 7;   // triangle base half-width
+        for (int i = 0; i <= eject_h; i++) {
+            int halfW = (i * eject_half) / eject_h;
+            m_Graphics->DrawLine(eject_cx - halfW, eject_top + i,
+                                 eject_cx + halfW, eject_top + i, COLOR2D(255, 255, 255));
+        }
+        // Bar beneath the triangle
+        m_Graphics->DrawRect(eject_cx - eject_half, eject_top + eject_h + 3,
+                             2 * eject_half + 1, 3, COLOR2D(255, 255, 255));
     } else {
         // Stem (3px thick)
         m_Graphics->DrawLine(arrow_x, arrow_y, arrow_x, arrow_y + 13, COLOR2D(255, 255, 255));

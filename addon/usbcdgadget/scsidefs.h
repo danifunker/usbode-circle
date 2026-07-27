@@ -16,6 +16,7 @@
 #define LEADOUT_OFFSET 150
 
 // Profile codes (MMC-3)
+#define PROFILE_NONE 0x0000 // no current profile: drive is empty
 #define PROFILE_CDROM 0x0008
 #define PROFILE_DVD_ROM 0x0010
 

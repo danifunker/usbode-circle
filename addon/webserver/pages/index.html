@@ -6,10 +6,20 @@
 			<img src="/discart?{{boot_id}}" alt="Disc Art" />
 		</div>
 		{{/has_disc_art}}
-		<p>Current File Loaded: <br/><strong>{{image_name}}</strong></p>
+		<p>Current File Loaded: <br/><strong>{{image_name}}</strong>{{#ejected}} <span class="eject-status">(Ejected - No Disc)</span>{{/ejected}}</p>
 		{{#show_path}}
 		<p>Current Folder: <strong>/{{current_path}}</strong></p>
 		{{/show_path}}
+		{{#ejected}}
+		<button type="button" id="eject-btn" onclick="toggleEject(true)">Insert Disc</button>
+		{{/ejected}}
+		{{^ejected}}
+		<button type="button" id="eject-btn" onclick="toggleEject(false)">Eject Disc</button>
+		{{/ejected}}
+		<p class="eject-note" style="font-size:0.85em;opacity:0.75">On macOS, eject from Finder instead. macOS locks the
+		drive while a disc is mounted and stops checking it, so ejecting here (or
+		with the device button) leaves a stale disc icon until you click it.
+		DOS, Windows and Linux notice the eject on their own.</p>
 	</div>
 
 	<h4>Available Files</h4>
@@ -106,6 +116,20 @@
 			st.textContent = 'Upload failed after retries: ' + e;
 		} finally {
 			btn.disabled = false;
+		}
+	}
+	async function toggleEject(isEjected) {
+		var btn = document.getElementById('eject-btn');
+		if (btn) btn.disabled = true;
+		try {
+			var url = isEjected ? '/api/eject?insert=1' : '/api/eject';
+			var r = await fetch(url);
+			var j = await r.json();
+			if (j.status !== 'ok') { alert(j.error || 'Eject failed'); if (btn) btn.disabled = false; return; }
+			setTimeout(function () { location.reload(); }, 600);
+		} catch (e) {
+			alert('Eject request failed: ' + e);
+			if (btn) btn.disabled = false;
 		}
 	}
 	async function deleteImage(encodedPath) {

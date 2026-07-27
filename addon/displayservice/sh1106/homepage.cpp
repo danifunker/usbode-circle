@@ -41,6 +41,8 @@ void SH1106HomePage::OnEnter() {
     m_ISOScrollDirLeft = true;
 
     GetIPAddress(pIPAddress, sizeof(pIPAddress));
+    if (m_Service)
+        m_bEjectedShown = m_Service->IsEjected();
     Draw();
 }
 
@@ -66,8 +68,14 @@ void SH1106HomePage::OnButtonPress(Button button) {
             break;
 
         case Button::Down:
-            m_NextPageName = "imagespage";
-            m_ShouldChangePage = true;
+            // Down button: toggle eject / insert. Always works (emergency
+            // eject), even if the host locked the door.
+            if (m_Service) {
+                if (m_Service->IsEjected())
+                    m_Service->SetPendingInsert();
+                else
+                    m_Service->SetPendingEject();
+            }
             break;
 
         case Button::Cancel:
@@ -87,6 +95,12 @@ void SH1106HomePage::OnButtonPress(Button button) {
 }
 
 void SH1106HomePage::Refresh() {
+    // Redraw if the eject state changed (path may be unchanged across eject)
+    if (m_Service && m_Service->IsEjected() != m_bEjectedShown) {
+        Draw();
+        return;
+    }
+
     // Check if ISO path changed
     const char* currentPath = GetCurrentImagePath();
     if (strcmp(currentPath, pISOPath) != 0) {
@@ -107,8 +121,9 @@ void SH1106HomePage::Refresh() {
         return;
     }
 
-    // Scroll the ISO path if needed
-    RefreshISOScroll();
+    // Scroll the ISO path if needed (not while ejected - the path is hidden)
+    if (!(m_Service && m_Service->IsEjected()))
+        RefreshISOScroll();
 }
 
 void SH1106HomePage::GetIPAddress(char* buffer, size_t size) {
@@ -207,7 +222,14 @@ void SH1106HomePage::Draw() {
     size_t pathLen = strlen(pISOPath);
     int fullTextPx = (int)pathLen * m_ISOCharWidth;
 
-    if (fullTextPx <= m_ISOMaxTextPx) {
+    bool ejected = m_Service && m_Service->IsEjected();
+    m_bEjectedShown = ejected;
+
+    if (ejected) {
+        // Drive empty: show status instead of the (still-remembered) path.
+        m_Graphics->DrawText(12, 30, COLOR2D(255, 255, 255), "No Disc (Ejected)",
+                             C2DGraphics::AlignLeft, Font6x7);
+    } else if (fullTextPx <= m_ISOMaxTextPx) {
         // Short path fits on one line - just display it
         m_Graphics->DrawText(12, 30, COLOR2D(255, 255, 255), pISOPath, C2DGraphics::AlignLeft, Font6x7);
     } else {

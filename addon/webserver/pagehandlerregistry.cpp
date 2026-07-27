@@ -24,6 +24,7 @@
 #include "handlers/tracepage.h"
 #include "handlers/discarthandler.h"
 #include "handlers/deleteapi.h"
+#include "handlers/ejectapi.h"
 
 // instances of your page handlers
 static HomePageHandler s_homePageHandler;
@@ -44,6 +45,7 @@ static TraceDownloadHandler s_traceDownloadHandler;
 static TracePageHandler s_tracePageHandler;
 static DiscArtHandler s_discArtHandler;
 static DeleteImageAPIHandler s_deleteImageAPIHandler;
+static EjectAPIHandler s_ejectAPIHandler;
 
 // routes for your handlers
 static const std::map<std::string, IPageHandler*> g_pageHandlers = {
@@ -58,6 +60,7 @@ static const std::map<std::string, IPageHandler*> g_pageHandlers = {
 
     // API
     { "/api/mount", &s_mountAPIHandler },
+    { "/api/eject", &s_ejectAPIHandler },
     { "/api/list", &s_listAPIHandler },
     { "/api/shutdown", &s_shutdownAPIHandler },
     { "/api/reboot", &s_shutdownAPIHandler },

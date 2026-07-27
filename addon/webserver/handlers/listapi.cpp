@@ -45,6 +45,7 @@ THTTPStatus ListAPIHandler::GetJson(nlohmann::json& j,
 
     const char* currentPath = svc->GetCurrentCDPath();
     j["currentImage"] = currentPath ? currentPath : "";
+    j["ejected"] = svc->IsEjected();
 
     // Build entries array - iterate and filter
     LOGNOTE("ListAPIHandler: Building entries array");
