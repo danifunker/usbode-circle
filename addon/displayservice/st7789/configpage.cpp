@@ -118,9 +118,9 @@ void ST7789ConfigPage::MoveSelection(int delta) {
     LOGDBG("Selected index is %d, Menu delta is %d", m_SelectedIndex, delta);
     int newIndex = static_cast<int>(m_SelectedIndex) + delta;
     if (newIndex < 0)
-        newIndex = 0;
-    else if (newIndex >= static_cast<int>(fileCount))
         newIndex = static_cast<int>(fileCount - 1);
+    else if (newIndex >= static_cast<int>(fileCount))
+        newIndex = 0;
 
     if (static_cast<size_t>(newIndex) != m_SelectedIndex) {
 	LOGDBG("New menu index is %d", newIndex);
