@@ -412,54 +412,42 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
         return;
     }
 
-    // Determine sector parameters based on expected type or track mode
-    switch (expectedSectorType)
+    // Which parts of the sector to return is decided by the field selection in
+    // CDB byte 9, and by nothing else. The expected sector type in byte 1 says
+    // what kind of sector the host will accept - it was validated above - and
+    // it tells us how big each field is, but it does not choose the fields.
+    //
+    // This used to be a switch on the expected type that set a fixed slice and
+    // ignored byte 9 completely. Windows XP asks for a Mode 2 Form 2 sector
+    // (type 5) with sync, header, subheader and user data, expecting 2348
+    // bytes from the start of the sector; it was handed 2328 bytes beginning 24
+    // bytes in, at the MPEG payload rather than the sync pattern. It retried
+    // once as a formless Mode 2 read, got another wrong slice, and reported the
+    // file as unreadable.
+    CDUtils::TCDSectorShape shape =
+        CDUtils::GetSectorShape(expectedSectorType, (CUETrackMode)trackInfo.track_mode);
+
+    if (!CDUtils::McsFieldsAreContiguous(gadget->mcs, shape))
     {
-    case 0x01: // CD-DA
-        gadget->block_size = 2352;
-        gadget->transfer_block_size = 2352;
-        gadget->skip_bytes = 0;
-        break;
+        CDROM_DEBUG_LOG("SCSIRead::ReadCD",
+                        "READ CD: non-contiguous field selection 0x%02x", gadget->mcs);
+        gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+        gadget->sendCheckCondition();
+        return;
+    }
 
-    case 0x02: // Mode 1
-        gadget->skip_bytes = CDUtils::GetSkipbytesForTrack(gadget, trackInfo);
-        gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, trackInfo);
-        gadget->transfer_block_size = 2048;
-        break;
+    gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, trackInfo);
+    gadget->transfer_block_size = CDUtils::GetSectorLengthFromMCS(gadget->mcs, shape);
+    gadget->skip_bytes = CDUtils::GetSkipBytesFromMCS(gadget->mcs, shape);
 
-    case 0x03: // Mode 2 formless
-        gadget->skip_bytes = 16;
-        gadget->block_size = 2352;
-        gadget->transfer_block_size = 2336;
-        break;
-
-    case 0x04: // Mode 2 form 1
-        gadget->skip_bytes = CDUtils::GetSkipbytesForTrack(gadget, trackInfo);
-        gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, trackInfo);
-        gadget->transfer_block_size = 2048;
-        break;
-
-    case 0x05: // Mode 2 form 2
-        gadget->block_size = 2352;
-        gadget->skip_bytes = 24;
-        gadget->transfer_block_size = 2328;
-        break;
-
-    case 0x00: // Type not specified - derive from MCS and track mode
-    default:
-        if (trackInfo.track_mode == CUETrack_AUDIO)
-        {
-            gadget->block_size = 2352;
-            gadget->transfer_block_size = 2352;
-            gadget->skip_bytes = 0;
-        }
-        else
-        {
-            gadget->block_size = CDUtils::GetBlocksizeForTrack(gadget, trackInfo);
-            gadget->transfer_block_size = CDUtils::GetSectorLengthFromMCS(gadget->mcs);
-            gadget->skip_bytes = CDUtils::GetSkipBytesFromMCS(gadget->mcs);
-        }
-        break;
+    if (gadget->transfer_block_size == 0)
+    {
+        // No fields at all. Nothing to send, and the block count below divides
+        // by this, so refuse rather than fault.
+        CDROM_DEBUG_LOG("SCSIRead::ReadCD", "READ CD: no sector fields requested");
+        gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+        gadget->sendCheckCondition();
+        return;
     }
 
     // Add subchannel data size if requested

@@ -40,8 +40,23 @@ public:
     static int GetSkipbytesForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo);
 
     static int GetMediumType(CUSBCDGadget* gadget);
-    static int GetSectorLengthFromMCS(uint8_t mainChannelSelection);
-    static int GetSkipBytesFromMCS(uint8_t mainChannelSelection);
+
+    // Sizes of the five fields of one sector, in the order they appear on the
+    // disc. A field that this sector kind does not have is zero: Mode 1 has no
+    // subheader, CD-DA has nothing but user data. See cd_utils.cpp.
+    struct TCDSectorShape
+    {
+        int nSync;
+        int nHeader;
+        int nSubheader;
+        int nUserData;
+        int nEdcEcc;
+    };
+
+    static TCDSectorShape GetSectorShape(int expectedSectorType, CUETrackMode trackMode);
+    static bool McsFieldsAreContiguous(uint8_t mainChannelSelection, const TCDSectorShape& shape);
+    static int GetSectorLengthFromMCS(uint8_t mainChannelSelection, const TCDSectorShape& shape);
+    static int GetSkipBytesFromMCS(uint8_t mainChannelSelection, const TCDSectorShape& shape);
 };
 
 #endif

@@ -503,38 +503,165 @@ int CDUtils::GetMediumType(CUSBCDGadget* gadget)
     else
         return 0x01;  // Data CD
 }
-int CDUtils::GetSectorLengthFromMCS(uint8_t mainChannelSelection)
+// READ CD (MMC opcode 0xBE) names the parts of a sector the host wants in the
+// top five bits of CDB byte 9, which SCSIRead::ReadCD extracts as
+// (byte9 >> 3) & 0x1F. Those five bits are the sector's fields in the order
+// they physically appear on the disc:
+//
+//   0x10  SYNC        0x08  SUBHEADER   0x04  HEADER
+//   0x02  USER DATA   0x01  EDC/ECC
+//
+// Note that the header and the subheader bits are not in disc order. CDB byte 9
+// bits 6..5 are a single two-bit Header Codes *value*, not two flags: 00 none,
+// 01 header only, 10 subheader only, 11 both. After the >> 3 those land on 0x08
+// and 0x04, so the low bit of the field - 0x04 - is the 4-byte header and the
+// high bit - 0x08 - is the 8-byte subheader, even though the header physically
+// comes first. Reading them in bit order instead of field order makes Windows
+// XP's second request look like it skips the header when it does not.
+//
+// Their sizes are not fixed: they depend on what kind of sector it is, which
+// is what TCDSectorShape carries. A field this sector kind does not have is
+// zero, and a zero-size field is invisible - it can be neither served nor
+// skipped, and it cannot split the fields on either side of it.
+//
+// Two defects lived here. The bottom three selection bits were read one
+// position high, so the subheader bit was taken for user data, the user data
+// bit for EDC/ECC, and the EDC/ECC bit was never examined at all: a host
+// asking for user data only (byte 9 = 0x10, selection 0x02) was handed 288
+// bytes of error-correction data where it wanted 2048 bytes of file content.
+// Raw reads escaped it because selection 0x1F sets every bit, so the total
+// came to 2352 whichever bit meant what - which is why the one mode Windows 98
+// uses for Mode 2 files always worked while every other mode returned nonsense.
+// And the sizes were hardcoded to Mode 1 Form 1, so a Mode 2 Form 2 sector,
+// whose user data is 2324 bytes and whose EDC is 4, could never be described.
+
+CDUtils::TCDSectorShape CDUtils::GetSectorShape(int expectedSectorType, CUETrackMode trackMode)
+{
+    int type = expectedSectorType;
+
+    if (type == 0)
+    {
+        // Type not specified: take it from the track. A Mode 2 track is
+        // assumed to be Form 1, because the form is a property of the
+        // individual sector and one command serves a single layout. A host
+        // that actually wants Form 2 says so in CDB byte 1, which is the path
+        // Windows XP uses.
+        if (trackMode == CUETrack_AUDIO || trackMode == CUETrack_CDG)
+            type = 1;
+        else if (trackMode == CUETrack_MODE1_2048 || trackMode == CUETrack_MODE1_2352)
+            type = 2;
+        else
+            type = 4;
+    }
+
+    TCDSectorShape shape;
+    switch (type)
+    {
+    case 1: // CD-DA: no structure at all, the whole sector is sample data
+        shape.nSync = 0;  shape.nHeader = 0; shape.nSubheader = 0;
+        shape.nUserData = 2352; shape.nEdcEcc = 0;
+        break;
+
+    case 3: // Mode 2 formless: no subheader, and the tail is user data
+        shape.nSync = 12; shape.nHeader = 4; shape.nSubheader = 0;
+        shape.nUserData = 2336; shape.nEdcEcc = 0;
+        break;
+
+    case 4: // Mode 2 Form 1: the 8 bytes Mode 1 reserves are the subheader,
+            // which is why the EDC/ECC tail is 280 rather than 288
+        shape.nSync = 12; shape.nHeader = 4; shape.nSubheader = 8;
+        shape.nUserData = 2048; shape.nEdcEcc = 280;
+        break;
+
+    case 5: // Mode 2 Form 2: real-time data, 2324 bytes and only an EDC
+        shape.nSync = 12; shape.nHeader = 4; shape.nSubheader = 8;
+        shape.nUserData = 2324; shape.nEdcEcc = 4;
+        break;
+
+    case 2: // Mode 1
+    default:
+        shape.nSync = 12; shape.nHeader = 4; shape.nSubheader = 0;
+        shape.nUserData = 2048; shape.nEdcEcc = 288;
+        break;
+    }
+
+    return shape;
+}
+
+// The transfer is served as one contiguous slice of the sector, so the fields
+// the host asks for have to be adjacent. Asking for the sync and the user data
+// but not the header between them cannot be expressed as an offset and a
+// length, and quietly including the header would be worse than refusing.
+bool CDUtils::McsFieldsAreContiguous(uint8_t mainChannelSelection, const TCDSectorShape& shape)
+{
+    const int sizes[5] = {shape.nSync, shape.nHeader, shape.nSubheader,
+                          shape.nUserData, shape.nEdcEcc};
+    // Disc order: sync, header, subheader, user data, EDC/ECC. The header is
+    // 0x04 and the subheader 0x08 - see the Header Codes note above.
+    const uint8_t bits[5] = {0x10, 0x04, 0x08, 0x02, 0x01};
+
+    bool bStarted = false;
+    bool bEnded = false;
+
+    for (int i = 0; i < 5; i++)
+    {
+        if (sizes[i] == 0)
+            continue; // absent from this sector kind, so it breaks nothing
+
+        if (mainChannelSelection & bits[i])
+        {
+            if (bEnded)
+                return false; // a second run after a gap
+            bStarted = true;
+        }
+        else if (bStarted)
+        {
+            bEnded = true;
+        }
+    }
+
+    return true;
+}
+
+int CDUtils::GetSectorLengthFromMCS(uint8_t mainChannelSelection, const TCDSectorShape& shape)
 {
     int total = 0;
     if (mainChannelSelection & 0x10)
-        total += 12; // SYNC
-    if (mainChannelSelection & 0x08)
-        total += 4; // HEADER
+        total += shape.nSync;
     if (mainChannelSelection & 0x04)
-        total += 2048; // USER DATA
+        total += shape.nHeader; // Header Codes low bit
+    if (mainChannelSelection & 0x08)
+        total += shape.nSubheader; // Header Codes high bit
     if (mainChannelSelection & 0x02)
-        total += 288; // EDC + ECC
+        total += shape.nUserData;
+    if (mainChannelSelection & 0x01)
+        total += shape.nEdcEcc;
 
     return total;
 }
 
-int CDUtils::GetSkipBytesFromMCS(uint8_t mainChannelSelection)
+int CDUtils::GetSkipBytesFromMCS(uint8_t mainChannelSelection, const TCDSectorShape& shape)
 {
+    // Skip the leading fields the host did not ask for and stop at the first
+    // one it did. Skipping unconditionally walks past requested fields and
+    // starts the slice in the wrong place, which is what handed Windows XP a
+    // Mode 2 Form 2 sector beginning 24 bytes into the MPEG payload instead of
+    // at the sync pattern it asked for.
+    const int sizes[5] = {shape.nSync, shape.nHeader, shape.nSubheader,
+                          shape.nUserData, shape.nEdcEcc};
+    // Disc order: sync, header, subheader, user data, EDC/ECC. The header is
+    // 0x04 and the subheader 0x08 - see the Header Codes note above.
+    const uint8_t bits[5] = {0x10, 0x04, 0x08, 0x02, 0x01};
+
     int offset = 0;
+    for (int i = 0; i < 5; i++)
+    {
+        if (sizes[i] == 0)
+            continue;
+        if (mainChannelSelection & bits[i])
+            break;
+        offset += sizes[i];
+    }
 
-    // Skip SYNC if not requested
-    if (!(mainChannelSelection & 0x10))
-        offset += 12;
-
-    // Skip HEADER if not requested
-    if (!(mainChannelSelection & 0x08))
-        offset += 4;
-
-    // USER DATA is next; if also not requested, skip 2048
-    if (!(mainChannelSelection & 0x04))
-        offset += 2048;
-
-    // EDC/ECC is always at the end, so no skipping here — it doesn't affect offset
-    //
     return offset;
 }
