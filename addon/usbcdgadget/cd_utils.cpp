@@ -41,12 +41,21 @@ void CDUtils::LBA2MSF(int32_t LBA, uint8_t *MSF, bool relative)
     MSF[0] = rem / 60; // Minutes
 }
 
+uint8_t CDUtils::ToBCD(int value)
+{
+    if (value < 0)
+        value = 0;
+    if (value > 99)
+        value = 99;
+    return (uint8_t)(((value / 10) << 4) | (value % 10));
+}
+
 void CDUtils::LBA2MSFBCD(int32_t LBA, uint8_t *MSF, bool relative)
 {
     LBA2MSF(LBA, MSF, relative);
-    MSF[0] = ((MSF[0] / 10) << 4) | (MSF[0] % 10);
-    MSF[1] = ((MSF[1] / 10) << 4) | (MSF[1] % 10);
-    MSF[2] = ((MSF[2] / 10) << 4) | (MSF[2] % 10);
+    MSF[0] = ToBCD(MSF[0]);
+    MSF[1] = ToBCD(MSF[1]);
+    MSF[2] = ToBCD(MSF[2]);
 }
 
 int32_t CDUtils::MSF2LBA(uint8_t m, uint8_t s, uint8_t f, bool relative)
@@ -177,6 +186,147 @@ int CDUtils::GetLastTrackNumber(CUSBCDGadget* gadget)
             lastTrack = trackInfo->track_number;
     }
     return lastTrack;
+}
+
+// Work out which track begins the last session.
+//
+// Two sources, in order of trust. A cue sheet that carries "REM SESSION"
+// markers has told us outright, so believe it. Merging tools routinely drop
+// those markers, though, leaving a CD Extra indistinguishable from a plain
+// mixed-mode disc except by its layout: audio tracks first, then a data track.
+// A data track that follows audio can only be the start of a later session,
+// because a session's tracks are contiguous and a disc never returns to audio
+// after data within one session.
+//
+// Returns the first track number of the last session, which is the first track
+// on the disc for an ordinary single-session image (data-first mixed mode
+// included, since no data track there follows audio).
+int CDUtils::GetLastSessionStartTrack(CUSBCDGadget* gadget)
+{
+    const CUETrackInfo *trackInfo = nullptr;
+    int firstTrack = -1;
+    int markedStart = -1;
+    int maxSession = 1;
+    int inferredStart = -1;
+    bool prevWasAudio = false;
+    bool anyAudio = false;
+
+    gadget->cueParser.restart();
+    while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
+    {
+        if (firstTrack < 0)
+            firstTrack = trackInfo->track_number;
+
+        if (trackInfo->session > maxSession)
+        {
+            maxSession = trackInfo->session;
+            markedStart = trackInfo->track_number;
+        }
+
+        bool isAudio = (trackInfo->track_mode == CUETrack_AUDIO);
+        if (!isAudio && prevWasAudio && anyAudio)
+            inferredStart = trackInfo->track_number;
+
+        prevWasAudio = isAudio;
+        if (isAudio)
+            anyAudio = true;
+    }
+
+    if (firstTrack < 0)
+        return 1; // No tracks at all; caller handles the empty case
+
+    if (markedStart > 0)
+        return markedStart;
+
+    if (inferredStart > 0)
+        return inferredStart;
+
+    return firstTrack;
+}
+
+int CDUtils::GetSessionCount(CUSBCDGadget* gadget)
+{
+    const CUETrackInfo *trackInfo = nullptr;
+    int firstTrack = -1;
+
+    gadget->cueParser.restart();
+    if ((trackInfo = gadget->cueParser.next_track()) != nullptr)
+        firstTrack = trackInfo->track_number;
+
+    if (firstTrack < 0)
+        return 1;
+
+    // We only ever describe one or two sessions. Real CD Extra discs are two,
+    // and the multi-session images this firmware serves have never carried a
+    // third, so a session count is really "does a later session exist".
+    return (GetLastSessionStartTrack(gadget) != firstTrack) ? 2 : 1;
+}
+
+// Lead-out position of a given session.
+//
+// The last session's lead-out is the disc lead-out. Session 1 of a two-session
+// disc is the interesting case: its lead-out sits at the end of the last audio
+// track, and between it and the next session's first track lie session 1's
+// lead-out area and session 2's lead-in -- around 11250 frames carrying no
+// track data. Reporting session 1's lead-out at the next session's first track
+// describes a disc where the two sessions touch, which cannot physically
+// happen, so hosts are entitled to reject the whole session structure.
+//
+// The gap cannot be measured from a single-file cue: INDEX times are
+// file-relative, the gap is stored as ordinary sectors, and the byte distance
+// between tracks therefore always equals the LBA distance. Only a
+// "REM LEAD-OUT" marker states it. Without one, fall back on the standard gap
+// so the layout is at least structurally valid.
+u32 CDUtils::GetSessionLeadoutLBA(CUSBCDGadget* gadget, int session)
+{
+    // Orange Book: 90 seconds of lead-out (6750 frames) then 60 seconds of
+    // lead-in (4500). Real CD Extra discs sit at or just above this.
+    static const u32 kSessionGapFrames = 11250;
+
+    if (session != 1 || GetSessionCount(gadget) < 2)
+        return GetLeadoutLBA(gadget);
+
+    int nextSessionStart = GetLastSessionStartTrack(gadget);
+
+    const CUETrackInfo *trackInfo = nullptr;
+    CUETrackInfo lastOfSession = {};
+    CUETrackInfo firstOfNext = {};
+    bool haveLast = false;
+    bool haveNext = false;
+
+    gadget->cueParser.restart();
+    while ((trackInfo = gadget->cueParser.next_track()) != nullptr)
+    {
+        if (trackInfo->track_number < nextSessionStart)
+        {
+            lastOfSession = *trackInfo;
+            haveLast = true;
+        }
+        else if (trackInfo->track_number == nextSessionStart)
+        {
+            firstOfNext = *trackInfo;
+            haveNext = true;
+        }
+    }
+
+    if (!haveLast || !haveNext)
+        return GetLeadoutLBA(gadget);
+
+    // The cue sheet said so outright. This is the only exact source.
+    if (firstOfNext.prev_session_leadout > lastOfSession.data_start &&
+        firstOfNext.prev_session_leadout < firstOfNext.track_start)
+    {
+        return firstOfNext.prev_session_leadout;
+    }
+
+    // No marker: assume the standard gap. Guard against a merged image whose
+    // sessions sit closer together than that, where subtracting the full gap
+    // would put the lead-out inside the last audio track -- there, place it at
+    // the start of the next session's pregap, the latest defensible position.
+    if (firstOfNext.track_start > lastOfSession.data_start + kSessionGapFrames)
+        return firstOfNext.track_start - kSessionGapFrames;
+
+    return firstOfNext.track_start;
 }
 
 u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
@@ -353,38 +503,165 @@ int CDUtils::GetMediumType(CUSBCDGadget* gadget)
     else
         return 0x01;  // Data CD
 }
-int CDUtils::GetSectorLengthFromMCS(uint8_t mainChannelSelection)
+// READ CD (MMC opcode 0xBE) names the parts of a sector the host wants in the
+// top five bits of CDB byte 9, which SCSIRead::ReadCD extracts as
+// (byte9 >> 3) & 0x1F. Those five bits are the sector's fields in the order
+// they physically appear on the disc:
+//
+//   0x10  SYNC        0x08  SUBHEADER   0x04  HEADER
+//   0x02  USER DATA   0x01  EDC/ECC
+//
+// Note that the header and the subheader bits are not in disc order. CDB byte 9
+// bits 6..5 are a single two-bit Header Codes *value*, not two flags: 00 none,
+// 01 header only, 10 subheader only, 11 both. After the >> 3 those land on 0x08
+// and 0x04, so the low bit of the field - 0x04 - is the 4-byte header and the
+// high bit - 0x08 - is the 8-byte subheader, even though the header physically
+// comes first. Reading them in bit order instead of field order makes Windows
+// XP's second request look like it skips the header when it does not.
+//
+// Their sizes are not fixed: they depend on what kind of sector it is, which
+// is what TCDSectorShape carries. A field this sector kind does not have is
+// zero, and a zero-size field is invisible - it can be neither served nor
+// skipped, and it cannot split the fields on either side of it.
+//
+// Two defects lived here. The bottom three selection bits were read one
+// position high, so the subheader bit was taken for user data, the user data
+// bit for EDC/ECC, and the EDC/ECC bit was never examined at all: a host
+// asking for user data only (byte 9 = 0x10, selection 0x02) was handed 288
+// bytes of error-correction data where it wanted 2048 bytes of file content.
+// Raw reads escaped it because selection 0x1F sets every bit, so the total
+// came to 2352 whichever bit meant what - which is why the one mode Windows 98
+// uses for Mode 2 files always worked while every other mode returned nonsense.
+// And the sizes were hardcoded to Mode 1 Form 1, so a Mode 2 Form 2 sector,
+// whose user data is 2324 bytes and whose EDC is 4, could never be described.
+
+CDUtils::TCDSectorShape CDUtils::GetSectorShape(int expectedSectorType, CUETrackMode trackMode)
+{
+    int type = expectedSectorType;
+
+    if (type == 0)
+    {
+        // Type not specified: take it from the track. A Mode 2 track is
+        // assumed to be Form 1, because the form is a property of the
+        // individual sector and one command serves a single layout. A host
+        // that actually wants Form 2 says so in CDB byte 1, which is the path
+        // Windows XP uses.
+        if (trackMode == CUETrack_AUDIO || trackMode == CUETrack_CDG)
+            type = 1;
+        else if (trackMode == CUETrack_MODE1_2048 || trackMode == CUETrack_MODE1_2352)
+            type = 2;
+        else
+            type = 4;
+    }
+
+    TCDSectorShape shape;
+    switch (type)
+    {
+    case 1: // CD-DA: no structure at all, the whole sector is sample data
+        shape.nSync = 0;  shape.nHeader = 0; shape.nSubheader = 0;
+        shape.nUserData = 2352; shape.nEdcEcc = 0;
+        break;
+
+    case 3: // Mode 2 formless: no subheader, and the tail is user data
+        shape.nSync = 12; shape.nHeader = 4; shape.nSubheader = 0;
+        shape.nUserData = 2336; shape.nEdcEcc = 0;
+        break;
+
+    case 4: // Mode 2 Form 1: the 8 bytes Mode 1 reserves are the subheader,
+            // which is why the EDC/ECC tail is 280 rather than 288
+        shape.nSync = 12; shape.nHeader = 4; shape.nSubheader = 8;
+        shape.nUserData = 2048; shape.nEdcEcc = 280;
+        break;
+
+    case 5: // Mode 2 Form 2: real-time data, 2324 bytes and only an EDC
+        shape.nSync = 12; shape.nHeader = 4; shape.nSubheader = 8;
+        shape.nUserData = 2324; shape.nEdcEcc = 4;
+        break;
+
+    case 2: // Mode 1
+    default:
+        shape.nSync = 12; shape.nHeader = 4; shape.nSubheader = 0;
+        shape.nUserData = 2048; shape.nEdcEcc = 288;
+        break;
+    }
+
+    return shape;
+}
+
+// The transfer is served as one contiguous slice of the sector, so the fields
+// the host asks for have to be adjacent. Asking for the sync and the user data
+// but not the header between them cannot be expressed as an offset and a
+// length, and quietly including the header would be worse than refusing.
+bool CDUtils::McsFieldsAreContiguous(uint8_t mainChannelSelection, const TCDSectorShape& shape)
+{
+    const int sizes[5] = {shape.nSync, shape.nHeader, shape.nSubheader,
+                          shape.nUserData, shape.nEdcEcc};
+    // Disc order: sync, header, subheader, user data, EDC/ECC. The header is
+    // 0x04 and the subheader 0x08 - see the Header Codes note above.
+    const uint8_t bits[5] = {0x10, 0x04, 0x08, 0x02, 0x01};
+
+    bool bStarted = false;
+    bool bEnded = false;
+
+    for (int i = 0; i < 5; i++)
+    {
+        if (sizes[i] == 0)
+            continue; // absent from this sector kind, so it breaks nothing
+
+        if (mainChannelSelection & bits[i])
+        {
+            if (bEnded)
+                return false; // a second run after a gap
+            bStarted = true;
+        }
+        else if (bStarted)
+        {
+            bEnded = true;
+        }
+    }
+
+    return true;
+}
+
+int CDUtils::GetSectorLengthFromMCS(uint8_t mainChannelSelection, const TCDSectorShape& shape)
 {
     int total = 0;
     if (mainChannelSelection & 0x10)
-        total += 12; // SYNC
-    if (mainChannelSelection & 0x08)
-        total += 4; // HEADER
+        total += shape.nSync;
     if (mainChannelSelection & 0x04)
-        total += 2048; // USER DATA
+        total += shape.nHeader; // Header Codes low bit
+    if (mainChannelSelection & 0x08)
+        total += shape.nSubheader; // Header Codes high bit
     if (mainChannelSelection & 0x02)
-        total += 288; // EDC + ECC
+        total += shape.nUserData;
+    if (mainChannelSelection & 0x01)
+        total += shape.nEdcEcc;
 
     return total;
 }
 
-int CDUtils::GetSkipBytesFromMCS(uint8_t mainChannelSelection)
+int CDUtils::GetSkipBytesFromMCS(uint8_t mainChannelSelection, const TCDSectorShape& shape)
 {
+    // Skip the leading fields the host did not ask for and stop at the first
+    // one it did. Skipping unconditionally walks past requested fields and
+    // starts the slice in the wrong place, which is what handed Windows XP a
+    // Mode 2 Form 2 sector beginning 24 bytes into the MPEG payload instead of
+    // at the sync pattern it asked for.
+    const int sizes[5] = {shape.nSync, shape.nHeader, shape.nSubheader,
+                          shape.nUserData, shape.nEdcEcc};
+    // Disc order: sync, header, subheader, user data, EDC/ECC. The header is
+    // 0x04 and the subheader 0x08 - see the Header Codes note above.
+    const uint8_t bits[5] = {0x10, 0x04, 0x08, 0x02, 0x01};
+
     int offset = 0;
+    for (int i = 0; i < 5; i++)
+    {
+        if (sizes[i] == 0)
+            continue;
+        if (mainChannelSelection & bits[i])
+            break;
+        offset += sizes[i];
+    }
 
-    // Skip SYNC if not requested
-    if (!(mainChannelSelection & 0x10))
-        offset += 12;
-
-    // Skip HEADER if not requested
-    if (!(mainChannelSelection & 0x08))
-        offset += 4;
-
-    // USER DATA is next; if also not requested, skip 2048
-    if (!(mainChannelSelection & 0x04))
-        offset += 2048;
-
-    // EDC/ECC is always at the end, so no skipping here — it doesn't affect offset
-    //
     return offset;
 }

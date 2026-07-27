@@ -94,7 +94,7 @@ TEST(read_toc_legacy_cdb9_session_info)
     const u8 expected[12] = {
         0x00, 0x0A, // length 10
         0x01, 0x01, // first/last session
-        0x00, 0x14, 0x01, 0x00,
+        0x00, 0x10, 0x01, 0x00, // control 0x10: this disc is all audio
         0x00, 0x00, 0x00, 0x00, // first track of session at LBA 0
     };
     CHECK_BYTES(r.data.data(), r.data.size(), expected, sizeof(expected));

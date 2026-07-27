@@ -58,6 +58,7 @@ namespace
         {"test_toolbox", "Vendor toolbox commands"},
         {"test_realimages", "Real disc images"},
         {"test_mdsimages", "MDS/MDF images"},
+        {"test_multisession", "Multi-session and CD Extra"},
     };
 
     // "test-suite/test_read10.cpp" -> "SCSI read commands"

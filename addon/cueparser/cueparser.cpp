@@ -53,6 +53,8 @@ void CUEParser::restart() {
     m_parse_pos = m_cue_sheet;
     memset(&m_track_info, 0, sizeof(m_track_info));
     m_prev_index01_time = 0;
+    m_current_session = 1;
+    m_pending_leadout = 0;
 }
 
 const CUETrackInfo *CUEParser::next_track() {
@@ -110,6 +112,9 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             m_track_info.track_number = strtoul(track_num, &endptr, 10);
             m_track_info.track_mode = parse_track_mode(skip_space(endptr));
             m_track_info.sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);
+            m_track_info.session = m_current_session;
+            m_track_info.prev_session_leadout = m_pending_leadout;
+            m_pending_leadout = 0;
             m_track_info.unstored_pregap_length = 0;
             m_track_info.data_start = 0;
             m_track_info.track_start = 0;
@@ -118,6 +123,19 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             got_track = true;
             got_data = false;
             got_pause = false;
+        } else if (strncasecmp(m_parse_pos, "REM SESSION ", 12) == 0) {
+            // Multi-session marker written by most rippers ahead of the first
+            // TRACK of each session. Applies to every track that follows until
+            // the next marker. Other REM lines are comments and are ignored.
+            const char *session_str = skip_space(m_parse_pos + 12);
+            char *endptr;
+            int session = strtoul(session_str, &endptr, 10);
+            if (endptr != session_str && session >= 1)
+                m_current_session = session;
+        } else if (strncasecmp(m_parse_pos, "REM LEAD-OUT ", 13) == 0) {
+            // Where the session that is ending puts its lead-out. Held until
+            // the next TRACK line, which belongs to the following session.
+            m_pending_leadout = parse_time(skip_space(m_parse_pos + 13));
         } else if (strncasecmp(m_parse_pos, "PREGAP ", 7) == 0) {
             // Unstored pregap, which offsets the data start on CD but does not
             // affect the offset in data file.
