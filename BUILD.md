@@ -44,6 +44,10 @@ To build images, Linux is required and special sudo permissions are required. Th
 2. Paste in the following line into the file: `%sudo ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount, /sbin/losetup, /sbin/mkfs.fat, /sbin/fdisk`
 3. execute `make image-dist` to create the image file for the dist folder (32-bit) under the imgout folder.
 
+`make release BUILD_NUMBER=123` additionally writes `imgout/os-sublist.json`, the Raspberry Pi Imager OS list. `os-sublist.json` in the repository root is the template for it: every per-build value is a `@PLACEHOLDER@` that `scripts/generate-os-sublist.sh` fills in with the sizes and SHA-256 sums of the images that were just built. CI publishes the result as a release asset, which is what makes <https://github.com/danifunker/usbode-circle/releases/latest/download/os-sublist.json> work as an `rpi-imager --repo` URL. Edit the template to change anything about the entries (name, description, supported devices); never edit the generated file. To generate a list pointing somewhere other than the latest release, override the base URL:
+
+`make release BUILD_NUMBER=123 OS_SUBLIST_URL_BASE=https://example.com/images`
+
 ##Mac Build Notes
 - Install complete xcode suite & cli tools
 - Install the following packages through brew: `bash`, `gnu-getopt`, `texinfo`, `wget`, `rom-tools`

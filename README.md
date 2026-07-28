@@ -58,6 +58,23 @@ Note: Some forms of CD-ROM copy protection won’t work with USBODE.
     - Select the `.img` file that was downloaded in step 1
     - Under Storage, select the SD card to flash
     - Click Next. If the Imager gives you an error, try using diskpart's Clean command, then try again, or check out our [Discord](https://discord.gg/UWdcyzXetG).
+
+    Alternatively, you can skip step 1 entirely and have the Imager download and verify the release for you. Every USBODE release ships an Imager OS list at
+    <https://github.com/danifunker/usbode-circle/releases/latest/download/os-sublist.json>, which always points at the current stable release. Start the Imager with that list as its repository:
+
+    - macOS: `"/Applications/Raspberry Pi Imager.app/Contents/MacOS/rpi-imager" --repo https://github.com/danifunker/usbode-circle/releases/latest/download/os-sublist.json`
+    - Windows: `"C:\Program Files (x86)\Raspberry Pi Imager\rpi-imager.exe" --repo https://github.com/danifunker/usbode-circle/releases/latest/download/os-sublist.json`
+    - Linux: `rpi-imager --repo https://github.com/danifunker/usbode-circle/releases/latest/download/os-sublist.json`
+
+    "USBODE 32-bit" and "USBODE 64-bit" then appear directly under Operating System, and the Imager checks the download against the checksums published with the release. The URL always resolves to the current release, so it never needs updating, but the Imager does not remember `--repo` between launches — it has to be passed every time. If you use it often, make a shortcut for it, for example on macOS or Linux:
+
+    ```
+    alias usbode-imager='rpi-imager --repo https://github.com/danifunker/usbode-circle/releases/latest/download/os-sublist.json'
+    ```
+
+    On Windows, create a desktop shortcut to `rpi-imager.exe` and append the `--repo ...` argument to the Target field.
+
+    Note that this list tracks stable releases only; the `build-NNN` prereleases are not included, so grab those `.img.xz` files by hand as in step 1.
 3.  If required, re-insert the MicroSD card if a `bootfs` volume is not listed. Open the `bootfs` volume on the MicroSD card, open the file labeled “wpa_supplicant.conf”.
 4.  Under `country=GB`, replace “GB” with the [two digit code for your country](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2#Officially_assigned_code_elements) if needed. Different countries use different WiFi frequencies; if you are in the US, the device will not connect to US wifi unless you change this line to `country=US`.
 5.  Under `ssid=”MySSID”`, type in the name of your WiFi network between the quotes. Keep in mind that the Pi supports only 2.4 GHz wifi signals.

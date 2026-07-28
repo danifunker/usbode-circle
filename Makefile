@@ -11,6 +11,14 @@ BUILD_VERSION = $(if $(BUILD_NUMBER),$(BASE_VERSION)-$(BUILD_NUMBER),$(BASE_VERS
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 ZIP_NAME = usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT).zip
+IMG_BASE_NAME = usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)
+# rpi-imager OS list: os-sublist.json in the repo root is the template, the
+# filled-in copy is generated during `make release` and shipped as a release
+# asset. See scripts/generate-os-sublist.sh for why the image URLs are built
+# from the /releases/latest/download/ form rather than the build tag.
+OS_SUBLIST_TEMPLATE = os-sublist.json
+OS_SUBLIST_OUT = imgout/os-sublist.json
+OS_SUBLIST_URL_BASE ?= https://github.com/danifunker/usbode-circle/releases/latest/download
 # Read configuration from build-usbode.conf
 BUILD_CONF = $(HOME)/build-usbode.conf
 PREFIX := $(shell \
@@ -81,7 +89,8 @@ USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0
      generate-buildinfo cleanwlanfirmware
 
 .PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS) dist-single multi-arch package release\
-	 show-build-info rebuild show-config all-32 all-64 multi-arch-64 package-both
+	 show-build-info rebuild show-config all-32 all-64 multi-arch-64 package-both\
+	 images-dist image-single os-sublist
 
 # Generate build info once per build process
 generate-buildinfo:
@@ -433,6 +442,7 @@ release:
 	fi
 	@$(MAKE) package BUILD_NUMBER="$(BUILD_NUMBER)"
 	@$(MAKE) images-dist
+	@$(MAKE) os-sublist BUILD_NUMBER="$(BUILD_NUMBER)"
 
 image-single:
 	@echo "Creating image distribution package..."
@@ -440,9 +450,21 @@ image-single:
 	@scripts/create-img.sh -s $(CURRENT_DIST_DIR) -o $(CURRENT_DIST_DIR)/../imgout -n $(CURRENT_IMG_NAME)
 	@echo "Image distribution package $(CURRENT_IMG_NAME) created in $(CURRENT_DIST_DIR)/../imgout"
 
-images-dist: 
-	@$(MAKE) image-single ARCH_MODE=32 CURRENT_DIST_DIR=dist CURRENT_IMG_NAME=usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT).img
-	@$(MAKE) image-single ARCH_MODE=64 CURRENT_DIST_DIR=dist64 CURRENT_IMG_NAME=usbode-$(BUILD_VERSION)-$(BRANCH)-$(COMMIT)-64bit.img
+images-dist:
+	@$(MAKE) image-single ARCH_MODE=32 CURRENT_DIST_DIR=dist CURRENT_IMG_NAME=$(IMG_BASE_NAME).img
+	@$(MAKE) image-single ARCH_MODE=64 CURRENT_DIST_DIR=dist64 CURRENT_IMG_NAME=$(IMG_BASE_NAME)-64bit.img
+
+# Fill in the rpi-imager OS list from the images images-dist just built, so
+# the sizes and checksums always describe the exact bytes being released.
+os-sublist:
+	@echo "Generating rpi-imager OS list..."
+	@chmod +x scripts/generate-os-sublist.sh
+	@scripts/generate-os-sublist.sh \
+		--template $(OS_SUBLIST_TEMPLATE) \
+		--img32 imgout/$(IMG_BASE_NAME).img.xz \
+		--img64 imgout/$(IMG_BASE_NAME)-64bit.img.xz \
+		--url-base $(OS_SUBLIST_URL_BASE) \
+		--output $(OS_SUBLIST_OUT)
 
 show-build-info:
 	@echo "BASE_VERSION = $(BASE_VERSION)"

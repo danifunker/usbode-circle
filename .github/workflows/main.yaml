@@ -10,9 +10,7 @@ on:
       - "README.md"
       - ".github/**"
       - "version.txt"
-      - "os-sublist.json"
       - "docs/**"
-      - "/update-os-sublist.sh"
   workflow_dispatch:
     branches: [ "main" ]
 
@@ -192,6 +190,19 @@ jobs:
         overwrite: true
         include-hidden-files: false
 
+    # The rpi-imager OS list, filled in by `make release` from the images
+    # built above. Published as a release asset so that
+    # https://github.com/danifunker/usbode-circle/releases/latest/download/os-sublist.json
+    # can be handed to rpi-imager --repo directly.
+    - uses: actions/upload-artifact@v7
+      with:
+        name: os-sublist
+        path: imgout/os-sublist.json
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+
     - name: Clean Images Folder
       run: make clean-imagesfolder
 
@@ -291,6 +302,7 @@ jobs:
           upgrade/sysupgrade64.tar
           upgrade/sysupgrade64.crc
           buildinfo.json
+          imgout/os-sublist.json
         prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
