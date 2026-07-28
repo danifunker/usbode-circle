@@ -3,10 +3,18 @@
 Boots the **real, unmodified kernel images from the build** (real Circle
 headers, real drivers — no stubs) under QEMU, walks them through USBODE's
 own first-boot experience on a virgin 1 GiB SD card, and validates the
-**entire** boot log against the exact version being built. It runs in CI
-after the build and before anything is uploaded or released
-(`.github/workflows/main.yaml`), so a kernel that no longer boots cannot
-ship.
+**entire** boot log against the exact version being built.
+
+In CI (`.github/workflows/main.yaml`) this is its own pipeline stage
+between build and release: `build` uploads the freshly packaged
+`dist`/`dist64` trees plus `buildinfo.json` as `qemu-boot-input-*`
+artifacts, the two matrix jobs `qemu-boot-test (32bit)` and
+`qemu-boot-test (64bit)` consume them on the self-hosted agent
+(`fail-fast: false`, so one architecture failing still reports the
+other), and the `release` job publishes only when both pass — a kernel
+that no longer boots cannot be **released**. (Per-run build artifacts do
+upload before the tests, since the tests consume them; the release is the
+gated product.)
 
 This complements `integration-tests/` (which compiles the SCSI/BOT and
 disc-reader code against stub Circle headers on the host): that suite
@@ -142,8 +150,15 @@ sudo apt-get install qemu-system-arm mtools python3
 
 ## Running locally
 
-Against a CI-style build tree (has `config.txt`, `cmdline.txt`,
-`buildinfo.json`):
+CI runs the exact same script you can run by hand. Against a CI-style
+build tree (has `config.txt`, `cmdline.txt`, `buildinfo.json`), from the
+repo root after `make package`:
+
+```
+make qemu-boot-test          # both presets, 32-bit then 64-bit
+```
+
+or a single preset directly:
 
 ```
 ./tests/qemu-boot/run-boot-test.sh --preset 64bit --dist dist64 --buildinfo buildinfo.json --out /tmp/qemu-boot

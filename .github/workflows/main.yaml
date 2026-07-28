@@ -27,6 +27,9 @@ jobs:
 
     needs: host-tests
     runs-on: [self-hosted]
+    outputs:
+      filename: ${{ steps.get-filename.outputs.filename }}
+      commit_hash: ${{ steps.get-commit.outputs.commit_hash }}
 
     steps:
     - name: Clean workspace
@@ -166,37 +169,30 @@ jobs:
         done
         echo "All distribution files verified non-empty"
 
-    # Boot the kernels that were just built under QEMU, on a virgin 1 GiB
-    # card, and let USBODE's own first-boot setup resize/format it, reboot,
-    # and come up as an ejected empty drive. The whole boot log is then
-    # validated against this exact build's version (tests/qemu-boot/).
-    # Positioned after the build and BEFORE any artifact upload or release,
-    # so a kernel that no longer boots cannot ship.
-    # Runner requirements: qemu-system-arm, mtools, python3 - see
-    # tests/qemu-boot/README.md. The step fails with install hints if absent.
-    - name: QEMU boot test (kernel8.img on raspi3b, serial log)
-      run: ./tests/qemu-boot/run-boot-test.sh --preset 64bit --dist dist64 --buildinfo buildinfo.json --out qemu-boot-out
-
-    - name: QEMU boot test (kernel.img on raspi0, file log)
-      run: ./tests/qemu-boot/run-boot-test.sh --preset 32bit --dist dist --buildinfo buildinfo.json --out qemu-boot-out
-
-    - name: Upload QEMU boot logs
-      if: always()
+    # Hand the freshly built dist trees (plus this build's buildinfo.json,
+    # which the boot-log validator derives its version expectations from) to
+    # the qemu-boot-test jobs. Uploaded BEFORE "Clean Images Folder" strips
+    # config.txt/cmdline.txt/images out of dist, because the boot test needs
+    # the full tree a user's SD card would carry.
+    - name: Publish 32-bit QEMU boot-test input
       uses: actions/upload-artifact@v7
       with:
-        name: qemu-boot-logs
+        name: qemu-boot-input-32bit
         path: |
-          qemu-boot-out/*.log
-          qemu-boot-out/*.txt
-        if-no-files-found: ignore
-        retention-days: 14
+          dist
+          buildinfo.json
+        if-no-files-found: error
+        retention-days: 7
 
-    # The runner script already deletes its ~1 GiB card images on exit; this
-    # removes everything else (logs included, now that they are uploaded) so
-    # repeated builds never accumulate scratch on the self-hosted agent.
-    - name: Clean up QEMU boot test scratch
-      if: always()
-      run: rm -rf qemu-boot-out
+    - name: Publish 64-bit QEMU boot-test input
+      uses: actions/upload-artifact@v7
+      with:
+        name: qemu-boot-input-64bit
+        path: |
+          dist64
+          buildinfo.json
+        if-no-files-found: error
+        retention-days: 7
 
     - name: Get filename
       id: get-filename
@@ -326,24 +322,109 @@ jobs:
         compression-level: 6
         overwrite: true
 
-    - name: Create Release (on main only)
-      if: github.ref == 'refs/heads/main'
-      id: create-release
-      uses: softprops/action-gh-release@v3
+    # Everything the release job publishes, bundled once. The release job
+    # runs on a GitHub-hosted runner and consumes only this artifact, so it
+    # needs no tools and no access to this runner's workspace.
+    - name: Publish release file bundle
+      uses: actions/upload-artifact@v7
       with:
-        tag_name: build-${{ github.run_number }}
-        name: USBODE build-${{ github.run_number }}
-        files: | 
-          ${{ steps.get-filename.outputs.filename }}.zip
-          ${{ steps.get-filename.outputs.filename }}-64bit.zip
-          imgout/${{ steps.get-filename.outputs.filename }}.img.xz
-          imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
+        name: release-files
+        path: |
+          usbode-*.zip
+          imgout/*.img.xz
+          imgout/os-sublist.json
           upgrade/sysupgrade32.tar
           upgrade/sysupgrade32.crc
           upgrade/sysupgrade64.tar
           upgrade/sysupgrade64.crc
           buildinfo.json
-          imgout/os-sublist.json
-        prerelease: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if-no-files-found: error
+        retention-days: 7
+
+  # Boot the kernels that build just produced under QEMU, on a virgin 1 GiB
+  # card: USBODE's own first-boot setup must resize/format the card, reboot,
+  # and come up as an ejected empty drive, and the whole boot log is
+  # validated against this exact build's version (tests/qemu-boot/ - the
+  # same script developers can run locally, see `make qemu-boot-test`).
+  # fail-fast is off so a 32-bit failure still reports the 64-bit result;
+  # on a single self-hosted agent the legs run in matrix order (32, then 64).
+  # Runner requirements: qemu-system-arm, mtools, python3 - see
+  # tests/qemu-boot/README.md. The script fails with install hints if absent.
+  qemu-boot-test:
+    needs: build
+    runs-on: [self-hosted]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: 32bit
+            dist: dist
+          - preset: 64bit
+            dist: dist64
+    name: qemu-boot-test (${{ matrix.preset }})
+
+    steps:
+      # Scripts only - no submodules, no build tree
+      - uses: actions/checkout@v6
+
+      - name: Download boot-test input
+        uses: actions/download-artifact@v7
+        with:
+          name: qemu-boot-input-${{ matrix.preset }}
+          path: qemu-input
+
+      - name: Run QEMU first-boot test (${{ matrix.preset }})
+        run: ./tests/qemu-boot/run-boot-test.sh --preset ${{ matrix.preset }} --dist qemu-input/${{ matrix.dist }} --buildinfo qemu-input/buildinfo.json --out qemu-boot-out
+
+      - name: Upload QEMU boot logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qemu-boot-logs-${{ matrix.preset }}
+          path: |
+            qemu-boot-out/*.log
+            qemu-boot-out/*.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # The runner script already deletes its ~1 GiB card image on exit;
+      # this removes the downloaded input and logs too, so repeated runs
+      # never accumulate scratch on the self-hosted agent.
+      - name: Clean up scratch
+        if: always()
+        run: rm -rf qemu-boot-out qemu-input
+
+  release:
+    # Publishes only after both boot tests pass. Skipped (shown grey, not
+    # red) on branches other than main. needs build for the filename output.
+    if: github.ref == 'refs/heads/main'
+    needs: [build, qemu-boot-test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release file bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: release-files
+          path: release-files
+
+      - name: Create Release
+        id: create-release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: USBODE build-${{ github.run_number }}
+          files: |
+            release-files/${{ needs.build.outputs.filename }}.zip
+            release-files/${{ needs.build.outputs.filename }}-64bit.zip
+            release-files/imgout/${{ needs.build.outputs.filename }}.img.xz
+            release-files/imgout/${{ needs.build.outputs.filename }}-64bit.img.xz
+            release-files/upgrade/sysupgrade32.tar
+            release-files/upgrade/sysupgrade32.crc
+            release-files/upgrade/sysupgrade64.tar
+            release-files/upgrade/sysupgrade64.crc
+            release-files/buildinfo.json
+            release-files/imgout/os-sublist.json
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

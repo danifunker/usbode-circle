@@ -90,7 +90,7 @@ USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0
 
 .PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS) dist-single multi-arch package release\
 	 show-build-info rebuild show-config all-32 all-64 multi-arch-64 package-both\
-	 images-dist image-single os-sublist
+	 images-dist image-single os-sublist qemu-boot-test
 
 # Generate build info once per build process
 generate-buildinfo:
@@ -477,6 +477,14 @@ show-build-info:
 
 # Development helpers
 rebuild: clean-all all
+
+# Boot-test the built dist trees under QEMU - the same script CI runs
+# (32-bit first, then 64-bit, like the pipeline). Needs the packaged trees
+# from `make package` (or a full `make release`) plus qemu-system-arm,
+# mtools and python3 on this machine; see tests/qemu-boot/README.md.
+qemu-boot-test:
+	./tests/qemu-boot/run-boot-test.sh --preset 32bit --dist $(DIST_DIR)   --buildinfo buildinfo.json --out qemu-boot-out
+	./tests/qemu-boot/run-boot-test.sh --preset 64bit --dist $(DIST_DIR)64 --buildinfo buildinfo.json --out qemu-boot-out
 
 # Show what we're building
 show-config:
