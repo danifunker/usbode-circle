@@ -33,10 +33,24 @@ THTTPStatus MountAPIHandler::GetJson(nlohmann::json& j,
 
     LOGNOTE("MountAPI: Mounting image with relative path: %s", file_param.c_str());
 
-    // Use SetNextCDByName which now searches by relativePath in the cache
-    if (svc->SetNextCDByName(file_param.c_str())) {
+    // Report what the load actually did, not merely that the name was found.
+    switch (svc->MountByNameAndWait(file_param.c_str())) {
+    case SCSITBService::MountOutcome::Success:
         j = {{"status", "ok"}};
         return HTTPOK;
+
+    case SCSITBService::MountOutcome::Failed:
+        j = {{"status", "error"}, {"error", std::string(svc->GetLastMountError())}};
+        return HTTPOK;
+
+    case SCSITBService::MountOutcome::Timeout:
+        j = {{"status", "pending"},
+             {"error", "Still loading; check the current image shortly."}};
+        return HTTPOK;
+
+    case SCSITBService::MountOutcome::NotFound:
+    default:
+        break;
     }
 
     return HTTPNotFound;

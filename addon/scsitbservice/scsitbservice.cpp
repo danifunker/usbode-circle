@@ -503,7 +503,10 @@ void SCSITBService::ProcessPendingMount() {
         return;
 
     if ((size_t)next_cd >= m_FileCount) {
+        snprintf(m_LastMountError, sizeof(m_LastMountError),
+                 "That image is no longer in the list; the card may have been rescanned.");
         next_cd = -1;
+        m_MountSeq++;
         return;
     }
 
@@ -519,6 +522,7 @@ void SCSITBService::ProcessPendingMount() {
         snprintf(m_LastMountError, sizeof(m_LastMountError),
                  "Path is too long to mount: %s", relativePath);
         next_cd = -1;
+        m_MountSeq++;
         return;
     }
     // Build the path locally. Writing it straight into m_CurrentImagePath
@@ -548,6 +552,7 @@ void SCSITBService::ProcessPendingMount() {
                      relativePath);
         }
         next_cd = -1;
+        m_MountSeq++;
         return;
     }
 
@@ -570,6 +575,35 @@ void SCSITBService::ProcessPendingMount() {
 
     current_cd = next_cd;
     next_cd = -1;
+    m_MountSeq++;
+}
+
+SCSITBService::MountOutcome SCSITBService::MountByNameAndWait(const char* file_name,
+                                                             unsigned timeoutMs) {
+    const unsigned startSeq = m_MountSeq;
+
+    if (!SetNextCDByName(file_name)) {
+        return MountOutcome::NotFound;
+    }
+
+    // Run() picks the request up on its next pass and retires it, bumping the
+    // sequence exactly once whatever the result. Poll rather than block: this
+    // runs on the web server's or the display's task, and the service task
+    // needs the CPU to do the work being waited for.
+    unsigned waited = 0;
+    const unsigned step = 20;
+    while (m_MountSeq == startSeq && waited < timeoutMs) {
+        CScheduler::Get()->MsSleep(step);
+        waited += step;
+    }
+
+    if (m_MountSeq == startSeq) {
+        // A large CHD on a slow card can genuinely take a while. Saying it
+        // failed would be a guess, and the wrong one more often than not.
+        return MountOutcome::Timeout;
+    }
+
+    return m_LastMountError[0] == '\0' ? MountOutcome::Success : MountOutcome::Failed;
 }
 
 void SCSITBService::Run() {

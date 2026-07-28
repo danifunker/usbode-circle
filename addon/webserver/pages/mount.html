@@ -1,8 +1,25 @@
 <h3>Mounting File</h3>
+
+{{#mounted}}
 <div class="info-box">
 	<p>Successfully mounted: <strong>{{image_name}}</strong></p>
 	<p>Returning to homepage in {{meta_refresh_timeout}} seconds</p>
 </div>
+{{/mounted}}
+
+{{#mount_failed}}
+<div class="message warning" style="color:#b00020;font-weight:bold">
+	<p>Could not mount: <strong>{{image_name}}</strong></p>
+	<p>{{mount_message}}</p>
+</div>
+{{/mount_failed}}
+
+{{#mount_pending}}
+<div class="info-box">
+	<p>Mounting: <strong>{{image_name}}</strong></p>
+	<p>{{mount_message}}</p>
+</div>
+{{/mount_pending}}
 
 <div class="navigation">
 	<a class="button" href="/">Return to File List</a>

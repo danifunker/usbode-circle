@@ -28,6 +28,10 @@ void SSD1306ImagesPage::OnEnter() {
     ConfigService* config = ConfigService::Get();
     bool flatFileList = config ? config->GetFlatFileList() : false;
 
+    // A mount request does not survive leaving and re-entering the page.
+    m_MountPending = false;
+    m_MountFailed = false;
+
     const char* currentPath = m_Service->GetCurrentCDPath();
     m_CurrentPath[0] = '\0';
 
@@ -125,10 +129,23 @@ void SSD1306ImagesPage::OnButtonPress(Button button) {
                     NavigateToFolder(relativePath);
                 } else {
                     const char* relativePath = m_Service->GetRelativePath(cacheIdx);
-                    m_Service->SetNextCDByName(relativePath);
-                    m_MountedIndex = m_SelectedIndex;
-                    m_NextPageName = "homepage";
-                    m_ShouldChangePage = true;
+                    // Queue the mount; do NOT wait for it here. This runs in
+                    // the GPIO interrupt handler, and waiting means sleeping on
+                    // the scheduler, which from IRQ context freezes the Pi hard
+                    // enough to need a power cycle - on every mount, whatever
+                    // the image. ResolvePendingMount() collects the outcome
+                    // from Refresh(), which is task context.
+                    m_MountRequestSeq = m_Service->GetMountSeq();
+                    if (m_Service->SetNextCDByName(relativePath)) {
+                        m_MountRequestIndex = m_SelectedIndex;
+                        m_MountPending = true;
+                        m_MountWaitTicks = 0;
+                        m_MountFailed = false;
+                    } else {
+                        m_MountPending = false;
+                        m_MountFailed = true;
+                    }
+                    dirty = true;
                 }
             }
             break;
@@ -389,7 +406,47 @@ void SSD1306ImagesPage::RefreshScroll() {
     }
 }
 
+// Refresh() ticks every 50ms (displayservice.cpp), so this is roughly ten
+// seconds - comfortably longer than a slow card needs, and longer than the
+// service's own mount timeout.
+static const unsigned MountWaitTickLimit = 200;
+
+// Collect the result of a mount the button handler queued. Runs in task
+// context, because OnButtonPress cannot: it is a GPIO interrupt handler on this
+// display, where sleeping would lock the machine up.
+void SSD1306ImagesPage::ResolvePendingMount() {
+    if (!m_MountPending || !m_Service)
+        return;
+
+    if (m_Service->GetMountSeq() == m_MountRequestSeq) {
+        // Still queued. Give up eventually rather than sitting pending forever
+        // if the request never reaches the service task at all.
+        if (++m_MountWaitTicks > MountWaitTickLimit) {
+            m_MountPending = false;
+            m_MountFailed = true;
+            dirty = true;
+        }
+        return;
+    }
+
+    m_MountPending = false;
+    dirty = true;
+
+    if (m_Service->GetLastMountError()[0] == '\0') {
+        m_MountFailed = false;
+        m_MountedIndex = m_MountRequestIndex;
+        m_NextPageName = "homepage";
+        m_ShouldChangePage = true;
+    } else {
+        // Stay on the image list. Jumping to the homepage showed the PREVIOUS
+        // image as current with nothing said about the failure.
+        m_MountFailed = true;
+    }
+}
+
 void SSD1306ImagesPage::Refresh() {
+    ResolvePendingMount();
+
     if (dirty) {
         Draw();
         return;
@@ -407,7 +464,9 @@ void SSD1306ImagesPage::Draw() {
 
     m_Graphics->ClearScreen(COLOR2D(0, 0, 0));
     m_Graphics->DrawRect(0, 0, m_Display->GetWidth(), 10, COLOR2D(255, 255, 255));
-    m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0), "Images", C2DGraphics::AlignLeft, Font8x8);
+    m_Graphics->DrawText(2, 1, COLOR2D(0, 0, 0),
+                         m_MountFailed ? "Mount FAILED" : "Images",
+                         C2DGraphics::AlignLeft, Font8x8);
 
     if (m_SelectedIndex != m_PreviousSelectedIndex) {
         m_ScrollOffsetPx = 0;
