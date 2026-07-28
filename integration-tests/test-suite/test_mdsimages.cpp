@@ -1015,6 +1015,235 @@ TEST(mds_unstored_pregap_reads_as_zeros)
     delete disc;
 }
 
+// The gap handling above can only work if the reader knows which frame it is
+// on, and it did not always know. Seek() decided it was already in position by
+// comparing Tell() - a PHYSICAL offset into the MDF - against the LOGICAL disc
+// offset it was asked for, and took an early exit without recording the LBA.
+// Read() then keyed its gap check off whatever LBA was left over from before.
+//
+// The two tests below are the same defect reached from opposite directions,
+// and neither is exotic: each one is what an ordinary host produces when it
+// reads a file that happens to end on a frame boundary.
+//
+// The fixture above does not catch this because every read in it jumps to a
+// new address, so the physical and logical offsets never coincide.
+TEST(mds_gap_reached_by_a_sequential_read_still_reads_as_zeros)
+{
+    // On a contiguous 2352-byte image the physical and logical offsets are the
+    // same number for every frame, so reading the last stored frame of a track
+    // leaves the file pointer exactly at the logical offset of the first frame
+    // of the hole - and the early exit fires on the very next read.
+    const u32 kTrack1Len = 16;  // LBA 0..15; the file's next frame is the ISO PVD
+    const u32 kGap = 150;
+    const u32 kTrack2LBA = kTrack1Len + kGap;
+    const u32 kTrack2Len = 16;
+
+    std::vector<u8> raw = RawMode1Sectors(kIso, 0, kTrack1Len + kTrack2Len);
+    CHECK_EQ(raw.size(), (size_t)(kTrack1Len + kTrack2Len) * 2352);
+    if (raw.size() != (size_t)(kTrack1Len + kTrack2Len) * 2352) {
+        return;
+    }
+
+    const std::string mds = TestDataDir() + "/mdsgapseq.mds";
+    const std::string mdf = TestDataDir() + "/mdsgapseq.mdf";
+    WriteBytes(mdf, raw);
+
+    MdsTrackSpec t1;
+    t1.mode = 0xAA;
+    t1.point = 1;
+    t1.sectorSize = 2352;
+    t1.startSector = 0;
+    t1.startOffset = 0;
+    t1.length = kTrack1Len;
+
+    MdsTrackSpec t2;
+    t2.mode = 0xAA;
+    t2.point = 2;
+    t2.sectorSize = 2352;
+    t2.startSector = kTrack2LBA;                 // 150 frames later on the disc
+    t2.startOffset = (u64)kTrack1Len * 2352;     // but straight after in the file
+    t2.pregap = kGap;
+    t2.length = kTrack2Len;
+
+    WriteMdsFile(mds, {t1, t2}, "mdsgapseq.mdf");
+
+    CMDSFileDevice *disc = OpenMds(mds);
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    auto read = [&bench](u32 lba, u32 blocks) {
+        const u8 cdb[10] = {0x28, 0, (u8)(lba >> 24), (u8)(lba >> 16), (u8)(lba >> 8), (u8)lba,
+                            0, (u8)(blocks >> 8), (u8)blocks, 0};
+        return bench.SendCommand(cdb, sizeof(cdb), blocks * 2048);
+    };
+
+    // Walk up to the last stored frame of track 1. This read is the setup: it
+    // is what parks the file pointer on the boundary.
+    auto last = read(kTrack1Len - 1, 1);
+    CHECK_EQ(last.csw.bmCSWStatus, 0);
+
+    // The next frame is the hole, and it has to read as zeros. Serving the
+    // file pointer instead is unmistakable here: the bytes sitting there are
+    // track 2's primary volume descriptor.
+    auto gap = read(kTrack1Len, 1);
+    CHECK_EQ(gap.csw.bmCSWStatus, 0);
+    CHECK_EQ(gap.data.size(), (size_t)2048);
+    if (gap.data.size() == 2048) {
+        CHECK(memcmp(gap.data.data() + 1, "CD001", 5) != 0);
+        for (size_t i = 0; i < 2048; i++) {
+            if (gap.data[i] != 0) {
+                char msg[128];
+                snprintf(msg, sizeof(msg),
+                         "gap frame LBA %u: byte %zu is 0x%02x, expected the hole to read as zeros",
+                         kTrack1Len, i, gap.data[i]);
+                ReportFailure(__FILE__, __LINE__, msg);
+                break;
+            }
+        }
+    }
+
+    // Track 2 itself still resolves, so the fix cannot have been to stop
+    // trusting start_offset.
+    auto t2read = read(kTrack2LBA, 1);
+    CHECK_EQ(t2read.csw.bmCSWStatus, 0);
+    if (t2read.data.size() == 2048) {
+        CHECK(memcmp(t2read.data.data() + 1, "CD001", 5) == 0);
+    }
+
+    // The same defect without a Seek() to trigger it. Reading on from where
+    // the last read finished is a caller the gadget does not currently
+    // produce - it seeks before every batch - but it is what the reader now
+    // says it supports, and the plain path is the only one of the three that
+    // used to leave the position behind. Two frames of track 1, then straight
+    // on into the hole.
+    CHECK_EQ(disc->Seek((u64)(kTrack1Len - 2) * 2352), (u64)(kTrack1Len - 2) * 2352);
+    std::vector<u8> twoFrames(2 * 2352);
+    CHECK_EQ(disc->Read(twoFrames.data(), twoFrames.size()), (int)twoFrames.size());
+
+    std::vector<u8> nextFrame(2352, 0xAA);
+    CHECK_EQ(disc->Read(nextFrame.data(), nextFrame.size()), (int)nextFrame.size());
+    for (size_t i = 0; i < nextFrame.size(); i++) {
+        if (nextFrame[i] != 0) {
+            char msg[128];
+            snprintf(msg, sizeof(msg),
+                     "read on into the hole: byte %zu is 0x%02x, expected zeros",
+                     i, nextFrame[i]);
+            ReportFailure(__FILE__, __LINE__, msg);
+            break;
+        }
+    }
+
+    delete disc;
+}
+
+// The two operations that reach a hole by a route other than a whole-frame
+// READ(10), driven against the reader directly because no host command
+// produces them on this geometry.
+//
+// Both used to be the odd one out. A read shorter than a frame skipped the gap
+// check on its size alone and returned whatever the file pointer was resting
+// on, and ReadSubchannel() failed outright on a frame that Seek() and Read()
+// were both willing to answer with zeros - so a subchannel request spanning a
+// track boundary was the one operation a sparse image still could not serve.
+TEST(mds_gap_answers_short_reads_and_subchannel_requests_too)
+{
+    const u32 kTrack1Len = 16;
+    const u32 kGap = 150;
+    const u32 kTrack2LBA = kTrack1Len + kGap;
+    const u32 kTrack2Len = 16;
+    const u32 kTotal = kTrack2LBA + kTrack2Len;
+
+    std::vector<u8> raw = RawMode1Sectors(kIso, 0, kTrack1Len + kTrack2Len);
+    if (raw.empty()) {
+        CHECK(false);
+        return;
+    }
+    // Subchannel bytes on both stored tracks, so the hole is the only place a
+    // request can come back empty.
+    std::vector<u8> image((size_t)(kTrack1Len + kTrack2Len) * 2448);
+    for (u32 i = 0; i < kTrack1Len + kTrack2Len; i++) {
+        memcpy(image.data() + (size_t)i * 2448, raw.data() + (size_t)i * 2352, 2352);
+        for (u32 j = 0; j < 96; j++) {
+            image[(size_t)i * 2448 + 2352 + j] = SubchannelByte(i, j);
+        }
+    }
+
+    const std::string mds = TestDataDir() + "/mdsgapsub.mds";
+    const std::string mdf = TestDataDir() + "/mdsgapsub.mdf";
+    WriteBytes(mdf, image);
+
+    MdsTrackSpec t1;
+    t1.mode = 0xAA;
+    t1.subchannel = 0x08;
+    t1.point = 1;
+    t1.sectorSize = 2448;
+    t1.startSector = 0;
+    t1.startOffset = 0;
+    t1.length = kTrack1Len;
+
+    MdsTrackSpec t2;
+    t2.mode = 0xAA;
+    t2.subchannel = 0x08;
+    t2.point = 2;
+    t2.sectorSize = 2448;
+    t2.startSector = kTrack2LBA;
+    t2.startOffset = (u64)kTrack1Len * 2448;
+    t2.pregap = kGap;
+    t2.length = kTrack2Len;
+
+    WriteMdsFile(mds, {t1, t2}, "mdsgapsub.mdf");
+
+    CMDSFileDevice *disc = OpenMds(mds);
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    // A stored frame's subchannel still comes back as itself.
+    u8 sub[96];
+    memset(sub, 0xAA, sizeof(sub));
+    CHECK_EQ(disc->ReadSubchannel(kTrack1Len - 1, sub), 96);
+    u8 expected[96];
+    for (u32 i = 0; i < 96; i++) {
+        expected[i] = SubchannelByte(kTrack1Len - 1, i);
+    }
+    CHECK_BYTES(sub, sizeof(sub), expected, sizeof(expected));
+
+    // A frame in the hole answers with zeros rather than failing.
+    memset(sub, 0xAA, sizeof(sub));
+    CHECK_EQ(disc->ReadSubchannel(kTrack1Len, sub), 96);
+    u8 zeros[96];
+    memset(zeros, 0, sizeof(zeros));
+    CHECK_BYTES(sub, sizeof(sub), zeros, sizeof(zeros));
+
+    // Past the disc is still an error, not another hole.
+    CHECK_EQ(disc->ReadSubchannel(kTotal + 4, sub), -1);
+
+    // A read of less than one frame, landing in the hole.
+    u8 partial[2048];
+    memset(partial, 0xAA, sizeof(partial));
+    CHECK_EQ(disc->Seek((u64)kTrack1Len * 2352), (u64)kTrack1Len * 2352);
+    CHECK_EQ(disc->Read(partial, sizeof(partial)), (int)sizeof(partial));
+    for (size_t i = 0; i < sizeof(partial); i++) {
+        if (partial[i] != 0) {
+            char msg[128];
+            snprintf(msg, sizeof(msg),
+                     "short read in the hole: byte %zu is 0x%02x, expected zeros",
+                     i, partial[i]);
+            ReportFailure(__FILE__, __LINE__, msg);
+            break;
+        }
+    }
+
+    delete disc;
+}
+
 // ---------------------------------------------------------------------------
 // Subchannel images (2448-byte sectors)
 // ---------------------------------------------------------------------------
@@ -1136,6 +1365,96 @@ TEST(mds_subchannel_image_strips_and_exposes_subchannel_data)
         }
         CHECK_BYTES(batch.data.data(), batch.data.size(), expected.data(), expected.size());
     }
+}
+
+// The other direction onto the same defect, and the reason it survived the
+// gap fix: on a 2448-byte image the physical and logical offsets advance at
+// different rates, so they are equal only at frames where lba * 2448 is
+// divisible by 2352 - every 49th frame, since 2448/48 = 51 and 2352/48 = 49.
+// Read up to frame 48 and the file pointer sits at 49 * 2448 = 119952, which
+// is also 51 * 2352. A host that then reads LBA 51 hits the early exit, the
+// LBA stays at 49, and the reader serves frame 49 while reporting success.
+//
+// Nothing about that read order is unusual - it is one ordinary seek after one
+// ordinary sequential run - and there is such a coincidence point every 49
+// frames across the whole disc.
+TEST(mds_subchannel_seek_after_a_read_does_not_serve_a_stale_frame)
+{
+    const u32 nSectors = 64;
+    const u32 kSetupLBA = 48;   // leaves the file pointer at 49 * 2448
+    const u32 kTargetLBA = 51;  // whose logical offset is the same 119952
+    static_assert(kSetupLBA + 1 == 49 && 49 * 2448 == 51 * 2352,
+                  "the coincidence this test relies on");
+
+    const std::string mds = TestDataDir() + "/mdsstale.mds";
+    const std::string mdf = TestDataDir() + "/mdsstale.mdf";
+
+    std::vector<u8> raw = RawMode1Sectors(kIso, 0, nSectors);
+    if (raw.empty()) {
+        CHECK(false);
+        return;
+    }
+    std::vector<u8> image((size_t)nSectors * 2448);
+    for (u32 lba = 0; lba < nSectors; lba++) {
+        memcpy(image.data() + (size_t)lba * 2448, raw.data() + (size_t)lba * 2352, 2352);
+        for (u32 i = 0; i < 96; i++) {
+            image[(size_t)lba * 2448 + 2352 + i] = SubchannelByte(lba, i);
+        }
+    }
+    // Past the ISO's system area every frame here would otherwise be zeros,
+    // which cannot tell a stale frame from the right one. Stamp each frame's
+    // user data with its own LBA so a misread names the frame it came from.
+    for (u32 lba = 0; lba < nSectors; lba++) {
+        u8 *user = image.data() + (size_t)lba * 2448 + 16;
+        for (u32 i = 0; i < 2048; i++) {
+            user[i] = (u8)(lba * 7u + i * 3u + 11u);
+        }
+        memcpy(raw.data() + (size_t)lba * 2352 + 16, user, 2048);
+    }
+    WriteBytes(mdf, image);
+
+    MdsTrackSpec track;
+    track.mode = 0xAA;
+    track.subchannel = 0x08;
+    track.point = 1;
+    track.sectorSize = 2448;
+    track.length = nSectors;
+    WriteMdsFile(mds, {track}, "mdsstale.mdf");
+
+    CMDSFileDevice *disc = OpenMds(mds);
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    auto read = [&bench](u32 lba) {
+        const u8 cdb[10] = {0x28, 0, (u8)(lba >> 24), (u8)(lba >> 16), (u8)(lba >> 8), (u8)lba,
+                            0, 0, 1, 0};
+        return bench.SendCommand(cdb, sizeof(cdb), 2048);
+    };
+    auto expectFrame = [&raw](const std::vector<u8> &d, u32 lba) {
+        if (d.size() != 2048) {
+            return;
+        }
+        u8 expected[2048];
+        memcpy(expected, raw.data() + (size_t)lba * 2352 + 16, 2048);
+        CHECK_BYTES(d.data(), d.size(), expected, sizeof(expected));
+    };
+
+    auto setup = read(kSetupLBA);
+    CHECK_EQ(setup.csw.bmCSWStatus, 0);
+    expectFrame(setup.data, kSetupLBA);
+
+    auto target = read(kTargetLBA);
+    CHECK_EQ(target.csw.bmCSWStatus, 0);
+    CHECK_EQ(target.data.size(), (size_t)2048);
+    expectFrame(target.data, kTargetLBA);
+
+    delete disc;
 }
 
 // READ CD (0xBE) asking for the subchannel data alongside the user data.
