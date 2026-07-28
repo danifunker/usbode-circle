@@ -214,8 +214,8 @@ If there are issues with CD playback, please try this first. The previous recomm
 USBODE version 2.6.0 introduces HDMI audio support. Testing & development revealed some quirks about getting this configuration setup. In order to support HDMI audio out, the following components are required:
 
 - HDMI Cable: Pi Zero W / Zero 2 W uses Mini HDMI, Pi 3A+ Uses Standard HDMI and Pi4B uses MicroHDMI. For reference, the Pi5 also uses MicroHDMI. It is also possible to use adapter to switch the connector types, but be aware there isn't much space on much of these Pis!
-- HDMI Audio Splitter. One of the developers had purchased this specific one from [Amazon](https://www.amazon.com/dp/B017B6WFP8) however it should work with most / all HDMI audio splitters
-- HDMI Dummy Dummy Plug: One of the developers purchased this specific Pack of 3 HDMI 4K Dummy plugs from [Amazon](https://www.amazon.com/dp/B0CKKLTWMN?ref=ppx_yo2ov_dt_b_fed_asin_title&th=1)
+- HDMI Audio Splitter. One of the developers had purchased this specific [HDMI Audio Extractor, HDMI Audio Splitter](https://www.amazon.com/dp/B017B6WFP8) however it should work with most / all HDMI audio splitters
+- HDMI Dummy Dummy Plug: One of the developers purchased this specific [Pack of 3 HDMI 4K Dummy plugs](https://www.amazon.com/dp/B0CKKLTWMN)
 - Sound Cable to connect 3.5" sound cable into sound card (same audio aux cable would work from the PirateAudioLineOut solution)
 *Keep in mind that the HDMI audio splitter will probably require it's own power as well.
 
@@ -289,9 +289,9 @@ The detection mechanism for many classic MacOS games assumes a single CDROM driv
 - Network Initialization can be a little bit slow, please give the device 10-15 seconds to initialize, this should be resolved in the future with a dependency chain update* This may be resolved but we are awaiting user feedback
 
 ## CD Audio Cable Creation to Soundcard
-One of the developers purchased this: https://www.amazon.com/dp/B0BZWHVK4B?ref_=ppx_hzsearch_conn_dt_b_fed_asin_title_2&th=1
+One of the developers purchased [3.5mm Female Plug to 3Pin Bare Wire Open End Cable](https://www.amazon.com/dp/B0BZWHVK4B).
 
-And used an existing 4-pin CD Audio Cable which can be found here - https://www.amazon.com/Kentek-Computer-Internal-Blaster-DVD-ROM/dp/B07KVF1DY1?crid=38R2KIO014ZFP&dib=eyJ2IjoiMSJ9.Kmw09Awtx2aEGxSh5BVucgSxoH4krHwKBnIjc4-q4MsUdg9MKl6t1YeYPVx9KoTt6xwE3d55CqdHmA8290dJJetnqCtOOUjbcZC6Hn1uywspv0K92m91mCcoGYsyoUAHWiqYhi6UV3Bq1xQWXo3lKgh05uGV4GeBRjMVXPaJcn8KWgdHw09iXLIdOM9MiDtgi-hMveUfRkoMU2mB05ftw20R25fNndK4Pp55wPuABBc.eo0wq0ptcPoQHYEtjhrO0IIuWfxy-gJWUeX-I7lkJ9M&dib_tag=se&keywords=mpc+audio+cable+4+pin&qid=1755264551&sprefix=mpc+audio+cable+4+pi%2Caps%2C210&sr=8-3
+And used an existing 4-pin CD Audio Cable similar to [Computer Internal 3/4 Pin Sound Blaster to CD-ROM DVD-ROM Audio Cable](https://www.amazon.com/Kentek-Computer-Internal-Blaster-DVD-ROM/dp/B07KVF1DY1).
 
 Be sure the audio connector fits your sound card correctly
 
