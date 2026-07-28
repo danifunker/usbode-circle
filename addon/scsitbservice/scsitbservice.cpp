@@ -228,7 +228,17 @@ bool SCSITBService::IsEjected() const {
 }
 
 const char* SCSITBService::GetCurrentCDName() {
-	return GetName(GetCurrentCD());
+	// Never nullptr. current_cd is an int that can legitimately be -1 (nothing
+	// mounted), GetCurrentCD() hands that back as a size_t - so SIZE_MAX - and
+	// GetName() answers an out-of-range index with nullptr. Callers feed the
+	// result straight into std::string and into JSON, both of which are
+	// undefined on a null pointer, and this runs on every web page load.
+	//
+	// That was survivable only while current_cd was set once at boot and never
+	// cleared. It is now re-derived after each rescan, so "nothing is mounted"
+	// became a state the UI can actually reach.
+	const char* name = GetName(GetCurrentCD());
+	return name != nullptr ? name : "";
 }
 
 bool SCSITBService::SetNextCDByName(const char* file_name) {
@@ -393,6 +403,29 @@ bool SCSITBService::RefreshCache() {
     
     LOGNOTE("SCSITBService::RefreshCache() Found %d total entries", (int)m_FileCount);
 
+    // current_cd is an index into the list that was just rebuilt, so on its own
+    // it means nothing afterwards: entries move, and an index that used to name
+    // the mounted disc can end up naming some other file entirely. Re-derive it
+    // from the path that actually got mounted, and admit to nothing being
+    // current when that file is no longer there.
+    {
+        int resolved = -1;
+        if (m_MountedRelativePath[0] != '\0') {
+            for (size_t i = 0; i < m_FileCount; ++i) {
+                if (!m_FileEntries[i].isDirectory &&
+                    strcmp(m_FileEntries[i].relativePath, m_MountedRelativePath) == 0) {
+                    resolved = (int)i;
+                    break;
+                }
+            }
+        }
+        if (resolved != current_cd) {
+            LOGNOTE("SCSITBService::RefreshCache() current index %d -> %d after rescan",
+                    current_cd, resolved);
+        }
+        current_cd = resolved;
+    }
+
     // Find the current image in cache by matching relative path
     const char* searchPath = current_image;
     bool found = false;
@@ -439,12 +472,21 @@ bool SCSITBService::RefreshCache() {
     // then persist "inserted" over the saved state.
     if (!found && m_FileCount > 0 && !IsEjected()) {
         for (size_t i = 0; i < m_FileCount; ++i) {
-            if (!m_FileEntries[i].isDirectory) {
-                LOGNOTE("SCSITBService::RefreshCache() Current image not found, using: %s", 
-                        m_FileEntries[i].relativePath);
-                next_cd = i;
-                break;
+            if (m_FileEntries[i].isDirectory) {
+                continue;
             }
+            // Skip the one we already know will not load. A rescan happens on
+            // every upload, delete and FTP change, so without this the same
+            // image is picked and fails again each time, and the error banner
+            // reappears for a disc the user never asked for.
+            if (m_LastFailedRelativePath[0] != '\0' &&
+                strcmp(m_FileEntries[i].relativePath, m_LastFailedRelativePath) == 0) {
+                continue;
+            }
+            LOGNOTE("SCSITBService::RefreshCache() Current image not found, using: %s",
+                    m_FileEntries[i].relativePath);
+            next_cd = i;
+            break;
         }
     }
 
@@ -479,12 +521,19 @@ void SCSITBService::ProcessPendingMount() {
         next_cd = -1;
         return;
     }
-    snprintf(m_CurrentImagePath, sizeof(m_CurrentImagePath), "1:/%s", relativePath);
+    // Build the path locally. Writing it straight into m_CurrentImagePath
+    // before the load meant a failed mount renamed the "current" image to the
+    // one that had just refused to load, so the UI reported a disc the host
+    // had never been given.
+    char candidatePath[MAX_PATH_LEN];
+    snprintf(candidatePath, sizeof(candidatePath), "1:/%s", relativePath);
 
-    IImageDevice* imageDevice = loadImageDevice(m_CurrentImagePath);
+    IImageDevice* imageDevice = loadImageDevice(candidatePath);
 
     if (imageDevice == nullptr) {
-        LOGERR("Failed to load image: %s", m_CurrentImagePath);
+        LOGERR("Failed to load image: %s", candidatePath);
+        strncpy(m_LastFailedRelativePath, relativePath, sizeof(m_LastFailedRelativePath) - 1);
+        m_LastFailedRelativePath[sizeof(m_LastFailedRelativePath) - 1] = '\0';
         // Prefer the loader's own reason. "Unsupported or damaged" is true of
         // every failure and useful for none of them, so it is only the
         // fallback for a path that has not been given words yet.
@@ -503,11 +552,18 @@ void SCSITBService::ProcessPendingMount() {
     }
 
     LOGNOTE("Loaded image: %s (format: %d, has subchannels: %s)",
-            m_CurrentImagePath,
+            candidatePath,
             (int)imageDevice->GetFileType(),
             imageDevice->HasSubchannelData() ? "yes" : "no");
 
     cdromservice->SetDevice(imageDevice);
+
+    // Committed only now that the disc is really the one the host has.
+    strncpy(m_CurrentImagePath, candidatePath, sizeof(m_CurrentImagePath) - 1);
+    m_CurrentImagePath[sizeof(m_CurrentImagePath) - 1] = '\0';
+    strncpy(m_MountedRelativePath, relativePath, sizeof(m_MountedRelativePath) - 1);
+    m_MountedRelativePath[sizeof(m_MountedRelativePath) - 1] = '\0';
+    m_LastFailedRelativePath[0] = '\0';
 
     // Save relative path to config (without "1:/" prefix)
     configservice->SetCurrentImage(relativePath);
