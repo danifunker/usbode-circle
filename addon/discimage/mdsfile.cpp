@@ -295,6 +295,26 @@ bool CMDSFileDevice::Init() {
                 m_nTotalFrames);
     }
 
+    // Does the MDF omit any frames? Alcohol drops the pregap by default, so most
+    // multi-track images have a 150-frame hole and reads must walk frame by frame.
+    // Summing short means a hole; overlapping tracks sum high and also walk it.
+    u32 covered = 0;
+    for (int i = 0; i < m_parser->getNumSessions(); i++) {
+        MDS_SessionBlock* session = m_parser->getSession(i);
+        for (int j = 0; j < session->num_all_blocks; j++) {
+            MDS_TrackBlock* track = m_parser->getTrack(i, j);
+            if (track->point == 0 || track->point >= 0xA0) {
+                continue;
+            }
+            MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
+            covered += extra ? extra->length : 0;
+        }
+    }
+    m_bHasUnstoredGaps = (covered != m_nTotalFrames);
+    if (m_bHasUnstoredGaps) {
+        LOGNOTE("=== MDF is sparse: %u of %u frames stored ===", covered, m_nTotalFrames);
+    }
+
     LOGNOTE("=== Image has subchannel data: %s ===",
             m_hasSubchannels ? "YES (SafeDisc compatible)" : "NO");
     LOGNOTE("=== Disc length: %u frames ===", m_nTotalFrames);
@@ -325,7 +345,7 @@ CMDSFileDevice::~CMDSFileDevice(void) {
 }
 
 bool CMDSFileDevice::TouchesUnstoredGap(u32 firstLBA, size_t nSectors) const {
-    if (!m_parser) {
+    if (!m_parser || !m_bHasUnstoredGaps) {
         return false;
     }
     for (size_t i = 0; i < nSectors; i++) {
@@ -343,17 +363,20 @@ bool CMDSFileDevice::TouchesUnstoredGap(u32 firstLBA, size_t nSectors) const {
 
 int CMDSFileDevice::ReadAcrossGaps(void *pBuffer, size_t nSize) {
     u8* dest = (u8*)pBuffer;
-    const size_t sectors = nSize / 2352;
     size_t total_read = 0;
 
-    for (size_t i = 0; i < sectors; i++) {
+    while (total_read < nSize) {
+        // A short read would look like an I/O error rather than a hole.
+        const size_t remaining = nSize - total_read;
+        const size_t chunk = remaining < 2352 ? remaining : 2352;
+
         int session, trackIdx;
         MDS_TrackBlock* track = FindTrackForLBA(m_nCurrentLBA, &session, &trackIdx);
 
         if (!track) {
             // Unstored pregap. Zeros are what the pregap of a data track holds
             // anyway, and they keep the transfer whole instead of failing it.
-            memset(dest, 0, 2352);
+            memset(dest, 0, chunk);
         } else {
             // Seek per frame rather than trusting the file pointer: a gap
             // consumed no file position, so it is stale after one.
@@ -365,17 +388,20 @@ int CMDSFileDevice::ReadAcrossGaps(void *pBuffer, size_t nSize) {
                 return total_read > 0 ? (int)total_read : -1;
             }
             UINT bytes_read = 0;
-            FRESULT result = f_read(m_pFile, dest, 2352, &bytes_read);
-            if (result != FR_OK || bytes_read != 2352) {
+            FRESULT result = f_read(m_pFile, dest, chunk, &bytes_read);
+            if (result != FR_OK || bytes_read != chunk) {
                 LOGERR("Gap-aware read: LBA %u returned %u bytes (err %d)",
                        m_nCurrentLBA, bytes_read, result);
                 return total_read > 0 ? (int)total_read : -1;
             }
         }
 
-        dest += 2352;
-        total_read += 2352;
-        m_nCurrentLBA++;
+        dest += chunk;
+        total_read += chunk;
+        // A partial tail leaves the position inside the frame it stopped in.
+        if (chunk == 2352) {
+            m_nCurrentLBA++;
+        }
     }
 
     return (int)total_read;
@@ -390,8 +416,10 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
     // A transfer that crosses a pregap the MDF does not store cannot be one
     // f_read, because part of it has no bytes behind it. That is rare enough
     // to be worth detecting rather than paying for frame-by-frame reads on
-    // every transfer, so the paths below are left as they were.
-    if (nSize >= 2352 && TouchesUnstoredGap(m_nCurrentLBA, nSize / 2352)) {
+    // every transfer, so the paths below are unchanged. Sub-frame transfers are
+    // still checked; gating on nSize let them return stale bytes.
+    const size_t framesTouched = (nSize + 2351) / 2352;
+    if (framesTouched > 0 && TouchesUnstoredGap(m_nCurrentLBA, framesTouched)) {
         return ReadAcrossGaps(pBuffer, nSize);
     }
 
@@ -452,6 +480,11 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
         LOGERR("Failed to read %d bytes into memory, err %d", nSize, result);
         return -1;
     }
+
+    // Advance by what was consumed, as the two paths above do, or a caller
+    // reading on judges every later frame against the first one's address.
+    m_nCurrentLBA += nBytesRead / 2352;
+
     return nBytesRead;
 }
 
@@ -475,18 +508,17 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
         return static_cast<u64>(-1);
     }
 
-    // Don't seek if we're already there
-    if (Tell() == nOffset)
-        return nOffset;
-
     // Calculate which LBA is being requested
     u32 lba = nOffset / 2352;  // Assuming 2352 bytes per sector
     u32 offset_in_sector = nOffset % 2352;
-    
+
+    // Before any early exit can skip it: Read() keys its gap detection off this.
+    m_nCurrentLBA = lba;
+
     // Find which track contains this LBA
     int session, trackIdx;
     MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
-    
+
     if (!track) {
         // An LBA inside the disc but outside every track is a pregap the
         // imaging tool chose not to store - Alcohol omits them by default, so
@@ -495,7 +527,6 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
         // track lands here legitimately, and a real drive answers rather than
         // failing. There is no file position to take up; Read() serves zeros.
         if (lba < m_nTotalFrames) {
-            m_nCurrentLBA = lba;
             return nOffset;
         }
         LOGERR("Seek: LBA %u not found in any track", lba);
@@ -504,22 +535,25 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
 
     // Calculate offset into MDF file
     u32 sectors_from_track_start = lba - track->start_sector;
-    u64 actual_file_offset = track->start_offset + 
-                             (sectors_from_track_start * track->sector_size) + 
+    u64 actual_file_offset = track->start_offset +
+                             ((u64)sectors_from_track_start * track->sector_size) +
                              offset_in_sector;
-    
-    // LOGDBG("Seek: LBA %u (offset %llu) -> track %d, file offset %llu", 
+
+    // LOGDBG("Seek: LBA %u (offset %llu) -> track %d, file offset %llu",
     //        lba, nOffset, track->point, actual_file_offset);
-    
+
+    // Don't seek if we're already there. Compare against the FILE offset just
+    // computed, not the disc address nOffset, which coincides often enough to
+    // skip a seek that was needed.
+    if (Tell() == actual_file_offset) {
+        return nOffset;
+    }
+
     FRESULT result = f_lseek(m_pFile, actual_file_offset);
     if (result != FR_OK) {
         LOGERR("Seek to file offset %llu failed, err %d", actual_file_offset, result);
         return static_cast<u64>(-1);
     }
-
-    // Remember which frame this was: Read() cannot recover it from the file
-    // position once subchannel data makes the physical stride 2448 bytes.
-    m_nCurrentLBA = lba;
 
     // Return the logical offset that was requested (not the physical file offset)
     return nOffset;
@@ -651,20 +685,25 @@ int CMDSFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
     
     int session, trackIdx;
     MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
-    
+
     if (!track) {
+        // An unstored pregap, which Seek() and Read() answer with zeros.
+        if (lba < m_nTotalFrames) {
+            memset(subchannel, 0, 96);
+            return 96;
+        }
         LOGERR("LBA %u not found in any track", lba);
         return -1;
     }
-    
+
     // Check if this track has subchannel data
     if (track->subchannel == 0) {
         return -1;
     }
-    
+
     // Calculate offset into the MDF file
     u32 sectors_from_track_start = lba - track->start_sector;
-    u64 sector_offset = track->start_offset + (sectors_from_track_start * track->sector_size);
+    u64 sector_offset = track->start_offset + ((u64)sectors_from_track_start * track->sector_size);
     
     // Subchannel data is stored in the last 96 bytes of each raw sector
     // Raw sector format: 2352 bytes user data + 96 bytes subchannel
