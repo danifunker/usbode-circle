@@ -56,7 +56,21 @@ void CDROMService::SetDevice(IImageDevice *pDevice)
         LOGNOTE("Device has subchannel data");
     }
 
-    // We defer initialization of the CD Gadget until the first CD image is loaded
+    // We defer initialization of the CD Gadget until the first CD image is loaded.
+    //
+    // LOAD-BEARING, not just an optimization. This is the only path that brings
+    // the USB gadget up, so with no image there are no endpoints at all - and
+    // the QEMU boot test depends on exactly that, because QEMU cannot emulate
+    // dwc2 device mode. It keeps the images partition empty so this moment
+    // never arrives, and validate_boot_log.py lists the symptoms of the
+    // hardware path running - "does not support USB gadget mode", "dwgadget:
+    // Unknown vendor", "Failed to initialize CD Gadget" - as FORBIDDEN_ANYWHERE.
+    // See tests/qemu-boot/README.md.
+    //
+    // So: do not move initialization earlier, and do not make it unconditional.
+    // Note that ejected=1 does NOT avoid it either - the boot path still
+    // pre-loads the remembered image, and ArmBootEject() only hides the medium
+    // from the host after the gadget is already up.
     if (!isInitialized)
     {
         bool ok = m_CDGadget->Initialize();

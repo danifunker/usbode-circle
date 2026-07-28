@@ -99,6 +99,16 @@ public:
     /// be mounted looks to the user exactly like one that can.
     const char* GetLastMountError() const { return m_LastMountError; }
 
+    /// The image config remembered, when it is no longer on the card, or "".
+    ///
+    /// A saved image that has been renamed, deleted or left on another card
+    /// used to be replaced by whichever file sorted first, with nothing said:
+    /// the drive came up holding a game the user had not asked for. Now the
+    /// drive comes up EMPTY and this says which image went missing. The
+    /// substitute is still adopted behind the scenes so the gadget knows a
+    /// geometry and Insert is instant - see ProcessPendingMount().
+    const char* GetMissingSavedImage() const { return m_MissingSavedImage; }
+
     // Task entry point
     void Run(void);
 
@@ -139,6 +149,16 @@ private:
     // Bumped once per mount request the service task retires, so a caller can
     // tell "still queued" from "dealt with" without polling internal state.
     volatile unsigned m_MountSeq = 0;
+
+    // The image config remembered when it turned out not to be on the card.
+    // Kept until the user mounts something deliberately, so the explanation
+    // survives a reboot rather than scrolling past once.
+    char m_MissingSavedImage[MAX_PATH_LEN] = {0};
+
+    // Set by RefreshCache when the image it is about to mount is only a
+    // stand-in for a missing one, and consumed by ProcessPendingMount, which
+    // arms the boot-eject so the drive presents empty.
+    bool m_bAdoptAsEmpty = false;
 
     // Relative path of the last image that failed to load, so the
     // pick-something fallback in RefreshCache does not keep choosing it and
