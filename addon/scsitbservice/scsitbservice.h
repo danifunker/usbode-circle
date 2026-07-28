@@ -84,8 +84,15 @@ private:
     bool m_bBootEjectPending = false;
     bool m_bPersistedEjected = false;
 
-    // Set by ProcessPendingMount() on every failure path, cleared on success.
-    char m_LastMountError[160] = {0};
+    // 320 because at 160 the split-track message was cut off mid-word.
+    char m_LastMountError[320] = {0};
+
+    // What is ACTUALLY mounted, written only after a load succeeds. current_cd is
+    // an index into a rebuilt list, so it is re-derived from this.
+    char m_MountedRelativePath[MAX_PATH_LEN] = {0};
+
+    // So the fallback in RefreshCache does not keep picking the same bad image.
+    char m_LastFailedRelativePath[MAX_PATH_LEN] = {0};
 
     // Full path of currently mounted image (e.g., "1:/Games/game.iso")
     char m_CurrentImagePath[MAX_PATH_LEN];

@@ -61,8 +61,9 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
         if (!svc)
             return HTTPInternalServerError;
 
-        // Get current loaded image
-        std::string current_image = svc->GetCurrentCDName();
+        // std::string from a null char* is undefined, and this runs for every page.
+        const char* current_image_name = svc->GetCurrentCDName();
+        std::string current_image = current_image_name != nullptr ? current_image_name : "";
 
         // Say so on every page: the request is answered "ok" before the image has
         // loaded. Set only when non-empty, so the template section stays falsy.

@@ -23,8 +23,10 @@ THTTPStatus ImageNameAPIHandler::GetJson(nlohmann::json& j,
             return HTTPInternalServerError;
     }
 
+    // Defensive: nlohmann's string construction is undefined on a null char*.
+    const char* name = svc->GetCurrentCDName();
     j = {
-	    {"name", svc->GetCurrentCDName()}
+	    {"name", name != nullptr ? name : ""}
     };
 
     // Mounting finishes long after the request was answered "ok", so a failure

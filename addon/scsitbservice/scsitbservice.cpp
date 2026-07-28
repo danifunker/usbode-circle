@@ -228,7 +228,9 @@ bool SCSITBService::IsEjected() const {
 }
 
 const char* SCSITBService::GetCurrentCDName() {
-	return GetName(GetCurrentCD());
+	// Never nullptr: callers feed this straight into std::string.
+	const char* name = GetName(GetCurrentCD());
+	return name != nullptr ? name : "";
 }
 
 bool SCSITBService::SetNextCDByName(const char* file_name) {
@@ -377,6 +379,25 @@ bool SCSITBService::RefreshCache() {
     
     LOGNOTE("SCSITBService::RefreshCache() Found %d total entries", (int)m_FileCount);
 
+    // The list was just rebuilt, so re-derive current_cd from the mounted path.
+    {
+        int resolved = -1;
+        if (m_MountedRelativePath[0] != '\0') {
+            for (size_t i = 0; i < m_FileCount; ++i) {
+                if (!m_FileEntries[i].isDirectory &&
+                    strcmp(m_FileEntries[i].relativePath, m_MountedRelativePath) == 0) {
+                    resolved = (int)i;
+                    break;
+                }
+            }
+        }
+        if (resolved != current_cd) {
+            LOGNOTE("SCSITBService::RefreshCache() current index %d -> %d after rescan",
+                    current_cd, resolved);
+        }
+        current_cd = resolved;
+    }
+
     // Find the current image in cache by matching relative path
     const char* searchPath = current_image;
     bool found = false;
@@ -423,12 +444,18 @@ bool SCSITBService::RefreshCache() {
     // then persist "inserted" over the saved state.
     if (!found && m_FileCount > 0 && !IsEjected()) {
         for (size_t i = 0; i < m_FileCount; ++i) {
-            if (!m_FileEntries[i].isDirectory) {
-                LOGNOTE("SCSITBService::RefreshCache() Current image not found, using: %s", 
-                        m_FileEntries[i].relativePath);
-                next_cd = i;
-                break;
+            if (m_FileEntries[i].isDirectory) {
+                continue;
             }
+            // Or every rescan picks it again and re-raises the error banner.
+            if (m_LastFailedRelativePath[0] != '\0' &&
+                strcmp(m_FileEntries[i].relativePath, m_LastFailedRelativePath) == 0) {
+                continue;
+            }
+            LOGNOTE("SCSITBService::RefreshCache() Current image not found, using: %s",
+                    m_FileEntries[i].relativePath);
+            next_cd = i;
+            break;
         }
     }
 
@@ -462,12 +489,17 @@ void SCSITBService::ProcessPendingMount() {
         next_cd = -1;
         return;
     }
-    snprintf(m_CurrentImagePath, sizeof(m_CurrentImagePath), "1:/%s", relativePath);
+    // Local, not m_CurrentImagePath, which would make a failed mount report a
+    // disc the host was never given.
+    char candidatePath[MAX_PATH_LEN];
+    snprintf(candidatePath, sizeof(candidatePath), "1:/%s", relativePath);
 
-    IImageDevice* imageDevice = loadImageDevice(m_CurrentImagePath);
+    IImageDevice* imageDevice = loadImageDevice(candidatePath);
 
     if (imageDevice == nullptr) {
-        LOGERR("Failed to load image: %s", m_CurrentImagePath);
+        LOGERR("Failed to load image: %s", candidatePath);
+        strncpy(m_LastFailedRelativePath, relativePath, sizeof(m_LastFailedRelativePath) - 1);
+        m_LastFailedRelativePath[sizeof(m_LastFailedRelativePath) - 1] = '\0';
         // The generic wording below is only for paths with no reason of their own.
         const char* why = GetLastImageLoadError();
         if (why != nullptr && why[0] != '\0') {
@@ -484,11 +516,18 @@ void SCSITBService::ProcessPendingMount() {
     }
 
     LOGNOTE("Loaded image: %s (format: %d, has subchannels: %s)",
-            m_CurrentImagePath,
+            candidatePath,
             (int)imageDevice->GetFileType(),
             imageDevice->HasSubchannelData() ? "yes" : "no");
 
     cdromservice->SetDevice(imageDevice);
+
+    // Committed only now that the disc is really the one the host has.
+    strncpy(m_CurrentImagePath, candidatePath, sizeof(m_CurrentImagePath) - 1);
+    m_CurrentImagePath[sizeof(m_CurrentImagePath) - 1] = '\0';
+    strncpy(m_MountedRelativePath, relativePath, sizeof(m_MountedRelativePath) - 1);
+    m_MountedRelativePath[sizeof(m_MountedRelativePath) - 1] = '\0';
+    m_LastFailedRelativePath[0] = '\0';
 
     // Save relative path to config (without "1:/" prefix)
     configservice->SetCurrentImage(relativePath);
