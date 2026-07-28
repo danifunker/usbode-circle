@@ -166,6 +166,38 @@ jobs:
         done
         echo "All distribution files verified non-empty"
 
+    # Boot the kernels that were just built under QEMU, on a virgin 1 GiB
+    # card, and let USBODE's own first-boot setup resize/format it, reboot,
+    # and come up as an ejected empty drive. The whole boot log is then
+    # validated against this exact build's version (tests/qemu-boot/).
+    # Positioned after the build and BEFORE any artifact upload or release,
+    # so a kernel that no longer boots cannot ship.
+    # Runner requirements: qemu-system-arm, mtools, python3 - see
+    # tests/qemu-boot/README.md. The step fails with install hints if absent.
+    - name: QEMU boot test (kernel8.img on raspi3b, serial log)
+      run: ./tests/qemu-boot/run-boot-test.sh --preset 64bit --dist dist64 --buildinfo buildinfo.json --out qemu-boot-out
+
+    - name: QEMU boot test (kernel.img on raspi0, file log)
+      run: ./tests/qemu-boot/run-boot-test.sh --preset 32bit --dist dist --buildinfo buildinfo.json --out qemu-boot-out
+
+    - name: Upload QEMU boot logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: qemu-boot-logs
+        path: |
+          qemu-boot-out/*.log
+          qemu-boot-out/*.txt
+        if-no-files-found: ignore
+        retention-days: 14
+
+    # The runner script already deletes its ~1 GiB card images on exit; this
+    # removes everything else (logs included, now that they are uploaded) so
+    # repeated builds never accumulate scratch on the self-hosted agent.
+    - name: Clean up QEMU boot test scratch
+      if: always()
+      run: rm -rf qemu-boot-out
+
     - name: Get filename
       id: get-filename
       run: |

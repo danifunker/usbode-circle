@@ -360,6 +360,12 @@ TShutdownMode CKernel::Run(void)
         LOGNOTE("Started DisplayService service");
     }
 
+    // Definitive startup checkpoint: every service that can start without the
+    // network is up and the main loop is about to begin. The QEMU boot test
+    // (tests/qemu-boot/) keys on this exact line - keep format changes in sync
+    // with validate_boot_log.py.
+    LOGNOTE("USBODE %s ready", CGitInfo::Get()->GetVersionString());
+
     static const char ServiceName[] = HOSTNAME;
     CmDNSPublisher *pmDNSPublisher = nullptr;
     CWebServer *pCWebServer = nullptr;

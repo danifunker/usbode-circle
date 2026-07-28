@@ -106,3 +106,4 @@ addon/webserver/pages/*.h
 addon/webserver/assets/*.h
 __pycache__/
 
+qemu-boot-out/
