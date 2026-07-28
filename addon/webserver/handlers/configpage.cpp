@@ -269,6 +269,19 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
         }
     }
     
+    // The boot-time warning goes to the serial console, which SCREEN_HEADLESS
+    // has no equivalent of.
+    {
+        char status[256] = {0};
+        if (CFileLogDaemon::Get() != nullptr) {
+            CFileLogDaemon::Get()->GetStatusText(status, sizeof(status));
+        }
+        context["logfile_status"] = std::string(status);
+        context["logfile_broken"] = (CFileLogDaemon::Get() != nullptr &&
+                                     !CFileLogDaemon::Get()->IsFileLogging() &&
+                                     CFileLogDaemon::Get()->GetLogFilePath()[0] != '\0');
+    }
+
     // Set current values for display
     std::string current_displayhat = config->GetDisplayHat();
     std::string current_low_power_timeout = std::to_string(config->GetLowPowerTimeout());

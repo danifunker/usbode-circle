@@ -47,10 +47,14 @@ class CFileLogDaemon : public CTask {
 
     // The constructor cannot report a failed open, so callers ask afterwards.
     boolean IsFileLogging(void) const { return m_bFileInitialized; }
-
     const char *GetLogFilePath(void) const { return m_LogFilePath; }
-
     FRESULT GetOpenResult(void) const { return m_OpenResult; }
+
+    // One line for the web UI; SCREEN_HEADLESS has nowhere else to report this.
+    void GetStatusText(char *pBuffer, size_t nBufferSize) const;
+
+    // Without the volume prefix, for callers using newlib rather than FatFs.
+    void GetStdioPath(char *pBuffer, size_t nBufferSize) const;
 
     // Takes effect immediately; only affects the log file, not the
     // loglevel= filtering Circle applies to the serial/screen target.
