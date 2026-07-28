@@ -32,6 +32,7 @@
 #include <discimage/util.h>
 #include "ftpworker.h"
 #include "utility.h"
+#include "fatfspath.h"
 
 // Use a per-instance name for the log macros
 #define From m_LogName
@@ -395,6 +396,38 @@ CString CFTPWorker::RealPath(const char* pInBuffer) const {
     return Path;
 }
 
+// Deleting, renaming or overwriting the mounted image leaves the gadget reading
+// a file that no longer has the contents it opened - the host keeps issuing
+// READ(10) against storage that has been unlinked or truncated under it, which
+// is one reported way of hanging the device. The web UI has always refused this
+// (deleteapi.cpp:43); FTP did not, so the same card could be broken over FTP in
+// a way the browser would not allow.
+bool CFTPWorker::IsMountedImage(const char* pPath) const {
+    assert(pPath != nullptr);
+
+    SCSITBService* svc =
+        static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+    if (svc == nullptr)
+        return false;
+
+    const char* current = svc->GetCurrentCDPath();
+    if (current == nullptr || current[0] == '\0')
+        return false;
+
+    // Not a plain strcmp: the same file reaches here spelled three different
+    // ways depending on how the client addressed it. See fatfspath.h.
+    return FatFsPathsEqual(pPath, current, MAX_PATH_LEN);
+}
+
+// The service is a task looked up by name; every caller here treated it as
+// guaranteed and dereferenced it blind.
+void CFTPWorker::RefreshImageCache() const {
+    SCSITBService* svc =
+        static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
+    if (svc != nullptr)
+        svc->RefreshCache();
+}
+
 const TDirectoryListEntry* CFTPWorker::BuildDirectoryList(size_t& nOutEntries) const {
     DIR Dir;
     FILINFO FileInfo;
@@ -708,6 +741,20 @@ bool CFTPWorker::Store(const char* pArgs) {
 
     FIL File;
     CString Path = RealPath(pArgs);
+
+    // FA_CREATE_ALWAYS truncates, so uploading over the mounted image empties
+    // the file the host is reading from - worse than deleting it, because the
+    // directory entry survives and nothing looks wrong until a read fails.
+    if (IsMountedImage(Path)) {
+        // Log BEFORE replying: SendStatus() formats into m_CommandBuffer, and
+        // pArgs points into that same buffer, so the reply overwrites the
+        // argument being logged.
+        LOGERR("Refused to overwrite the mounted image %s", pArgs);
+        SendStatus(TFTPStatus::FileActionNotTaken,
+                   "That image is mounted. Mount another one first.");
+        return false;
+    }
+
     if (f_open(&File, Path, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK) {
         SendStatus(TFTPStatus::FileActionNotTaken, "Could not open file for writing.");
         return false;
@@ -816,9 +863,7 @@ bool CFTPWorker::Store(const char* pArgs) {
 
     f_close(&File);
 
-    SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
-    if (svc != nullptr)
-        svc->RefreshCache();
+    RefreshImageCache();
 
     return true;
 }
@@ -829,6 +874,14 @@ bool CFTPWorker::Delete(const char* pArgs) {
 
     CString Path = RealPath(pArgs);
 
+    if (IsMountedImage(Path)) {
+        // Before the reply - SendStatus() overwrites the buffer pArgs is in.
+        LOGERR("Refused to delete the mounted image %s", pArgs);
+        SendStatus(TFTPStatus::FileActionNotTaken,
+                   "That image is mounted. Mount another one first.");
+        return true;
+    }
+
     if (f_unlink(Path) != FR_OK) {
         SendStatus(TFTPStatus::FileActionNotTaken, "File was not deleted.");
 	LOGERR("Couldn't delete %s", pArgs);
@@ -836,8 +889,7 @@ bool CFTPWorker::Delete(const char* pArgs) {
     else
         SendStatus(TFTPStatus::FileActionOk, "File deleted.");
 
-    SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
-    svc->RefreshCache();
+    RefreshImageCache();
 
     return true;
 }
@@ -1092,6 +1144,20 @@ bool CFTPWorker::RenameTo(const char* pArgs) {
     CString SourcePath = RealPath(m_RenameFrom);
     CString DestPath = RealPath(pArgs);
 
+    // Renaming the mounted image moves it out from under the live mount just as
+    // surely as deleting it; renaming something else ONTO it destroys it.
+    if (IsMountedImage(SourcePath) || IsMountedImage(DestPath)) {
+        // Before the reply - SendStatus() overwrites the buffer pArgs is in.
+        // This one proved it: the log line read "... -> hat image is mounted.
+        // Mount another one first." - the reply itself, offset by five bytes.
+        LOGERR("Refused to rename the mounted image (%s -> %s)",
+               static_cast<const char*>(m_RenameFrom), pArgs);
+        SendStatus(TFTPStatus::FileNameNotAllowed,
+                   "That image is mounted. Mount another one first.");
+        m_RenameFrom = "";
+        return true;
+    }
+
     if (f_rename(SourcePath, DestPath) != FR_OK)
         SendStatus(TFTPStatus::FileNameNotAllowed, "File name not allowed.");
     else
@@ -1099,8 +1165,7 @@ bool CFTPWorker::RenameTo(const char* pArgs) {
 
     m_RenameFrom = "";
 
-    SCSITBService* svc = static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
-    svc->RefreshCache();
+    RefreshImageCache();
 
     return true;
 }
