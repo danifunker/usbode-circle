@@ -51,24 +51,6 @@ static bool iequals(const char* a, const char* b) {
     return *a == *b;
 }
 
-// True if a file with the same stem but a different extension exists next to
-// fileName in dirFullPath (e.g. "game.bin" + ".cue" -> "1:/Games/game.cue").
-// FAT name matching is case-insensitive, so GAME.CUE is found too.
-static bool siblingWithExtExists(const char* dirFullPath, const char* fileName, const char* newExt) {
-    const char* dot = strrchr(fileName, '.');
-    if (dot == nullptr)
-        return false;
-
-    char sibling[MAX_PATH_LEN];
-    int n = snprintf(sibling, sizeof(sibling), "%s/%.*s%s",
-                     dirFullPath, (int)(dot - fileName), fileName, newExt);
-    if (n < 0 || (size_t)n >= sizeof(sibling))
-        return false;
-
-    FILINFO fi;
-    return f_stat(sibling, &fi) == FR_OK && !(fi.fattrib & AM_DIR);
-}
-
 int compareFileEntries(const void* a, const void* b) {
     const FileEntry* fa = (const FileEntry*)a;
     const FileEntry* fb = (const FileEntry*)b;
@@ -341,10 +323,9 @@ void SCSITBService::ScanDirectoryRecursive(const char* fullPath, const char* rel
                 if (!listIt && iequals(ext, ".cue")) {
                     // Even with no same-stem .bin, which also hid split-track rips.
                     listIt = true;
-                } else if (!listIt && iequals(ext, ".bin")) {
-                    // Hide the raw .bin of a cue/bin pair; its .cue is listed
-                    listIt = !siblingWithExtExists(fullPath, fno.fname, ".cue");
                 }
+                // Never a .bin: mounting reads the .cue first, so a .bin is either
+                // unmountable or already represented by that cue.
                 if (listIt) {
                     size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);
                     memcpy(m_FileEntries[m_FileCount].name, fno.fname, len);
