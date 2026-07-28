@@ -104,6 +104,11 @@ class CFTPWorker : protected CTask {
     CString RealPath(const char* pInBuffer) const;
     const TDirectoryListEntry* BuildDirectoryList(size_t& nOutEntries) const;
 
+    // True if the path names the image the host currently has mounted.
+    bool IsMountedImage(const char* pPath) const;
+    // Rescan the image catalogue, tolerating the service not being there.
+    void RefreshImageCache() const;
+
     // FTP command handlers
     bool System(const char* pArgs);
     bool Username(const char* pArgs);

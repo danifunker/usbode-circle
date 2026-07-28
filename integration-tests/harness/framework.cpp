@@ -60,6 +60,7 @@ namespace
         {"test_mdsimages", "MDS/MDF images"},
         {"test_multisession", "Multi-session and CD Extra"},
         {"test_logdaemon", "File log daemon"},
+        {"test_ftppaths", "FTP path matching"},
     };
 
     // "test-suite/test_read10.cpp" -> "SCSI read commands"
