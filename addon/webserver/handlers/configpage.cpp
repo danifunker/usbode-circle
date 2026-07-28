@@ -286,6 +286,21 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
         }
     }
     
+    // Whether file logging is actually working right now. The boot-time
+    // warning about a path that would not open goes to the serial console, and
+    // a SCREEN_HEADLESS build has nowhere else to put it - so without this the
+    // config page happily shows a log path that is doing nothing.
+    {
+        char status[256] = {0};
+        if (CFileLogDaemon::Get() != nullptr) {
+            CFileLogDaemon::Get()->GetStatusText(status, sizeof(status));
+        }
+        context["logfile_status"] = std::string(status);
+        context["logfile_broken"] = (CFileLogDaemon::Get() != nullptr &&
+                                     !CFileLogDaemon::Get()->IsFileLogging() &&
+                                     CFileLogDaemon::Get()->GetLogFilePath()[0] != '\0');
+    }
+
     // Set current values for display
     std::string current_displayhat = config->GetDisplayHat();
     std::string current_low_power_timeout = std::to_string(config->GetLowPowerTimeout());

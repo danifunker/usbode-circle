@@ -96,6 +96,37 @@ boolean CFileLogDaemon::Initialize() {
     return TRUE;
 }
 
+void CFileLogDaemon::GetStatusText(char *pBuffer, size_t nBufferSize) const {
+    if (pBuffer == nullptr || nBufferSize == 0) {
+        return;
+    }
+
+    if (m_LogFilePath[0] == '\0') {
+        snprintf(pBuffer, nBufferSize, "File logging is off (no log file configured).");
+    } else if (m_bFileInitialized) {
+        snprintf(pBuffer, nBufferSize, "Writing to %s", m_LogFilePath);
+    } else {
+        snprintf(pBuffer, nBufferSize,
+                 "NOT LOGGING: cannot open %s (FatFs error %d). "
+                 "The file must be on the boot partition and its directory must already exist.",
+                 m_LogFilePath, (int)m_OpenResult);
+    }
+}
+
+void CFileLogDaemon::GetStdioPath(char *pBuffer, size_t nBufferSize) const {
+    if (pBuffer == nullptr || nBufferSize == 0) {
+        return;
+    }
+
+    // Config stores the FatFs form ("0:/usbode-log.txt"); newlib wants an
+    // ordinary path ("/usbode-log.txt").
+    const char *p = m_LogFilePath;
+    if (p[0] == '0' && p[1] == ':') {
+        p += 2;
+    }
+    snprintf(pBuffer, nBufferSize, "%s", p);
+}
+
 CFileLogDaemon::~CFileLogDaemon(void) {
     s_pThis = nullptr;
 

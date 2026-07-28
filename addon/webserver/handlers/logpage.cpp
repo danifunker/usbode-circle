@@ -15,6 +15,7 @@
 #include "logpage.h"
 #include "../util.h"
 #include <cdplayer/cdplayer.h>
+#include <filelogdaemon/filelogdaemon.h>
 
 using namespace kainjow;
 
@@ -61,8 +62,31 @@ THTTPStatus LogPageHandler::PopulateContext(kainjow::mustache::data& context,
                                    const char  *pFormData)
 {
     LOGNOTE("Log page called");
-    
-    context["log_lines"] = read_loglines("/usbode-logs.txt");
-    
+
+    // Read the file that is actually configured. This used to be hardcoded to
+    // "/usbode-logs.txt", so anyone who set a different path got a blank page
+    // and no hint that they were looking in the wrong place.
+    char path[256] = {0};
+    char status[256] = {0};
+    CFileLogDaemon *pDaemon = CFileLogDaemon::Get();
+    if (pDaemon != nullptr) {
+        pDaemon->GetStdioPath(path, sizeof(path));
+        pDaemon->GetStatusText(status, sizeof(status));
+    }
+
+    std::string lines = path[0] != '\0' ? read_loglines(path) : std::string();
+
+    // An empty page is the one thing this must never be: a missing log file
+    // and an empty log file look identical, and the reason is what the user
+    // needs.
+    if (lines.empty()) {
+        lines = status[0] != '\0'
+                    ? std::string(status)
+                    : std::string("No log file is available.");
+    }
+
+    context["log_lines"] = lines;
+    context["log_status"] = std::string(status);
+
     return HTTPOK;
 }
