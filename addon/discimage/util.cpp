@@ -25,6 +25,8 @@
 #include "mdsfile.h"
 #include "chdfile.h"
 
+#include <cueparser/cueutil.h>
+
 LOGMODULE("discimage-util");
 
 char tolower(char c) {
@@ -250,6 +252,22 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
             return nullptr;
         }
         LOGNOTE("Loaded CUE sheet");
+
+        // A split-track rip names one .bin per track. Nothing below can honour
+        // that: the data file is chosen by rewriting the cue's own extension,
+        // so only the first file would ever be opened, and the parser cannot
+        // place the later tracks without knowing how long the earlier files
+        // are. The disc would mount with a TOC that is simply wrong, which is
+        // worse than not mounting - so refuse it and say why.
+        if (CueHasMultipleFiles(cue_str)) {
+            LOGERR("Cannot mount %s: the cue sheet references more than one data "
+                   "file (a split-track rip). USBODE needs a single .bin; "
+                   "re-rip the disc as one image or merge the tracks.",
+                   fullPath);
+            delete imageFile;
+            delete[] cue_str;
+            return nullptr;
+        }
 
         // Switch to BIN file for data
         change_extension_to_bin(fullPath);

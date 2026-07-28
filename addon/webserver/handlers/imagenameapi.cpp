@@ -26,6 +26,16 @@ THTTPStatus ImageNameAPIHandler::GetJson(nlohmann::json& j,
     j = {
 	    {"name", svc->GetCurrentCDName()}
     };
+
+    // Mounting happens on the service task well after the mount request was
+    // answered "ok", so a failure has no other way back to the user. The page
+    // already polls this endpoint for the current image name; a disc that
+    // refused to mount shows up here as the reason the name did not change.
+    const char* mountError = svc->GetLastMountError();
+    if (mountError != nullptr && mountError[0] != '\0') {
+	    j["mount_error"] = mountError;
+    }
+
     return HTTPOK;
 
 }
