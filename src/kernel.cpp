@@ -43,7 +43,6 @@
 #define FIRMWARE_PATH ROOTDRIVE "/firmware/"
 #define SUPPLICANT_CONFIG_FILE ROOTDRIVE "/wpa_supplicant.conf"
 #define CONFIG_FILE ROOTDRIVE "/config.txt"
-#define LOG_FILE ROOTDRIVE "/logfile.txt"
 #define HOSTNAME "usbode"
 #define SPI_MASTER_DEVICE 0
 
@@ -142,13 +141,25 @@ boolean CKernel::Initialize(void)
             m_pConfigService = new ConfigService();
             LOGNOTE("Initialized Config service");
 
-            // Start file logging with proper config
+            // Start file logging with proper config. Whether the file opened
+            // has to be reported: the daemon runs either way, so a path that
+            // cannot be opened leaves a system that looks fine and logs
+            // nothing, and the user's only clue is the missing file. Only
+            // volume 0: is mounted at this point (1: comes later, below), so a
+            // path anywhere else fails here by design.
             const char *logfile = m_pConfigService->GetLogfile();
-            if (logfile)
+            CFileLogDaemon *pLogDaemon =
+                new CFileLogDaemon(logfile ? logfile : "", m_pConfigService->GetLogLevel());
+            if (pLogDaemon->IsFileLogging())
             {
-                new CFileLogDaemon(logfile, m_pConfigService->GetLogLevel());
-                // CScheduler::Get()->MsSleep(100);
-                LOGNOTE("Started early file logging");
+                LOGNOTE("Started early file logging to %s", pLogDaemon->GetLogFilePath());
+            }
+            else if (pLogDaemon->GetLogFilePath()[0] != '\0')
+            {
+                LOGWARN("File logging is OFF: cannot open '%s' (FatFs error %d). "
+                        "Check the log path on the web UI's config page; it must be "
+                        "a file in an existing directory on the boot partition.",
+                        pLogDaemon->GetLogFilePath(), (int)pLogDaemon->GetOpenResult());
             }
         }
     }

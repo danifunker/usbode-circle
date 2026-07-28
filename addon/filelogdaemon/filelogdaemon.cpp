@@ -33,8 +33,11 @@ LOGMODULE("filelogdaemon");
 CFileLogDaemon *CFileLogDaemon::s_pThis = nullptr;
 
 CFileLogDaemon::CFileLogDaemon(const char *pLogFilePath, unsigned uiLogLevel)
-    : m_pLogFilePath(pLogFilePath),
-      m_uiLogLevel(uiLogLevel > 5 ? 5 : uiLogLevel) {
+    : m_uiLogLevel(uiLogLevel > 5 ? 5 : uiLogLevel) {
+    if (pLogFilePath != nullptr) {
+        strncpy(m_LogFilePath, pLogFilePath, sizeof(m_LogFilePath) - 1);
+        m_LogFilePath[sizeof(m_LogFilePath) - 1] = '\0';
+    }
     // I am the one and only!
     assert(s_pThis == nullptr);
     s_pThis = this;
@@ -52,10 +55,24 @@ void CFileLogDaemon::SetLogLevel(unsigned uiLogLevel) {
 }
 
 boolean CFileLogDaemon::Initialize() {
+    if (m_LogFilePath[0] == '\0') {
+        // An empty path is how the config says "no file logging". Not an
+        // error, and not worth an alarming message at boot.
+        m_OpenResult = FR_INVALID_NAME;
+        LOGNOTE("No log file configured; file logging is off");
+        return FALSE;
+    }
+
     // Open log file for writing (append mode)
-    FRESULT Result = f_open(&m_LogFile, m_pLogFilePath, FA_WRITE | FA_OPEN_ALWAYS);
+    FRESULT Result = f_open(&m_LogFile, m_LogFilePath, FA_WRITE | FA_OPEN_ALWAYS);
+    m_OpenResult = Result;
     if (Result != FR_OK) {
-        LOGERR("Failed to open log file");
+        // Name the path and the reason. This message is the only evidence the
+        // user gets, and "Failed to open log file" left them with a system
+        // that had quietly stopped logging and no way to tell why. Note that
+        // only volume 0: is mounted this early, so a path on 1: lands here.
+        LOGERR("Failed to open log file '%s' (FatFs error %d); file logging is off",
+               m_LogFilePath, (int)Result);
         return FALSE;
     }
 
@@ -96,36 +113,49 @@ void CFileLogDaemon::Run(void) {
 
     while (true) {
         m_Event.Clear();
-
-        TLogSeverity Severity;
-        char Source[LOG_MAX_SOURCE];
-        char Message[LOG_MAX_MESSAGE];
-        time_t Time;
-        unsigned nHundredthTime;
-        int nTimeZone;
-        while (pLogger->ReadEvent(&Severity, Source, Message,
-                                  &Time, &nHundredthTime, &nTimeZone)) {
-            // CLogger queues every event regardless of its loglevel (that
-            // only filters the serial/screen target), so the configured
-            // level is applied here. Severity LogPanic(0)..LogDebug(4)
-            // maps to config levels 1..5; level 0 drops everything.
-            if ((unsigned)Severity >= m_uiLogLevel) {
-                continue;
-            }
-            if (!LogMessage(Severity, Time, nHundredthTime, nTimeZone, Source, Message)) {
-                CScheduler::Get()->Sleep(20);
-            }
-        }
-
+        DrainOnce();
         m_Event.Wait();
     }
 }
 
-boolean CFileLogDaemon::LogMessage(TLogSeverity Severity,
-                                   time_t FullTime, unsigned nPartialTime, int nTimeNumOffset,
-                                   const char *pAppName, const char *pMsg) {
+void CFileLogDaemon::DrainOnce(void) {
+    CLogger *pLogger = CLogger::Get();
+    assert(pLogger != nullptr);
+
+    TLogSeverity Severity;
+    char Source[LOG_MAX_SOURCE];
+    char Message[LOG_MAX_MESSAGE];
+    time_t Time;
+    unsigned nHundredthTime;
+    int nTimeZone;
+    while (pLogger->ReadEvent(&Severity, Source, Message,
+                              &Time, &nHundredthTime, &nTimeZone)) {
+        // CLogger queues every event regardless of its loglevel (that
+        // only filters the serial/screen target), so the configured
+        // level is applied here. Severity LogPanic(0)..LogDebug(4)
+        // maps to config levels 1..5; level 0 drops everything.
+        if ((unsigned)Severity >= m_uiLogLevel) {
+            continue;
+        }
+
+        // Only back off for a failure that might not repeat. When the file was
+        // never opened every message fails, and sleeping for each one throttled
+        // the log queue to 50 events a second - which, since the queue is
+        // drained on a scheduler task, dragged the whole system down with it.
+        // A mistyped log path used to present as a Pi that had gone slow.
+        if (LogMessage(Severity, Time, nHundredthTime, nTimeZone, Source, Message) ==
+            LogResult::WriteFailed) {
+            CScheduler::Get()->Sleep(20);
+        }
+    }
+}
+
+CFileLogDaemon::LogResult CFileLogDaemon::LogMessage(TLogSeverity Severity,
+                                                     time_t FullTime, unsigned nPartialTime,
+                                                     int nTimeNumOffset,
+                                                     const char *pAppName, const char *pMsg) {
     if (!m_bFileInitialized) {
-        return FALSE;
+        return LogResult::NoFile;
     }
 
     // Format the log entry similar to base logger but tailored for file
@@ -161,14 +191,15 @@ boolean CFileLogDaemon::LogMessage(TLogSeverity Severity,
     UINT BytesWritten;
     FRESULT Result = f_write(&m_LogFile, LogEntry, strlen(LogEntry), &BytesWritten);
     if (Result != FR_OK) {
-        // TODO implement proper error handling here!!!
-        LOGERR("Failed to write to log file!");
-        return FALSE;
+        // Deliberately not logged: this runs while draining the log queue, and
+        // a message here would queue another event, which would fail the same
+        // way. The caller backs off instead.
+        return LogResult::WriteFailed;
     }
 
     f_sync(&m_LogFile);
 
-    return TRUE;
+    return LogResult::Written;
 }
 
 void CFileLogDaemon::EventNotificationHandler(void) {

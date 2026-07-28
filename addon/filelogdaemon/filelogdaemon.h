@@ -42,6 +42,23 @@ class CFileLogDaemon : public CTask {
     boolean Initialize();
     void Run(void);
 
+    /// One pass of Run()'s loop: drain whatever the logger has queued. Split
+    /// out because Run() never returns, and the drain is the part with the
+    /// interesting behaviour when the log file could not be opened.
+    void DrainOnce(void);
+
+    /// Whether the log file is actually open. The constructor cannot report a
+    /// failure, so the caller has to be able to ask afterwards - otherwise a
+    /// mistyped path silently produces a system with no file logging at all.
+    boolean IsFileLogging(void) const { return m_bFileInitialized; }
+
+    /// The path this daemon was asked for, for a caller that wants to name it
+    /// in a diagnostic.
+    const char *GetLogFilePath(void) const { return m_LogFilePath; }
+
+    /// The FatFs result from the attempt to open it. FR_OK once open.
+    FRESULT GetOpenResult(void) const { return m_OpenResult; }
+
     // Takes effect immediately; only affects the log file, not the
     // loglevel= filtering Circle applies to the serial/screen target.
     void SetLogLevel(unsigned uiLogLevel);
@@ -49,9 +66,20 @@ class CFileLogDaemon : public CTask {
     static CFileLogDaemon *Get(void);
 
    private:
-    boolean LogMessage(TLogSeverity Severity,
-                       time_t FullTime, unsigned nPartialTime, int nTimeNumOffset,
-                       const char *pAppName, const char *pMsg);
+    /// Why a message did not reach the file. The distinction matters: a write
+    /// that failed may well succeed next time and is worth backing off for,
+    /// but a file that was never opened will never take a message, and backing
+    /// off for each of those costs the whole system (see Run()).
+    enum class LogResult
+    {
+        Written,
+        WriteFailed,  // transient: the file is open, this write did not land
+        NoFile        // permanent for this boot: there is nothing to write to
+    };
+
+    LogResult LogMessage(TLogSeverity Severity,
+                         time_t FullTime, unsigned nPartialTime, int nTimeNumOffset,
+                         const char *pAppName, const char *pMsg);
 
     static void EventNotificationHandler(void);
     static void PanicHandler(void);
@@ -59,8 +87,13 @@ class CFileLogDaemon : public CTask {
    private:
     CSynchronizationEvent m_Event;
     static CFileLogDaemon *s_pThis;
-    boolean m_bFileInitialized;
-    const char *m_pLogFilePath;
+    /// Must start FALSE. An indeterminate value here let LogMessage() write to
+    /// an unopened FIL and the destructor close it, whenever the open failed.
+    boolean m_bFileInitialized = FALSE;
+    /// Copied, not aliased. The caller's string comes out of the config store,
+    /// which is free to replace it while this daemon is still running.
+    char m_LogFilePath[256] = {0};
+    FRESULT m_OpenResult = FR_NOT_READY;
     unsigned m_uiLogLevel;
     FIL m_LogFile;
 };

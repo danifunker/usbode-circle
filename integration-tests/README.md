@@ -11,6 +11,22 @@ make -C integration-tests WITH_CHD=1 # also run the real .chd image through libc
 USBODE_TEST_VERBOSE=1 integration-tests/out/usbode-host-tests   # with firmware logs
 ```
 
+Under a sanitizer. Note that a `CXXFLAGS` on the command line **replaces** the
+one the Makefile builds up rather than adding to it, so `-std=c++17` has to be
+repeated or the build fails:
+
+```
+make -C integration-tests clean
+make -C integration-tests \
+    CXXFLAGS="-std=c++17 -O0 -g -fsanitize=address,undefined" \
+    CFLAGS="-O0 -g -fsanitize=address,undefined" \
+    LDFLAGS="-fsanitize=address,undefined"
+```
+
+Worth running when a fix is about an uninitialised member: a `bool` that holds
+neither 0 nor 1 is undefined to read, so an ordinary assertion cannot pin it -
+the optimizer folds the test - but UBSan names the exact line.
+
 ## What this is
 
 The **real firmware sources** — all of `addon/usbcdgadget` (command
@@ -198,16 +214,25 @@ integration-tests/
   Makefile             host build; `make` = build + run, WITH_CHD=1 adds CHD
   harness/
     stubs/             minimal Circle/service headers (circle/, cdplayer/, fatfs/, ...)
-    stubs.cpp          logger/scheduler/timer/endpoint implementations
+    stubs.cpp          logger/scheduler/timer/endpoint implementations; the
+                       logger keeps a real event queue and the scheduler counts
+                       sleeps, so a task that drains the log can be tested
     testbus.h          records BeginTransfer()/Stall() from the gadget
     fakedisc.*         in-memory disc images + cue sheets
-    fatfs_host.cpp     FatFs f_open/f_read/... over host stdio (real-image reads)
+    fatfs_host.cpp     FatFs f_open/f_read/... over host stdio (real-image
+                       reads, and writes for the log daemon)
     discimage_host.cpp FatFsOptimizer no-op backing (fast seek n/a on host)
     bench.*            the virtual USB host
     framework.*        tiny TEST()/CHECK() runner
-  test-suite/          one file per command family, plus test_realimages.cpp
-                       and test_mdsimages.cpp
+  test-suite/          one file per command family, plus test_realimages.cpp,
+                       test_mdsimages.cpp and test_logdaemon.cpp
 ```
+
+Not everything here is a SCSI command. `addon/filelogdaemon` is compiled in
+too, because it reaches the SD card through the same FatFs seam and its
+interesting behaviour is what it does when that open **fails**: a log path
+under a directory that does not exist used to cost 20 ms of scheduler time per
+log event, which presented as the whole Pi having gone slow.
 
 Two production accommodations (both inert on the device):
 

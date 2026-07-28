@@ -17,14 +17,21 @@ public:
 
     CTask *GetTask(const char *pTaskName);
 
-    void Sleep(unsigned nSeconds) {}
-    void MsSleep(unsigned nMilliSeconds) {}
-    void usSleep(unsigned nMicroSeconds) {}
+    // Sleeping cannot actually happen on a single-threaded host build, but it
+    // is counted: on a real Pi a sleep on a per-event path costs the whole
+    // system, and counting is the only way a host test can see that a code
+    // path stopped taking one.
+    void Sleep(unsigned nSeconds) { TestNoteSleep(); }
+    void MsSleep(unsigned nMilliSeconds) { TestNoteSleep(); }
+    void usSleep(unsigned nMicroSeconds) { TestNoteSleep(); }
     void Yield(void) {}
 
     // Test control
     void TestRegisterTask(const char *pName, CTask *pTask);
     void TestClearTasks(void);
+    static void TestNoteSleep(void);
+    static unsigned TestSleepCount(void);
+    static void TestResetSleepCount(void);
 };
 
 #endif

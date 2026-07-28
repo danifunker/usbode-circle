@@ -18,8 +18,31 @@ FRESULT f_open(FIL* fp, const TCHAR* path, BYTE mode)
     if (!fp || !path) {
         return FR_INVALID_PARAMETER;
     }
-    // The readers only ever open images read-only.
-    FILE* f = fopen(path, "rb");
+
+    // The image readers only ever read, but the log daemon opens its file for
+    // append, and whether that open SUCCEEDS is the whole subject of its
+    // tests - so the mode has to be honoured rather than assumed.
+    //
+    // FA_OPEN_ALWAYS means "open it, creating it if absent", which is "r+b"
+    // falling back to "w+b". Letting the fallback run only when the file is
+    // genuinely missing is what keeps a bad directory an error: fopen cannot
+    // create a file under a directory that does not exist, so a path like
+    // 0:/nosuchdir/log.txt fails here exactly as FatFs would fail it.
+    const char* stdioMode = "rb";
+    if (mode & (FA_WRITE | FA_CREATE_ALWAYS | FA_CREATE_NEW | FA_OPEN_ALWAYS)) {
+        if (mode & FA_CREATE_ALWAYS) {
+            stdioMode = "w+b";
+        } else if ((mode & FA_OPEN_APPEND) == FA_OPEN_APPEND) {
+            stdioMode = "a+b";
+        } else {
+            stdioMode = "r+b";
+        }
+    }
+
+    FILE* f = fopen(path, stdioMode);
+    if (!f && (mode & (FA_OPEN_ALWAYS | FA_CREATE_NEW))) {
+        f = fopen(path, "w+b");
+    }
     if (!f) {
         return FR_NO_FILE;
     }
@@ -84,6 +107,14 @@ FRESULT f_write(FIL* fp, const void* buff, UINT btw, UINT* bw)
         *bw = (UINT)n;
     }
     return (n == btw) ? FR_OK : FR_DISK_ERR;
+}
+
+FRESULT f_sync(FIL* fp)
+{
+    if (!fp || !fp->host_fp) {
+        return FR_INVALID_OBJECT;
+    }
+    return fflush((FILE*)fp->host_fp) == 0 ? FR_OK : FR_DISK_ERR;
 }
 
 FRESULT f_lseek(FIL* fp, FSIZE_t ofs)

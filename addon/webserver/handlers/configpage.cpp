@@ -32,6 +32,74 @@ std::string ConfigPageHandler::GetHTML() {
     return std::string(s_Config);
 }
 
+// Normalize a log file path the user typed onto volume 0:, and reject what
+// FatFs will not be able to open.
+//
+// This is the only validation the value ever gets, and it used to be one line:
+// prepend "0:/" unless the string already started with it. A user who entered
+// "SD:/usbode-logs.txt" - a reasonable guess at how to name the card - got
+// "0:/SD:/usbode-logs.txt" saved, which cannot be opened, and the next boot
+// came up with no log file at all.
+//
+// An empty result means logging is switched off, which is a legitimate choice
+// rather than an error.
+static bool NormalizeLogfilePath(std::string& path, std::string& error) {
+    const size_t first = path.find_first_not_of(" \t");
+    if (first == std::string::npos) {
+        path.clear();
+        return true;
+    }
+    path = path.substr(first, path.find_last_not_of(" \t") - first + 1);
+
+    // FatFs accepts either separator and users type both.
+    std::replace(path.begin(), path.end(), '\\', '/');
+
+    // Take off a volume prefix if one was typed, and refuse any volume other
+    // than the boot partition. Volume 1: is a real volume but it is not
+    // mounted until well after the log daemon starts, so a log file there
+    // would fail at every boot.
+    const size_t colon = path.find(':');
+    if (colon != std::string::npos) {
+        const std::string volume = path.substr(0, colon);
+        if (volume != "0") {
+            error = "Log file must be on the boot partition. Remove the \"" + volume +
+                    ":\" prefix and give a path like usbode-log.txt.";
+            return false;
+        }
+        path.erase(0, colon + 1);
+    }
+    while (!path.empty() && path[0] == '/') {
+        path.erase(0, 1);
+    }
+
+    if (path.empty() || path.back() == '/') {
+        error = "Log file path has to name a file, not a directory.";
+        return false;
+    }
+    if (path.find(':') != std::string::npos) {
+        error = "Log file path cannot contain a colon.";
+        return false;
+    }
+
+    // The directory has to exist. FatFs will not create one, so a path under a
+    // missing directory is accepted here and then fails silently at boot -
+    // which is exactly the failure this is here to stop. f_opendir rather than
+    // f_stat, because f_stat cannot describe the root of a volume.
+    const size_t slash = path.find_last_of('/');
+    if (slash != std::string::npos) {
+        const std::string dir = path.substr(0, slash);
+        DIR probe;
+        if (f_opendir(&probe, ("0:/" + dir).c_str()) != FR_OK) {
+            error = "Directory \"" + dir + "\" does not exist on the boot partition.";
+            return false;
+        }
+        f_closedir(&probe);
+    }
+
+    path = "0:/" + path;
+    return true;
+}
+
 std::map<std::string, std::string> ConfigPageHandler::ParseFormData(const char* pFormData) {
     std::map<std::string, std::string> params;
     
@@ -126,15 +194,19 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
                 config->SetST7789SleepBrightness(std::atoi(form_params["st7789_sleep_brightness"].c_str()));
             }
             
-            // Log file configuration
+            // Log file configuration. An empty value is honoured as "turn file
+            // logging off" - the page already displays an empty setting that
+            // way, and previously the write path ignored it, so the setting
+            // could not be cleared once set.
             if (form_params.count("logfile")) {
                 std::string logfile = form_params["logfile"];
-                if (!logfile.empty()) {
-                    // Ensure 0:/ prefix
-                    if (logfile.find("0:/") != 0) {
-                        logfile = "0:/" + logfile;
-                    }
+                std::string logfileError;
+                if (NormalizeLogfilePath(logfile, logfileError)) {
                     config->SetLogfile(logfile.c_str());
+                } else {
+                    error_message = logfileError;
+                    LOGWARN("Rejected log file path '%s': %s",
+                            form_params["logfile"].c_str(), logfileError.c_str());
                 }
             }
             
@@ -193,8 +265,14 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             
             // Check for action parameter to determine what to do after saving
             std::string action = form_params.count("action") ? form_params["action"] : "save";
-            
-            if (action == "save_reboot") {
+
+            // Something was rejected above. Everything else in the form was
+            // still saved, but saying "saved successfully" alongside the
+            // rejection would read as though the rejected value went in too -
+            // and rebooting on top of that would hide the message entirely.
+            if (!error_message.empty()) {
+                error_message += " Other settings were saved.";
+            } else if (action == "save_reboot") {
                 success_message = "Configuration saved successfully. Rebooting in 3 seconds...";
                 // Schedule a reboot in 3 seconds
                 new CShutdown(ShutdownReboot, 3000);
