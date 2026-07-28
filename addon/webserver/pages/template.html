@@ -25,6 +25,13 @@
 				</div>
 			{{/mount_error}}
 
+			{{#missing_image}}
+				<div class="message warning" style="color:#b00020;font-weight:bold">
+					<strong>Drive is empty:</strong> {{missing_image}} is no longer on the card.
+					Mount an image to clear this.
+				</div>
+			{{/missing_image}}
+
 			{{#cdrom}}
 				{{>content}}
 			{{/cdrom}}

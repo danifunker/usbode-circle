@@ -78,6 +78,16 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
             context.set("mount_error", std::string(mountError));
         }
 
+        // The saved image was not on the card, so the drive came up empty
+        // rather than holding a disc the user never chose. Shown on every page
+        // and until something is mounted deliberately: this survives a reboot,
+        // so a one-shot message would be missed by exactly the person it is
+        // for.
+        const char* missingImage = svc->GetMissingSavedImage();
+        if (missingImage != nullptr && missingImage[0] != '\0') {
+            context.set("missing_image", std::string(missingImage));
+        }
+
 	// Get our config service
 	ConfigService* config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 

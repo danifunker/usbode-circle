@@ -377,8 +377,18 @@ bool SCSITBService::RefreshCache() {
     LOGNOTE("SCSITBService::RefreshCache() called");
     m_Lock.Acquire();
 
-    // Get current loaded image from config
-    const char* current_image = configservice->GetCurrentImage(DEFAULT_IMAGE_FILENAME);
+    // Get current loaded image from config.
+    //
+    // Asked with an empty default, this distinguishes "the user has an image
+    // remembered" from "this card has never mounted anything". They must not
+    // behave the same: a remembered image that has gone missing should leave
+    // the drive empty and say so, but a freshly written card has no remembered
+    // image at all and must still auto-mount, or first boot would look broken.
+    // GetCurrentImage(DEFAULT_IMAGE_FILENAME) cannot tell them apart, because
+    // it hands back "image.iso" in both cases.
+    const char* saved_image = configservice->GetCurrentImage("");
+    const bool hadRememberedImage = (saved_image != nullptr && saved_image[0] != '\0');
+    const char* current_image = hadRememberedImage ? saved_image : DEFAULT_IMAGE_FILENAME;
     LOGNOTE("SCSITBService::RefreshCache() loaded current_image %s from config.txt", current_image);
 
     // Store the current image path if not already set
@@ -466,11 +476,23 @@ bool SCSITBService::RefreshCache() {
         }
     }
 
-    // Fallback to first image file if not found. Never while ejected: an empty
+    // Fallback to first image file if not found. Not while ejected: an empty
     // drive must stay empty, and this path also runs on rescans (upload, delete,
     // FTP), where auto-mounting a substitute would undo the user's eject and
     // then persist "inserted" over the saved state.
-    if (!found && m_FileCount > 0 && !IsEjected()) {
+    //
+    // The exception is a gadget that has never been brought up. Adopting an
+    // image is the ONLY thing that initializes it (cdromservice.cpp:59), so
+    // refusing here would leave the host seeing no USB device at all rather
+    // than an empty drive - and adopting cannot undo the eject anyway, because
+    // the boot-eject arm below keeps the medium hidden. Reachable whenever a
+    // remembered image goes missing while the drive is ejected, including the
+    // second boot after this code has itself come up empty and persisted it.
+    //
+    // m_FileCount == 0 still adopts nothing, which is what the QEMU boot test
+    // relies on - see tests/qemu-boot/README.md.
+    if (!found && m_FileCount > 0 &&
+        (!IsEjected() || (cdromservice && !cdromservice->IsGadgetInitialized()))) {
         for (size_t i = 0; i < m_FileCount; ++i) {
             if (m_FileEntries[i].isDirectory) {
                 continue;
@@ -486,6 +508,30 @@ bool SCSITBService::RefreshCache() {
             LOGNOTE("SCSITBService::RefreshCache() Current image not found, using: %s",
                     m_FileEntries[i].relativePath);
             next_cd = i;
+
+            // A remembered image that is simply gone must not be swapped for a
+            // different disc in silence - that is how a renamed file turned
+            // into "some other game is in the drive" with nothing to explain
+            // it. Adopt this one so the gadget has a geometry and Insert is
+            // instant, but present the drive as EMPTY and record what went
+            // missing. A card that never had a remembered image (fresh write)
+            // keeps the plain auto-mount.
+            if (hadRememberedImage) {
+                strncpy(m_MissingSavedImage, current_image, sizeof(m_MissingSavedImage) - 1);
+                m_MissingSavedImage[sizeof(m_MissingSavedImage) - 1] = '\0';
+                m_bAdoptAsEmpty = true;
+                LOGWARN("Saved image %s is not on the card; coming up empty with %s adopted",
+                        current_image, m_FileEntries[i].relativePath);
+            }
+
+            // Adopting while ejected MUST stay ejected. SetDevice() clears the
+            // ejected latch unless the boot-eject is armed, so without this the
+            // adoption we just allowed above would insert a disc the user had
+            // deliberately ejected - the exact thing the !IsEjected() guard
+            // exists to prevent.
+            if (IsEjected()) {
+                m_bAdoptAsEmpty = true;
+            }
             break;
         }
     }
@@ -501,6 +547,11 @@ bool SCSITBService::RefreshCache() {
 void SCSITBService::ProcessPendingMount() {
     if (next_cd <= -1)
         return;
+
+    // Consume the flag up front: every exit path below retires the request, so
+    // leaving it set would eject the next image the user deliberately mounts.
+    const bool adoptAsEmpty = m_bAdoptAsEmpty;
+    m_bAdoptAsEmpty = false;
 
     if ((size_t)next_cd >= m_FileCount) {
         snprintf(m_LastMountError, sizeof(m_LastMountError),
@@ -561,6 +612,15 @@ void SCSITBService::ProcessPendingMount() {
             (int)imageDevice->GetFileType(),
             imageDevice->HasSubchannelData() ? "yes" : "no");
 
+    // This image is only standing in for one that is no longer on the card, so
+    // take its geometry but keep the drive empty to the host. Armed BEFORE
+    // SetDevice() deliberately: SetDevice() decides the ejected state itself
+    // and can yield, so ejecting afterwards would leave a window in which the
+    // gadget reports ready and the host mounts a disc nobody asked for.
+    if (adoptAsEmpty) {
+        cdromservice->ArmBootEject();
+    }
+
     cdromservice->SetDevice(imageDevice);
 
     // Committed only now that the disc is really the one the host has.
@@ -570,8 +630,18 @@ void SCSITBService::ProcessPendingMount() {
     m_MountedRelativePath[sizeof(m_MountedRelativePath) - 1] = '\0';
     m_LastFailedRelativePath[0] = '\0';
 
-    // Save relative path to config (without "1:/" prefix)
-    configservice->SetCurrentImage(relativePath);
+    // Save relative path to config (without "1:/" prefix).
+    //
+    // Not for a stand-in: recording it would make the substitute the user's
+    // remembered image, so the explanation would vanish on the next boot and
+    // putting the missing file back would no longer bring it up. Leaving the
+    // old name in config means the notice persists until something is mounted
+    // deliberately, and the fallback does not fire again because the drive is
+    // now ejected.
+    if (!adoptAsEmpty) {
+        configservice->SetCurrentImage(relativePath);
+        m_MissingSavedImage[0] = '\0';
+    }
 
     current_cd = next_cd;
     next_cd = -1;

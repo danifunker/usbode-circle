@@ -46,6 +46,13 @@ public:
     // was last powered off. Must be armed before the first SetDevice().
     void ArmBootEject(void);
     void DisarmBootEject(void);
+
+    // Whether the USB gadget has been brought up yet. It is created lazily by
+    // the first SetDevice(), so "false" means the host currently sees no device
+    // at all - which callers deciding whether to adopt an image need to know,
+    // since an empty drive and an absent drive look nothing alike to a PC.
+    bool IsGadgetInitialized(void) const { return isInitialized; }
+
     void Run(void);
 
 private:
