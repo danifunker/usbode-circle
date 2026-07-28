@@ -61,8 +61,11 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
         if (!svc)
             return HTTPInternalServerError;
 
-        // Get current loaded image
-        std::string current_image = svc->GetCurrentCDName();
+        // Get current loaded image. Constructing a std::string from a null
+        // char* is undefined, and this runs for every page the server serves,
+        // so it is checked here as well as at the source.
+        const char* current_image_name = svc->GetCurrentCDName();
+        std::string current_image = current_image_name != nullptr ? current_image_name : "";
 
         // If the last mount attempt failed, say so on every page. Mounting is
         // asynchronous - the request is answered "ok" as soon as the name is
