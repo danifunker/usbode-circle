@@ -51,24 +51,6 @@ static bool iequals(const char* a, const char* b) {
     return *a == *b;
 }
 
-// True if a file with the same stem but a different extension exists next to
-// fileName in dirFullPath (e.g. "game.bin" + ".cue" -> "1:/Games/game.cue").
-// FAT name matching is case-insensitive, so GAME.CUE is found too.
-static bool siblingWithExtExists(const char* dirFullPath, const char* fileName, const char* newExt) {
-    const char* dot = strrchr(fileName, '.');
-    if (dot == nullptr)
-        return false;
-
-    char sibling[MAX_PATH_LEN];
-    int n = snprintf(sibling, sizeof(sibling), "%s/%.*s%s",
-                     dirFullPath, (int)(dot - fileName), fileName, newExt);
-    if (n < 0 || (size_t)n >= sizeof(sibling))
-        return false;
-
-    FILINFO fi;
-    return f_stat(sibling, &fi) == FR_OK && !(fi.fattrib & AM_DIR);
-}
-
 int compareFileEntries(const void* a, const void* b) {
     const FileEntry* fa = (const FileEntry*)a;
     const FileEntry* fb = (const FileEntry*)b;
@@ -349,10 +331,17 @@ void SCSITBService::ScanDirectoryRecursive(const char* fullPath, const char* rel
                     // mounted now says why when you try, which is more use
                     // than not being there.
                     listIt = true;
-                } else if (!listIt && iequals(ext, ".bin")) {
-                    // Hide the raw .bin of a cue/bin pair; its .cue is listed
-                    listIt = !siblingWithExtExists(fullPath, fno.fname, ".cue");
                 }
+                // A .bin is never listed. Mounting one rewrites its extension
+                // and reads the .cue first, so a .bin whose cue is missing
+                // cannot be mounted at all, and one whose cue is present is
+                // already represented by that cue.
+                //
+                // The rule here used to be "list it unless a same-stem .cue
+                // exists", which is precisely backwards: it hid every .bin
+                // that could be mounted and offered every one that could not.
+                // On a split-track rip that meant a browser full of track
+                // files, none of them mountable.
                 if (listIt) {
                     size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);
                     memcpy(m_FileEntries[m_FileCount].name, fno.fname, len);
