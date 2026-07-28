@@ -26,8 +26,29 @@
 #include "chdfile.h"
 
 #include <cueparser/cueutil.h>
+#include <stdarg.h>
 
 LOGMODULE("discimage-util");
+
+// Reason the last load failed. Every loader here reports failure the same way
+// - by returning nullptr - so without somewhere to put the reason it only ever
+// reached the log.
+static char s_LastImageLoadError[192] = {0};
+
+const char* GetLastImageLoadError() {
+    return s_LastImageLoadError;
+}
+
+static void ClearImageLoadError() {
+    s_LastImageLoadError[0] = '\0';
+}
+
+static void SetImageLoadError(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    vsnprintf(s_LastImageLoadError, sizeof(s_LastImageLoadError), format, args);
+    va_end(args);
+}
 
 char tolower(char c) {
     if (c >= 'A' && c <= 'Z')
@@ -202,6 +223,7 @@ IImageDevice* loadMDSFileDevice(const char* imagePath) {
     size_t mds_size = 0;
     if (!ReadFileToString(fullPath, &mds_str, &mds_size)) {
         LOGERR("Failed to read MDS file: %s", fullPath);
+        SetImageLoadError("Could not read the .mds file. It may be unreadable or too large.");
         return nullptr;
     }
 
@@ -209,6 +231,7 @@ IImageDevice* loadMDSFileDevice(const char* imagePath) {
     CMDSFileDevice* mdsDevice = new CMDSFileDevice(fullPath, mds_str, mds_size, mediaType);
     if (!mdsDevice->Init()) {
         LOGERR("Failed to initialize MDS device: %s", imagePath);
+        SetImageLoadError("Not a valid Alcohol 120%% image, or its .mdf data file is missing.");
         delete mdsDevice;
         return nullptr;
     }
@@ -248,6 +271,7 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
         LOGNOTE("Loading CUE sheet from: %s", fullPath);
         if (!ReadFileToString(fullPath, &cue_str)) {
             LOGERR("Failed to read CUE file: %s", fullPath);
+            SetImageLoadError("Could not read the cue sheet for this image.");
             delete imageFile;
             return nullptr;
         }
@@ -264,6 +288,9 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
                    "file (a split-track rip). USBODE needs a single .bin; "
                    "re-rip the disc as one image or merge the tracks.",
                    fullPath);
+            SetImageLoadError("This is a split-track rip: the cue sheet points at one .bin "
+                              "per track. USBODE needs a single .bin, so re-rip the disc as "
+                              "one image or merge the tracks.");
             delete imageFile;
             delete[] cue_str;
             return nullptr;
@@ -278,6 +305,7 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
     FRESULT result = f_open(imageFile, fullPath, FA_READ);
     if (result != FR_OK) {
         LOGERR("Cannot open data file for reading: %s (error %d)", fullPath, result);
+        SetImageLoadError("The data file this image needs is missing: %s", fullPath);
         delete imageFile;
         if (cue_str) delete[] cue_str;
         return nullptr;
@@ -311,6 +339,7 @@ IImageDevice* loadCHDFileDevice(const char* imagePath) {
     CCHDFileDevice* chdDevice = new CCHDFileDevice(fullPath, mediaType);
     if (!chdDevice->Init()) {
         LOGERR("Failed to initialize CHD device: %s", imagePath);
+        SetImageLoadError("Not a valid CHD image, or it uses an unsupported compression.");
         delete chdDevice;
         return nullptr;
     }
@@ -396,6 +425,8 @@ IImageDevice* loadImageDevice(const char* imagePath) {
     // imagePath is a full path like "1:/Games/game.iso"
     LOGNOTE("loadImageDevice called for: %s", imagePath);
 
+    ClearImageLoadError();
+
     if (hasMdsExtension(imagePath)) {
         LOGNOTE("Detected MDS format - using MDS plugin");
         return loadMDSFileDevice(imagePath);
@@ -410,6 +441,7 @@ IImageDevice* loadImageDevice(const char* imagePath) {
     }
     else {
         LOGERR("Unknown file format: %s", imagePath);
+        SetImageLoadError("Unsupported file type. USBODE mounts .iso, .cue/.bin, .chd, .mds and .toast images.");
         return nullptr;
     }
 }
