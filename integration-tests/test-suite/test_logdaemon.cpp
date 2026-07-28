@@ -211,6 +211,61 @@ TEST(logdaemon_writes_and_applies_the_configured_level)
     RemoveFile(path);
 }
 
+// What the web UI shows. The boot-time warning about a path that will not open
+// goes to the serial console, and a SCREEN_HEADLESS build has nowhere else to
+// put it - so if the config page does not say this, a user with a bad path sees
+// a device that lists a log file and silently has none. Found by David testing
+// exactly that case and reporting "didn't see any warning".
+TEST(logdaemon_reports_its_status_for_the_web_ui)
+{
+    ResetLogging();
+    char status[256];
+
+    // Working.
+    const std::string good = TestDataDir() + "/logdaemon-status.txt";
+    RemoveFile(good);
+    {
+        CFileLogDaemon daemon(good.c_str(), 5);
+        CHECK(daemon.IsFileLogging());
+        daemon.GetStatusText(status, sizeof(status));
+        CHECK(strstr(status, "Writing to") != nullptr);
+        CHECK(strstr(status, "NOT LOGGING") == nullptr);
+    }
+    RemoveFile(good);
+
+    // Broken: has to name the path and say it is not logging, because that is
+    // the whole message.
+    ResetLogging();
+    const std::string bad = TestDataDir() + "/no-such-dir/usbode-logs.txt";
+    {
+        CFileLogDaemon daemon(bad.c_str(), 5);
+        CHECK(!daemon.IsFileLogging());
+        daemon.GetStatusText(status, sizeof(status));
+        CHECK(strstr(status, "NOT LOGGING") != nullptr);
+        CHECK(strstr(status, "usbode-logs.txt") != nullptr);
+    }
+
+    // Off on purpose is not an error and must not read like one.
+    ResetLogging();
+    {
+        CFileLogDaemon daemon("", 5);
+        daemon.GetStatusText(status, sizeof(status));
+        CHECK(strstr(status, "off") != nullptr);
+        CHECK(strstr(status, "NOT LOGGING") == nullptr);
+    }
+
+    // The log viewer opens the file through newlib, which wants an ordinary
+    // path rather than the FatFs volume form the config stores. It used to
+    // hardcode "/usbode-logs.txt" and show a blank page for any other setting.
+    ResetLogging();
+    {
+        CFileLogDaemon daemon("0:/somewhere/usbode-log.txt", 5);
+        char path[256];
+        daemon.GetStdioPath(path, sizeof(path));
+        CHECK(strcmp(path, "/somewhere/usbode-log.txt") == 0);
+    }
+}
+
 // The daemon kept the caller's pointer rather than the string. It came from
 // the config store, which is free to replace the value while the daemon is
 // still running - and the web UI does exactly that when the log path is

@@ -59,6 +59,19 @@ class CFileLogDaemon : public CTask {
     /// The FatFs result from the attempt to open it. FR_OK once open.
     FRESULT GetOpenResult(void) const { return m_OpenResult; }
 
+    /// One line describing whether file logging is actually working, for the
+    /// web UI to show.
+    ///
+    /// Without this the only report of a failed open is a warning on the
+    /// serial console, and SCREEN_HEADLESS builds have nowhere else to put it
+    /// - so the user sees a device with no log file and no reason given, which
+    /// is the situation this whole fix exists to end.
+    void GetStatusText(char *pBuffer, size_t nBufferSize) const;
+
+    /// The configured path as an ordinary filesystem path (no "0:" volume
+    /// prefix), for callers that open it through newlib rather than FatFs.
+    void GetStdioPath(char *pBuffer, size_t nBufferSize) const;
+
     // Takes effect immediately; only affects the log file, not the
     // loglevel= filtering Circle applies to the serial/screen target.
     void SetLogLevel(unsigned uiLogLevel);
