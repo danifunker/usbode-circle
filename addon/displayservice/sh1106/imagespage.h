@@ -25,6 +25,7 @@ class SH1106ImagesPage : public IPage {
 
    private:
     void Draw();
+    void ResolvePendingMount();
     void MoveSelection(int delta);
     void NavigateToFolder(const char* path);
     void NavigateUp();
@@ -48,6 +49,22 @@ class SH1106ImagesPage : public IPage {
     CSH1106Display* m_Display;
     C2DGraphics* m_Graphics;
     SCSITBService* m_Service = nullptr;
+    // Set when a mount attempt fails, and shown in place of the page title.
+    // The HAT used to fall silently back to the previously mounted image, so a
+    // disc that refused to load looked exactly like one the user had changed
+    // their mind about. Short by necessity - the full reason is in the web UI
+    // and the log.
+    bool m_MountFailed = false;
+
+    // A mount requested from the button handler and not yet resolved.
+    // OnButtonPress runs in the GPIO interrupt on this display, so it can only
+    // queue the request - m_MountRequestSeq is the service's retired-request
+    // counter as it stood when we asked, and Refresh() watches for it to move.
+    bool m_MountPending = false;
+    unsigned m_MountRequestSeq = 0;
+    size_t m_MountRequestIndex = 0;
+    unsigned m_MountWaitTicks = 0;
+
     size_t m_SelectedIndex = 0;
     size_t m_MountedIndex = 0;
     int charWidth;

@@ -54,9 +54,34 @@ THTTPStatus MountPageHandler::PopulateContext(kainjow::mustache::data& context,
         return HTTPInternalServerError;
 	}
 
-	// Use SetNextCDByName which now searches by relativePath in the cache
-	if (svc->SetNextCDByName(file_param.c_str())) {
+	// Wait for the load to actually happen before saying anything about it.
+	// Queueing the request and reporting success announced "Successfully
+	// mounted" for images that then refused to load, so the very next page
+	// contradicted this one.
+	switch (svc->MountByNameAndWait(file_param.c_str())) {
+	case SCSITBService::MountOutcome::Success:
+		context.set("mounted", true);
 		return HTTPOK;
+
+	case SCSITBService::MountOutcome::Failed:
+		context.set("mounted", false);
+		context.set("mount_failed", true);
+		context.set("mount_message", std::string(svc->GetLastMountError()));
+		// Stay put rather than bouncing to the homepage; the reason is here.
+		context.set("meta_refresh_url", "");
+		return HTTPOK;
+
+	case SCSITBService::MountOutcome::Timeout:
+		context.set("mounted", false);
+		context.set("mount_pending", true);
+		context.set("mount_message",
+			    std::string("Still loading. Large images on a slow card can take a "
+					"while; the homepage will show it once it is ready."));
+		return HTTPOK;
+
+	case SCSITBService::MountOutcome::NotFound:
+	default:
+		break;
 	}
 
 	return HTTPNotFound;

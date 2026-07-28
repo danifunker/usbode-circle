@@ -50,6 +50,40 @@ public:
     bool SetNextCD(size_t index);
     bool SetNextCDByName(const char* file_name);
 
+    /// What a mount attempt did. Anything that can tell the user should use
+    /// MountByNameAndWait() and report this, rather than SetNextCDByName(),
+    /// whose "true" only means the name was found in the catalogue.
+    enum class MountOutcome
+    {
+        Success,
+        NotFound,  // no such entry; nothing was attempted
+        Failed,    // the image was tried and would not load, see GetLastMountError()
+        Timeout    // still loading; too big or the card is slow, not known to have failed
+    };
+
+    /// Queue an image and wait for the service task to finish loading it.
+    ///
+    /// Mounting is asynchronous - the request is handed to Run() and picked up
+    /// on its next pass - so a caller that returns as soon as it has queued the
+    /// request can only report that the file exists. The web UI announced
+    /// "Successfully mounted" for images that then failed to load, which is how
+    /// a split-track cue came to report success and refusal on two consecutive
+    /// pages.
+    ///
+    /// TASK CONTEXT ONLY. This sleeps on the scheduler, so calling it from an
+    /// interrupt handler freezes the machine hard enough to need a power cycle.
+    /// That is not hypothetical: the sh1106 and st7789 button handlers run in
+    /// the GPIO interrupt (see PageManager::HandleButtonPress), and calling
+    /// this from there locked up the Pi on every mount. Those pages queue with
+    /// SetNextCDByName() and watch GetMountSeq() from their refresh loop
+    /// instead. Also not with m_Lock held, and not from a SCSI command handler
+    /// - the vendor toolbox picker has no way to show a result anyway.
+    MountOutcome MountByNameAndWait(const char* file_name, unsigned timeoutMs = 8000);
+
+    /// Counter of mount requests the service task has finished with, whatever
+    /// the result. Changes exactly once per retired request.
+    unsigned GetMountSeq() const { return m_MountSeq; }
+
     // Eject / insert the current medium. These queue the request for the Run()
     // loop (task context), matching how SetNextCD defers the actual work.
     void SetPendingEject();
@@ -101,6 +135,10 @@ private:
     // shifted every index and left "Current File Loaded" naming a file that
     // had never been mounted. This is what current_cd is re-derived from.
     char m_MountedRelativePath[MAX_PATH_LEN] = {0};
+
+    // Bumped once per mount request the service task retires, so a caller can
+    // tell "still queued" from "dealt with" without polling internal state.
+    volatile unsigned m_MountSeq = 0;
 
     // Relative path of the last image that failed to load, so the
     // pick-something fallback in RefreshCache does not keep choosing it and
