@@ -15,8 +15,17 @@ on:
     branches: [ "main" ]
 
 jobs:
+  # Gate the build on the host regression tests: they run in a couple of
+  # minutes on a GitHub-hosted runner, so there is no point spending ~10
+  # minutes of self-hosted build time on a commit they already reject.
+  # Shared with the standalone host-tests workflow rather than duplicated,
+  # so the two can never drift apart.
+  host-tests:
+    uses: ./.github/workflows/host-tests.yml
+
   build:
 
+    needs: host-tests
     runs-on: [self-hosted]
 
     steps:
@@ -42,13 +51,13 @@ jobs:
     # FIRMWARE variable upstream automatically invalidates the cache instead
     # of silently keeping stale blobs.
     - name: Cache WLAN firmware
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: circle-stdlib/libs/circle/addon/wlan/firmware
         key: wlan-firmware-${{ hashFiles('circle-stdlib/libs/circle/addon/wlan/firmware/Makefile') }}
 
     - name: Cache boot firmware
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         # Only the files boot/Makefile downloads, never the tracked
         # sources (Makefile, armstub/*, config*.txt) that ship in the

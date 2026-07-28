@@ -1,14 +1,17 @@
 name: Host regression tests
 
+permissions:
+  contents: read
+
 on:
+  # Called by the main CI build, which gates itself on these tests. Ordinary
+  # pushes are covered through that call rather than by a push trigger here,
+  # which would run the same tests twice for the same commit. The one change
+  # the build workflow does not react to is an edit to this file, since it
+  # ignores .github/** - so keep a push trigger scoped to exactly that.
+  workflow_call:
   push:
     paths:
-      - "addon/usbcdgadget/**"
-      - "addon/cueparser/**"
-      - "addon/discimage/**"
-      - "addon/mdsparser/**"
-      - "addon/libchdr-src/**"
-      - "integration-tests/**"
       - ".github/workflows/host-tests.yml"
   pull_request:
     paths:
@@ -25,7 +28,7 @@ jobs:
   host-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # The CHD build compiles the vendored libchdr, which is a git submodule
       # (addon/libchdr-src). Fetch just that submodule so libchdr/chd.h is
