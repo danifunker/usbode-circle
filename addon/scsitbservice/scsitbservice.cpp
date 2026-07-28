@@ -339,9 +339,16 @@ void SCSITBService::ScanDirectoryRecursive(const char* fullPath, const char* rel
                 bool listIt = iequals(ext, ".iso") || iequals(ext, ".mds") ||
                               iequals(ext, ".chd") || iequals(ext, ".toast");
                 if (!listIt && iequals(ext, ".cue")) {
-                    // Mounting a .cue opens the same-stem .bin, so only list
-                    // cue sheets whose data file is actually there
-                    listIt = siblingWithExtExists(fullPath, fno.fname, ".bin");
+                    // List every cue sheet, including one with no same-stem
+                    // .bin next to it. Hiding those was meant to keep a cue
+                    // whose data file is missing out of the way, but it also
+                    // hid split-track rips - where the cue is "Game.cue" and
+                    // the data is "Game (Track 1).bin" - so the browser
+                    // offered the raw track files and the disc itself simply
+                    // vanished with no explanation. A cue that cannot be
+                    // mounted now says why when you try, which is more use
+                    // than not being there.
+                    listIt = true;
                 } else if (!listIt && iequals(ext, ".bin")) {
                     // Hide the raw .bin of a cue/bin pair; its .cue is listed
                     listIt = !siblingWithExtExists(fullPath, fno.fname, ".cue");
@@ -489,10 +496,19 @@ void SCSITBService::ProcessPendingMount() {
 
     if (imageDevice == nullptr) {
         LOGERR("Failed to load image: %s", m_CurrentImagePath);
-        snprintf(m_LastMountError, sizeof(m_LastMountError),
-                 "Could not load %s. It may be an unsupported or damaged image; "
-                 "the log has the details. The previous disc is still mounted.",
-                 relativePath);
+        // Prefer the loader's own reason. "Unsupported or damaged" is true of
+        // every failure and useful for none of them, so it is only the
+        // fallback for a path that has not been given words yet.
+        const char* why = GetLastImageLoadError();
+        if (why != nullptr && why[0] != '\0') {
+            snprintf(m_LastMountError, sizeof(m_LastMountError),
+                     "%s (%s) The previous disc is still mounted.", why, relativePath);
+        } else {
+            snprintf(m_LastMountError, sizeof(m_LastMountError),
+                     "Could not load %s. It may be an unsupported or damaged image; "
+                     "the log has the details. The previous disc is still mounted.",
+                     relativePath);
+        }
         next_cd = -1;
         return;
     }

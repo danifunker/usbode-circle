@@ -64,6 +64,17 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
         // Get current loaded image
         std::string current_image = svc->GetCurrentCDName();
 
+        // If the last mount attempt failed, say so on every page. Mounting is
+        // asynchronous - the request is answered "ok" as soon as the name is
+        // found in the catalog - so without this the UI reports success for an
+        // image that never loaded and goes on showing the previous disc as
+        // though nothing happened. Set only when non-empty, so the template
+        // section stays falsy the rest of the time.
+        const char* mountError = svc->GetLastMountError();
+        if (mountError != nullptr && mountError[0] != '\0') {
+            context.set("mount_error", std::string(mountError));
+        }
+
 	// Get our config service
 	ConfigService* config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 

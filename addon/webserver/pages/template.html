@@ -19,6 +19,12 @@
 
 			<div class="content">
 
+			{{#mount_error}}
+				<div class="message warning" style="color:#b00020;font-weight:bold">
+					<strong>Last mount failed:</strong> {{mount_error}}
+				</div>
+			{{/mount_error}}
+
 			{{#cdrom}}
 				{{>content}}
 			{{/cdrom}}
