@@ -110,6 +110,7 @@ FRESULT f_open  (FIL* fp, const TCHAR* path, BYTE mode);
 FRESULT f_close (FIL* fp);
 FRESULT f_read  (FIL* fp, void* buff, UINT btr, UINT* br);
 FRESULT f_write (FIL* fp, const void* buff, UINT btw, UINT* bw);
+FRESULT f_sync  (FIL* fp);
 FRESULT f_lseek (FIL* fp, FSIZE_t ofs);
 
 // Directory walk: link-only stubs for mdsfile.cpp (MDS is not under test).

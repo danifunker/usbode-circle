@@ -59,6 +59,7 @@ namespace
         {"test_realimages", "Real disc images"},
         {"test_mdsimages", "MDS/MDF images"},
         {"test_multisession", "Multi-session and CD Extra"},
+        {"test_logdaemon", "File log daemon"},
     };
 
     // "test-suite/test_read10.cpp" -> "SCSI read commands"

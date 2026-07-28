@@ -43,23 +43,116 @@ CLogger *CLogger::Get(void)
     return &instance;
 }
 
+namespace
+{
+struct LogEvent
+{
+    TLogSeverity severity;
+    std::string source;
+    std::string message;
+};
+
+// Bounded, like the real logger's ring. What matters is that events survive
+// until something drains them.
+const size_t kMaxQueuedEvents = 256;
+
+std::vector<LogEvent> &EventQueue()
+{
+    static std::vector<LogEvent> queue;
+    return queue;
+}
+
+TLogEventNotificationHandler *g_pEventHandler = nullptr;
+TLogPanicHandler *g_pPanicHandler = nullptr;
+} // namespace
+
 void CLogger::Write(const char *pSource, TLogSeverity Severity, const char *pMessage, ...)
 {
     static const bool verbose = getenv("USBODE_TEST_VERBOSE") != nullptr;
+
+    char formatted[LOG_MAX_MESSAGE];
+    va_list var;
+    va_start(var, pMessage);
+    vsnprintf(formatted, sizeof(formatted), pMessage, var);
+    va_end(var);
+
+    // Queue first, and unconditionally: the real logger does not consult any
+    // loglevel here.
+    TestQueueEvent(Severity, pSource, formatted);
+
     if (!verbose)
     {
         return;
     }
 
     static const char *severityNames[] = {"panic", "error", "warn", "note", "debug"};
-    fprintf(stdout, "[%s] %s: ", severityNames[Severity], pSource);
+    fprintf(stdout, "[%s] %s: %s\n", severityNames[Severity], pSource, formatted);
+}
 
-    va_list var;
-    va_start(var, pMessage);
-    vfprintf(stdout, pMessage, var);
-    va_end(var);
+void CLogger::TestQueueEvent(TLogSeverity Severity, const char *pSource, const char *pMessage)
+{
+    std::vector<LogEvent> &queue = EventQueue();
+    if (queue.size() >= kMaxQueuedEvents)
+    {
+        queue.erase(queue.begin());
+    }
+    queue.push_back({Severity, pSource ? pSource : "", pMessage ? pMessage : ""});
 
-    fprintf(stdout, "\n");
+    if (g_pEventHandler != nullptr)
+    {
+        g_pEventHandler();
+    }
+}
+
+void CLogger::TestClearEvents(void)
+{
+    EventQueue().clear();
+}
+
+unsigned CLogger::TestQueuedEventCount(void)
+{
+    return (unsigned)EventQueue().size();
+}
+
+boolean CLogger::ReadEvent(TLogSeverity *pSeverity, char *pSource, char *pMessage,
+                           time_t *pTime, unsigned *pHundredthTime, int *pTimeZone)
+{
+    std::vector<LogEvent> &queue = EventQueue();
+    if (queue.empty())
+    {
+        return FALSE;
+    }
+
+    LogEvent event = queue.front();
+    queue.erase(queue.begin());
+
+    if (pSeverity) *pSeverity = event.severity;
+    if (pSource)
+    {
+        strncpy(pSource, event.source.c_str(), LOG_MAX_SOURCE - 1);
+        pSource[LOG_MAX_SOURCE - 1] = '\0';
+    }
+    if (pMessage)
+    {
+        strncpy(pMessage, event.message.c_str(), LOG_MAX_MESSAGE - 1);
+        pMessage[LOG_MAX_MESSAGE - 1] = '\0';
+    }
+    // A fixed time keeps log lines byte-comparable between runs.
+    if (pTime) *pTime = 0;
+    if (pHundredthTime) *pHundredthTime = 0;
+    if (pTimeZone) *pTimeZone = 0;
+
+    return TRUE;
+}
+
+void CLogger::RegisterEventNotificationHandler(TLogEventNotificationHandler *pHandler)
+{
+    g_pEventHandler = pHandler;
+}
+
+void CLogger::RegisterPanicHandler(TLogPanicHandler *pHandler)
+{
+    g_pPanicHandler = pHandler;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +194,26 @@ void CScheduler::TestRegisterTask(const char *pName, CTask *pTask)
 void CScheduler::TestClearTasks(void)
 {
     TaskRegistry().clear();
+}
+
+namespace
+{
+unsigned g_nSleepCount = 0;
+}
+
+void CScheduler::TestNoteSleep(void)
+{
+    g_nSleepCount++;
+}
+
+unsigned CScheduler::TestSleepCount(void)
+{
+    return g_nSleepCount;
+}
+
+void CScheduler::TestResetSleepCount(void)
+{
+    g_nSleepCount = 0;
 }
 
 // ---------------------------------------------------------------------------

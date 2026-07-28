@@ -18,8 +18,25 @@ FRESULT f_open(FIL* fp, const TCHAR* path, BYTE mode)
     if (!fp || !path) {
         return FR_INVALID_PARAMETER;
     }
-    // The readers only ever open images read-only.
-    FILE* f = fopen(path, "rb");
+
+    // The mode has to be honoured: whether the log daemon's append open succeeds
+    // is the whole subject of its tests. FA_OPEN_ALWAYS is "r+b" falling back to
+    // "w+b" only when the file is missing, which keeps a bad directory an error.
+    const char* stdioMode = "rb";
+    if (mode & (FA_WRITE | FA_CREATE_ALWAYS | FA_CREATE_NEW | FA_OPEN_ALWAYS)) {
+        if (mode & FA_CREATE_ALWAYS) {
+            stdioMode = "w+b";
+        } else if ((mode & FA_OPEN_APPEND) == FA_OPEN_APPEND) {
+            stdioMode = "a+b";
+        } else {
+            stdioMode = "r+b";
+        }
+    }
+
+    FILE* f = fopen(path, stdioMode);
+    if (!f && (mode & (FA_OPEN_ALWAYS | FA_CREATE_NEW))) {
+        f = fopen(path, "w+b");
+    }
     if (!f) {
         return FR_NO_FILE;
     }
@@ -84,6 +101,14 @@ FRESULT f_write(FIL* fp, const void* buff, UINT btw, UINT* bw)
         *bw = (UINT)n;
     }
     return (n == btw) ? FR_OK : FR_DISK_ERR;
+}
+
+FRESULT f_sync(FIL* fp)
+{
+    if (!fp || !fp->host_fp) {
+        return FR_INVALID_OBJECT;
+    }
+    return fflush((FILE*)fp->host_fp) == 0 ? FR_OK : FR_DISK_ERR;
 }
 
 FRESULT f_lseek(FIL* fp, FSIZE_t ofs)
