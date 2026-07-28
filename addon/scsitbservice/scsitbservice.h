@@ -56,6 +56,15 @@ public:
     void SetPendingInsert();
     bool IsEjected() const;  // delegates to cdromservice
 
+    /// Why the last mount attempt failed, or "" if the last one worked.
+    ///
+    /// Mounting is asynchronous: SetNextCDByName() only queues an index, so
+    /// the web UI's "ok" says the name was found in the catalog, not that the
+    /// image loaded. When the load then fails the old disc stays mounted and
+    /// the only record is a line in the log, which is how an image that cannot
+    /// be mounted looks to the user exactly like one that can.
+    const char* GetLastMountError() const { return m_LastMountError; }
+
     // Task entry point
     void Run(void);
 
@@ -80,6 +89,9 @@ private:
     // currently written to config, so the Run loop only writes on a change.
     bool m_bBootEjectPending = false;
     bool m_bPersistedEjected = false;
+
+    // Set by ProcessPendingMount() on every failure path, cleared on success.
+    char m_LastMountError[160] = {0};
 
     // Full path of currently mounted image (e.g., "1:/Games/game.iso")
     char m_CurrentImagePath[MAX_PATH_LEN];

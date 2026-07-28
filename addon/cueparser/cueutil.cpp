@@ -28,6 +28,25 @@ bool CueFindTrackForLBA(const char *cue_sheet, uint32_t lba, CUETrackInfo *out) 
     return found;
 }
 
+bool CueHasMultipleFiles(const char *cue_sheet) {
+    if (cue_sheet == nullptr) {
+        return false;
+    }
+
+    CUEParser parser(cue_sheet);
+    const CUETrackInfo *trackInfo;
+
+    while ((trackInfo = parser.next_track()) != nullptr) {
+        // file_index counts FILE lines as the parser walks them, so any track
+        // reporting the second or later file means the sheet is split.
+        if (trackInfo->file_index > 1) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 uint64_t CueLBAToByteOffset(const char *cue_sheet, uint32_t lba) {
     CUETrackInfo track;
     if (!CueFindTrackForLBA(cue_sheet, lba, &track)) {

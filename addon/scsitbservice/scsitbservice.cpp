@@ -469,11 +469,17 @@ void SCSITBService::ProcessPendingMount() {
         return;
     }
 
+    // Any failure below leaves the previous disc mounted, so the reason has to
+    // outlive this function or the user is told nothing at all.
+    m_LastMountError[0] = '\0';
+
     // Build full path using relativePath from cache
     const char* relativePath = m_FileEntries[next_cd].relativePath;
     // Ensure we have room for "1:/" prefix (3 chars) + relativePath + null terminator
     if (strlen(relativePath) > MAX_PATH_LEN - 4) {
         LOGERR("Path too long: %s", relativePath);
+        snprintf(m_LastMountError, sizeof(m_LastMountError),
+                 "Path is too long to mount: %s", relativePath);
         next_cd = -1;
         return;
     }
@@ -483,6 +489,10 @@ void SCSITBService::ProcessPendingMount() {
 
     if (imageDevice == nullptr) {
         LOGERR("Failed to load image: %s", m_CurrentImagePath);
+        snprintf(m_LastMountError, sizeof(m_LastMountError),
+                 "Could not load %s. It may be an unsupported or damaged image; "
+                 "the log has the details. The previous disc is still mounted.",
+                 relativePath);
         next_cd = -1;
         return;
     }

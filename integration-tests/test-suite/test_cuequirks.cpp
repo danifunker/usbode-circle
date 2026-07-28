@@ -19,6 +19,7 @@
 #include "framework.h"
 
 #include <cueparser/cueparser.h>
+#include <cueparser/cueutil.h>
 
 #include <string>
 #include <vector>
@@ -224,8 +225,12 @@ TEST(cue_unstored_pregap_shifts_following_tracks)
 //
 // The parser cannot place these tracks correctly without the real file sizes,
 // and the loader does not have them (it ignores the FILE names and always
-// opens the bin named after the cue). So the guarantee here is the one that
-// can be met today: every track lands somewhere sane on the disc.
+// opens the bin named after the cue). Bounding the arithmetic keeps the
+// addresses sane, but sane is not correct - so the loader refuses these images
+// outright rather than mounting a disc whose TOC is wrong. See
+// multifile_cue_is_detected_so_the_loader_can_refuse_it below; this test still
+// covers the parser, which has to survive the sheet either way because the
+// same parser reads it to make that decision.
 TEST(multifile_cue_does_not_underflow_into_a_nonsense_lba)
 {
     const char *cue =
@@ -261,4 +266,70 @@ TEST(multifile_cue_does_not_underflow_into_a_nonsense_lba)
     const CUETrackInfo *third = parser.next_track();
     CHECK_EQ(third->track_number, 3);
     CHECK_EQ(third->track_start, 150u);
+}
+
+// The check the loader makes before it will open anything. A split-track rip
+// has to be recognised from the cue sheet alone, because by the time the disc
+// is mounted the damage is a wrong TOC rather than a failure.
+//
+// The negative cases matter as much as the positive one: refusing an ordinary
+// single-file cue would make perfectly good images unmountable, and these are
+// the shapes that could fool a scan for the word FILE - a filename containing
+// it, a REM line mentioning it, and a commented-out second FILE.
+TEST(multifile_cue_is_detected_so_the_loader_can_refuse_it)
+{
+    const char *split =
+        "FILE \"Game (Track 1).bin\" BINARY\n"
+        "  TRACK 01 MODE1/2352\n"
+        "    INDEX 01 00:00:00\n"
+        "FILE \"Game (Track 2).bin\" BINARY\n"
+        "  TRACK 02 AUDIO\n"
+        "    INDEX 01 00:00:00\n";
+    CHECK(CueHasMultipleFiles(split));
+
+    const char *single =
+        "FILE \"Game.bin\" BINARY\n"
+        "  TRACK 01 MODE1/2352\n"
+        "    INDEX 01 00:00:00\n"
+        "  TRACK 02 AUDIO\n"
+        "    INDEX 01 04:12:33\n"
+        "  TRACK 03 AUDIO\n"
+        "    INDEX 01 08:24:66\n";
+    CHECK(!CueHasMultipleFiles(single));
+
+    // "FILE" inside the data file's own name.
+    const char *namedFile =
+        "FILE \"MY FILE (1996).bin\" BINARY\n"
+        "  TRACK 01 MODE1/2352\n"
+        "    INDEX 01 00:00:00\n";
+    CHECK(!CueHasMultipleFiles(namedFile));
+
+    // Metadata that mentions a file, and a rem'd-out second FILE line - the
+    // kind of leftover a ripper or a hand edit produces.
+    const char *remmed =
+        "REM ORIGINAL FILE Game.iso\n"
+        "FILE \"Game.bin\" BINARY\n"
+        "  TRACK 01 MODE1/2352\n"
+        "    INDEX 01 00:00:00\n"
+        "REM FILE \"Game (Track 2).bin\" BINARY\n";
+    CHECK(!CueHasMultipleFiles(remmed));
+
+    // A sheet with no tracks at all must not be reported as split; it fails
+    // later, for its own reason.
+    CHECK(!CueHasMultipleFiles(""));
+    CHECK(!CueHasMultipleFiles(nullptr));
+
+    // Three files, and lowercase - keywords are case-insensitive everywhere
+    // else in the parser and have to be here too.
+    const char *lower =
+        "file \"a.bin\" binary\n"
+        "  track 01 audio\n"
+        "    index 01 00:00:00\n"
+        "file \"b.bin\" binary\n"
+        "  track 02 audio\n"
+        "    index 01 00:00:00\n"
+        "file \"c.bin\" binary\n"
+        "  track 03 audio\n"
+        "    index 01 00:00:00\n";
+    CHECK(CueHasMultipleFiles(lower));
 }
