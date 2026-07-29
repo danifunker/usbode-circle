@@ -418,19 +418,28 @@ int CDUtils::GetBlocksizeForTrack(CUSBCDGadget* gadget, CUETrackInfo trackInfo)
     //     return 2352;
     // }
 
+    // Gated, not bare NOTICE. This runs once per READ(10) and once per READ CD
+    // (scsi_read.cpp:129 and :436) - so, in IRQ context, on the hottest path in
+    // the device. A device log pulled on 2026-07-28 had 13,069 of these lines,
+    // peaking at 929 in a single second.
+    //
+    // The cost is not the log file. CLogger::WriteV() builds a CString and
+    // queues the event BEFORE it consults the log level, so every one of these
+    // heap-allocates inside an IRQ - and lowering loglevel does not avoid any
+    // of it. m_bDebugLogging does.
     switch (trackInfo.track_mode)
     {
     case CUETrack_MODE1_2048:
-        MLOGNOTE("CDUtils::GetBlocksizeForTrack", "CUETrack_MODE1_2048");
+        CDROM_DEBUG_LOG("CDUtils::GetBlocksizeForTrack", "CUETrack_MODE1_2048");
         return 2048;
     case CUETrack_MODE1_2352:
-        MLOGNOTE("CDUtils::GetBlocksizeForTrack", "CUETrack_MODE1_2352");
+        CDROM_DEBUG_LOG("CDUtils::GetBlocksizeForTrack", "CUETrack_MODE1_2352");
         return 2352;
     case CUETrack_MODE2_2352:
-        MLOGNOTE("CDUtils::GetBlocksizeForTrack", "CUETrack_MODE2_2352");
+        CDROM_DEBUG_LOG("CDUtils::GetBlocksizeForTrack", "CUETrack_MODE2_2352");
         return 2352;
     case CUETrack_AUDIO:
-        MLOGNOTE("CDUtils::GetBlocksizeForTrack", "CUETrack_AUDIO");
+        CDROM_DEBUG_LOG("CDUtils::GetBlocksizeForTrack", "CUETrack_AUDIO");
         return 2352;
     default:
         MLOGERR("CDUtils::GetBlocksizeForTrack", "Track mode %d not handled", trackInfo.track_mode);
