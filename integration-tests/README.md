@@ -270,6 +270,10 @@ deliberately out of scope here and only run on hardware:
 The natural next tier is
 hardware-in-the-loop: a PC with `sg3_utils` issuing the same command set
 to a real USBODE over USB, comparing Trace Lab captures against golden
-traces (`usbode_trace.py compare`). QEMU is not a shortcut here — its
-dwc2 model is host-mode only, so the gadget side cannot run under
-emulation.
+traces (`usbode_trace.py compare`). QEMU is not a shortcut for the gadget
+side — its dwc2 model is host-mode only, so enumeration and SCSI traffic
+cannot run under emulation — but everything up to that boundary is now
+covered by a separate CI stage: `tests/qemu-boot/` boots the real,
+unmodified kernel images under QEMU, walks them through first-boot setup
+(MBR resize, exFAT format, reboot) on a virgin card, and validates the
+entire boot log against the exact version being built.
