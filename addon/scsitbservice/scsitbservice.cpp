@@ -624,10 +624,24 @@ void SCSITBService::ProcessPendingMount() {
     cdromservice->SetDevice(imageDevice);
 
     // Committed only now that the disc is really the one the host has.
+    //
+    // m_CurrentImagePath is the file the gadget holds open, and is set either
+    // way: the delete/rename/overwrite guards key off it, and a stand-in is
+    // just as destructive to yank away as a chosen disc.
     strncpy(m_CurrentImagePath, candidatePath, sizeof(m_CurrentImagePath) - 1);
     m_CurrentImagePath[sizeof(m_CurrentImagePath) - 1] = '\0';
-    strncpy(m_MountedRelativePath, relativePath, sizeof(m_MountedRelativePath) - 1);
-    m_MountedRelativePath[sizeof(m_MountedRelativePath) - 1] = '\0';
+
+    // m_MountedRelativePath is what the USER has mounted, and a stand-in is
+    // not that - the drive is empty. Leaving it clear resolves current_cd to
+    // -1, so the file list highlights nothing and GetCurrentCDName() returns
+    // "", which is what the host sees. Naming the stand-in as "current" read
+    // as an ordinary disc swap and hid the empty drive completely.
+    if (!adoptAsEmpty) {
+        strncpy(m_MountedRelativePath, relativePath, sizeof(m_MountedRelativePath) - 1);
+        m_MountedRelativePath[sizeof(m_MountedRelativePath) - 1] = '\0';
+    } else {
+        m_MountedRelativePath[0] = '\0';
+    }
     m_LastFailedRelativePath[0] = '\0';
 
     // Save relative path to config (without "1:/" prefix).
@@ -643,7 +657,9 @@ void SCSITBService::ProcessPendingMount() {
         m_MissingSavedImage[0] = '\0';
     }
 
-    current_cd = next_cd;
+    // Nothing is current when the drive is empty, so the file list agrees with
+    // what the host can see rather than contradicting it.
+    current_cd = adoptAsEmpty ? -1 : next_cd;
     next_cd = -1;
     m_MountSeq++;
 }
