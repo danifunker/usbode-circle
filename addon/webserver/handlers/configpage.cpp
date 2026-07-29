@@ -32,17 +32,10 @@ std::string ConfigPageHandler::GetHTML() {
     return std::string(s_Config);
 }
 
-// Normalize a log file path the user typed onto volume 0:, and reject what
-// FatFs will not be able to open.
-//
-// This is the only validation the value ever gets, and it used to be one line:
-// prepend "0:/" unless the string already started with it. A user who entered
-// "SD:/usbode-logs.txt" - a reasonable guess at how to name the card - got
-// "0:/SD:/usbode-logs.txt" saved, which cannot be opened, and the next boot
-// came up with no log file at all.
-//
-// An empty result means logging is switched off, which is a legitimate choice
-// rather than an error.
+// Normalize a user-typed log path onto volume 0: and reject what FatFs cannot
+// open. This is the only validation the value gets, and a rejected path is not
+// discovered until the next boot comes up with no log file. An empty result
+// means logging is off, which is a choice rather than an error.
 static bool NormalizeLogfilePath(std::string& path, std::string& error) {
     const size_t first = path.find_first_not_of(" \t");
     if (first == std::string::npos) {
@@ -54,10 +47,8 @@ static bool NormalizeLogfilePath(std::string& path, std::string& error) {
     // FatFs accepts either separator and users type both.
     std::replace(path.begin(), path.end(), '\\', '/');
 
-    // Take off a volume prefix if one was typed, and refuse any volume other
-    // than the boot partition. Volume 1: is a real volume but it is not
-    // mounted until well after the log daemon starts, so a log file there
-    // would fail at every boot.
+    // Refuse any volume but the boot partition: 1: is real but is not mounted
+    // until well after the log daemon starts.
     const size_t colon = path.find(':');
     if (colon != std::string::npos) {
         const std::string volume = path.substr(0, colon);
@@ -81,10 +72,8 @@ static bool NormalizeLogfilePath(std::string& path, std::string& error) {
         return false;
     }
 
-    // The directory has to exist. FatFs will not create one, so a path under a
-    // missing directory is accepted here and then fails silently at boot -
-    // which is exactly the failure this is here to stop. f_opendir rather than
-    // f_stat, because f_stat cannot describe the root of a volume.
+    // FatFs will not create a directory, so a path under a missing one fails
+    // silently at boot. f_opendir, not f_stat, which cannot describe a root.
     const size_t slash = path.find_last_of('/');
     if (slash != std::string::npos) {
         const std::string dir = path.substr(0, slash);
@@ -194,10 +183,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
                 config->SetST7789SleepBrightness(std::atoi(form_params["st7789_sleep_brightness"].c_str()));
             }
             
-            // Log file configuration. An empty value is honoured as "turn file
-            // logging off" - the page already displays an empty setting that
-            // way, and previously the write path ignored it, so the setting
-            // could not be cleared once set.
+            // An empty value means "off". The write path used to ignore it, so
+            // the setting could not be cleared once set.
             if (form_params.count("logfile")) {
                 std::string logfile = form_params["logfile"];
                 std::string logfileError;
@@ -266,10 +253,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             // Check for action parameter to determine what to do after saving
             std::string action = form_params.count("action") ? form_params["action"] : "save";
 
-            // Something was rejected above. Everything else in the form was
-            // still saved, but saying "saved successfully" alongside the
-            // rejection would read as though the rejected value went in too -
-            // and rebooting on top of that would hide the message entirely.
+            // Everything else was saved, but "saved successfully" next to a
+            // rejection would read as though the rejected value went in too.
             if (!error_message.empty()) {
                 error_message += " Other settings were saved.";
             } else if (action == "save_reboot") {
@@ -286,10 +271,8 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
         }
     }
     
-    // Whether file logging is actually working right now. The boot-time
-    // warning about a path that would not open goes to the serial console, and
-    // a SCREEN_HEADLESS build has nowhere else to put it - so without this the
-    // config page happily shows a log path that is doing nothing.
+    // The boot-time warning goes to the serial console, which a SCREEN_HEADLESS
+    // build has no equivalent of, so the page would show a path doing nothing.
     {
         char status[256] = {0};
         if (CFileLogDaemon::Get() != nullptr) {

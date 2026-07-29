@@ -396,12 +396,10 @@ CString CFTPWorker::RealPath(const char* pInBuffer) const {
     return Path;
 }
 
-// Deleting, renaming or overwriting the mounted image leaves the gadget reading
-// a file that no longer has the contents it opened - the host keeps issuing
-// READ(10) against storage that has been unlinked or truncated under it, which
-// is one reported way of hanging the device. The web UI has always refused this
-// (deleteapi.cpp:43); FTP did not, so the same card could be broken over FTP in
-// a way the browser would not allow.
+// Deleting, renaming or overwriting the mounted image leaves the gadget issuing
+// READ(10) against a file that has been unlinked or truncated under it, which is
+// one reported way of hanging the device. The web UI already refuses this
+// (deleteapi.cpp:43); FTP did not.
 bool CFTPWorker::IsMountedImage(const char* pPath) const {
     assert(pPath != nullptr);
 
@@ -419,8 +417,7 @@ bool CFTPWorker::IsMountedImage(const char* pPath) const {
     return FatFsPathsEqual(pPath, current, MAX_PATH_LEN);
 }
 
-// The service is a task looked up by name; every caller here treated it as
-// guaranteed and dereferenced it blind.
+// The service is looked up by name and callers dereferenced it blind.
 void CFTPWorker::RefreshImageCache() const {
     SCSITBService* svc =
         static_cast<SCSITBService*>(CScheduler::Get()->GetTask("scsitbservice"));
@@ -742,13 +739,10 @@ bool CFTPWorker::Store(const char* pArgs) {
     FIL File;
     CString Path = RealPath(pArgs);
 
-    // FA_CREATE_ALWAYS truncates, so uploading over the mounted image empties
-    // the file the host is reading from - worse than deleting it, because the
-    // directory entry survives and nothing looks wrong until a read fails.
+    // FA_CREATE_ALWAYS truncates, so uploading over the mounted image empties the
+    // file the host is reading from, with the directory entry still looking fine.
     if (IsMountedImage(Path)) {
-        // Log BEFORE replying: SendStatus() formats into m_CommandBuffer, and
-        // pArgs points into that same buffer, so the reply overwrites the
-        // argument being logged.
+        // Before the reply - SendStatus() overwrites the buffer pArgs is in.
         LOGERR("Refused to overwrite the mounted image %s", pArgs);
         SendStatus(TFTPStatus::FileActionNotTaken,
                    "That image is mounted. Mount another one first.");
@@ -1148,8 +1142,7 @@ bool CFTPWorker::RenameTo(const char* pArgs) {
     // surely as deleting it; renaming something else ONTO it destroys it.
     if (IsMountedImage(SourcePath) || IsMountedImage(DestPath)) {
         // Before the reply - SendStatus() overwrites the buffer pArgs is in.
-        // This one proved it: the log line read "... -> hat image is mounted.
-        // Mount another one first." - the reply itself, offset by five bytes.
+        // Before the reply - SendStatus() overwrites the buffer pArgs is in.
         LOGERR("Refused to rename the mounted image (%s -> %s)",
                static_cast<const char*>(m_RenameFrom), pArgs);
         SendStatus(TFTPStatus::FileNameNotAllowed,

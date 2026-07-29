@@ -42,34 +42,20 @@ class CFileLogDaemon : public CTask {
     boolean Initialize();
     void Run(void);
 
-    /// One pass of Run()'s loop: drain whatever the logger has queued. Split
-    /// out because Run() never returns, and the drain is the part with the
-    /// interesting behaviour when the log file could not be opened.
+    // One pass of Run()'s loop, split out so it can be tested; Run() never returns.
     void DrainOnce(void);
 
-    /// Whether the log file is actually open. The constructor cannot report a
-    /// failure, so the caller has to be able to ask afterwards - otherwise a
-    /// mistyped path silently produces a system with no file logging at all.
+    // The constructor cannot report a failed open, so callers ask afterwards.
     boolean IsFileLogging(void) const { return m_bFileInitialized; }
-
-    /// The path this daemon was asked for, for a caller that wants to name it
-    /// in a diagnostic.
     const char *GetLogFilePath(void) const { return m_LogFilePath; }
-
-    /// The FatFs result from the attempt to open it. FR_OK once open.
     FRESULT GetOpenResult(void) const { return m_OpenResult; }
 
-    /// One line describing whether file logging is actually working, for the
-    /// web UI to show.
-    ///
-    /// Without this the only report of a failed open is a warning on the
-    /// serial console, and SCREEN_HEADLESS builds have nowhere else to put it
-    /// - so the user sees a device with no log file and no reason given, which
-    /// is the situation this whole fix exists to end.
+    // One line for the web UI. SCREEN_HEADLESS builds have nowhere else to
+    // report a failed open.
     void GetStatusText(char *pBuffer, size_t nBufferSize) const;
 
-    /// The configured path as an ordinary filesystem path (no "0:" volume
-    /// prefix), for callers that open it through newlib rather than FatFs.
+    // The configured path without the volume prefix, for callers that open it
+    // through newlib rather than FatFs.
     void GetStdioPath(char *pBuffer, size_t nBufferSize) const;
 
     // Takes effect immediately; only affects the log file, not the
@@ -79,10 +65,8 @@ class CFileLogDaemon : public CTask {
     static CFileLogDaemon *Get(void);
 
    private:
-    /// Why a message did not reach the file. The distinction matters: a write
-    /// that failed may well succeed next time and is worth backing off for,
-    /// but a file that was never opened will never take a message, and backing
-    /// off for each of those costs the whole system (see Run()).
+    // A failed write is worth backing off for; a file that was never opened is
+    // not, and backing off for each of those costs the whole system (see Run()).
     enum class LogResult
     {
         Written,
@@ -100,11 +84,10 @@ class CFileLogDaemon : public CTask {
    private:
     CSynchronizationEvent m_Event;
     static CFileLogDaemon *s_pThis;
-    /// Must start FALSE. An indeterminate value here let LogMessage() write to
-    /// an unopened FIL and the destructor close it, whenever the open failed.
+    // Must start FALSE: uninitialized, a failed open still let LogMessage()
+    // write to an unopened FIL and the destructor close it.
     boolean m_bFileInitialized = FALSE;
-    /// Copied, not aliased. The caller's string comes out of the config store,
-    /// which is free to replace it while this daemon is still running.
+    // Copied, not aliased: the config store may replace the caller's string.
     char m_LogFilePath[256] = {0};
     FRESULT m_OpenResult = FR_NOT_READY;
     unsigned m_uiLogLevel;

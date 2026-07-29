@@ -61,28 +61,21 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
         if (!svc)
             return HTTPInternalServerError;
 
-        // Get current loaded image. Constructing a std::string from a null
-        // char* is undefined, and this runs for every page the server serves,
-        // so it is checked here as well as at the source.
+        // std::string from a null char* is undefined, and this runs for every
+        // page, so it is checked here as well as at the source.
         const char* current_image_name = svc->GetCurrentCDName();
         std::string current_image = current_image_name != nullptr ? current_image_name : "";
 
-        // If the last mount attempt failed, say so on every page. Mounting is
-        // asynchronous - the request is answered "ok" as soon as the name is
-        // found in the catalog - so without this the UI reports success for an
-        // image that never loaded and goes on showing the previous disc as
-        // though nothing happened. Set only when non-empty, so the template
-        // section stays falsy the rest of the time.
+        // Say so on every page: mounting is asynchronous, so the request is
+        // answered "ok" before the image has actually loaded. Set only when
+        // non-empty, so the template section stays falsy otherwise.
         const char* mountError = svc->GetLastMountError();
         if (mountError != nullptr && mountError[0] != '\0') {
             context.set("mount_error", std::string(mountError));
         }
 
-        // The saved image was not on the card, so the drive came up empty
-        // rather than holding a disc the user never chose. Shown on every page
-        // and until something is mounted deliberately: this survives a reboot,
-        // so a one-shot message would be missed by exactly the person it is
-        // for.
+        // The saved image was missing, so the drive came up empty. Shown until
+        // something is mounted deliberately, since this survives a reboot.
         const char* missingImage = svc->GetMissingSavedImage();
         if (missingImage != nullptr && missingImage[0] != '\0') {
             context.set("missing_image", std::string(missingImage));

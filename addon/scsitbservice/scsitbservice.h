@@ -50,38 +50,24 @@ public:
     bool SetNextCD(size_t index);
     bool SetNextCDByName(const char* file_name);
 
-    /// What a mount attempt did. Anything that can tell the user should use
-    /// MountByNameAndWait() and report this, rather than SetNextCDByName(),
-    /// whose "true" only means the name was found in the catalogue.
+    // What a mount attempt did. Callers that report to the user want this and
+    // MountByNameAndWait(); SetNextCDByName()'s "true" only means the name exists.
     enum class MountOutcome
     {
         Success,
         NotFound,  // no such entry; nothing was attempted
-        Failed,    // the image was tried and would not load, see GetLastMountError()
-        Timeout    // still loading; too big or the card is slow, not known to have failed
+        Failed,    // tried and would not load, see GetLastMountError()
+        Timeout    // still loading; not known to have failed
     };
 
-    /// Queue an image and wait for the service task to finish loading it.
-    ///
-    /// Mounting is asynchronous - the request is handed to Run() and picked up
-    /// on its next pass - so a caller that returns as soon as it has queued the
-    /// request can only report that the file exists. The web UI announced
-    /// "Successfully mounted" for images that then failed to load, which is how
-    /// a split-track cue came to report success and refusal on two consecutive
-    /// pages.
-    ///
-    /// TASK CONTEXT ONLY. This sleeps on the scheduler, so calling it from an
-    /// interrupt handler freezes the machine hard enough to need a power cycle.
-    /// That is not hypothetical: the sh1106 and st7789 button handlers run in
-    /// the GPIO interrupt (see PageManager::HandleButtonPress), and calling
-    /// this from there locked up the Pi on every mount. Those pages queue with
-    /// SetNextCDByName() and watch GetMountSeq() from their refresh loop
-    /// instead. Also not with m_Lock held, and not from a SCSI command handler
-    /// - the vendor toolbox picker has no way to show a result anyway.
+    // Queue an image and wait for the service task to finish loading it.
+    // TASK CONTEXT ONLY: this sleeps, so calling it from an interrupt handler
+    // hard-locks the Pi. The sh1106 and st7789 button handlers run in the GPIO
+    // interrupt, so they queue with SetNextCDByName() and poll GetMountSeq().
+    // Not with m_Lock held either.
     MountOutcome MountByNameAndWait(const char* file_name, unsigned timeoutMs = 8000);
 
-    /// Counter of mount requests the service task has finished with, whatever
-    /// the result. Changes exactly once per retired request.
+    // Bumped once per mount request the service task retires, whatever the result.
     unsigned GetMountSeq() const { return m_MountSeq; }
 
     // Eject / insert the current medium. These queue the request for the Run()
@@ -90,23 +76,12 @@ public:
     void SetPendingInsert();
     bool IsEjected() const;  // delegates to cdromservice
 
-    /// Why the last mount attempt failed, or "" if the last one worked.
-    ///
-    /// Mounting is asynchronous: SetNextCDByName() only queues an index, so
-    /// the web UI's "ok" says the name was found in the catalog, not that the
-    /// image loaded. When the load then fails the old disc stays mounted and
-    /// the only record is a line in the log, which is how an image that cannot
-    /// be mounted looks to the user exactly like one that can.
+    // Why the last mount attempt failed, or "" if it worked.
     const char* GetLastMountError() const { return m_LastMountError; }
 
-    /// The image config remembered, when it is no longer on the card, or "".
-    ///
-    /// A saved image that has been renamed, deleted or left on another card
-    /// used to be replaced by whichever file sorted first, with nothing said:
-    /// the drive came up holding a game the user had not asked for. Now the
-    /// drive comes up EMPTY and this says which image went missing. The
-    /// substitute is still adopted behind the scenes so the gadget knows a
-    /// geometry and Insert is instant - see ProcessPendingMount().
+    // The image config remembered, when it is no longer on the card, or "".
+    // The drive comes up empty in that case; a substitute is still adopted
+    // behind the scenes so the gadget has a geometry, see ProcessPendingMount().
     const char* GetMissingSavedImage() const { return m_MissingSavedImage; }
 
     // Task entry point
@@ -135,34 +110,25 @@ private:
     bool m_bPersistedEjected = false;
 
     // Set by ProcessPendingMount() on every failure path, cleared on success.
-    // Wide enough for the loader's own wording plus the file name; at 160 the
-    // split-track message was cut off mid-word on screen.
+    // 320 because at 160 the split-track message was cut off mid-word on screen.
     char m_LastMountError[320] = {0};
 
-    // Relative path of the image that is ACTUALLY mounted, written only after
-    // a load succeeds. current_cd is an index into a list that RefreshCache
-    // rebuilds, so it cannot survive a rescan on its own - hiding .bin files
-    // shifted every index and left "Current File Loaded" naming a file that
-    // had never been mounted. This is what current_cd is re-derived from.
+    // The image that is ACTUALLY mounted, written only after a load succeeds.
+    // current_cd is an index into a list RefreshCache rebuilds, so it cannot
+    // survive a rescan on its own; it is re-derived from this.
     char m_MountedRelativePath[MAX_PATH_LEN] = {0};
 
-    // Bumped once per mount request the service task retires, so a caller can
-    // tell "still queued" from "dealt with" without polling internal state.
     volatile unsigned m_MountSeq = 0;
 
-    // The image config remembered when it turned out not to be on the card.
     // Kept until the user mounts something deliberately, so the explanation
-    // survives a reboot rather than scrolling past once.
+    // survives a reboot.
     char m_MissingSavedImage[MAX_PATH_LEN] = {0};
 
-    // Set by RefreshCache when the image it is about to mount is only a
-    // stand-in for a missing one, and consumed by ProcessPendingMount, which
-    // arms the boot-eject so the drive presents empty.
+    // Set by RefreshCache when the image it is about to mount is only a stand-in
+    // for a missing one; ProcessPendingMount arms the boot-eject so it reads empty.
     bool m_bAdoptAsEmpty = false;
 
-    // Relative path of the last image that failed to load, so the
-    // pick-something fallback in RefreshCache does not keep choosing it and
-    // failing again on every rescan.
+    // So the fallback in RefreshCache does not keep picking the same bad image.
     char m_LastFailedRelativePath[MAX_PATH_LEN] = {0};
 
     // Full path of currently mounted image (e.g., "1:/Games/game.iso")

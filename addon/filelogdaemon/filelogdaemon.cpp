@@ -67,10 +67,8 @@ boolean CFileLogDaemon::Initialize() {
     FRESULT Result = f_open(&m_LogFile, m_LogFilePath, FA_WRITE | FA_OPEN_ALWAYS);
     m_OpenResult = Result;
     if (Result != FR_OK) {
-        // Name the path and the reason. This message is the only evidence the
-        // user gets, and "Failed to open log file" left them with a system
-        // that had quietly stopped logging and no way to tell why. Note that
-        // only volume 0: is mounted this early, so a path on 1: lands here.
+        // Name the path and the reason: this message is the only evidence the
+        // user gets. Only volume 0: is mounted this early, so a path on 1: lands here.
         LOGERR("Failed to open log file '%s' (FatFs error %d); file logging is off",
                m_LogFilePath, (int)Result);
         return FALSE;
@@ -169,11 +167,9 @@ void CFileLogDaemon::DrainOnce(void) {
             continue;
         }
 
-        // Only back off for a failure that might not repeat. When the file was
-        // never opened every message fails, and sleeping for each one throttled
-        // the log queue to 50 events a second - which, since the queue is
-        // drained on a scheduler task, dragged the whole system down with it.
-        // A mistyped log path used to present as a Pi that had gone slow.
+        // Only back off for a failure that might not repeat. With no file open
+        // every message fails, and sleeping for each throttled the queue to 50
+        // events a second, which presented as a Pi that had gone slow.
         if (LogMessage(Severity, Time, nHundredthTime, nTimeZone, Source, Message) ==
             LogResult::WriteFailed) {
             CScheduler::Get()->Sleep(20);
@@ -222,9 +218,8 @@ CFileLogDaemon::LogResult CFileLogDaemon::LogMessage(TLogSeverity Severity,
     UINT BytesWritten;
     FRESULT Result = f_write(&m_LogFile, LogEntry, strlen(LogEntry), &BytesWritten);
     if (Result != FR_OK) {
-        // Deliberately not logged: this runs while draining the log queue, and
-        // a message here would queue another event, which would fail the same
-        // way. The caller backs off instead.
+        // Not logged: this runs while draining the log queue, so a message here
+        // would queue another event that fails the same way.
         return LogResult::WriteFailed;
     }
 

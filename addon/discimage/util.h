@@ -24,14 +24,8 @@ bool hasDvdHint(const char* imageName);
 // Image loading - returns base IImageDevice interface
 IImageDevice* loadImageDevice(const char* imageName);
 
-/// Why the last loadImageDevice() call returned nullptr, in words a user can
-/// act on, or "" if the last one succeeded.
-///
-/// The loaders only ever returned nullptr, so the reason existed solely in the
-/// log - which meant a mount that failed for a specific, fixable reason (a
-/// split-track cue, a missing .bin) was reported to the user, if at all, as a
-/// generic failure. Written by the loaders, read by SCSITBService when it
-/// records why a mount did not happen.
+// Why the last loadImageDevice() failed, in words a user can act on, or "" if it
+// succeeded. Written by the loaders, read by SCSITBService when a mount is refused.
 const char* GetLastImageLoadError();
 
 // Format-specific loaders

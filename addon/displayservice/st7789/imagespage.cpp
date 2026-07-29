@@ -129,12 +129,9 @@ void ST7789ImagesPage::OnButtonPress(Button button) {
                     NavigateToFolder(relativePath);
                 } else {
                     const char* relativePath = m_Service->GetRelativePath(cacheIdx);
-                    // Queue the mount; do NOT wait for it here. This runs in
-                    // the GPIO interrupt handler, and waiting means sleeping on
-                    // the scheduler, which from IRQ context freezes the Pi hard
-                    // enough to need a power cycle - on every mount, whatever
-                    // the image. ResolvePendingMount() collects the outcome
-                    // from Refresh(), which is task context.
+                    // Queue only; do NOT wait. This runs in the GPIO interrupt
+                    // handler, where sleeping on the scheduler hard-locks the Pi.
+                    // ResolvePendingMount() collects the outcome in task context.
                     m_MountRequestSeq = m_Service->GetMountSeq();
                     if (m_Service->SetNextCDByName(relativePath)) {
                         m_MountRequestIndex = m_SelectedIndex;
@@ -410,9 +407,8 @@ void ST7789ImagesPage::RefreshScroll() {
 // service's own mount timeout.
 static const unsigned MountWaitTickLimit = 200;
 
-// Collect the result of a mount the button handler queued. Runs in task
-// context, because OnButtonPress cannot: it is a GPIO interrupt handler on this
-// display, where sleeping would lock the machine up.
+// Collect the result of a mount the button handler queued. Task context, which
+// OnButtonPress is not.
 void ST7789ImagesPage::ResolvePendingMount() {
     if (!m_MountPending || !m_Service)
         return;

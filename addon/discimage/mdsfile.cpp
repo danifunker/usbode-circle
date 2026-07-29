@@ -295,18 +295,11 @@ bool CMDSFileDevice::Init() {
                 m_nTotalFrames);
     }
 
-    // Does the disc have frames the MDF does not store? Alcohol omits the
-    // pregap before a track by default, so a typical multi-track image has a
-    // 150-frame hole; a single-track one has none. Reads have to walk frame by
-    // frame when there is a hole, and that is expensive enough to be worth
-    // settling here rather than per read.
-    //
-    // Summing the track lengths answers it for every well-formed image:
-    // covered short of the total means a hole, equal means every frame is
-    // stored. A malformed table whose tracks overlap sums high and also lands
-    // on "walk it". The one case this misses is an overlap that exactly
-    // cancels a hole, which no imaging tool produces and which costs
-    // correctness only on an image that is already self-contradictory.
+    // Does the MDF omit any frames? Alcohol drops the pregap before a track by
+    // default, so most multi-track images have a 150-frame hole. Reads have to
+    // walk frame by frame when there is one, so settle it here instead.
+    // Track lengths summing short of the total means a hole; overlapping tracks
+    // sum high and also walk it, which is the safe answer for a malformed table.
     u32 covered = 0;
     for (int i = 0; i < m_parser->getNumSessions(); i++) {
         MDS_SessionBlock* session = m_parser->getSession(i);
@@ -375,10 +368,8 @@ int CMDSFileDevice::ReadAcrossGaps(void *pBuffer, size_t nSize) {
     size_t total_read = 0;
 
     while (total_read < nSize) {
-        // A transfer that is not a whole number of frames ends on a partial
-        // one. Serving it short instead would report fewer bytes than the
-        // caller asked for, which reads as an I/O error rather than as the
-        // hole it is.
+        // A short read would look like an I/O error rather than the hole it is,
+        // so a partial trailing frame is still served in full.
         const size_t remaining = nSize - total_read;
         const size_t chunk = remaining < 2352 ? remaining : 2352;
 
@@ -429,14 +420,9 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
     // A transfer that crosses a pregap the MDF does not store cannot be one
     // f_read, because part of it has no bytes behind it. That is rare enough
     // to be worth detecting rather than paying for frame-by-frame reads on
-    // every transfer, so the paths below are left as they were. On an image
-    // with no hole at all TouchesUnstoredGap() answers from a flag worked out
-    // at Init() and costs nothing.
-    //
-    // A transfer shorter than a frame still has to be checked: the frame it
-    // lands in can be a hole just as easily as a whole-frame read can, and
-    // gating this on nSize let such a read fall through to the raw path and
-    // return whatever the file pointer was resting on.
+    // every transfer, so the paths below are left as they were. A sub-frame
+    // transfer still has to be checked: gating this on nSize let it fall through
+    // to the raw path and return whatever the file pointer was resting on.
     const size_t framesTouched = (nSize + 2351) / 2352;
     if (framesTouched > 0 && TouchesUnstoredGap(m_nCurrentLBA, framesTouched)) {
         return ReadAcrossGaps(pBuffer, nSize);
@@ -500,10 +486,9 @@ int CMDSFileDevice::Read(void *pBuffer, size_t nSize) {
         return -1;
     }
 
-    // Move the reader on by what was consumed, the same way the two paths
-    // above do. Leaving it behind here was the other half of the stale-frame
-    // problem: a caller reading straight on without an intervening Seek had
-    // every frame after the first judged against the first one's address.
+    // Advance by what was consumed, as the two paths above do. Without this a
+    // caller reading on without an intervening Seek judges every later frame
+    // against the first one's address.
     m_nCurrentLBA += nBytesRead / 2352;
 
     return nBytesRead;
@@ -533,10 +518,8 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
     u32 lba = nOffset / 2352;  // Assuming 2352 bytes per sector
     u32 offset_in_sector = nOffset % 2352;
 
-    // Record the frame first, before any early exit can skip it. Read() takes
-    // both its gap detection and its subchannel stride from m_nCurrentLBA, so
-    // a Seek() that returns without setting it leaves the reader working on
-    // whichever frame it happened to be on last - and still reporting success.
+    // Record the frame before any early exit can skip it: Read() takes its gap
+    // detection and subchannel stride from m_nCurrentLBA.
     m_nCurrentLBA = lba;
 
     // Find which track contains this LBA
@@ -566,13 +549,9 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
     // LOGDBG("Seek: LBA %u (offset %llu) -> track %d, file offset %llu",
     //        lba, nOffset, track->point, actual_file_offset);
 
-    // Don't seek if we're already there. The comparison has to be against the
-    // FILE offset just computed, not against nOffset: nOffset is a disc
-    // address and Tell() is a file address, and the two are different numbers
-    // on any image with 2448-byte sectors or an unstored gap. They do still
-    // coincide - on a contiguous 2352-byte image at every frame, and on a
-    // 2448-byte one every 49th frame, since 49 * 2448 == 51 * 2352 - which is
-    // how comparing them used to skip a seek that was genuinely needed.
+    // Don't seek if we're already there. Compare against the FILE offset just
+    // computed, not nOffset, which is a disc address: the two coincide often
+    // enough (every 49th frame at 2448 bytes) to skip a seek that was needed.
     if (Tell() == actual_file_offset) {
         return nOffset;
     }
@@ -715,10 +694,8 @@ int CMDSFileDevice::ReadSubchannel(u32 lba, u8* subchannel) {
     MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
 
     if (!track) {
-        // Inside the disc but in a pregap the MDF does not store, which is the
-        // same situation Seek() and Read() answer with zeros. Failing here
-        // instead would make a subchannel request across a track boundary the
-        // one operation that still errors on a hole.
+        // In an unstored pregap, which Seek() and Read() answer with zeros.
+        // Failing here would make this the one operation that errors on a hole.
         if (lba < m_nTotalFrames) {
             memset(subchannel, 0, 96);
             return 96;

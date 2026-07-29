@@ -228,15 +228,8 @@ bool SCSITBService::IsEjected() const {
 }
 
 const char* SCSITBService::GetCurrentCDName() {
-	// Never nullptr. current_cd is an int that can legitimately be -1 (nothing
-	// mounted), GetCurrentCD() hands that back as a size_t - so SIZE_MAX - and
-	// GetName() answers an out-of-range index with nullptr. Callers feed the
-	// result straight into std::string and into JSON, both of which are
-	// undefined on a null pointer, and this runs on every web page load.
-	//
-	// That was survivable only while current_cd was set once at boot and never
-	// cleared. It is now re-derived after each rescan, so "nothing is mounted"
-	// became a state the UI can actually reach.
+	// Never nullptr: current_cd is -1 when nothing is mounted, which GetName()
+	// answers with nullptr, and callers feed this straight into std::string.
 	const char* name = GetName(GetCurrentCD());
 	return name != nullptr ? name : "";
 }
@@ -331,27 +324,12 @@ void SCSITBService::ScanDirectoryRecursive(const char* fullPath, const char* rel
                 bool listIt = iequals(ext, ".iso") || iequals(ext, ".mds") ||
                               iequals(ext, ".chd") || iequals(ext, ".toast");
                 if (!listIt && iequals(ext, ".cue")) {
-                    // List every cue sheet, including one with no same-stem
-                    // .bin next to it. Hiding those was meant to keep a cue
-                    // whose data file is missing out of the way, but it also
-                    // hid split-track rips - where the cue is "Game.cue" and
-                    // the data is "Game (Track 1).bin" - so the browser
-                    // offered the raw track files and the disc itself simply
-                    // vanished with no explanation. A cue that cannot be
-                    // mounted now says why when you try, which is more use
-                    // than not being there.
+                    // Even with no same-stem .bin: hiding those also hid
+                    // split-track rips, whose data is "Game (Track 1).bin".
                     listIt = true;
                 }
-                // A .bin is never listed. Mounting one rewrites its extension
-                // and reads the .cue first, so a .bin whose cue is missing
-                // cannot be mounted at all, and one whose cue is present is
-                // already represented by that cue.
-                //
-                // The rule here used to be "list it unless a same-stem .cue
-                // exists", which is precisely backwards: it hid every .bin
-                // that could be mounted and offered every one that could not.
-                // On a split-track rip that meant a browser full of track
-                // files, none of them mountable.
+                // A .bin is never listed: mounting one reads the .cue first, so
+                // it is either unmountable or already represented by that cue.
                 if (listIt) {
                     size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);
                     memcpy(m_FileEntries[m_FileCount].name, fno.fname, len);
@@ -377,15 +355,8 @@ bool SCSITBService::RefreshCache() {
     LOGNOTE("SCSITBService::RefreshCache() called");
     m_Lock.Acquire();
 
-    // Get current loaded image from config.
-    //
-    // Asked with an empty default, this distinguishes "the user has an image
-    // remembered" from "this card has never mounted anything". They must not
-    // behave the same: a remembered image that has gone missing should leave
-    // the drive empty and say so, but a freshly written card has no remembered
-    // image at all and must still auto-mount, or first boot would look broken.
-    // GetCurrentImage(DEFAULT_IMAGE_FILENAME) cannot tell them apart, because
-    // it hands back "image.iso" in both cases.
+    // Empty default, not DEFAULT_IMAGE_FILENAME, which conflates a remembered
+    // image that has gone missing with a fresh card that never had one.
     const char* saved_image = configservice->GetCurrentImage("");
     const bool hadRememberedImage = (saved_image != nullptr && saved_image[0] != '\0');
     const char* current_image = hadRememberedImage ? saved_image : DEFAULT_IMAGE_FILENAME;
@@ -413,11 +384,8 @@ bool SCSITBService::RefreshCache() {
     
     LOGNOTE("SCSITBService::RefreshCache() Found %d total entries", (int)m_FileCount);
 
-    // current_cd is an index into the list that was just rebuilt, so on its own
-    // it means nothing afterwards: entries move, and an index that used to name
-    // the mounted disc can end up naming some other file entirely. Re-derive it
-    // from the path that actually got mounted, and admit to nothing being
-    // current when that file is no longer there.
+    // The list was just rebuilt, so the old current_cd index may now name a
+    // different file. Re-derive it from the path that actually got mounted.
     {
         int resolved = -1;
         if (m_MountedRelativePath[0] != '\0') {
@@ -476,31 +444,17 @@ bool SCSITBService::RefreshCache() {
         }
     }
 
-    // Fallback to first image file if not found. Not while ejected: an empty
-    // drive must stay empty, and this path also runs on rescans (upload, delete,
-    // FTP), where auto-mounting a substitute would undo the user's eject and
-    // then persist "inserted" over the saved state.
-    //
-    // The exception is a gadget that has never been brought up. Adopting an
-    // image is the ONLY thing that initializes it (cdromservice.cpp:59), so
-    // refusing here would leave the host seeing no USB device at all rather
-    // than an empty drive - and adopting cannot undo the eject anyway, because
-    // the boot-eject arm below keeps the medium hidden. Reachable whenever a
-    // remembered image goes missing while the drive is ejected, including the
-    // second boot after this code has itself come up empty and persisted it.
-    //
-    // m_FileCount == 0 still adopts nothing, which is what the QEMU boot test
-    // relies on - see tests/qemu-boot/README.md.
+    // Fallback to the first image, but not while ejected: this also runs on
+    // rescans, where mounting a substitute would undo the user's eject. Unless
+    // the gadget has never come up, since adopting is what initializes it.
     if (!found && m_FileCount > 0 &&
         (!IsEjected() || (cdromservice && !cdromservice->IsGadgetInitialized()))) {
         for (size_t i = 0; i < m_FileCount; ++i) {
             if (m_FileEntries[i].isDirectory) {
                 continue;
             }
-            // Skip the one we already know will not load. A rescan happens on
-            // every upload, delete and FTP change, so without this the same
-            // image is picked and fails again each time, and the error banner
-            // reappears for a disc the user never asked for.
+            // Skip the one we already know will not load, or every rescan picks
+            // it again and re-raises the error banner.
             if (m_LastFailedRelativePath[0] != '\0' &&
                 strcmp(m_FileEntries[i].relativePath, m_LastFailedRelativePath) == 0) {
                 continue;
@@ -509,13 +463,9 @@ bool SCSITBService::RefreshCache() {
                     m_FileEntries[i].relativePath);
             next_cd = i;
 
-            // A remembered image that is simply gone must not be swapped for a
-            // different disc in silence - that is how a renamed file turned
-            // into "some other game is in the drive" with nothing to explain
-            // it. Adopt this one so the gadget has a geometry and Insert is
-            // instant, but present the drive as EMPTY and record what went
-            // missing. A card that never had a remembered image (fresh write)
-            // keeps the plain auto-mount.
+            // A remembered image that is gone must not be silently swapped for a
+            // different disc. Adopt this one so the gadget has a geometry, but
+            // present the drive as empty and record what went missing.
             if (hadRememberedImage) {
                 strncpy(m_MissingSavedImage, current_image, sizeof(m_MissingSavedImage) - 1);
                 m_MissingSavedImage[sizeof(m_MissingSavedImage) - 1] = '\0';
@@ -524,11 +474,8 @@ bool SCSITBService::RefreshCache() {
                         current_image, m_FileEntries[i].relativePath);
             }
 
-            // Adopting while ejected MUST stay ejected. SetDevice() clears the
-            // ejected latch unless the boot-eject is armed, so without this the
-            // adoption we just allowed above would insert a disc the user had
-            // deliberately ejected - the exact thing the !IsEjected() guard
-            // exists to prevent.
+            // SetDevice() clears the ejected latch unless the boot-eject is armed,
+            // so without this the adoption above would insert a disc the user ejected.
             if (IsEjected()) {
                 m_bAdoptAsEmpty = true;
             }
@@ -548,8 +495,8 @@ void SCSITBService::ProcessPendingMount() {
     if (next_cd <= -1)
         return;
 
-    // Consume the flag up front: every exit path below retires the request, so
-    // leaving it set would eject the next image the user deliberately mounts.
+    // Consume up front: every exit path below retires the request, so leaving it
+    // set would eject the next image the user deliberately mounts.
     const bool adoptAsEmpty = m_bAdoptAsEmpty;
     m_bAdoptAsEmpty = false;
 
@@ -561,8 +508,6 @@ void SCSITBService::ProcessPendingMount() {
         return;
     }
 
-    // Any failure below leaves the previous disc mounted, so the reason has to
-    // outlive this function or the user is told nothing at all.
     m_LastMountError[0] = '\0';
 
     // Build full path using relativePath from cache
@@ -576,10 +521,8 @@ void SCSITBService::ProcessPendingMount() {
         m_MountSeq++;
         return;
     }
-    // Build the path locally. Writing it straight into m_CurrentImagePath
-    // before the load meant a failed mount renamed the "current" image to the
-    // one that had just refused to load, so the UI reported a disc the host
-    // had never been given.
+    // Local, not m_CurrentImagePath: writing that before the load makes a failed
+    // mount report a disc the host was never given.
     char candidatePath[MAX_PATH_LEN];
     snprintf(candidatePath, sizeof(candidatePath), "1:/%s", relativePath);
 
@@ -589,9 +532,8 @@ void SCSITBService::ProcessPendingMount() {
         LOGERR("Failed to load image: %s", candidatePath);
         strncpy(m_LastFailedRelativePath, relativePath, sizeof(m_LastFailedRelativePath) - 1);
         m_LastFailedRelativePath[sizeof(m_LastFailedRelativePath) - 1] = '\0';
-        // Prefer the loader's own reason. "Unsupported or damaged" is true of
-        // every failure and useful for none of them, so it is only the
-        // fallback for a path that has not been given words yet.
+        // Prefer the loader's own reason; the generic wording below is only for
+        // failure paths that have not been given words yet.
         const char* why = GetLastImageLoadError();
         if (why != nullptr && why[0] != '\0') {
             snprintf(m_LastMountError, sizeof(m_LastMountError),
@@ -612,30 +554,22 @@ void SCSITBService::ProcessPendingMount() {
             (int)imageDevice->GetFileType(),
             imageDevice->HasSubchannelData() ? "yes" : "no");
 
-    // This image is only standing in for one that is no longer on the card, so
-    // take its geometry but keep the drive empty to the host. Armed BEFORE
-    // SetDevice() deliberately: SetDevice() decides the ejected state itself
-    // and can yield, so ejecting afterwards would leave a window in which the
-    // gadget reports ready and the host mounts a disc nobody asked for.
+    // Take the stand-in's geometry but keep the drive empty to the host. Armed
+    // before SetDevice(), which decides the ejected state itself and can yield:
+    // ejecting after it leaves a window where the host mounts the stand-in.
     if (adoptAsEmpty) {
         cdromservice->ArmBootEject();
     }
 
     cdromservice->SetDevice(imageDevice);
 
-    // Committed only now that the disc is really the one the host has.
-    //
-    // m_CurrentImagePath is the file the gadget holds open, and is set either
-    // way: the delete/rename/overwrite guards key off it, and a stand-in is
-    // just as destructive to yank away as a chosen disc.
+    // m_CurrentImagePath is the file the gadget holds open, set either way: the
+    // delete/rename guards key off it, and a stand-in is as destructive to yank.
     strncpy(m_CurrentImagePath, candidatePath, sizeof(m_CurrentImagePath) - 1);
     m_CurrentImagePath[sizeof(m_CurrentImagePath) - 1] = '\0';
 
-    // m_MountedRelativePath is what the USER has mounted, and a stand-in is
-    // not that - the drive is empty. Leaving it clear resolves current_cd to
-    // -1, so the file list highlights nothing and GetCurrentCDName() returns
-    // "", which is what the host sees. Naming the stand-in as "current" read
-    // as an ordinary disc swap and hid the empty drive completely.
+    // m_MountedRelativePath is what the USER mounted, which a stand-in is not.
+    // Left clear it resolves current_cd to -1, so the UI highlights nothing.
     if (!adoptAsEmpty) {
         strncpy(m_MountedRelativePath, relativePath, sizeof(m_MountedRelativePath) - 1);
         m_MountedRelativePath[sizeof(m_MountedRelativePath) - 1] = '\0';
