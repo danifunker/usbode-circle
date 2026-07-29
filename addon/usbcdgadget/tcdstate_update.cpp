@@ -37,6 +37,23 @@ void CUSBCDGadget::Update()
             switch (m_mediaState)
             {
             case MediaState::NO_MEDIUM:
+                // An ejected drive must never put a medium in by itself.
+                //
+                // SetDevice() arms this sequence whenever one device replaces
+                // another, and it used to run the transition below without
+                // consulting the ejected latch - so adopting an image while
+                // ejected re-inserted it 100 ms later and undid the eject. At
+                // boot m_pDevice is null, no swap is armed, and the path never
+                // runs, which is why the boot restore looked correct while the
+                // same thing on a running system silently put a disc back.
+                if (m_bEjected)
+                {
+                    m_bPendingDiscSwap = false;
+                    CDROM_DEBUG_LOG("CUSBCDGadget::Update",
+                                    "Disc swap: drive is ejected, staying NO_MEDIUM");
+                    break;
+                }
+
                 // Stage 2: Transition from NO_MEDIUM to UNIT_ATTENTION
                 CTraceLab::Get()->TraceMediaState((u8)m_mediaState, (u8)MediaState::MEDIUM_PRESENT_UNIT_ATTENTION);
                 m_CDReady = true;

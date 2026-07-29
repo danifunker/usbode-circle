@@ -176,3 +176,56 @@ TEST(gesn_async_notification_unsupported)
     CHECK_EQ(s.data[12], 0x24); // INVALID FIELD IN CDB
     CHECK_EQ(s.data[13], 0x00);
 }
+
+// Adopting an image while the drive is ejected must leave it ejected.
+//
+// This is the "saved image went missing" path: a stand-in image is loaded so
+// the gadget has a geometry, with the boot-eject armed so the host still sees
+// an empty drive. It worked at boot and silently failed at runtime, because at
+// boot m_pDevice is null and SetDevice() therefore arms no disc swap - whereas
+// replacing a device on a running system does, and Update() drove
+// NO_MEDIUM -> UNIT_ATTENTION without ever consulting the ejected latch. The
+// stand-in appeared in the host 100 ms later, so a renamed image looked like
+// it had simply been swapped for a different game.
+TEST(adopting_an_image_while_ejected_stays_ejected)
+{
+    CFakeImageDevice *discA = MakeDataISO(500);
+    CGadgetTestBench bench(discA);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Sanity: disc A is really readable before we eject.
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 0);
+
+    // Arm the boot-eject and adopt a stand-in, exactly as ProcessPendingMount
+    // does when the remembered image is no longer on the card.
+    bench.gadget->ArmBootEject();
+    CFakeImageDevice *standIn = MakeDataISO(1500);
+    bench.gadget->SetDevice(standIn);
+
+    // Empty drive: TEST UNIT READY fails with NOT READY / MEDIUM NOT PRESENT.
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);
+
+    // Now let the swap settle window elapse several times over. Nothing here
+    // may put the stand-in into the drive.
+    for (int i = 0; i < 5; i++)
+        SettleDiscSwap(bench);
+
+    CHECK(bench.gadget->IsEjected());
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 1);
+    {
+        auto s = bench.RequestSense();
+        CHECK(s.data.size() >= 14);
+        CHECK_EQ(s.data[2], 0x02);  // NOT READY
+        CHECK_EQ(s.data[12], 0x3a); // MEDIUM NOT PRESENT
+    }
+    // And no data can be read out of a drive the user was told is empty.
+    CHECK_EQ(Read10LBA0(bench).csw.bmCSWStatus, 1);
+
+    // A deliberate insert still works - the drive is empty, not broken.
+    bench.gadget->Insert();
+    for (int i = 0; i < 5; i++)
+        SettleDiscSwap(bench);
+    bench.RequestSense(); // clear the medium-changed UNIT ATTENTION
+    CHECK_EQ(TestUnitReady(bench).csw.bmCSWStatus, 0);
+}
