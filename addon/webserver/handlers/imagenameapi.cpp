@@ -26,6 +26,14 @@ THTTPStatus ImageNameAPIHandler::GetJson(nlohmann::json& j,
     j = {
 	    {"name", svc->GetCurrentCDName()}
     };
+
+    // Mounting finishes long after the request was answered "ok", so a failure
+    // has no other way back to the user. The page already polls this endpoint.
+    const char* mountError = svc->GetLastMountError();
+    if (mountError != nullptr && mountError[0] != '\0') {
+	    j["mount_error"] = mountError;
+    }
+
     return HTTPOK;
 
 }

@@ -56,6 +56,9 @@ public:
     void SetPendingInsert();
     bool IsEjected() const;  // delegates to cdromservice
 
+    // Why the last mount attempt failed, or "" if it worked.
+    const char* GetLastMountError() const { return m_LastMountError; }
+
     // Task entry point
     void Run(void);
 
@@ -80,6 +83,9 @@ private:
     // currently written to config, so the Run loop only writes on a change.
     bool m_bBootEjectPending = false;
     bool m_bPersistedEjected = false;
+
+    // Set by ProcessPendingMount() on every failure path, cleared on success.
+    char m_LastMountError[160] = {0};
 
     // Full path of currently mounted image (e.g., "1:/Games/game.iso")
     char m_CurrentImagePath[MAX_PATH_LEN];
