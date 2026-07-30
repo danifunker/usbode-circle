@@ -339,9 +339,8 @@ void SCSITBService::ScanDirectoryRecursive(const char* fullPath, const char* rel
                 bool listIt = iequals(ext, ".iso") || iequals(ext, ".mds") ||
                               iequals(ext, ".chd") || iequals(ext, ".toast");
                 if (!listIt && iequals(ext, ".cue")) {
-                    // Mounting a .cue opens the same-stem .bin, so only list
-                    // cue sheets whose data file is actually there
-                    listIt = siblingWithExtExists(fullPath, fno.fname, ".bin");
+                    // Even with no same-stem .bin, which also hid split-track rips.
+                    listIt = true;
                 } else if (!listIt && iequals(ext, ".bin")) {
                     // Hide the raw .bin of a cue/bin pair; its .cue is listed
                     listIt = !siblingWithExtExists(fullPath, fno.fname, ".cue");
@@ -488,10 +487,17 @@ void SCSITBService::ProcessPendingMount() {
 
     if (imageDevice == nullptr) {
         LOGERR("Failed to load image: %s", m_CurrentImagePath);
-        snprintf(m_LastMountError, sizeof(m_LastMountError),
-                 "Could not load %s. It may be an unsupported or damaged image; "
-                 "the log has the details. The previous disc is still mounted.",
-                 relativePath);
+        // The generic wording below is only for paths with no reason of their own.
+        const char* why = GetLastImageLoadError();
+        if (why != nullptr && why[0] != '\0') {
+            snprintf(m_LastMountError, sizeof(m_LastMountError),
+                     "%s (%s) The previous disc is still mounted.", why, relativePath);
+        } else {
+            snprintf(m_LastMountError, sizeof(m_LastMountError),
+                     "Could not load %s. It may be an unsupported or damaged image; "
+                     "the log has the details. The previous disc is still mounted.",
+                     relativePath);
+        }
         next_cd = -1;
         return;
     }

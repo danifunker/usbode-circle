@@ -24,6 +24,10 @@ bool hasDvdHint(const char* imageName);
 // Image loading - returns base IImageDevice interface
 IImageDevice* loadImageDevice(const char* imageName);
 
+// Why the last loadImageDevice() failed, in words a user can act on, or "" if it
+// succeeded. Written by the loaders, read by SCSITBService when a mount is refused.
+const char* GetLastImageLoadError();
+
 // Format-specific loaders
 IImageDevice* loadMDSFileDevice(const char* imageName);
 IImageDevice* loadCueBinIsoFileDevice(const char* imageName);

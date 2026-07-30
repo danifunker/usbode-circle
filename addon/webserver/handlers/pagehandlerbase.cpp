@@ -64,6 +64,13 @@ THTTPStatus PageHandlerBase::GetContent(const char *pPath,
         // Get current loaded image
         std::string current_image = svc->GetCurrentCDName();
 
+        // Say so on every page: the request is answered "ok" before the image has
+        // loaded. Set only when non-empty, so the template section stays falsy.
+        const char* mountError = svc->GetLastMountError();
+        if (mountError != nullptr && mountError[0] != '\0') {
+            context.set("mount_error", std::string(mountError));
+        }
+
 	// Get our config service
 	ConfigService* config = static_cast<ConfigService*>(CScheduler::Get()->GetTask("configservice"));
 
