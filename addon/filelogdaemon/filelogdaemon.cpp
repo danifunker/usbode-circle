@@ -100,6 +100,11 @@ void CFileLogDaemon::GetStatusText(char *pBuffer, size_t nBufferSize) const {
 
     if (m_LogFilePath[0] == '\0') {
         snprintf(pBuffer, nBufferSize, "File logging is off (no log file configured).");
+    } else if (m_bWritesGaveUp) {
+        snprintf(pBuffer, nBufferSize,
+                 "NOT LOGGING: writes to %s kept failing, so logging stopped. "
+                 "The card is most likely full.",
+                 m_LogFilePath);
     } else if (m_bFileInitialized) {
         snprintf(pBuffer, nBufferSize, "Writing to %s", m_LogFilePath);
     } else {
@@ -158,19 +163,35 @@ void CFileLogDaemon::DrainOnce(void) {
     int nTimeZone;
     while (pLogger->ReadEvent(&Severity, Source, Message,
                               &Time, &nHundredthTime, &nTimeZone)) {
-        // CLogger queues every event regardless of loglevel, which only filters
-        // the serial/screen target, so the configured level is applied here.
-        // LogPanic(0)..LogDebug(4) maps to config levels 1..5; 0 drops everything.
+        // CLogger queues every event whatever the loglevel, so the configured
+        // level applies here. LogPanic(0)..LogDebug(4) maps to config 1..5.
         if ((unsigned)Severity >= m_uiLogLevel) {
             continue;
         }
 
-        // Only back off for a failure that might not repeat: with no file open,
-        // sleeping per message throttled the queue to 50 events a second.
-        if (LogMessage(Severity, Time, nHundredthTime, nTimeZone, Source, Message) ==
-            LogResult::WriteFailed) {
-            CScheduler::Get()->Sleep(20);
+        const LogResult result =
+            LogMessage(Severity, Time, nHundredthTime, nTimeZone, Source, Message);
+
+        if (result == LogResult::Written) {
+            m_nConsecutiveWriteFailures = 0;
+            continue;
         }
+        if (result != LogResult::WriteFailed) {
+            continue;
+        }
+
+        // Back off for a busy card, but a full one fails every write, and 20 ms
+        // per event starves the scheduler exactly as the no-file case used to.
+        if (++m_nConsecutiveWriteFailures >= MaxConsecutiveWriteFailures) {
+            if (!m_bWritesGaveUp) {
+                m_bWritesGaveUp = TRUE;
+                m_bFileInitialized = FALSE;
+                f_close(&m_LogFile);
+            }
+            continue;
+        }
+
+        CScheduler::Get()->Sleep(20);
     }
 }
 
@@ -211,16 +232,20 @@ CFileLogDaemon::LogResult CFileLogDaemon::LogMessage(TLogSeverity Severity,
     snprintf(LogEntry, sizeof(LogEntry), "[%lu] [%s] %s: %s\n",
              FullTime, pAppName, pSeverityName, pMsg);
 
-    // Write to file
+    // Write to file. A short write means a full card, which f_write reports as
+    // success, and an unchecked f_sync would then call the lost entry written.
+    const UINT EntryLength = strlen(LogEntry);
     UINT BytesWritten;
-    FRESULT Result = f_write(&m_LogFile, LogEntry, strlen(LogEntry), &BytesWritten);
-    if (Result != FR_OK) {
+    FRESULT Result = f_write(&m_LogFile, LogEntry, EntryLength, &BytesWritten);
+    if (Result != FR_OK || BytesWritten != EntryLength) {
         // Not logged: this runs while draining the log queue, so a message here
         // would queue another event that fails the same way.
         return LogResult::WriteFailed;
     }
 
-    f_sync(&m_LogFile);
+    if (f_sync(&m_LogFile) != FR_OK) {
+        return LogResult::WriteFailed;
+    }
 
     return LogResult::Written;
 }

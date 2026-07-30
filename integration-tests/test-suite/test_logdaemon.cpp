@@ -6,6 +6,7 @@
 // DrainOnce(), one pass of its loop.
 //
 #include "framework.h"
+#include "fatfs_host.h"
 
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
@@ -73,9 +74,8 @@ static void ResetLogging()
 // Tests
 // ---------------------------------------------------------------------------
 
-// The headline defect: with no file open, the drain loop slept 20 ms per failed
-// message, retiring 50 events a second and taking the scheduler down with it.
-// The events must still be consumed, just not paid for.
+// With no file open the drain loop slept 20 ms per message, retiring 50 events a
+// second and taking the scheduler with it. They must be consumed, not paid for.
 TEST(logdaemon_unopenable_path_drains_without_sleeping)
 {
     ResetLogging();
@@ -101,10 +101,8 @@ TEST(logdaemon_unopenable_path_drains_without_sleeping)
     CHECK_EQ(CScheduler::TestSleepCount(), 0u);
 }
 
-// m_bFileInitialized had no initializer, so a failed open left it holding
-// whatever was in that memory. Constructing over poisoned storage exposes it.
-// Reading an invalid bool is undefined, so this asserts the behaviour rather
-// than the flag; -fsanitize=undefined catches the read itself.
+// m_bFileInitialized had no initializer, so a failed open left it holding stale
+// memory. Asserts the behaviour, not the flag: reading an invalid bool is UB.
 TEST(logdaemon_failed_open_leaves_the_file_flag_false)
 {
     ResetLogging();
@@ -178,9 +176,8 @@ TEST(logdaemon_writes_and_applies_the_configured_level)
     RemoveFile(path);
 }
 
-// What the web UI shows. The boot-time warning goes to the serial console, which
-// a SCREEN_HEADLESS build has no equivalent of, so without this a user with a bad
-// path sees a device that lists a log file and silently has none.
+// What the web UI shows. The boot warning goes to a serial console SCREEN_HEADLESS
+// does not have, so a bad path otherwise looks like a device that just works.
 TEST(logdaemon_reports_its_status_for_the_web_ui)
 {
     ResetLogging();
@@ -260,6 +257,100 @@ TEST(logdaemon_keeps_its_own_copy_of_the_path)
 
     const std::string contents = ReadWholeFile(path);
     CHECK(contents.find("still the original file") != std::string::npos);
+
+    RemoveFile(path);
+}
+
+// A full card is the write failure this daemon will actually meet, and FatFs
+// reports it as FR_OK with a short count, so the FRESULT alone is not enough.
+TEST(logdaemon_treats_a_short_write_as_a_failure)
+{
+    ResetLogging();
+
+    const std::string path = TestDataDir() + "/logdaemon-fullcard.txt";
+    RemoveFile(path);
+
+    {
+        CFileLogDaemon daemon(path.c_str(), 5);
+        CHECK(daemon.IsFileLogging());
+
+        // Room for part of one entry and no more.
+        ResetLogging();
+        FatFsHostSetWriteLimit(8);
+
+        QueueEvents(3);
+        daemon.DrainOnce();
+
+        FatFsHostClearFaults();
+
+        CHECK_EQ(CLogger::TestQueuedEventCount(), 0u);
+        // The 20 ms back-off is the only outward sign the daemon noticed.
+        CHECK(CScheduler::TestSleepCount() > 0u);
+    }
+
+    RemoveFile(path);
+}
+
+// A full card fails every write, so 20 ms per event is the same starvation an
+// unopenable path used to cause. It gives up on the file instead, and says so.
+TEST(logdaemon_stops_writing_when_the_card_stays_full)
+{
+    ResetLogging();
+
+    const std::string path = TestDataDir() + "/logdaemon-givesup.txt";
+    RemoveFile(path);
+
+    {
+        CFileLogDaemon daemon(path.c_str(), 5);
+        CHECK(daemon.IsFileLogging());
+
+        ResetLogging();
+        FatFsHostSetWriteLimit(4);
+
+        QueueEvents(60);
+        daemon.DrainOnce();
+
+        FatFsHostClearFaults();
+
+        CHECK_EQ(CLogger::TestQueuedEventCount(), 0u);
+        // Bounded, not one per event.
+        CHECK(CScheduler::TestSleepCount() > 0u);
+        CHECK(CScheduler::TestSleepCount() <= 8u);
+
+        CHECK(!daemon.IsFileLogging());
+        char status[256];
+        daemon.GetStatusText(status, sizeof(status));
+        CHECK(strstr(status, "NOT LOGGING") != nullptr);
+        CHECK(strstr(status, "logdaemon-givesup.txt") != nullptr);
+    }
+
+    RemoveFile(path);
+}
+
+// f_sync() is the other half: f_write() can report every byte taken and the
+// entry still be lost when the flush fails.
+TEST(logdaemon_treats_a_failed_sync_as_a_failure)
+{
+    ResetLogging();
+
+    const std::string path = TestDataDir() + "/logdaemon-badsync.txt";
+    RemoveFile(path);
+
+    {
+        CFileLogDaemon daemon(path.c_str(), 5);
+        CHECK(daemon.IsFileLogging());
+
+        ResetLogging();
+        FatFsHostFailSync(true);
+
+        QueueEvents(2);
+        daemon.DrainOnce();
+
+        FatFsHostClearFaults();
+
+        CHECK_EQ(CLogger::TestQueuedEventCount(), 0u);
+        CHECK(CScheduler::TestSleepCount() > 0u);
+    }
 
     RemoveFile(path);
 }

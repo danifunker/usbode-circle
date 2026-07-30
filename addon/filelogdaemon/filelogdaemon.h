@@ -87,6 +87,12 @@ class CFileLogDaemon : public CTask {
     char m_LogFilePath[256] = {0};
     FRESULT m_OpenResult = FR_NOT_READY;
     unsigned m_uiLogLevel;
+
+    // So a permanently failing write (a full card) stops costing 20 ms an event.
+    unsigned m_nConsecutiveWriteFailures = 0;
+    static const unsigned MaxConsecutiveWriteFailures = 8;
+    boolean m_bWritesGaveUp = FALSE;
+
     FIL m_LogFile;
 };
 
