@@ -210,6 +210,10 @@ void SCSIRead::DoPlayAudio(CUSBCDGadget* gadget, int cdbSize)
         }
     }
 
+    // The count above was audio to play, not a transfer owed: onXferCmplt reads
+    // it to decide whether to keep streaming instead of sending the CSW.
+    gadget->m_nnumber_blocks = 0; // nothing more after this send
+
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
     gadget->SendCSW();
 }
@@ -264,6 +268,8 @@ void SCSIRead::PlayAudioMSF(CUSBCDGadget* gadget)
         gadget->setSenseData(0x05, 0x64, 0x00); // ILLEGAL MODE FOR THIS TRACK OR INCOMPATIBLE MEDIUM
     }
 
+    gadget->m_nnumber_blocks = 0; // nothing more after this send
+
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
     gadget->SendCSW();
 }
@@ -280,6 +286,9 @@ void SCSIRead::Seek(CUSBCDGadget* gadget)
     {
         cdplayer->Seek(gadget->m_nblock_address);
     }
+
+    // The cursor moved, so a count still standing no longer matches it.
+    gadget->m_nnumber_blocks = 0; // nothing more after this send
 
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
     gadget->SendCSW();
@@ -299,6 +308,8 @@ void SCSIRead::PauseResume(CUSBCDGadget* gadget)
             cdplayer->Pause();
     }
 
+    gadget->m_nnumber_blocks = 0; // nothing more after this send
+
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
     gadget->SendCSW();
 }
@@ -312,6 +323,8 @@ void SCSIRead::StopScan(CUSBCDGadget* gadget)
     {
         cdplayer->Pause();
     }
+
+    gadget->m_nnumber_blocks = 0; // nothing more after this send
 
     gadget->m_CSW.bmCSWStatus = gadget->bmCSWStatus;
     gadget->SendCSW();

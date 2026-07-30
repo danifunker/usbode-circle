@@ -46,6 +46,88 @@ TEST(play_audio_10_reaches_player)
     CHECK_EQ(player.lastPlayBlocks, 500u);
 }
 
+// PLAY AUDIO parked the track length in the counter onXferCmplt uses to decide
+// "more data owed" vs "send the CSW", so the next command streamed raw sectors.
+TEST(play_audio_does_not_leave_a_read_pending)
+{
+    CFakeImageDevice *disc = MakeAudioCD(3, 3000);
+    CCDPlayer player;
+    CGadgetTestBench bench(disc, false, &player);
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 cdb10[10] = {0x45, 0x00, 0x00, 0x00, 0x0B, 0xB8, 0x00, 0x01, 0xF4, 0x00};
+    auto play = bench.SendCommand(cdb10, sizeof(cdb10), 0);
+    CHECK_EQ(play.csw.bmCSWStatus, 0);
+    CHECK_EQ(player.playCalls, 1);
+
+    // MECHANISM STATUS pays for it: it has a data phase and, unlike INQUIRY or
+    // READ TOC, does not zero the counter itself.
+    const u8 mech[12] = {0xBD, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0};
+    auto ms = bench.SendCommand(mech, sizeof(mech), 8);
+    CHECK(ms.gotCSW);
+    CHECK_EQ(ms.csw.bmCSWStatus, 0);
+    CHECK_EQ(ms.data.size(), (size_t)8);
+}
+
+// PLAY AUDIO(12) carries the count in a 4-byte field and had the same problem.
+TEST(play_audio_12_does_not_leave_a_read_pending)
+{
+    CFakeImageDevice *disc = MakeAudioCD(3, 3000);
+    CCDPlayer player;
+    CGadgetTestBench bench(disc, false, &player);
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 cdb12[12] = {0xA5, 0x00, 0x00, 0x00, 0x0B, 0xB8,
+                          0x00, 0x00, 0x01, 0xF4, 0x00, 0x00};
+    auto play = bench.SendCommand(cdb12, sizeof(cdb12), 0);
+    CHECK_EQ(play.csw.bmCSWStatus, 0);
+
+    const u8 mech[12] = {0xBD, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0};
+    auto ms = bench.SendCommand(mech, sizeof(mech), 8);
+    CHECK(ms.gotCSW);
+    CHECK_EQ(ms.csw.bmCSWStatus, 0);
+    CHECK_EQ(ms.data.size(), (size_t)8);
+}
+
+// Skipping tracks drives the whole audio-control family; none has a data phase,
+// so none may leave a count standing for the next command to act on.
+TEST(audio_control_commands_leave_no_read_pending)
+{
+    struct Case { const char *name; u8 cdb[12]; size_t len; };
+    const Case cases[] = {
+        {"PLAY AUDIO(10)",  {0x45, 0, 0, 0, 0x0B, 0xB8, 0, 0x01, 0xF4, 0, 0, 0}, 10},
+        {"PLAY AUDIO(12)",  {0xA5, 0, 0, 0, 0x0B, 0xB8, 0, 0, 0x01, 0xF4, 0, 0}, 12},
+        {"PLAY AUDIO MSF",  {0x47, 0, 0, 0, 2, 0, 0, 4, 0, 0, 0, 0}, 10},
+        {"SEEK(10)",        {0x2B, 0, 0, 0, 0x0B, 0xB8, 0, 0, 0, 0, 0, 0}, 10},
+        {"PAUSE/RESUME",    {0x4B, 0, 0, 0, 0, 0, 0, 0, 0x01, 0, 0, 0}, 10},
+        {"STOP PLAY/SCAN",  {0x4E, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 10},
+    };
+
+    for (const Case &c : cases) {
+        CFakeImageDevice *disc = MakeAudioCD(3, 3000);
+        CCDPlayer player;
+        CGadgetTestBench bench(disc, false, &player);
+        bench.Activate();
+        bench.RequestSense();
+
+        // A multi-batch read still owing blocks, which is the state a host that
+        // is reading the disc while playing leaves behind.
+        bench.SetPendingBlocks(500);
+        auto ctrl = bench.SendCommand(c.cdb, c.len, 0);
+        CHECK(ctrl.gotCSW);
+
+        const u8 mech[12] = {0xBD, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0};
+        auto ms = bench.SendCommand(mech, sizeof(mech), 8);
+        if (!ms.gotCSW || ms.data.size() != 8) {
+            ReportFailure(__FILE__, __LINE__,
+                          std::string(c.name) + " left a read pending: got " +
+                              std::to_string(ms.data.size()) + " bytes, expected 8");
+        }
+    }
+}
+
 TEST(play_audio_on_data_track_fails)
 {
     CFakeImageDevice *disc = MakeDataISO(1200);
