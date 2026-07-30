@@ -42,6 +42,20 @@ class CFileLogDaemon : public CTask {
     boolean Initialize();
     void Run(void);
 
+    // One pass of Run()'s loop, split out so it can be tested; Run() never returns.
+    void DrainOnce(void);
+
+    // The constructor cannot report a failed open, so callers ask afterwards.
+    boolean IsFileLogging(void) const { return m_bFileInitialized; }
+    const char *GetLogFilePath(void) const { return m_LogFilePath; }
+    FRESULT GetOpenResult(void) const { return m_OpenResult; }
+
+    // One line for the web UI; SCREEN_HEADLESS has nowhere else to report this.
+    void GetStatusText(char *pBuffer, size_t nBufferSize) const;
+
+    // Without the volume prefix, for callers using newlib rather than FatFs.
+    void GetStdioPath(char *pBuffer, size_t nBufferSize) const;
+
     // Takes effect immediately; only affects the log file, not the
     // loglevel= filtering Circle applies to the serial/screen target.
     void SetLogLevel(unsigned uiLogLevel);
@@ -49,9 +63,17 @@ class CFileLogDaemon : public CTask {
     static CFileLogDaemon *Get(void);
 
    private:
-    boolean LogMessage(TLogSeverity Severity,
-                       time_t FullTime, unsigned nPartialTime, int nTimeNumOffset,
-                       const char *pAppName, const char *pMsg);
+    // A failed write is worth backing off for; a file never opened is not.
+    enum class LogResult
+    {
+        Written,
+        WriteFailed,  // transient: the file is open, this write did not land
+        NoFile        // permanent for this boot: there is nothing to write to
+    };
+
+    LogResult LogMessage(TLogSeverity Severity,
+                         time_t FullTime, unsigned nPartialTime, int nTimeNumOffset,
+                         const char *pAppName, const char *pMsg);
 
     static void EventNotificationHandler(void);
     static void PanicHandler(void);
@@ -59,9 +81,18 @@ class CFileLogDaemon : public CTask {
    private:
     CSynchronizationEvent m_Event;
     static CFileLogDaemon *s_pThis;
-    boolean m_bFileInitialized;
-    const char *m_pLogFilePath;
+    // Must start FALSE, or a failed open still writes to an unopened FIL.
+    boolean m_bFileInitialized = FALSE;
+    // Copied, not aliased: the config store may replace the caller's string.
+    char m_LogFilePath[256] = {0};
+    FRESULT m_OpenResult = FR_NOT_READY;
     unsigned m_uiLogLevel;
+
+    // So a permanently failing write (a full card) stops costing 20 ms an event.
+    unsigned m_nConsecutiveWriteFailures = 0;
+    static const unsigned MaxConsecutiveWriteFailures = 8;
+    boolean m_bWritesGaveUp = FALSE;
+
     FIL m_LogFile;
 };
 

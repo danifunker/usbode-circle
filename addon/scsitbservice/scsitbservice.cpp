@@ -51,24 +51,6 @@ static bool iequals(const char* a, const char* b) {
     return *a == *b;
 }
 
-// True if a file with the same stem but a different extension exists next to
-// fileName in dirFullPath (e.g. "game.bin" + ".cue" -> "1:/Games/game.cue").
-// FAT name matching is case-insensitive, so GAME.CUE is found too.
-static bool siblingWithExtExists(const char* dirFullPath, const char* fileName, const char* newExt) {
-    const char* dot = strrchr(fileName, '.');
-    if (dot == nullptr)
-        return false;
-
-    char sibling[MAX_PATH_LEN];
-    int n = snprintf(sibling, sizeof(sibling), "%s/%.*s%s",
-                     dirFullPath, (int)(dot - fileName), fileName, newExt);
-    if (n < 0 || (size_t)n >= sizeof(sibling))
-        return false;
-
-    FILINFO fi;
-    return f_stat(sibling, &fi) == FR_OK && !(fi.fattrib & AM_DIR);
-}
-
 int compareFileEntries(const void* a, const void* b) {
     const FileEntry* fa = (const FileEntry*)a;
     const FileEntry* fb = (const FileEntry*)b;
@@ -246,7 +228,9 @@ bool SCSITBService::IsEjected() const {
 }
 
 const char* SCSITBService::GetCurrentCDName() {
-	return GetName(GetCurrentCD());
+	// Never nullptr: callers feed this straight into std::string.
+	const char* name = GetName(GetCurrentCD());
+	return name != nullptr ? name : "";
 }
 
 bool SCSITBService::SetNextCDByName(const char* file_name) {
@@ -339,13 +323,11 @@ void SCSITBService::ScanDirectoryRecursive(const char* fullPath, const char* rel
                 bool listIt = iequals(ext, ".iso") || iequals(ext, ".mds") ||
                               iequals(ext, ".chd") || iequals(ext, ".toast");
                 if (!listIt && iequals(ext, ".cue")) {
-                    // Mounting a .cue opens the same-stem .bin, so only list
-                    // cue sheets whose data file is actually there
-                    listIt = siblingWithExtExists(fullPath, fno.fname, ".bin");
-                } else if (!listIt && iequals(ext, ".bin")) {
-                    // Hide the raw .bin of a cue/bin pair; its .cue is listed
-                    listIt = !siblingWithExtExists(fullPath, fno.fname, ".cue");
+                    // Even with no same-stem .bin, which also hid split-track rips.
+                    listIt = true;
                 }
+                // Never a .bin: mounting reads the .cue first, so a .bin is either
+                // unmountable or already represented by that cue.
                 if (listIt) {
                     size_t len = my_strnlen(fno.fname, MAX_FILENAME_LEN - 1);
                     memcpy(m_FileEntries[m_FileCount].name, fno.fname, len);
@@ -397,6 +379,25 @@ bool SCSITBService::RefreshCache() {
     
     LOGNOTE("SCSITBService::RefreshCache() Found %d total entries", (int)m_FileCount);
 
+    // The list was just rebuilt, so re-derive current_cd from the mounted path.
+    {
+        int resolved = -1;
+        if (m_MountedRelativePath[0] != '\0') {
+            for (size_t i = 0; i < m_FileCount; ++i) {
+                if (!m_FileEntries[i].isDirectory &&
+                    strcmp(m_FileEntries[i].relativePath, m_MountedRelativePath) == 0) {
+                    resolved = (int)i;
+                    break;
+                }
+            }
+        }
+        if (resolved != current_cd) {
+            LOGNOTE("SCSITBService::RefreshCache() current index %d -> %d after rescan",
+                    current_cd, resolved);
+        }
+        current_cd = resolved;
+    }
+
     // Find the current image in cache by matching relative path
     const char* searchPath = current_image;
     bool found = false;
@@ -443,12 +444,18 @@ bool SCSITBService::RefreshCache() {
     // then persist "inserted" over the saved state.
     if (!found && m_FileCount > 0 && !IsEjected()) {
         for (size_t i = 0; i < m_FileCount; ++i) {
-            if (!m_FileEntries[i].isDirectory) {
-                LOGNOTE("SCSITBService::RefreshCache() Current image not found, using: %s", 
-                        m_FileEntries[i].relativePath);
-                next_cd = i;
-                break;
+            if (m_FileEntries[i].isDirectory) {
+                continue;
             }
+            // Or every rescan picks it again and re-raises the error banner.
+            if (m_LastFailedRelativePath[0] != '\0' &&
+                strcmp(m_FileEntries[i].relativePath, m_LastFailedRelativePath) == 0) {
+                continue;
+            }
+            LOGNOTE("SCSITBService::RefreshCache() Current image not found, using: %s",
+                    m_FileEntries[i].relativePath);
+            next_cd = i;
+            break;
         }
     }
 
@@ -469,30 +476,58 @@ void SCSITBService::ProcessPendingMount() {
         return;
     }
 
+
+    m_LastMountError[0] = '\0';
+
     // Build full path using relativePath from cache
     const char* relativePath = m_FileEntries[next_cd].relativePath;
     // Ensure we have room for "1:/" prefix (3 chars) + relativePath + null terminator
     if (strlen(relativePath) > MAX_PATH_LEN - 4) {
         LOGERR("Path too long: %s", relativePath);
+        snprintf(m_LastMountError, sizeof(m_LastMountError),
+                 "Path is too long to mount: %s", relativePath);
         next_cd = -1;
         return;
     }
-    snprintf(m_CurrentImagePath, sizeof(m_CurrentImagePath), "1:/%s", relativePath);
+    // Local, not m_CurrentImagePath, which would make a failed mount report a
+    // disc the host was never given.
+    char candidatePath[MAX_PATH_LEN];
+    snprintf(candidatePath, sizeof(candidatePath), "1:/%s", relativePath);
 
-    IImageDevice* imageDevice = loadImageDevice(m_CurrentImagePath);
+    IImageDevice* imageDevice = loadImageDevice(candidatePath);
 
     if (imageDevice == nullptr) {
-        LOGERR("Failed to load image: %s", m_CurrentImagePath);
+        LOGERR("Failed to load image: %s", candidatePath);
+        strncpy(m_LastFailedRelativePath, relativePath, sizeof(m_LastFailedRelativePath) - 1);
+        m_LastFailedRelativePath[sizeof(m_LastFailedRelativePath) - 1] = '\0';
+        // The generic wording below is only for paths with no reason of their own.
+        const char* why = GetLastImageLoadError();
+        if (why != nullptr && why[0] != '\0') {
+            snprintf(m_LastMountError, sizeof(m_LastMountError),
+                     "%s (%s) The previous disc is still mounted.", why, relativePath);
+        } else {
+            snprintf(m_LastMountError, sizeof(m_LastMountError),
+                     "Could not load %s. It may be an unsupported or damaged image; "
+                     "the log has the details. The previous disc is still mounted.",
+                     relativePath);
+        }
         next_cd = -1;
         return;
     }
 
     LOGNOTE("Loaded image: %s (format: %d, has subchannels: %s)",
-            m_CurrentImagePath,
+            candidatePath,
             (int)imageDevice->GetFileType(),
             imageDevice->HasSubchannelData() ? "yes" : "no");
 
     cdromservice->SetDevice(imageDevice);
+
+    // Committed only now that the disc is really the one the host has.
+    strncpy(m_CurrentImagePath, candidatePath, sizeof(m_CurrentImagePath) - 1);
+    m_CurrentImagePath[sizeof(m_CurrentImagePath) - 1] = '\0';
+    strncpy(m_MountedRelativePath, relativePath, sizeof(m_MountedRelativePath) - 1);
+    m_MountedRelativePath[sizeof(m_MountedRelativePath) - 1] = '\0';
+    m_LastFailedRelativePath[0] = '\0';
 
     // Save relative path to config (without "1:/" prefix)
     configservice->SetCurrentImage(relativePath);

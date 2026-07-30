@@ -82,10 +82,21 @@ class CMDSFileDevice : public IMDSDevice {
     /// bytes, so its length divided by 2352 over-reports the disc.
     u32 m_nTotalFrames = 0;
 
-    /// The LBA Seek() last resolved. Read() needs it because Tell() reports
-    /// a PHYSICAL offset in the MDF, which on a 2448-byte-per-sector track
-    /// is not lba * 2352.
+    /// The reader's position: set by Seek(), advanced by Read(). Not recoverable
+    /// from Tell(), which reports a physical MDF offset.
     u32 m_nCurrentLBA = 0;
+
+    /// True if the MDF omits at least one frame. Cached because the alternative
+    /// is an O(frames x tracks) lookup per read, and most images have no hole.
+    bool m_bHasUnstoredGaps = false;
+
+    /// No track lengths recorded, so the count came from the MDF size and the
+    /// file is read as a flat run of frames from LBA 0.
+    bool m_bFlatOffsets = false;
+
+    /// Distinct frames in the MDF, overlapping ranges merged. 0 if there are too
+    /// many to merge, which reads as sparse and costs speed, not correctness.
+    u32 CountStoredFrames() const;
 
     // Helper to find track containing an LBA
     MDS_TrackBlock* FindTrackForLBA(u32 lba, int* sessionOut, int* trackOut) const;

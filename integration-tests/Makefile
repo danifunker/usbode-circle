@@ -68,6 +68,13 @@ DISCIMAGE_SRCS := \
 	$(ADDON)/discimage/mdsfile.cpp \
 	$(ADDON)/mdsparser/mdsparser.cpp
 
+# The file log daemon. Not a disc-image path, but it reaches the SD card
+# through the same FatFs seam, and what it does when that open FAILS is the
+# behaviour worth pinning: a bad path used to cost 20 ms of scheduler time per
+# log event, which presented as the whole Pi having gone slow.
+SERVICE_SRCS := \
+	$(ADDON)/filelogdaemon/filelogdaemon.cpp
+
 CHDR_OBJS :=
 ifeq ($(WITH_CHD),1)
 DISCIMAGE_SRCS += $(ADDON)/discimage/chdfile.cpp
@@ -97,7 +104,7 @@ endif
 HARNESS_SRCS := $(wildcard harness/*.cpp)
 TEST_SRCS    := $(wildcard test-suite/*.cpp)
 
-CXX_SRCS := $(GADGET_SRCS) $(DISCIMAGE_SRCS) $(HARNESS_SRCS) $(TEST_SRCS)
+CXX_SRCS := $(GADGET_SRCS) $(DISCIMAGE_SRCS) $(SERVICE_SRCS) $(HARNESS_SRCS) $(TEST_SRCS)
 CXX_OBJS := $(addprefix $(BUILD)/,$(notdir $(CXX_SRCS:.cpp=.o)))
 OBJS := $(CXX_OBJS) $(CHDR_OBJS)
 

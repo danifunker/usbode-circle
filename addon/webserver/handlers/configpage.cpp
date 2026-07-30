@@ -32,6 +32,61 @@ std::string ConfigPageHandler::GetHTML() {
     return std::string(s_Config);
 }
 
+// Normalize onto volume 0: and reject what FatFs cannot open; a bad path is not
+// otherwise discovered until the next boot. Empty means logging is off.
+static bool NormalizeLogfilePath(std::string& path, std::string& error) {
+    const size_t first = path.find_first_not_of(" \t");
+    if (first == std::string::npos) {
+        path.clear();
+        return true;
+    }
+    path = path.substr(first, path.find_last_not_of(" \t") - first + 1);
+
+    // FatFs accepts either separator and users type both.
+    std::replace(path.begin(), path.end(), '\\', '/');
+
+    // Refuse any volume but the boot partition: 1: is real but is not mounted
+    // until well after the log daemon starts.
+    const size_t colon = path.find(':');
+    if (colon != std::string::npos) {
+        const std::string volume = path.substr(0, colon);
+        if (volume != "0") {
+            error = "Log file must be on the boot partition. Remove the \"" + volume +
+                    ":\" prefix and give a path like usbode-log.txt.";
+            return false;
+        }
+        path.erase(0, colon + 1);
+    }
+    while (!path.empty() && path[0] == '/') {
+        path.erase(0, 1);
+    }
+
+    if (path.empty() || path.back() == '/') {
+        error = "Log file path has to name a file, not a directory.";
+        return false;
+    }
+    if (path.find(':') != std::string::npos) {
+        error = "Log file path cannot contain a colon.";
+        return false;
+    }
+
+    // FatFs will not create a directory. f_opendir, not f_stat, which cannot
+    // describe a volume root.
+    const size_t slash = path.find_last_of('/');
+    if (slash != std::string::npos) {
+        const std::string dir = path.substr(0, slash);
+        DIR probe;
+        if (f_opendir(&probe, ("0:/" + dir).c_str()) != FR_OK) {
+            error = "Directory \"" + dir + "\" does not exist on the boot partition.";
+            return false;
+        }
+        f_closedir(&probe);
+    }
+
+    path = "0:/" + path;
+    return true;
+}
+
 std::map<std::string, std::string> ConfigPageHandler::ParseFormData(const char* pFormData) {
     std::map<std::string, std::string> params;
     
@@ -126,15 +181,16 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
                 config->SetST7789SleepBrightness(std::atoi(form_params["st7789_sleep_brightness"].c_str()));
             }
             
-            // Log file configuration
+            // An empty value means "off"; the write path used to ignore it.
             if (form_params.count("logfile")) {
                 std::string logfile = form_params["logfile"];
-                if (!logfile.empty()) {
-                    // Ensure 0:/ prefix
-                    if (logfile.find("0:/") != 0) {
-                        logfile = "0:/" + logfile;
-                    }
+                std::string logfileError;
+                if (NormalizeLogfilePath(logfile, logfileError)) {
                     config->SetLogfile(logfile.c_str());
+                } else {
+                    error_message = logfileError;
+                    LOGWARN("Rejected log file path '%s': %s",
+                            form_params["logfile"].c_str(), logfileError.c_str());
                 }
             }
             
@@ -193,8 +249,19 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             
             // Check for action parameter to determine what to do after saving
             std::string action = form_params.count("action") ? form_params["action"] : "save";
-            
-            if (action == "save_reboot") {
+
+            // "Saved successfully" next to a rejection would read as though the
+            // rejected value went in too.
+            if (!error_message.empty()) {
+                error_message += " Other settings were saved.";
+                // The reboot used to be dropped silently here, leaving the user
+                // waiting for one that was never coming.
+                if (action == "save_reboot") {
+                    error_message += " The reboot was cancelled so you can correct this.";
+                } else if (action == "save_shutdown") {
+                    error_message += " The shutdown was cancelled so you can correct this.";
+                }
+            } else if (action == "save_reboot") {
                 success_message = "Configuration saved successfully. Rebooting in 3 seconds...";
                 // Schedule a reboot in 3 seconds
                 new CShutdown(ShutdownReboot, 3000);
@@ -208,6 +275,19 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
         }
     }
     
+    // The boot-time warning goes to the serial console, which SCREEN_HEADLESS
+    // has no equivalent of.
+    {
+        char status[256] = {0};
+        if (CFileLogDaemon::Get() != nullptr) {
+            CFileLogDaemon::Get()->GetStatusText(status, sizeof(status));
+        }
+        context["logfile_status"] = std::string(status);
+        context["logfile_broken"] = (CFileLogDaemon::Get() != nullptr &&
+                                     !CFileLogDaemon::Get()->IsFileLogging() &&
+                                     CFileLogDaemon::Get()->GetLogFilePath()[0] != '\0');
+    }
+
     // Set current values for display
     std::string current_displayhat = config->GetDisplayHat();
     std::string current_low_power_timeout = std::to_string(config->GetLowPowerTimeout());

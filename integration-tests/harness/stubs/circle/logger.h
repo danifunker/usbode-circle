@@ -7,6 +7,7 @@
 #define _circle_logger_h
 
 #include <circle/types.h>
+#include <time.h>
 
 enum TLogSeverity
 {
@@ -17,12 +18,34 @@ enum TLogSeverity
     LogDebug
 };
 
+// Sizes as declared by the real circle/logger.h, since CFileLogDaemon sizes
+// its own ReadEvent() buffers from them.
+#define LOG_MAX_SOURCE   50
+#define LOG_MAX_MESSAGE  200
+
+typedef void TLogEventNotificationHandler(void);
+typedef void TLogPanicHandler(void);
+
 class CLogger
 {
 public:
     static CLogger *Get(void);
 
     void Write(const char *pSource, TLogSeverity Severity, const char *pMessage, ...);
+
+    // The real CLogger queues EVERY event whatever the loglevel; consumers
+    // filter as they drain. Dropping here would hide a daemon filtering wrongly.
+    boolean ReadEvent(TLogSeverity *pSeverity, char *pSource, char *pMessage,
+                      time_t *pTime, unsigned *pHundredthTime, int *pTimeZone);
+
+    void RegisterEventNotificationHandler(TLogEventNotificationHandler *pHandler);
+    void RegisterPanicHandler(TLogPanicHandler *pHandler);
+
+    // Test-side control: queue an event as firmware would, and empty the queue
+    // between tests so one test's chatter is not read by the next.
+    static void TestQueueEvent(TLogSeverity Severity, const char *pSource, const char *pMessage);
+    static void TestClearEvents(void);
+    static unsigned TestQueuedEventCount(void);
 };
 
 // Match the real Circle logging macros so firmware sources that use

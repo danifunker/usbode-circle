@@ -56,6 +56,9 @@ public:
     void SetPendingInsert();
     bool IsEjected() const;  // delegates to cdromservice
 
+    // Why the last mount attempt failed, or "" if it worked.
+    const char* GetLastMountError() const { return m_LastMountError; }
+
     // Task entry point
     void Run(void);
 
@@ -80,6 +83,16 @@ private:
     // currently written to config, so the Run loop only writes on a change.
     bool m_bBootEjectPending = false;
     bool m_bPersistedEjected = false;
+
+    // 320 because at 160 the split-track message was cut off mid-word.
+    char m_LastMountError[320] = {0};
+
+    // What is ACTUALLY mounted, written only after a load succeeds. current_cd is
+    // an index into a rebuilt list, so it is re-derived from this.
+    char m_MountedRelativePath[MAX_PATH_LEN] = {0};
+
+    // So the fallback in RefreshCache does not keep picking the same bad image.
+    char m_LastFailedRelativePath[MAX_PATH_LEN] = {0};
 
     // Full path of currently mounted image (e.g., "1:/Games/game.iso")
     char m_CurrentImagePath[MAX_PATH_LEN];

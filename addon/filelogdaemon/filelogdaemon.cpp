@@ -33,8 +33,11 @@ LOGMODULE("filelogdaemon");
 CFileLogDaemon *CFileLogDaemon::s_pThis = nullptr;
 
 CFileLogDaemon::CFileLogDaemon(const char *pLogFilePath, unsigned uiLogLevel)
-    : m_pLogFilePath(pLogFilePath),
-      m_uiLogLevel(uiLogLevel > 5 ? 5 : uiLogLevel) {
+    : m_uiLogLevel(uiLogLevel > 5 ? 5 : uiLogLevel) {
+    if (pLogFilePath != nullptr) {
+        strncpy(m_LogFilePath, pLogFilePath, sizeof(m_LogFilePath) - 1);
+        m_LogFilePath[sizeof(m_LogFilePath) - 1] = '\0';
+    }
     // I am the one and only!
     assert(s_pThis == nullptr);
     s_pThis = this;
@@ -52,10 +55,21 @@ void CFileLogDaemon::SetLogLevel(unsigned uiLogLevel) {
 }
 
 boolean CFileLogDaemon::Initialize() {
+    if (m_LogFilePath[0] == '\0') {
+        // An empty path is the config saying "no file logging", not an error.
+        m_OpenResult = FR_INVALID_NAME;
+        LOGNOTE("No log file configured; file logging is off");
+        return FALSE;
+    }
+
     // Open log file for writing (append mode)
-    FRESULT Result = f_open(&m_LogFile, m_pLogFilePath, FA_WRITE | FA_OPEN_ALWAYS);
+    FRESULT Result = f_open(&m_LogFile, m_LogFilePath, FA_WRITE | FA_OPEN_ALWAYS);
+    m_OpenResult = Result;
     if (Result != FR_OK) {
-        LOGERR("Failed to open log file");
+        // Name the path and the reason; this is the only evidence the user gets.
+        // Only volume 0: is mounted this early, so a path on 1: lands here.
+        LOGERR("Failed to open log file '%s' (FatFs error %d); file logging is off",
+               m_LogFilePath, (int)Result);
         return FALSE;
     }
 
@@ -79,6 +93,42 @@ boolean CFileLogDaemon::Initialize() {
     return TRUE;
 }
 
+void CFileLogDaemon::GetStatusText(char *pBuffer, size_t nBufferSize) const {
+    if (pBuffer == nullptr || nBufferSize == 0) {
+        return;
+    }
+
+    if (m_LogFilePath[0] == '\0') {
+        snprintf(pBuffer, nBufferSize, "File logging is off (no log file configured).");
+    } else if (m_bWritesGaveUp) {
+        snprintf(pBuffer, nBufferSize,
+                 "NOT LOGGING: writes to %s kept failing, so logging stopped. "
+                 "The card is most likely full.",
+                 m_LogFilePath);
+    } else if (m_bFileInitialized) {
+        snprintf(pBuffer, nBufferSize, "Writing to %s", m_LogFilePath);
+    } else {
+        snprintf(pBuffer, nBufferSize,
+                 "NOT LOGGING: cannot open %s (FatFs error %d). "
+                 "The file must be on the boot partition and its directory must already exist.",
+                 m_LogFilePath, (int)m_OpenResult);
+    }
+}
+
+void CFileLogDaemon::GetStdioPath(char *pBuffer, size_t nBufferSize) const {
+    if (pBuffer == nullptr || nBufferSize == 0) {
+        return;
+    }
+
+    // Config stores the FatFs form ("0:/usbode-log.txt"); newlib wants an
+    // ordinary path ("/usbode-log.txt").
+    const char *p = m_LogFilePath;
+    if (p[0] == '0' && p[1] == ':') {
+        p += 2;
+    }
+    snprintf(pBuffer, nBufferSize, "%s", p);
+}
+
 CFileLogDaemon::~CFileLogDaemon(void) {
     s_pThis = nullptr;
 
@@ -96,36 +146,61 @@ void CFileLogDaemon::Run(void) {
 
     while (true) {
         m_Event.Clear();
-
-        TLogSeverity Severity;
-        char Source[LOG_MAX_SOURCE];
-        char Message[LOG_MAX_MESSAGE];
-        time_t Time;
-        unsigned nHundredthTime;
-        int nTimeZone;
-        while (pLogger->ReadEvent(&Severity, Source, Message,
-                                  &Time, &nHundredthTime, &nTimeZone)) {
-            // CLogger queues every event regardless of its loglevel (that
-            // only filters the serial/screen target), so the configured
-            // level is applied here. Severity LogPanic(0)..LogDebug(4)
-            // maps to config levels 1..5; level 0 drops everything.
-            if ((unsigned)Severity >= m_uiLogLevel) {
-                continue;
-            }
-            if (!LogMessage(Severity, Time, nHundredthTime, nTimeZone, Source, Message)) {
-                CScheduler::Get()->Sleep(20);
-            }
-        }
-
+        DrainOnce();
         m_Event.Wait();
     }
 }
 
-boolean CFileLogDaemon::LogMessage(TLogSeverity Severity,
-                                   time_t FullTime, unsigned nPartialTime, int nTimeNumOffset,
-                                   const char *pAppName, const char *pMsg) {
+void CFileLogDaemon::DrainOnce(void) {
+    CLogger *pLogger = CLogger::Get();
+    assert(pLogger != nullptr);
+
+    TLogSeverity Severity;
+    char Source[LOG_MAX_SOURCE];
+    char Message[LOG_MAX_MESSAGE];
+    time_t Time;
+    unsigned nHundredthTime;
+    int nTimeZone;
+    while (pLogger->ReadEvent(&Severity, Source, Message,
+                              &Time, &nHundredthTime, &nTimeZone)) {
+        // CLogger queues every event whatever the loglevel, so the configured
+        // level applies here. LogPanic(0)..LogDebug(4) maps to config 1..5.
+        if ((unsigned)Severity >= m_uiLogLevel) {
+            continue;
+        }
+
+        const LogResult result =
+            LogMessage(Severity, Time, nHundredthTime, nTimeZone, Source, Message);
+
+        if (result == LogResult::Written) {
+            m_nConsecutiveWriteFailures = 0;
+            continue;
+        }
+        if (result != LogResult::WriteFailed) {
+            continue;
+        }
+
+        // Back off for a busy card, but a full one fails every write, and 20 ms
+        // per event starves the scheduler exactly as the no-file case used to.
+        if (++m_nConsecutiveWriteFailures >= MaxConsecutiveWriteFailures) {
+            if (!m_bWritesGaveUp) {
+                m_bWritesGaveUp = TRUE;
+                m_bFileInitialized = FALSE;
+                f_close(&m_LogFile);
+            }
+            continue;
+        }
+
+        CScheduler::Get()->Sleep(20);
+    }
+}
+
+CFileLogDaemon::LogResult CFileLogDaemon::LogMessage(TLogSeverity Severity,
+                                                     time_t FullTime, unsigned nPartialTime,
+                                                     int nTimeNumOffset,
+                                                     const char *pAppName, const char *pMsg) {
     if (!m_bFileInitialized) {
-        return FALSE;
+        return LogResult::NoFile;
     }
 
     // Format the log entry similar to base logger but tailored for file
@@ -157,18 +232,22 @@ boolean CFileLogDaemon::LogMessage(TLogSeverity Severity,
     snprintf(LogEntry, sizeof(LogEntry), "[%lu] [%s] %s: %s\n",
              FullTime, pAppName, pSeverityName, pMsg);
 
-    // Write to file
+    // Write to file. A short write means a full card, which f_write reports as
+    // success, and an unchecked f_sync would then call the lost entry written.
+    const UINT EntryLength = strlen(LogEntry);
     UINT BytesWritten;
-    FRESULT Result = f_write(&m_LogFile, LogEntry, strlen(LogEntry), &BytesWritten);
-    if (Result != FR_OK) {
-        // TODO implement proper error handling here!!!
-        LOGERR("Failed to write to log file!");
-        return FALSE;
+    FRESULT Result = f_write(&m_LogFile, LogEntry, EntryLength, &BytesWritten);
+    if (Result != FR_OK || BytesWritten != EntryLength) {
+        // Not logged: this runs while draining the log queue, so a message here
+        // would queue another event that fails the same way.
+        return LogResult::WriteFailed;
     }
 
-    f_sync(&m_LogFile);
+    if (f_sync(&m_LogFile) != FR_OK) {
+        return LogResult::WriteFailed;
+    }
 
-    return TRUE;
+    return LogResult::Written;
 }
 
 void CFileLogDaemon::EventNotificationHandler(void) {
