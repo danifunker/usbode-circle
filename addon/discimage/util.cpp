@@ -284,7 +284,14 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
     FRESULT result = f_open(imageFile, fullPath, FA_READ);
     if (result != FR_OK) {
         LOGERR("Cannot open data file for reading: %s (error %d)", fullPath, result);
-        SetImageLoadError("The data file this image needs is missing: %s", fullPath);
+        // "Missing" sends the user looking for a file that may be sitting right
+        // there: FR_DENIED, FR_INVALID_NAME and a failing card all land here too.
+        if (result == FR_NO_FILE || result == FR_NO_PATH) {
+            SetImageLoadError("The data file this image needs is missing: %s", fullPath);
+        } else {
+            SetImageLoadError("The data file this image needs would not open: %s (FatFs error %d)",
+                              fullPath, (int)result);
+        }
         delete imageFile;
         if (cue_str) delete[] cue_str;
         return nullptr;

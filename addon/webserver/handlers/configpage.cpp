@@ -32,9 +32,8 @@ std::string ConfigPageHandler::GetHTML() {
     return std::string(s_Config);
 }
 
-// Normalize a user-typed log path onto volume 0: and reject what FatFs cannot
-// open - the only validation it gets, and a bad path is not discovered until the
-// next boot. An empty result means logging is off, which is a choice.
+// Normalize onto volume 0: and reject what FatFs cannot open; a bad path is not
+// otherwise discovered until the next boot. Empty means logging is off.
 static bool NormalizeLogfilePath(std::string& path, std::string& error) {
     const size_t first = path.find_first_not_of(" \t");
     if (first == std::string::npos) {
@@ -255,6 +254,13 @@ THTTPStatus ConfigPageHandler::PopulateContext(kainjow::mustache::data& context,
             // rejected value went in too.
             if (!error_message.empty()) {
                 error_message += " Other settings were saved.";
+                // The reboot used to be dropped silently here, leaving the user
+                // waiting for one that was never coming.
+                if (action == "save_reboot") {
+                    error_message += " The reboot was cancelled so you can correct this.";
+                } else if (action == "save_shutdown") {
+                    error_message += " The shutdown was cancelled so you can correct this.";
+                }
             } else if (action == "save_reboot") {
                 success_message = "Configuration saved successfully. Rebooting in 3 seconds...";
                 // Schedule a reboot in 3 seconds
