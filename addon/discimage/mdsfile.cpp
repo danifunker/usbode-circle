@@ -290,29 +290,21 @@ bool CMDSFileDevice::Init() {
     if (m_nTotalFrames == 0) {
         // No track lengths recorded. Fall back to the old behaviour rather
         // than presenting an empty disc.
+        m_bFlatOffsets = true;
         m_nTotalFrames = (u32)(f_size(m_pFile) / 2352);
         LOGWARN("No track lengths in MDS; deriving %u frames from the MDF size",
                 m_nTotalFrames);
     }
 
-    // Does the MDF omit any frames? Alcohol drops the pregap by default, so most
-    // multi-track images have a 150-frame hole and reads must walk frame by frame.
-    // Summing short means a hole; overlapping tracks sum high and also walk it.
-    u32 covered = 0;
-    for (int i = 0; i < m_parser->getNumSessions(); i++) {
-        MDS_SessionBlock* session = m_parser->getSession(i);
-        for (int j = 0; j < session->num_all_blocks; j++) {
-            MDS_TrackBlock* track = m_parser->getTrack(i, j);
-            if (track->point == 0 || track->point >= 0xA0) {
-                continue;
-            }
-            MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
-            covered += extra ? extra->length : 0;
+    // Alcohol drops the pregap, so most multi-track images have a hole. Not asked
+    // when the count came from the file size: nothing would count as stored.
+    m_bHasUnstoredGaps = false;
+    if (!m_bFlatOffsets) {
+        const u32 covered = CountStoredFrames();
+        m_bHasUnstoredGaps = (covered != m_nTotalFrames);
+        if (m_bHasUnstoredGaps) {
+            LOGNOTE("=== MDF is sparse: %u of %u frames stored ===", covered, m_nTotalFrames);
         }
-    }
-    m_bHasUnstoredGaps = (covered != m_nTotalFrames);
-    if (m_bHasUnstoredGaps) {
-        LOGNOTE("=== MDF is sparse: %u of %u frames stored ===", covered, m_nTotalFrames);
     }
 
     LOGNOTE("=== Image has subchannel data: %s ===",
@@ -515,6 +507,18 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
     // Before any early exit can skip it: Read() keys its gap detection off this.
     m_nCurrentLBA = lba;
 
+    // No track table to map through, so the MDF is a flat run of frames from LBA 0.
+    // Otherwise the branch below leaves the file position untouched.
+    if (m_bFlatOffsets) {
+        FRESULT flat = f_lseek(m_pFile, nOffset);
+        if (flat != FR_OK) {
+            LOGERR("Seek to flat offset %llu failed, err %d",
+                   (unsigned long long)nOffset, flat);
+            return static_cast<u64>(-1);
+        }
+        return nOffset;
+    }
+
     // Find which track contains this LBA
     int session, trackIdx;
     MDS_TrackBlock* track = FindTrackForLBA(lba, &session, &trackIdx);
@@ -542,9 +546,8 @@ u64 CMDSFileDevice::Seek(u64 nOffset) {
     // LOGDBG("Seek: LBA %u (offset %llu) -> track %d, file offset %llu",
     //        lba, nOffset, track->point, actual_file_offset);
 
-    // Don't seek if we're already there. Compare against the FILE offset just
-    // computed, not the disc address nOffset, which coincides often enough to
-    // skip a seek that was needed.
+    // Compare the FILE offset just computed, not the disc address nOffset, which
+    // coincides often enough to skip a seek that was needed.
     if (Tell() == actual_file_offset) {
         return nOffset;
     }
@@ -650,6 +653,73 @@ bool CMDSFileDevice::IsAudioTrack(int track) const {
         }
     }
     return false;
+}
+
+// Distinct frames stored. Summing counts an overlap twice, and an overlap the
+// size of a real hole then adds up to a full disc, hiding the hole.
+u32 CMDSFileDevice::CountStoredFrames() const {
+    struct Range {
+        u32 start;
+        u32 end;
+    };
+
+    // 99 tracks is the Red Book limit, so this only has to be big enough not to
+    // truncate a legitimate image.
+    static const size_t kMaxRanges = 128;
+    Range Ranges[kMaxRanges];
+    size_t nRanges = 0;
+
+    for (int i = 0; i < m_parser->getNumSessions(); i++) {
+        MDS_SessionBlock* session = m_parser->getSession(i);
+        for (int j = 0; j < session->num_all_blocks; j++) {
+            MDS_TrackBlock* track = m_parser->getTrack(i, j);
+            if (track->point == 0 || track->point >= 0xA0) {
+                continue;
+            }
+            MDS_TrackExtraBlock* extra = m_parser->getTrackExtra(i, j);
+            const u32 length = extra ? extra->length : 0;
+            if (length == 0) {
+                continue;
+            }
+            if (nRanges == kMaxRanges) {
+                // Walking gaps needlessly is slow; missing one serves wrong bytes.
+                LOGWARN("More than %u stored ranges; assuming the MDF is sparse",
+                        (unsigned)kMaxRanges);
+                return 0;
+            }
+            Ranges[nRanges].start = track->start_sector;
+            Ranges[nRanges].end = track->start_sector + length;
+            nRanges++;
+        }
+    }
+
+    // Insertion sort: a disc has few tracks and they arrive nearly ordered.
+    for (size_t i = 1; i < nRanges; i++) {
+        const Range Key = Ranges[i];
+        size_t j = i;
+        while (j > 0 && Ranges[j - 1].start > Key.start) {
+            Ranges[j] = Ranges[j - 1];
+            j--;
+        }
+        Ranges[j] = Key;
+    }
+
+    u32 covered = 0;
+    size_t i = 0;
+    while (i < nRanges) {
+        u32 end = Ranges[i].end;
+        const u32 start = Ranges[i].start;
+        while (i + 1 < nRanges && Ranges[i + 1].start <= end) {
+            if (Ranges[i + 1].end > end) {
+                end = Ranges[i + 1].end;
+            }
+            i++;
+        }
+        covered += end - start;
+        i++;
+    }
+
+    return covered;
 }
 
 MDS_TrackBlock* CMDSFileDevice::FindTrackForLBA(u32 lba, int* sessionOut, int* trackOut) const {

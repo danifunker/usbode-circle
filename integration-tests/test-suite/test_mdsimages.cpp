@@ -260,6 +260,31 @@ static std::vector<u8> RawMode1Sectors(const std::string &isoPath, u32 firstLBA,
     return out;
 }
 
+// Raw MODE1 sectors filled with odd bytes, so a frame reading back as zeros can
+// only have come from a hole, not from an ISO's zero-filled system area.
+static std::vector<u8> PatternMode1Sectors(u32 firstLBA, u32 nSectors)
+{
+    static const u8 kSync[12] = {0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00};
+    auto bcd = [](u32 v) { return (u8)(((v / 10) << 4) | (v % 10)); };
+
+    std::vector<u8> out((size_t)nSectors * 2352, 0);
+    for (u32 i = 0; i < nSectors; i++) {
+        u8 *sector = out.data() + (size_t)i * 2352;
+        const u32 lba = firstLBA + i;
+        memcpy(sector, kSync, sizeof(kSync));
+        u32 amsf = lba + 150;
+        sector[12] = bcd(amsf / (60 * 75));
+        sector[13] = bcd((amsf / 75) % 60);
+        sector[14] = bcd(amsf % 75);
+        sector[15] = 0x01; // MODE1
+        for (u32 b = 0; b < 2048; b++) {
+            sector[16 + b] = (u8)((lba * 7u + b * 3u) | 1u); // odd, so never zero
+        }
+    }
+    return out;
+}
+
 static void WriteBytes(const std::string &path, const std::vector<u8> &bytes)
 {
     FILE *f = fopen(path.c_str(), "wb");
@@ -436,6 +461,161 @@ TEST(mds_data_disc_reads_through_the_gadget)
     CHECK_EQ(toc.data[2], 0x01);        // first track
     CHECK_EQ(toc.data[3], 0x01);        // last track
     CHECK_EQ(toc.data[5] & 0x04, 0x04); // track 1 control: data
+}
+
+// With no track lengths the frame count comes from the MDF size, and nothing
+// then counts as stored - which used to declare the whole disc a hole.
+TEST(mds_disc_without_track_lengths_still_reads_its_content)
+{
+    const u32 nSectors = 32;
+    CHECK(FileSize(kIso) > 0);
+
+    const std::string mds = TestDataDir() + "/mdsnolen.mds";
+    const std::string mdf = TestDataDir() + "/mdsnolen.mdf";
+    std::vector<u8> raw = RawMode1Sectors(kIso, 0, nSectors);
+    CHECK_EQ(raw.size(), (size_t)nSectors * 2352);
+    if (raw.empty()) {
+        return;
+    }
+    WriteBytes(mdf, raw);
+
+    MdsTrackSpec track;
+    track.mode = 0xAA;
+    track.point = 1;
+    track.sectorSize = 2352;
+    track.startSector = 0;
+    track.startOffset = 0;
+    track.length = 0; // what the fallback exists for
+    WriteMdsFile(mds, {track}, "mdsnolen.mdf");
+
+    CMDSFileDevice *disc = OpenMds(mds);
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // The frame count came from the MDF size, so the disc is as long as the file.
+    const u8 capCdb[10] = {0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    auto cap = bench.SendCommand(capCdb, sizeof(capCdb), 8);
+    CHECK_EQ(cap.csw.bmCSWStatus, 0);
+    u32 lastLBA = (cap.data[0] << 24) | (cap.data[1] << 16) | (cap.data[2] << 8) | cap.data[3];
+    CHECK_EQ(lastLBA, nSectors - 1);
+
+    // The PVD, not zeros. This is the whole point: the bytes have to come out of
+    // the MDF even though no track claims to contain this LBA.
+    const u8 pvdCdb[10] = {0x28, 0, 0, 0, 0, 16, 0, 0, 1, 0};
+    auto pvd = bench.SendCommand(pvdCdb, sizeof(pvdCdb), 2048);
+    CHECK_EQ(pvd.csw.bmCSWStatus, 0);
+    CHECK_EQ(pvd.data.size(), (size_t)2048);
+    if (pvd.data.size() == 2048) {
+        CHECK_EQ(pvd.data[0], 0x01);
+        CHECK(memcmp(pvd.data.data() + 1, "CD001", 5) == 0);
+        CHECK(memcmp(pvd.data.data() + 40, "FREEDOS_TEST", 12) == 0);
+    }
+
+    // And the stride, so this cannot pass on a single lucky offset.
+    const u8 svdCdb[10] = {0x28, 0, 0, 0, 0, 17, 0, 0, 1, 0};
+    auto svd = bench.SendCommand(svdCdb, sizeof(svdCdb), 2048);
+    CHECK_EQ(svd.csw.bmCSWStatus, 0);
+    if (svd.data.size() == 2048) {
+        CHECK_EQ(svd.data[0], 0x02);
+        CHECK(memcmp(svd.data.data() + 1, "CD001", 5) == 0);
+    }
+}
+
+// Overlapping track ranges used to be counted twice, so an overlap the same size
+// as a real hole added up to a full disc and turned gap-aware reads back off.
+TEST(mds_overlapping_tracks_do_not_hide_a_real_gap)
+{
+    const u32 kTrack1Len = 20;
+    const u32 kGap = 10;                        // frames the MDF does not store
+    const u32 kTrack2LBA = kTrack1Len + kGap;
+    const u32 kTrack2Len = 20;
+    // Track 3 starts inside track 2 and ends where it does, so the double-counted
+    // overlap is exactly kGap and the plain sum reaches the disc length.
+    const u32 kTrack3LBA = kTrack2LBA + kTrack2Len - kGap;
+    const u32 kTrack3Len = kGap;
+    const u32 kTotal = kTrack2LBA + kTrack2Len;
+
+    const std::string mds = TestDataDir() + "/mdsoverlap.mds";
+    const std::string mdf = TestDataDir() + "/mdsoverlap.mdf";
+
+    // Stored frames only, all non-zero, so "the gap reads as zeros" cannot pass
+    // by landing on empty ISO system area.
+    std::vector<u8> raw = PatternMode1Sectors(0, kTrack1Len + kTrack2Len);
+    CHECK_EQ(raw.size(), (size_t)(kTrack1Len + kTrack2Len) * 2352);
+    WriteBytes(mdf, raw);
+
+    MdsTrackSpec t1;
+    t1.mode = 0xAA;
+    t1.point = 1;
+    t1.startSector = 0;
+    t1.startOffset = 0;
+    t1.length = kTrack1Len;
+
+    MdsTrackSpec t2;
+    t2.mode = 0xAA;
+    t2.point = 2;
+    t2.startSector = kTrack2LBA;
+    t2.startOffset = (u64)kTrack1Len * 2352;
+    t2.pregap = kGap;
+    t2.length = kTrack2Len;
+
+    MdsTrackSpec t3;
+    t3.mode = 0xAA;
+    t3.point = 3;
+    t3.startSector = kTrack3LBA;
+    t3.startOffset = (u64)(kTrack1Len + kTrack3LBA - kTrack2LBA) * 2352;
+    t3.length = kTrack3Len;
+
+    WriteMdsFile(mds, {t1, t2, t3}, "mdsoverlap.mdf");
+
+    // Summing lengths gives 20 + 20 + 10 = 50 = the disc length, so the gap
+    // would look stored; merging the ranges gives 40 and keeps it visible.
+    CHECK_EQ(kTrack1Len + kTrack2Len + kTrack3Len, kTotal);
+
+    CMDSFileDevice *disc = OpenMds(mds);
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    auto read = [&bench](u32 lba) {
+        const u8 cdb[10] = {0x28, 0, (u8)(lba >> 24), (u8)(lba >> 16), (u8)(lba >> 8), (u8)lba,
+                            0, 0, 1, 0};
+        return bench.SendCommand(cdb, sizeof(cdb), 2048);
+    };
+
+    // A stored frame first, to prove the fixture and leave the file pointer on
+    // real data: an unrecognised gap then continues from here and is non-zero.
+    auto stored = read(kTrack1Len - 1);
+    CHECK_EQ(stored.csw.bmCSWStatus, 0);
+    CHECK_EQ(stored.data.size(), (size_t)2048);
+    if (stored.data.size() == 2048) {
+        CHECK_EQ(stored.data[0], (u8)(((kTrack1Len - 1) * 7u + 0u) | 1u));
+        CHECK_EQ(stored.data[1], (u8)(((kTrack1Len - 1) * 7u + 3u) | 1u));
+    }
+
+    // And now a frame inside the hole.
+    auto gap = read(kTrack1Len + 2);
+    CHECK_EQ(gap.csw.bmCSWStatus, 0);
+    CHECK_EQ(gap.data.size(), (size_t)2048);
+    bool zeros = true;
+    for (size_t i = 0; i < gap.data.size(); i++) {
+        if (gap.data[i] != 0) {
+            zeros = false;
+            break;
+        }
+    }
+    CHECK(zeros);
 }
 
 // ---------------------------------------------------------------------------
@@ -1015,10 +1195,8 @@ TEST(mds_unstored_pregap_reads_as_zeros)
     delete disc;
 }
 
-// The gap handling only works if the reader knows which frame it is on. Seek()
-// used to compare Tell(), a physical offset, against the logical offset asked
-// for, and exit early without recording the LBA. The fixture above misses this
-// because every read there jumps to a new address.
+// Seek() compared Tell(), a physical offset, against the logical one asked for
+// and exited early without recording the LBA.
 TEST(mds_gap_reached_by_a_sequential_read_still_reads_as_zeros)
 {
     // On a contiguous 2352-byte image the two offsets coincide at every frame,
@@ -1103,8 +1281,7 @@ TEST(mds_gap_reached_by_a_sequential_read_still_reads_as_zeros)
         CHECK(memcmp(t2read.data.data() + 1, "CD001", 5) == 0);
     }
 
-    // The same defect without a Seek(). The gadget seeks before every batch, so
-    // it does not produce this caller, but the plain path is the only one of the
+    // The same defect without a Seek(): the plain path is the only one of the
     // three that used to leave the position behind.
     CHECK_EQ(disc->Seek((u64)(kTrack1Len - 2) * 2352), (u64)(kTrack1Len - 2) * 2352);
     std::vector<u8> twoFrames(2 * 2352);
@@ -1126,9 +1303,8 @@ TEST(mds_gap_reached_by_a_sequential_read_still_reads_as_zeros)
     delete disc;
 }
 
-// The two ways to reach a hole other than a whole-frame READ(10). A sub-frame
-// read used to skip the gap check on size alone, and ReadSubchannel() used to
-// fail on a frame that Seek() and Read() answer with zeros.
+// A sub-frame read used to skip the gap check on size alone, and ReadSubchannel()
+// used to fail on a frame that Seek() and Read() answer with zeros.
 TEST(mds_gap_answers_short_reads_and_subchannel_requests_too)
 {
     const u32 kTrack1Len = 16;
@@ -1345,10 +1521,8 @@ TEST(mds_subchannel_image_strips_and_exposes_subchannel_data)
     }
 }
 
-// The same defect from the other direction. On a 2448-byte image the physical
-// and logical offsets coincide every 49th frame (49 * 2448 == 51 * 2352), so a
-// sequential run to frame 48 followed by a seek to LBA 51 hits the early exit
-// and serves frame 49 while reporting success.
+// On a 2448-byte image the offsets coincide every 49th frame (49*2448 ==
+// 51*2352), so a run to 48 then a seek to LBA 51 used to serve frame 49.
 TEST(mds_subchannel_seek_after_a_read_does_not_serve_a_stale_frame)
 {
     const u32 nSectors = 64;
@@ -1372,9 +1546,8 @@ TEST(mds_subchannel_seek_after_a_read_does_not_serve_a_stale_frame)
             image[(size_t)lba * 2448 + 2352 + i] = SubchannelByte(lba, i);
         }
     }
-    // Past the ISO's system area every frame here would otherwise be zeros,
-    // which cannot tell a stale frame from the right one. Stamp each frame's
-    // user data with its own LBA so a misread names the frame it came from.
+    // Past the system area every frame would otherwise be zeros. Stamp each with
+    // its own LBA so a misread names the frame it came from.
     for (u32 lba = 0; lba < nSectors; lba++) {
         u8 *user = image.data() + (size_t)lba * 2448 + 16;
         for (u32 i = 0; i < 2048; i++) {
