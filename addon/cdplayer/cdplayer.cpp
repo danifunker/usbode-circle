@@ -387,22 +387,33 @@ boolean CCDPlayer::PlaybackStop() {
 }
 
 
+// Real drives attenuate the page 0x0E volume byte by roughly the fifth power of
+// vol/255, not linearly. Q16 integer; 0 stays mute and 255 stays exact unity.
+static u32 VolumeByteToScale(u8 vol) {
+    u32 ratio = ((u32)vol * 65536) / 255;  // Q16, 0 .. 65536
+    u32 scale = ratio;
+    for (unsigned i = 0; i < 4; i++)
+        scale = (u32)(((u64)scale * ratio) >> 16);
+    return scale;
+}
+
 // DACs don't support volume control, so we scale the data
 // accordingly instead
 void CCDPlayer::ScaleVolume(u8 *buffer, u32 byteCount) {
     if (volumeByte == 0xff && defaultVolumeByte == 0xff)
         return;
 
-    // Convert both to Q12 scale
-    u16 defaultScale = (defaultVolumeByte == 0xff) ? 4096 : (defaultVolumeByte << 4);  // max = 0xff << 4 = 4080
-    u16 volumeScale  = (volumeByte == 0xff)         ? 4096 : (volumeByte << 4);
+    // Only the host's SCSI volume gets the curve; the configured output level
+    // is our own mixer trim, so it stays linear.
+    u32 volumeScale  = VolumeByteToScale(volumeByte);            // Q16
+    u32 defaultScale = ((u32)defaultVolumeByte * 65536) / 255;   // Q16
 
-    // Combine both: result is Q12 * Q12 >> 12 = Q12 again
-    u16 finalScale = (defaultScale * volumeScale) >> 12;
+    // Combine both: Q16 * Q16 >> 16 = Q16 again
+    u32 finalScale = (u32)(((u64)defaultScale * volumeScale) >> 16);
 
     for (u32 i = 0; i < byteCount; i += 2) {
         short sample = (short)((buffer[i + 1] << 8) | buffer[i]);
-        int scaled = (sample * finalScale) >> 12;
+        int scaled = ((int)sample * (int)finalScale) >> 16;
         buffer[i] = (u8)(scaled & 0xFF);
         buffer[i + 1] = (u8)((scaled >> 8) & 0xFF);
     }
