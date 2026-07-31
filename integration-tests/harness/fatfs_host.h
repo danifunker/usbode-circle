@@ -19,4 +19,8 @@ void FatFsHostFailSync(bool bFail);
 // Back to a healthy card; the state is process-wide, so injectors must reset it.
 void FatFsHostClearFaults(void);
 
+// Fast-seek link-map requests; process-wide, so reset before each load.
+void FatFsHostResetLinkmapCount(void);
+unsigned FatFsHostLinkmapCount(void);
+
 #endif

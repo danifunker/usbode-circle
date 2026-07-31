@@ -22,8 +22,12 @@
 //
 #include "util.h"
 #include "cuebinfile.h"
+#include <cueparser/cueutil.h>
 #include "mdsfile.h"
+// The host test suite has a build without libchdr; everything else keeps CHD.
+#ifndef USBODE_NO_CHD
 #include "chdfile.h"
+#endif
 
 #include <stdarg.h>
 
@@ -242,6 +246,49 @@ IImageDevice* loadMDSFileDevice(const char* imagePath) {
     return mdsDevice;
 }
 
+// FatFs runs with FF_FS_RPATH 2, so a ".." component would leave the cue's own
+// directory. "." is harmless and common, and both slashes separate components.
+static bool isSafeCueFileName(const char* name) {
+    if (name == nullptr || name[0] == '\0') {
+        return false;
+    }
+    if (name[0] == '/' || name[0] == '\\') {
+        return false;
+    }
+    size_t start = 0;
+    for (size_t i = 0;; i++) {
+        if (name[i] != '/' && name[i] != '\\' && name[i] != '\0') {
+            continue;
+        }
+        if (i - start == 2 && name[start] == '.' && name[start + 1] == '.') {
+            return false;
+        }
+        if (name[i] == '\0') {
+            break;
+        }
+        start = i + 1;
+    }
+    return true;
+}
+
+// A FILE line names a path relative to the directory holding the cue sheet.
+static void resolveSiblingPath(const char* cuePath, const char* name,
+                               char* out, size_t outSize) {
+    // Circle's util.h has strchr but not strrchr, so find the last one here.
+    size_t dirLen = 0;
+    for (size_t i = 0; cuePath[i] != '\0'; i++) {
+        if (cuePath[i] == '/') {
+            dirLen = i + 1;
+        }
+    }
+    if (dirLen >= outSize) {
+        dirLen = 0;
+    }
+    memcpy(out, cuePath, dirLen);
+    strncpy(out + dirLen, name, outSize - dirLen - 1);
+    out[outSize - 1] = '\0';
+}
+
 // ============================================================================
 // CUE/BIN/ISO Plugin Loader
 // ============================================================================
@@ -265,6 +312,8 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
     }
 
     // Handle CUE files
+    char cuePath[512];
+    cuePath[0] = '\0';
     if (hasCueExtension(fullPath)) {
         LOGNOTE("Loading CUE sheet from: %s", fullPath);
         if (!ReadFileToString(fullPath, &cue_str)) {
@@ -275,8 +324,34 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
         }
         LOGNOTE("Loaded CUE sheet");
 
+        strncpy(cuePath, fullPath, sizeof(cuePath) - 1);
+        cuePath[sizeof(cuePath) - 1] = '\0';
+
         // Switch to BIN file for data
         change_extension_to_bin(fullPath);
+    }
+
+    // Single-FILE cues retain the same-stem BIN fallback.
+    int nCueFiles = (cue_str != nullptr) ? CueCountFiles(cue_str) : 0;
+    bool bSplitRip = (nCueFiles > 1 && cuePath[0] != '\0');
+    if (bSplitRip) {
+        char name[CUE_MAX_FILENAME + 1];
+        if (!CueGetFileName(cue_str, 0, name, sizeof(name))) {
+            LOGERR("Cue sheet names %d files but the first is unreadable", nCueFiles);
+            SetImageLoadError("This image's cue sheet lists a data file it does not name.");
+            delete imageFile;
+            delete[] cue_str;
+            return nullptr;
+        }
+        if (!isSafeCueFileName(name)) {
+            LOGERR("Cue sheet names a data file outside its own directory: %s", name);
+            SetImageLoadError("This image's cue sheet names an unsafe file path: %s", name);
+            delete imageFile;
+            delete[] cue_str;
+            return nullptr;
+        }
+        resolveSiblingPath(cuePath, name, fullPath, sizeof(fullPath));
+        LOGNOTE("Split rip: cue names %d data files", nCueFiles);
     }
 
     // Open the data file (BIN or ISO)
@@ -298,8 +373,70 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
     }
     LOGNOTE("Opened data file successfully");
 
+    // Reject empty files before they collapse later file offsets.
+    if (bSplitRip && f_size(imageFile) == 0) {
+        LOGERR("Split-rip data file is empty: %s", fullPath);
+        SetImageLoadError("This image's data file %s is empty (0 bytes).", fullPath);
+        f_close(imageFile);
+        delete imageFile;
+        delete[] cue_str;
+        return nullptr;
+    }
+
     // Create device
     CCueBinFileDevice* device = new CCueBinFileDevice(imageFile, cue_str, mediaType);
+
+    for (int i = 1; bSplitRip && i < nCueFiles; i++) {
+        char name[CUE_MAX_FILENAME + 1];
+        char binPath[512];
+        if (!CueGetFileName(cue_str, i, name, sizeof(name))) {
+            LOGERR("Cue sheet names %d files but entry %d is unreadable", nCueFiles, i);
+            SetImageLoadError("This image's cue sheet lists a data file it does not name.");
+            delete device;
+            if (cue_str != nullptr) delete[] cue_str;
+            return nullptr;
+        }
+        if (!isSafeCueFileName(name)) {
+            LOGERR("Cue sheet names a data file outside its own directory: %s", name);
+            SetImageLoadError("This image's cue sheet names an unsafe file path: %s", name);
+            delete device;
+            if (cue_str != nullptr) delete[] cue_str;
+            return nullptr;
+        }
+        resolveSiblingPath(cuePath, name, binPath, sizeof(binPath));
+
+        FIL* extraFile = new FIL();
+        FRESULT extraResult = f_open(extraFile, binPath, FA_READ);
+        if (extraResult != FR_OK) {
+            LOGERR("Cannot open split-rip data file: %s (error %d)", binPath, extraResult);
+            SetImageLoadError("This image needs the file %s, which would not open.", name);
+            delete extraFile;
+            delete device;
+            if (cue_str != nullptr) delete[] cue_str;
+            return nullptr;
+        }
+
+        // Reject empty files before they collapse later file offsets.
+        if (f_size(extraFile) == 0) {
+            LOGERR("Split-rip data file is empty: %s", binPath);
+            SetImageLoadError("This image's data file %s is empty (0 bytes).", name);
+            f_close(extraFile);
+            delete extraFile;
+            delete device;
+            if (cue_str != nullptr) delete[] cue_str;
+            return nullptr;
+        }
+
+        if (!device->AddDataFile(extraFile)) {
+            LOGERR("Cannot adopt split-rip data file: %s", binPath);
+            SetImageLoadError("This image has more data files than %s can hold.", name);
+            f_close(extraFile);
+            delete extraFile;
+            delete device;
+            if (cue_str != nullptr) delete[] cue_str;
+            return nullptr;
+        }
+    }
 
     // Cleanup - CCueBinFileDevice takes ownership of cue_str if provided
     if (cue_str != nullptr)
@@ -312,6 +449,11 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
 }
 
 IImageDevice* loadCHDFileDevice(const char* imagePath) {
+#ifdef USBODE_NO_CHD
+    LOGERR("CHD support is not compiled in: %s", imagePath);
+    SetImageLoadError("This build cannot open CHD images.");
+    return nullptr;
+#else
     LOGNOTE("Loading CHD image: %s", imagePath);
 
     MEDIA_TYPE mediaType = hasDvdHint(imagePath) ? MEDIA_TYPE::DVD : MEDIA_TYPE::CD;
@@ -333,8 +475,9 @@ IImageDevice* loadCHDFileDevice(const char* imagePath) {
     LOGNOTE("Successfully loaded CHD device: %s (has subchannels: %s)",
             imagePath,
             chdDevice->HasSubchannelData() ? "yes" : "no");
-    
+
     return chdDevice;
+#endif
 }
 
 boolean FatFsOptimizer::EnableFastSeek(FIL* pFile, DWORD** ppCLMT, size_t clmtSize, const char* logPrefix) {

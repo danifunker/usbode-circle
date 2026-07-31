@@ -123,10 +123,17 @@ class CUEParser {
     // lengths when the .cue file references multiple .bin files.
     const CUETrackInfo *next_track(uint64_t prev_file_size);
 
+    // Data-file sizes in FILE order; the array must outlive the parser.
+    void set_file_sizes(const uint64_t *sizes, int count);
+
    protected:
     const char *m_cue_sheet;
     const char *m_parse_pos;
     CUETrackInfo m_track_info;
+
+    // Not cleared by restart(): the disc layout is the same on every pass.
+    const uint64_t *m_file_sizes;
+    int m_file_size_count;
 
     // File-relative INDEX 01 time of the previously parsed track, which is
     // the position m_track_info.file_offset corresponds to. Used by

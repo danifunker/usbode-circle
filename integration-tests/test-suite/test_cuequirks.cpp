@@ -19,7 +19,9 @@
 #include "framework.h"
 
 #include <cueparser/cueparser.h>
+#include <cueparser/cueutil.h>
 
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -261,4 +263,77 @@ TEST(multifile_cue_does_not_underflow_into_a_nonsense_lba)
     const CUETrackInfo *third = parser.next_track();
     CHECK_EQ(third->track_number, 3);
     CHECK_EQ(third->track_start, 150u);
+}
+
+// The split rip above, now with sizes: 1000 sectors, then a 150-sector stored
+// pregap plus 500 of audio, then 300.
+static const char *const kSplitCue =
+    "FILE \"Game (Track 1).bin\" BINARY\n"
+    "  TRACK 01 MODE1/2352\n"
+    "    INDEX 01 00:00:00\n"
+    "FILE \"Game (Track 2).bin\" BINARY\n"
+    "  TRACK 02 AUDIO\n"
+    "    INDEX 00 00:00:00\n"
+    "    INDEX 01 00:02:00\n"
+    "FILE \"Game (Track 3).bin\" BINARY\n"
+    "  TRACK 03 AUDIO\n"
+    "    INDEX 01 00:00:00\n";
+
+static const uint64_t kSplitSizes[3] = {
+    1000ull * 2352, 650ull * 2352, 300ull * 2352,
+};
+
+TEST(split_cue_files_are_enumerable)
+{
+    CHECK_EQ(CueCountFiles(kSplitCue), 3);
+    CHECK_EQ(CueCountFiles(kCanonicalCue), 1);
+
+    char name[CUE_MAX_FILENAME + 1];
+    CHECK(CueGetFileName(kSplitCue, 1, name, sizeof(name)));
+    CHECK(strcmp(name, "Game (Track 2).bin") == 0);
+    CHECK(!CueGetFileName(kSplitCue, 3, name, sizeof(name)));
+}
+
+// Each file lands where its predecessors leave off: track 2 at 1000, 3 at 1650.
+TEST(split_cue_tracks_land_after_the_previous_file)
+{
+    CueFileLocation loc;
+
+    CHECK(CueResolveLBA(kSplitCue, 0, kSplitSizes, 3, &loc));
+    CHECK_EQ(loc.file_index, 0);
+    CHECK_EQ(loc.offset, 0ull);
+
+    CHECK(CueResolveLBA(kSplitCue, 500, kSplitSizes, 3, &loc));
+    CHECK_EQ(loc.file_index, 0);
+    CHECK_EQ(loc.offset, 500ull * 2352);
+
+    // Track 2's stored pregap is the first 150 sectors of its own file.
+    CHECK(CueResolveLBA(kSplitCue, 1000, kSplitSizes, 3, &loc));
+    CHECK_EQ(loc.file_index, 1);
+    CHECK_EQ(loc.offset, 0ull);
+
+    CHECK(CueResolveLBA(kSplitCue, 1150, kSplitSizes, 3, &loc));
+    CHECK_EQ(loc.file_index, 1);
+    CHECK_EQ(loc.offset, 150ull * 2352);
+
+    CHECK(CueResolveLBA(kSplitCue, 1650, kSplitSizes, 3, &loc));
+    CHECK_EQ(loc.file_index, 2);
+    CHECK(strcmp(loc.filename, "Game (Track 3).bin") == 0);
+    CHECK_EQ(loc.offset, 0ull);
+
+    CHECK(CueResolveLBA(kSplitCue, 1700, kSplitSizes, 3, &loc));
+    CHECK_EQ(loc.file_index, 2);
+    CHECK_EQ(loc.offset, 50ull * 2352);
+}
+
+// A single-FILE sheet must still answer what the existing offset helper does.
+TEST(single_file_cue_resolution_is_unchanged)
+{
+    for (uint32_t lba : {0u, 1u, 399u, 400u, 799u, 800u, 1199u})
+    {
+        CueFileLocation loc;
+        CHECK(CueResolveLBA(kCanonicalCue, lba, nullptr, 0, &loc));
+        CHECK_EQ(loc.file_index, 0);
+        CHECK_EQ(loc.offset, CueLBAToByteOffset(kCanonicalCue, lba));
+    }
 }

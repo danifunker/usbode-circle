@@ -569,6 +569,8 @@ void CUSBCDGadget::SetDevice(IImageDevice *dev)
     m_mediaType = m_pDevice->GetMediaType();
     MLOGNOTE("CUSBCDGadget::SetDevice", "Media type set to %d", m_mediaType);
     cueParser = CUEParser(m_pDevice->GetCueSheet());
+    // The assignment above replaces the parser, so set sizes after it.
+    cueParser.set_file_sizes(m_pDevice->GetDataFileSizes(), m_pDevice->GetDataFileCount());
     data_skip_bytes = CDUtils::GetSkipbytes(this);
     data_block_size = CDUtils::GetBlocksize(this);
 

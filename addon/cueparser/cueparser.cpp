@@ -45,8 +45,14 @@
 CUEParser::CUEParser() : CUEParser("") {
 }
 
-CUEParser::CUEParser(const char *cue_sheet) : m_cue_sheet(cue_sheet) {
+CUEParser::CUEParser(const char *cue_sheet)
+    : m_cue_sheet(cue_sheet), m_file_sizes(nullptr), m_file_size_count(0) {
     restart();
+}
+
+void CUEParser::set_file_sizes(const uint64_t *sizes, int count) {
+    m_file_sizes = (count > 0) ? sizes : nullptr;
+    m_file_size_count = (sizes != nullptr) ? count : 0;
 }
 
 void CUEParser::restart() {
@@ -58,7 +64,13 @@ void CUEParser::restart() {
 }
 
 const CUETrackInfo *CUEParser::next_track() {
-    return next_track(0);
+    // Use the size of the file ending at this FILE boundary.
+    uint64_t prev_file_size = 0;
+    if (m_file_sizes != nullptr && m_track_info.file_index >= 1 &&
+        m_track_info.file_index <= m_file_size_count) {
+        prev_file_size = m_file_sizes[m_track_info.file_index - 1];
+    }
+    return next_track(prev_file_size);
 }
 
 const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {

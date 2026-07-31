@@ -16,9 +16,11 @@
 //     real BIN files parsed by the real reader; only the authoring is local.
 //
 #include "bench.h"
+#include "fatfs_host.h"
 #include "framework.h"
 
 #include <discimage/cuebinfile.h>
+#include <discimage/util.h>
 #include <fatfs/ff.h>
 #ifdef WITH_CHD
 #include <discimage/chdfile.h>
@@ -668,6 +670,331 @@ TEST(real_mixed_cue_loaded_via_fatfs)
         aexp[i] = PatternByte(off + i);
     }
     CHECK_BYTES(abuf, (size_t)an, aexp, sizeof(aexp));
+}
+
+// Mount through the same factory the firmware uses.
+static IImageDevice *LoadThroughProductionLoader(const std::string &cuePath)
+{
+    return loadCueBinIsoFileDevice(cuePath.c_str());
+}
+
+// Split and combined versions must return identical bytes at file boundaries.
+TEST(real_split_rip_reads_identically_to_the_single_file_disc)
+{
+    const std::string dir = TestDataDir();
+    CHECK_EQ(FileSize(dir + "/splitaudio-t1.bin"), (u64)150 * 2352);
+    CHECK_EQ(FileSize(dir + "/splitaudio-t2.bin"), (u64)150 * 2352);
+    CHECK_EQ(FileSize(dir + "/splitaudio-t3.bin"), (u64)138 * 2352);
+
+    IImageDevice *split = LoadThroughProductionLoader(dir + "/splitaudio.cue");
+    CCueBinFileDevice *whole = OpenReaderFromCueFile(dir + "/realaudio.cue",
+                                                     dir + "/realaudio.bin");
+    CHECK(split != nullptr);
+    CHECK(whole != nullptr);
+    if (!split || !whole) {
+        delete split;
+        delete whole;
+        return;
+    }
+
+    CHECK_EQ(split->GetSize(), whole->GetSize());
+    CHECK_EQ(split->GetSize(), (u64)438 * 2352);
+
+    // Track boundaries and either side of them, plus the last sector.
+    const u32 lbas[] = {0, 1, 149, 150, 151, 299, 300, 301, 437};
+    for (u32 lba : lbas) {
+        u64 sOff = split->GetByteOffsetForLBA(lba);
+        u64 wOff = whole->GetByteOffsetForLBA(lba);
+        CHECK_EQ(sOff, wOff);
+
+        u8 sbuf[2352];
+        u8 wbuf[2352];
+        CHECK_EQ(split->Seek(sOff), sOff);
+        CHECK_EQ(whole->Seek(wOff), wOff);
+        CHECK_EQ(split->Read(sbuf, sizeof(sbuf)), (int)sizeof(sbuf));
+        CHECK_EQ(whole->Read(wbuf, sizeof(wbuf)), (int)sizeof(wbuf));
+        CHECK_BYTES(sbuf, sizeof(sbuf), wbuf, sizeof(wbuf));
+    }
+
+    delete split;
+    delete whole;
+}
+
+// File sizes must place split tracks at their real LBAs.
+TEST(real_split_rip_toc_reports_the_real_track_starts)
+{
+    IImageDevice *split = LoadThroughProductionLoader(TestDataDir() + "/splitaudio.cue");
+    CHECK(split != nullptr);
+    if (!split) {
+        return;
+    }
+
+    CGadgetTestBench bench(split);
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 tocCdb[10] = {0x43, 0x00, 0, 0, 0, 0, 0, 0, (u8)200, 0};
+    auto toc = bench.SendCommand(tocCdb, sizeof(tocCdb), 200);
+    CHECK_EQ(toc.csw.bmCSWStatus, 0);
+    const u8 expectedToc[36] = {
+        0x00, 0x22, 0x01, 0x03,
+        0x00, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // track 1, LBA 0
+        0x00, 0x10, 0x02, 0x00, 0x00, 0x00, 0x00, 0x96, // track 2, LBA 150
+        0x00, 0x10, 0x03, 0x00, 0x00, 0x00, 0x01, 0x2C, // track 3, LBA 300
+        0x00, 0x10, 0xAA, 0x00, 0x00, 0x00, 0x01, 0xB6, // leadout, LBA 438
+    };
+    CHECK_BYTES(toc.data.data(), toc.data.size(), expectedToc, sizeof(expectedToc));
+}
+
+// next_track() invalidates the previous track pointer, which zeroed lengths.
+TEST(real_split_rip_read_track_information_reports_track_length)
+{
+    IImageDevice *split = LoadThroughProductionLoader(TestDataDir() + "/splitaudio.cue");
+    CHECK(split != nullptr);
+    if (!split) {
+        return;
+    }
+
+    CGadgetTestBench bench(split);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Address type 1 (track number), tracks 1 and 3: 150 and 138 sectors.
+    const u32 expectedLength[3] = {150, 150, 138};
+    for (u8 track = 1; track <= 3; track++) {
+        const u8 rtiCdb[10] = {0x52, 0x01, 0, 0, 0, track, 0, 0, 40, 0};
+        auto rti = bench.SendCommand(rtiCdb, sizeof(rtiCdb), 40);
+        CHECK_EQ(rti.csw.bmCSWStatus, 0);
+        CHECK(rti.data.size() >= 28);
+        if (rti.data.size() < 28) {
+            continue;
+        }
+        u32 length = (rti.data[24] << 24) | (rti.data[25] << 16) |
+                     (rti.data[26] << 8) | rti.data[27];
+        CHECK_EQ(length, expectedLength[track - 1]);
+    }
+}
+
+// A read crossing a .bin boundary must come back whole; short is a medium error.
+TEST(real_split_rip_read_crosses_a_bin_boundary)
+{
+    const std::string dir = TestDataDir();
+    IImageDevice *split = LoadThroughProductionLoader(dir + "/splitaudio.cue");
+    CCueBinFileDevice *whole = OpenReaderFromCueFile(dir + "/realaudio.cue",
+                                                     dir + "/realaudio.bin");
+    CHECK(split != nullptr);
+    CHECK(whole != nullptr);
+    if (!split || !whole) {
+        delete split;
+        delete whole;
+        return;
+    }
+
+    // Four sectors starting two before the track 1/2 boundary at LBA 150.
+    const u64 off = (u64)148 * 2352;
+    const size_t want = 4 * 2352;
+    std::vector<u8> sbuf(want), wbuf(want);
+    CHECK_EQ(split->Seek(off), off);
+    CHECK_EQ(whole->Seek(off), off);
+    CHECK_EQ(split->Read(sbuf.data(), want), (int)want);
+    CHECK_EQ(whole->Read(wbuf.data(), want), (int)want);
+    CHECK_BYTES(sbuf.data(), sbuf.size(), wbuf.data(), wbuf.size());
+
+    const size_t all = (size_t)438 * 2352;
+    std::vector<u8> sall(all), wall(all);
+    CHECK_EQ(split->Seek(0), (u64)0);
+    CHECK_EQ(whole->Seek(0), (u64)0);
+    CHECK_EQ(split->Read(sall.data(), all), (int)all);
+    CHECK_EQ(whole->Read(wall.data(), all), (int)all);
+    CHECK_BYTES(sall.data(), sall.size(), wall.data(), wall.size());
+
+    delete split;
+    delete whole;
+}
+
+// Reading at exactly the end is how a caller finds the end: 0 bytes, no error.
+TEST(real_split_rip_read_at_eof_returns_zero)
+{
+    IImageDevice *split = LoadThroughProductionLoader(TestDataDir() + "/splitaudio.cue");
+    CHECK(split != nullptr);
+    if (!split) {
+        return;
+    }
+
+    const u64 size = split->GetSize();
+    CHECK_EQ(size, (u64)438 * 2352);
+    CHECK_EQ(split->Seek(size), size);
+    u8 buf[2352];
+    CHECK_EQ(split->Read(buf, sizeof(buf)), 0);
+
+    delete split;
+}
+
+// Mixed-mode fixture: MODE1/2352 data followed by split audio.
+TEST(real_split_rip_mixed_mode_toc_and_data_track)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitmixed.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 tocCdb[10] = {0x43, 0x00, 0, 0, 0, 0, 0, 0, (u8)200, 0};
+    auto toc = bench.SendCommand(tocCdb, sizeof(tocCdb), 200);
+    CHECK_EQ(toc.csw.bmCSWStatus, 0);
+    const u8 expectedToc[36] = {
+        0x00, 0x22, 0x01, 0x03,
+        0x00, 0x14, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // track 1 data, LBA 0
+        0x00, 0x10, 0x02, 0x00, 0x00, 0x00, 0x01, 0x2C, // track 2 audio, LBA 300
+        0x00, 0x10, 0x03, 0x00, 0x00, 0x00, 0x01, 0xC2, // track 3 audio, LBA 450
+        0x00, 0x10, 0xAA, 0x00, 0x00, 0x00, 0x02, 0x4C, // leadout, LBA 588
+    };
+    CHECK_BYTES(toc.data.data(), toc.data.size(), expectedToc, sizeof(expectedToc));
+
+    // Data + audio is medium type 0x03; 0x02 stops a host looking for a filesystem.
+    const u8 msCdb[10] = {0x5A, 0x00, 0x2A, 0, 0, 0, 0, 0, 128, 0};
+    auto ms = bench.SendCommand(msCdb, sizeof(msCdb), 128);
+    CHECK_EQ(ms.csw.bmCSWStatus, 0);
+    CHECK_EQ(ms.data[2], 0x03);
+
+    // Track 1 is real ISO9660, so LBA 16 is the Primary Volume Descriptor.
+    const u8 pvdCdb[10] = {0x28, 0, 0, 0, 0, 16, 0, 0, 1, 0};
+    auto pvd = bench.SendCommand(pvdCdb, sizeof(pvdCdb), 2048);
+    CHECK_EQ(pvd.csw.bmCSWStatus, 0);
+    CHECK_EQ(pvd.data.size(), (size_t)2048);
+    CHECK_EQ(pvd.data[0], 0x01);
+    CHECK(memcmp(pvd.data.data() + 1, "CD001", 5) == 0);
+}
+
+// Empty files must be rejected before they collapse later file offsets.
+TEST(real_split_rip_empty_bin_is_refused)
+{
+    IImageDevice *dev = LoadThroughProductionLoader(TestDataDir() + "/splitempty.cue");
+    CHECK(dev == nullptr);
+    delete dev;
+
+    // Naming the file proves this is not a stale message from another load.
+    const char *err = GetLastImageLoadError();
+    CHECK(err != nullptr && strstr(err, "splitempty-t2.bin") != nullptr);
+}
+
+// One missing track file must refuse the mount rather than serve it short.
+TEST(real_split_rip_missing_bin_is_refused)
+{
+    IImageDevice *dev = LoadThroughProductionLoader(TestDataDir() + "/splitmissing.cue");
+    CHECK(dev == nullptr);
+    delete dev;
+
+    const char *err = GetLastImageLoadError();
+    CHECK(err != nullptr && strstr(err, "splitaudio-gone.bin") != nullptr);
+}
+
+// Every .bin needs its own link map, or its seeks walk the FAT chain.
+TEST(real_split_rip_enables_fast_seek_for_every_bin)
+{
+    FatFsHostResetLinkmapCount();
+    IImageDevice *split = LoadThroughProductionLoader(TestDataDir() + "/splitaudio.cue");
+    CHECK(split != nullptr);
+    CHECK_EQ(FatFsHostLinkmapCount(), 3u);
+    if (split) {
+        CHECK_EQ(split->GetDataFileCount(), 3);
+    }
+    delete split;
+
+    FatFsHostResetLinkmapCount();
+    IImageDevice *whole = LoadThroughProductionLoader(TestDataDir() + "/realaudio.cue");
+    CHECK(whole != nullptr);
+    CHECK_EQ(FatFsHostLinkmapCount(), 1u);
+    delete whole;
+}
+
+// A FILE name that escapes the cue's directory must be refused before it is
+// opened, even when the file it points at exists.
+TEST(real_split_rip_rejects_paths_outside_the_cue_directory)
+{
+    const std::string dir = TestDataDir();
+    CHECK(FileSize(dir + "/../outside.bin") > 0);
+
+    const char *cues[] = {"/splittraversal.cue", "/splitbackslash.cue", "/splitabsolute.cue"};
+    const char *names[] = {"../outside.bin", "..\\outside.bin", "/absolute.bin"};
+    for (int i = 0; i < 3; i++) {
+        IImageDevice *dev = LoadThroughProductionLoader(dir + cues[i]);
+        CHECK(dev == nullptr);
+        delete dev;
+        const char *err = GetLastImageLoadError();
+        CHECK(err != nullptr && strstr(err, names[i]) != nullptr);
+    }
+}
+
+// "." components and nested relative paths stay inside the directory.
+TEST(real_split_rip_accepts_safe_relative_paths)
+{
+    const std::string dir = TestDataDir();
+    const char *cues[] = {"/splitdot.cue", "/splitnested.cue"};
+    for (int i = 0; i < 2; i++) {
+        IImageDevice *dev = LoadThroughProductionLoader(dir + cues[i]);
+        CHECK(dev != nullptr);
+        if (!dev) {
+            continue;
+        }
+        CHECK_EQ(dev->GetDataFileCount(), 2);
+        CHECK_EQ(dev->GetSize(), (u64)300 * 2352);
+
+        u8 buf[2352];
+        CHECK_EQ(dev->Seek(dev->GetByteOffsetForLBA(150)), (u64)150 * 2352);
+        CHECK_EQ(dev->Read(buf, sizeof(buf)), (int)sizeof(buf));
+        delete dev;
+    }
+}
+
+// A device holding fewer files than its cue names cannot place an LBA, and a
+// single-file offset would address the wrong .bin.
+TEST(split_resolution_failure_returns_the_invalid_offset)
+{
+    const std::string dir = TestDataDir();
+    const std::string cue =
+        "FILE \"splitaudio-t1.bin\" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n"
+        "FILE \"splitaudio-t2.bin\" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n"
+        "FILE \"splitaudio-t3.bin\" BINARY\n  TRACK 03 AUDIO\n    INDEX 01 00:00:00\n";
+
+    CCueBinFileDevice *dev = OpenReader(dir + "/splitaudio-t1.bin", cue);
+    CHECK(dev != nullptr);
+    if (!dev) {
+        return;
+    }
+    FIL *second = new FIL();
+    CHECK(f_open(second, (dir + "/splitaudio-t2.bin").c_str(), FA_READ) == FR_OK);
+    CHECK(dev->AddDataFile(second));
+    CHECK_EQ(dev->GetDataFileCount(), 2);
+
+    // The single-file helper would answer 0 and 150 * 2352 here.
+    CHECK_EQ(dev->GetByteOffsetForLBA(0), (u64)-1);
+    CHECK_EQ(dev->GetByteOffsetForLBA(150), (u64)-1);
+    CHECK_EQ(dev->Seek(dev->GetByteOffsetForLBA(0)), (u64)-1);
+    delete dev;
+}
+
+// A stale FILE line must still take the data file from the cue's own name.
+TEST(real_single_file_cue_with_stale_file_name_still_loads)
+{
+    IImageDevice *dev = LoadThroughProductionLoader(TestDataDir() + "/stalename.cue");
+    CHECK(dev != nullptr);
+    if (!dev) {
+        return;
+    }
+
+    CHECK_EQ(dev->GetSize(), (u64)438 * 2352);
+    CHECK_EQ(dev->GetDataFileCount(), 1);
+
+    u8 buf[2352];
+    CHECK_EQ(dev->Seek(0), (u64)0);
+    CHECK_EQ(dev->Read(buf, sizeof(buf)), (int)sizeof(buf));
+
+    delete dev;
 }
 
 // ---------------------------------------------------------------------------
