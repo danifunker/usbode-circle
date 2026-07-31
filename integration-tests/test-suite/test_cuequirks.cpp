@@ -326,6 +326,41 @@ TEST(split_cue_tracks_land_after_the_previous_file)
     CHECK_EQ(loc.offset, 50ull * 2352);
 }
 
+// An unstored PREGAP costs disc addresses but no file bytes, so it shifts
+// every later track. Across a FILE boundary that shift was counted twice.
+TEST(split_cue_unstored_pregap_is_not_counted_twice)
+{
+    const char *cue =
+        "FILE \"t1.bin\" BINARY\n"
+        "  TRACK 01 MODE1/2352\n"
+        "    INDEX 01 00:00:00\n"
+        "FILE \"t2.bin\" BINARY\n"
+        "  TRACK 02 AUDIO\n"
+        "    PREGAP 00:02:00\n"
+        "    INDEX 01 00:00:00\n"
+        "FILE \"t3.bin\" BINARY\n"
+        "  TRACK 03 AUDIO\n"
+        "    INDEX 01 00:00:00\n";
+
+    const uint64_t sizes[3] = {150ull * 2352, 150ull * 2352, 138ull * 2352};
+
+    CUEParser parser(cue);
+    parser.set_file_sizes(sizes, 3);
+
+    const CUETrackInfo *t1 = parser.next_track();
+    CHECK_EQ(t1->data_start, 0u);
+
+    // The 150-frame gap sits between track 2's start and its audio, and the
+    // audio itself is the 150 sectors that file holds: 300 through 449.
+    const CUETrackInfo *t2 = parser.next_track();
+    CHECK_EQ(t2->track_start, 150u);
+    CHECK_EQ(t2->data_start, 300u);
+
+    // So track 3 begins at 450, not at 600 with the gap charged a second time.
+    const CUETrackInfo *t3 = parser.next_track();
+    CHECK_EQ(t3->data_start, 450u);
+}
+
 // A single-FILE sheet must still answer what the existing offset helper does.
 TEST(single_file_cue_resolution_is_unchanged)
 {

@@ -106,7 +106,9 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
                 if (prev_file_size > m_track_info.file_offset && m_track_info.sector_length > 0) {
                     last_track_blocks = (prev_file_size - m_track_info.file_offset) / m_track_info.sector_length;
                 }
-                m_track_info.file_start = m_track_info.data_start + last_track_blocks;
+                // Avoid adding cumulative_offset twice across FILE boundaries.
+                m_track_info.file_start = m_track_info.data_start + last_track_blocks -
+                                          m_track_info.cumulative_offset;
             }
 
             const char *p = read_quoted(m_parse_pos + 5, m_track_info.filename, sizeof(m_track_info.filename));
