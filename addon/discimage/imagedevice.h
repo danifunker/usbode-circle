@@ -68,6 +68,10 @@ public:
     /// for track navigation and TOC generation
     /// \return CUE sheet string, or nullptr if not available
     virtual const char* GetCueSheet() const { return nullptr; }
+
+    /// CUE data-file sizes in FILE order; defaults preserve single-file behavior.
+    virtual int GetDataFileCount() const { return 0; }
+    virtual const u64* GetDataFileSizes() const { return nullptr; }
 };
 
 #endif

@@ -22,6 +22,9 @@ class CCueBinFileDevice : public ICueDevice {
     CCueBinFileDevice(FIL* pFile, char* cue_str = nullptr, MEDIA_TYPE mediaType = MEDIA_TYPE::CD);
     ~CCueBinFileDevice(void);
 
+    // Appends the next .bin in FILE order and takes ownership.
+    bool AddDataFile(FIL* pFile);
+
     // ========================================================================
     // CDevice interface
     // ========================================================================
@@ -53,14 +56,32 @@ class CCueBinFileDevice : public ICueDevice {
     // ========================================================================
     // ICueDevice interface
     // ========================================================================
-    const char* GetCueSheet() const override; 
+    const char* GetCueSheet() const override;
+    int GetDataFileCount() const override { return m_nFileCount; }
+    const u64* GetDataFileSizes() const override { return m_FileSizes; }
     
    private:
+    // Split files form one logical image; each FIL owns its CLMT.
+    struct DataFile {
+        FIL* pFile = nullptr;
+        DWORD* pCLMT = nullptr;
+        u64 nBase = 0;
+        u64 nSize = 0;
+    };
+    static constexpr int MaxDataFiles = 99;  // Red Book tracks per disc
+    DataFile m_Files[MaxDataFiles];
+    // The same sizes contiguously, because CUEParser wants a plain array.
+    u64 m_FileSizes[MaxDataFiles] = {};
+    int m_nFileCount = 0;
+
+    int FileIndexForOffset(u64 nOffset) const;
+
+    int ReadWithinFile(void* pBuffer, size_t nCount);
+
     FIL* m_pFile;
     FileType m_FileType = FileType::ISO;
     char* m_cue_str = nullptr;
     MEDIA_TYPE m_mediaType;
-    DWORD *m_pCLMT;                       // NEW: Cluster link map table for fast seek
     // Track parsing state (lazy initialization)
     mutable bool m_tracksParsed = false;
     mutable int m_numTracks = 0;

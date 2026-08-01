@@ -28,9 +28,8 @@
 
 LOGMODULE("CCueBinFileDevice");
 
-CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE mediaType) 
-    : m_mediaType(mediaType),
-      m_pCLMT(nullptr)
+CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE mediaType)
+    : m_mediaType(mediaType)
 {
     m_pFile = pFile;
     if (cue_str != nullptr) {
@@ -51,7 +50,12 @@ CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE media
     
     // NEW: Use shared Fast Seek helper
     if (m_pFile) {
-        FatFsOptimizer::EnableFastSeek(m_pFile, &m_pCLMT, 256, "BIN/ISO: ");
+        m_Files[0].pFile = m_pFile;
+        m_Files[0].nBase = 0;
+        m_Files[0].nSize = f_size(m_pFile);
+        m_FileSizes[0] = m_Files[0].nSize;
+        m_nFileCount = 1;
+        FatFsOptimizer::EnableFastSeek(m_pFile, &m_Files[0].pCLMT, 256, "BIN/ISO: ");
         m_nLogicalPos = f_tell(m_pFile);
     }
 
@@ -61,19 +65,26 @@ CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE media
 }
 
 CCueBinFileDevice::~CCueBinFileDevice(void) {
-    // NEW: Use shared Fast Seek helper
-    FatFsOptimizer::DisableFastSeek(&m_pCLMT);
-
     for (int i = 0; i < NumCacheWindows; i++) {
         delete[] m_CacheWindows[i].pBuffer;
         m_CacheWindows[i].pBuffer = nullptr;
     }
 
-    if (m_pFile) {
-        f_close(m_pFile);
-        delete m_pFile;
-        m_pFile = nullptr;
+    for (int i = 0; i < m_nFileCount; i++) {
+        DataFile &file = m_Files[i];
+        // Clear FatFs' pointer before freeing its CLMT.
+        if (file.pFile) {
+            file.pFile->cltbl = nullptr;
+        }
+        FatFsOptimizer::DisableFastSeek(&file.pCLMT);
+        if (file.pFile) {
+            f_close(file.pFile);
+            delete file.pFile;
+            file.pFile = nullptr;
+        }
     }
+    m_nFileCount = 0;
+    m_pFile = nullptr;
 
     if (m_cue_str != nullptr) {
         delete[] m_cue_str;
@@ -81,12 +92,59 @@ CCueBinFileDevice::~CCueBinFileDevice(void) {
     }
 }
 
+bool CCueBinFileDevice::AddDataFile(FIL *pFile) {
+    if (pFile == nullptr || m_nFileCount == 0 || m_nFileCount >= MaxDataFiles) {
+        return false;
+    }
+
+    DataFile &prev = m_Files[m_nFileCount - 1];
+    DataFile &next = m_Files[m_nFileCount];
+    next.pFile = pFile;
+    next.nBase = prev.nBase + prev.nSize;
+    next.nSize = f_size(pFile);
+    m_FileSizes[m_nFileCount] = next.nSize;
+    m_nFileCount++;
+
+    // Without a link map every seek walks the FAT chain and stalls playback.
+    if (!FatFsOptimizer::EnableFastSeek(pFile, &next.pCLMT, 256, "BIN/ISO split: ")) {
+        LOGWARN("Fast seek unavailable for split file %d", m_nFileCount - 1);
+    }
+    return true;
+}
+
+int CCueBinFileDevice::FileIndexForOffset(u64 nOffset) const {
+    for (int i = 0; i < m_nFileCount; i++) {
+        if (nOffset < m_Files[i].nBase + m_Files[i].nSize) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
-    if (!m_pFile) {
+    if (m_nFileCount == 0) {
         LOGERR("Read !m_pFile");
         return -1;
     }
 
+    // Continue reads across BIN boundaries.
+    u8 *pOut = static_cast<u8 *>(pBuffer);
+    size_t nDone = 0;
+    while (nDone < nSize) {
+        int nRead = ReadWithinFile(pOut + nDone, nSize - nDone);
+        if (nRead < 0) {
+            return (nDone > 0) ? (int)nDone : -1;
+        }
+        if (nRead == 0) {
+            break;  // end of the image
+        }
+        nDone += (size_t)nRead;
+    }
+
+    return (int)nDone;
+}
+
+int CCueBinFileDevice::ReadWithinFile(void *pBuffer, size_t nSize) {
     // Cache hit: entirely served from RAM, no SD card access.
     for (int i = 0; i < NumCacheWindows; i++) {
         CacheWindow &win = m_CacheWindows[i];
@@ -100,16 +158,31 @@ int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
         }
     }
 
+    int nFile = FileIndexForOffset(m_nLogicalPos);
+    if (nFile < 0) {
+        if (m_nLogicalPos == GetSize()) {
+            return 0;
+        }
+        LOGERR("Read at offset %llu past end of image", m_nLogicalPos);
+        return -1;
+    }
+    FIL *pDataFile = m_Files[nFile].pFile;
+    u64 nInFile = m_nLogicalPos - m_Files[nFile].nBase;
+    u64 nAvail = m_Files[nFile].nSize - nInFile;
+    if (nSize > nAvail) {
+        nSize = (size_t)nAvail;
+    }
+
     // Requests larger than the cache go straight through and don't disturb it.
     if (!m_CacheWindows[0].pBuffer || nSize > CacheSize) {
-        FRESULT result = f_lseek(m_pFile, m_nLogicalPos);
+        FRESULT result = f_lseek(pDataFile, nInFile);
         if (result != FR_OK) {
-            LOGERR("Seek to offset %llu failed, err %d", m_nLogicalPos, result);
+            LOGERR("Seek to offset %llu failed, err %d", nInFile, result);
             return -1;
         }
 
         UINT nBytesRead = 0;
-        result = f_read(m_pFile, pBuffer, nSize, &nBytesRead);
+        result = f_read(pDataFile, pBuffer, nSize, &nBytesRead);
         if (result != FR_OK) {
             LOGERR("Failed to read %d bytes into memory, err %d", nSize, result);
             return -1;
@@ -141,16 +214,17 @@ int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
         }
     }
 
-    FRESULT result = f_lseek(m_pFile, m_nLogicalPos);
+    FRESULT result = f_lseek(pDataFile, nInFile);
     if (result != FR_OK) {
-        LOGERR("Seek to offset %llu failed, err %d", m_nLogicalPos, result);
+        LOGERR("Seek to offset %llu failed, err %d", nInFile, result);
         return -1;
     }
 
+    size_t nFill = (nAvail < CacheSize) ? (size_t)nAvail : CacheSize;
     UINT nBytesRead = 0;
-    result = f_read(m_pFile, pVictim->pBuffer, CacheSize, &nBytesRead);
+    result = f_read(pDataFile, pVictim->pBuffer, nFill, &nBytesRead);
     if (result != FR_OK) {
-        LOGERR("Failed to read %d bytes into memory, err %d", (int)CacheSize, result);
+        LOGERR("Failed to read %d bytes into memory, err %d", (int)nFill, result);
         pVictim->nLen = 0;
         return -1;
     }
@@ -204,22 +278,34 @@ u64 CCueBinFileDevice::GetByteOffsetForLBA(u32 lba) const {
     // The Seek() space of this device is the raw BIN file, where each
     // track's stored sector size can differ (mixed-mode images). Translate
     // through the cue sheet; falls back to lba * 2352 for trackless cues.
-    return CueLBAToByteOffset(m_cue_str, lba);
+    if (m_nFileCount <= 1) {
+        return CueLBAToByteOffset(m_cue_str, lba);
+    }
+
+    // The sheet needs the earlier files' sizes, and answers relative to one file.
+    u64 sizes[MaxDataFiles];
+    for (int i = 0; i < m_nFileCount; i++) {
+        sizes[i] = m_Files[i].nSize;
+    }
+
+    CueFileLocation loc;
+    if (!CueResolveLBA(m_cue_str, lba, sizes, m_nFileCount, &loc) ||
+        loc.file_index < 0 || loc.file_index >= m_nFileCount) {
+        // A single-file offset would address the wrong .bin, so fail the Seek().
+        return static_cast<u64>(-1);
+    }
+
+    return m_Files[loc.file_index].nBase + loc.offset;
 }
 
 u64 CCueBinFileDevice::GetSize(void) const {
-    if (!m_pFile) {
+    if (m_nFileCount == 0) {
         LOGERR("GetSize !m_pFile");
         return 0;
     }
 
-    u64 size = f_size(m_pFile);
-    if (size < 0) {
-        LOGERR("GetSize f_size < 0");
-        return 0;
-    }
-
-    return size;
+    const DataFile &last = m_Files[m_nFileCount - 1];
+    return last.nBase + last.nSize;
 }
 
 const char *CCueBinFileDevice::GetCueSheet() const {

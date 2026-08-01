@@ -707,16 +707,18 @@ void SCSITOC::DoReadTrackInformation(CUSBCDGadget *gadget, u8 addressType, u32 a
     {
         if (currentTrack->track_number == trackInfo.track_number)
         {
+            // next_track() invalidates the previous track pointer.
+            const CUETrackInfo current = *currentTrack;
             nextTrack = gadget->cueParser.next_track();
             if (nextTrack)
             {
-                trackLength = nextTrack->data_start - currentTrack->data_start;
+                trackLength = nextTrack->data_start - current.data_start;
             }
             else
             {
                 // Last track - calculate from file size
                 u32 leadoutLBA = CDUtils::GetLeadoutLBA(gadget);
-                trackLength = leadoutLBA - currentTrack->data_start;
+                trackLength = leadoutLBA - current.data_start;
             }
             break;
         }

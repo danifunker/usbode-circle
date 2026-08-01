@@ -335,6 +335,7 @@ u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
     u32 file_offset = 0;
     u32 sector_length = 0;
     u32 track_start = 0;
+    int file_index = 0;
 
     // Find the last track
     gadget->cueParser.restart();
@@ -343,9 +344,18 @@ u32 CDUtils::GetLeadoutLBA(CUSBCDGadget* gadget)
         file_offset = trackInfo->file_offset;
         sector_length = trackInfo->sector_length;
         track_start = trackInfo->data_start; // I think this is right
+        file_index = trackInfo->file_index;
     }
 
     u64 deviceSize = gadget->m_pDevice->GetSize(); // Use u64 to support DVDs > 4GB
+
+    // file_offset is relative to the track's own .bin, not the concatenation.
+    const int fileCount = gadget->m_pDevice->GetDataFileCount();
+    const u64 *fileSizes = gadget->m_pDevice->GetDataFileSizes();
+    if (fileCount > 1 && fileSizes != nullptr && file_index >= 1 && file_index <= fileCount)
+    {
+        deviceSize = fileSizes[file_index - 1];
+    }
 
     // Some corrupted cd images might have a cue that references track that are
     // outside the bin.

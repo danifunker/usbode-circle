@@ -59,12 +59,11 @@ GADGET_SRCS := \
 	$(ADDON)/cueparser/cueutil.cpp
 
 # Real CUE/BIN/ISO and MDS/MDF readers. Their only host-side dependency is
-# the FatFs seam (harness/fatfs_host.cpp) plus the two FatFsOptimizer entry
-# points provided in harness/discimage_host.cpp. No reader logic is
-# reimplemented. util.cpp's format-dispatch factory is still left out: the
-# tests construct the reader for the format they are exercising directly.
+# the FatFs seam (harness/fatfs_host.cpp). No reader logic is reimplemented.
+# util.cpp comes in too, so tests mount through the firmware's own factory.
 DISCIMAGE_SRCS := \
 	$(ADDON)/discimage/cuebinfile.cpp \
+	$(ADDON)/discimage/util.cpp \
 	$(ADDON)/discimage/mdsfile.cpp \
 	$(ADDON)/mdsparser/mdsparser.cpp
 
@@ -76,6 +75,10 @@ SERVICE_SRCS := \
 	$(ADDON)/filelogdaemon/filelogdaemon.cpp
 
 CHDR_OBJS :=
+ifneq ($(WITH_CHD),1)
+# util.cpp's CHD branch needs libchdr; the rest of the factory does not.
+DEFINES += -DUSBODE_NO_CHD=1
+endif
 ifeq ($(WITH_CHD),1)
 DISCIMAGE_SRCS += $(ADDON)/discimage/chdfile.cpp
 DEFINES += -DWITH_CHD=1
@@ -123,7 +126,18 @@ TEST_IMAGES := $(IMAGES)/image.iso \
 	$(IMAGES)/mixed.bin $(IMAGES)/mixed.cue \
 	$(IMAGES)/mixed.chd \
 	$(IMAGES)/videocd-xa.bin \
-	$(IMAGES)/audiocd-flac.chd
+	$(IMAGES)/audiocd-flac.chd \
+	$(IMAGES)/splitaudio-t1.bin $(IMAGES)/splitaudio-t2.bin \
+	$(IMAGES)/splitaudio-t3.bin $(IMAGES)/splitaudio.cue \
+	$(IMAGES)/splitmissing.cue \
+	$(IMAGES)/splitempty-t2.bin $(IMAGES)/splitempty.cue \
+	$(IMAGES)/splitmixed-t1.bin $(IMAGES)/splitmixed-t2.bin \
+	$(IMAGES)/splitmixed-t3.bin $(IMAGES)/splitmixed.cue \
+	$(IMAGES)/stalename.bin $(IMAGES)/stalename.cue \
+	$(OUT)/outside.bin $(IMAGES)/splittraversal.cue \
+	$(IMAGES)/splitbackslash.cue $(IMAGES)/splitabsolute.cue \
+	$(IMAGES)/splitdot.cue $(IMAGES)/tracks/nested-t2.bin \
+	$(IMAGES)/splitnested.cue
 
 # Red Book audio is 16-bit stereo at 44.1 kHz, which is exactly what
 # sdcard/test.pcm.gz holds, so the sound-test sample the firmware already
@@ -194,6 +208,114 @@ $(IMAGES)/realaudio.cue: $(IMAGES)/realaudio.bin
 	@printf '  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' >> $@
 	@printf '  TRACK 02 AUDIO\n    INDEX 01 00:02:00\n' >> $@
 	@printf '  TRACK 03 AUDIO\n    INDEX 01 00:04:00\n' >> $@
+
+# realaudio.bin cut into one file per track: the redump split-rip layout.
+$(IMAGES)/splitaudio-t1.bin: $(IMAGES)/realaudio.bin
+	@mkdir -p $(IMAGES)
+	dd if=$< of=$@ bs=2352 skip=0 count=150 2>/dev/null
+
+$(IMAGES)/splitaudio-t2.bin: $(IMAGES)/realaudio.bin
+	@mkdir -p $(IMAGES)
+	dd if=$< of=$@ bs=2352 skip=150 count=150 2>/dev/null
+
+$(IMAGES)/splitaudio-t3.bin: $(IMAGES)/realaudio.bin
+	@mkdir -p $(IMAGES)
+	dd if=$< of=$@ bs=2352 skip=300 2>/dev/null
+
+$(IMAGES)/splitaudio.cue: $(IMAGES)/splitaudio-t1.bin $(IMAGES)/splitaudio-t2.bin \
+                          $(IMAGES)/splitaudio-t3.bin
+	@mkdir -p $(IMAGES)
+	@printf 'FILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'FILE "splitaudio-t2.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+	@printf 'FILE "splitaudio-t3.bin" BINARY\n  TRACK 03 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+
+# Mixed-mode split rip. Track 1 is real ISO9660 wrapped as MODE1/2352 so LBA
+# 16 is a genuine PVD; track 2's file holds 150 pregap sectors before INDEX 01.
+$(IMAGES)/splitmixed-t1.bin: $(IMAGES)/image.iso
+	@mkdir -p $(IMAGES)
+	@python3 -c 'import sys; bcd=lambda v:((v//10)<<4)|(v%10); hdr=lambda i:bytes([bcd((i+150)//4500),bcd(((i+150)//75)%60),bcd((i+150)%75),1]); d=open(sys.argv[1],"rb").read(); o=open(sys.argv[2],"wb"); [o.write(b"\x00"+b"\xff"*10+b"\x00"+hdr(i)+d[i*2048:i*2048+2048].ljust(2048,b"\x00")+b"\x00"*288) for i in range(150)]; o.close()' $< $@
+
+$(IMAGES)/splitmixed-t2.bin: $(IMAGES)/realaudio.bin
+	@mkdir -p $(IMAGES)
+	dd if=$< of=$@ bs=2352 skip=0 count=300 2>/dev/null
+
+$(IMAGES)/splitmixed-t3.bin: $(IMAGES)/realaudio.bin
+	@mkdir -p $(IMAGES)
+	dd if=$< of=$@ bs=2352 skip=300 count=138 2>/dev/null
+
+$(IMAGES)/splitmixed.cue: $(IMAGES)/splitmixed-t1.bin $(IMAGES)/splitmixed-t2.bin \
+                          $(IMAGES)/splitmixed-t3.bin
+	@mkdir -p $(IMAGES)
+	@printf 'FILE "splitmixed-t1.bin" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n' > $@
+	@printf 'FILE "splitmixed-t2.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 00 00:00:00\n    INDEX 01 00:02:00\n' >> $@
+	@printf 'FILE "splitmixed-t3.bin" BINARY\n  TRACK 03 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+
+# One track file absent: the loader must refuse the mount. The rm keeps the
+# second .bin missing by rule rather than by accident.
+$(IMAGES)/splitmissing.cue: $(IMAGES)/splitaudio-t1.bin
+	@mkdir -p $(IMAGES)
+	rm -f $(IMAGES)/splitaudio-gone.bin
+	@printf 'FILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'FILE "splitaudio-gone.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+
+# A split rip whose second track file is 0 bytes.
+$(IMAGES)/splitempty-t2.bin:
+	@mkdir -p $(IMAGES)
+	: > $@
+
+$(IMAGES)/splitempty.cue: $(IMAGES)/splitaudio-t1.bin $(IMAGES)/splitempty-t2.bin
+	@mkdir -p $(IMAGES)
+	@printf 'FILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'FILE "splitempty-t2.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+
+# A stale FILE line next to a correctly named .bin: the same-stem fallback.
+$(IMAGES)/stalename.bin: $(IMAGES)/realaudio.bin
+	@mkdir -p $(IMAGES)
+	cp $< $@
+
+$(IMAGES)/stalename.cue: $(IMAGES)/stalename.bin
+	@mkdir -p $(IMAGES)
+	@printf 'FILE "renamed elsewhere.bin" BINARY\n' > $@
+	@printf '  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+	@printf '  TRACK 02 AUDIO\n    INDEX 01 00:02:00\n' >> $@
+	@printf '  TRACK 03 AUDIO\n    INDEX 01 00:04:00\n' >> $@
+
+# A real file one level above the image directory, so the traversal cues below
+# are rejected for their path and not merely for a missing target.
+$(OUT)/outside.bin: $(IMAGES)/splitaudio-t1.bin
+	@mkdir -p $(OUT)
+	cp $< $@
+
+# Cue sheets whose second FILE escapes the cue's own directory, or is absolute.
+$(IMAGES)/splittraversal.cue: $(IMAGES)/splitaudio-t1.bin $(OUT)/outside.bin
+	@mkdir -p $(IMAGES)
+	@printf 'FILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'FILE "../outside.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+
+$(IMAGES)/splitbackslash.cue: $(IMAGES)/splitaudio-t1.bin $(OUT)/outside.bin
+	@mkdir -p $(IMAGES)
+	@printf 'FILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'FILE "..\\outside.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+
+$(IMAGES)/splitabsolute.cue: $(IMAGES)/splitaudio-t1.bin
+	@mkdir -p $(IMAGES)
+	@printf 'FILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'FILE "/absolute.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+
+# "." components and nested relative paths stay inside the directory and load.
+$(IMAGES)/splitdot.cue: $(IMAGES)/splitaudio-t1.bin $(IMAGES)/splitaudio-t2.bin
+	@mkdir -p $(IMAGES)
+	@printf 'FILE "./splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'FILE "./splitaudio-t2.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+
+$(IMAGES)/tracks/nested-t2.bin: $(IMAGES)/splitaudio-t2.bin
+	@mkdir -p $(IMAGES)/tracks
+	cp $< $@
+
+$(IMAGES)/splitnested.cue: $(IMAGES)/splitaudio-t1.bin $(IMAGES)/tracks/nested-t2.bin
+	@mkdir -p $(IMAGES)
+	@printf 'FILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'FILE "tracks/nested-t2.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n' >> $@
 
 # Real disc-image fixtures under testdata/ (see testdata/README-testdata.md).
 # .gz images are decompressed; .cue/.chd are copied as-is next to their data.

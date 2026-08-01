@@ -20,6 +20,7 @@ constexpr size_t kNoWriteLimit = (size_t)-1;
 size_t s_WriteLimit = kNoWriteLimit;
 size_t s_BytesAccepted = 0;
 bool s_SyncFails = false;
+unsigned s_LinkmapCount = 0;
 
 }  // namespace
 
@@ -39,6 +40,16 @@ void FatFsHostClearFaults(void)
     s_WriteLimit = kNoWriteLimit;
     s_BytesAccepted = 0;
     s_SyncFails = false;
+}
+
+void FatFsHostResetLinkmapCount(void)
+{
+    s_LinkmapCount = 0;
+}
+
+unsigned FatFsHostLinkmapCount(void)
+{
+    return s_LinkmapCount;
 }
 
 extern "C" {
@@ -179,6 +190,7 @@ FRESULT f_lseek(FIL* fp, FSIZE_t ofs)
     // readers fall through to ordinary seeks (functionally identical, just
     // without the on-Pi fragmentation optimization).
     if (ofs == CREATE_LINKMAP) {
+        s_LinkmapCount++;
         return FR_OK;
     }
     if (fseeko((FILE*)fp->host_fp, (off_t)ofs, SEEK_SET) != 0) {
