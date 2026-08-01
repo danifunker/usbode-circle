@@ -429,7 +429,8 @@ IImageDevice* loadCueBinIsoFileDevice(const char* imagePath) {
 
         if (!device->AddDataFile(extraFile)) {
             LOGERR("Cannot adopt split-rip data file: %s", binPath);
-            SetImageLoadError("This image has more data files than %s can hold.", name);
+            SetImageLoadError("This image's data files do not form a usable disc layout at %s.",
+                              name);
             f_close(extraFile);
             delete extraFile;
             delete device;

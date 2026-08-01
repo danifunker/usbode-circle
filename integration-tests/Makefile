@@ -137,7 +137,9 @@ TEST_IMAGES := $(IMAGES)/image.iso \
 	$(OUT)/outside.bin $(IMAGES)/splittraversal.cue \
 	$(IMAGES)/splitbackslash.cue $(IMAGES)/splitabsolute.cue \
 	$(IMAGES)/splitdot.cue $(IMAGES)/tracks/nested-t2.bin \
-	$(IMAGES)/splitnested.cue
+	$(IMAGES)/splitnested.cue \
+	$(IMAGES)/splitsession-t2.bin $(IMAGES)/splitsession.cue \
+	$(IMAGES)/splitsessionfar.cue
 
 # Red Book audio is 16-bit stereo at 44.1 kHz, which is exactly what
 # sdcard/test.pcm.gz holds, so the sound-test sample the firmware already
@@ -316,6 +318,24 @@ $(IMAGES)/splitnested.cue: $(IMAGES)/splitaudio-t1.bin $(IMAGES)/tracks/nested-t
 	@mkdir -p $(IMAGES)
 	@printf 'FILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
 	@printf 'FILE "tracks/nested-t2.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n' >> $@
+
+# Split Enhanced CD session 2: Mode 2 Form 1, INDEX 01 at LBA 11550 (02:36:00)
+# per its own sector headers, CD001 descriptor in local sector 16's user data.
+$(IMAGES)/splitsession-t2.bin:
+	@mkdir -p $(IMAGES)
+	@python3 -c 'import sys; bcd=lambda v:((v//10)<<4)|(v%10); base=11550; hdr=lambda i:bytes([bcd((base+i+150)//4500),bcd(((base+i+150)//75)%60),bcd((base+i+150)%75),2]); user=lambda i:(b"\x01CD001\x01\x00" if i==16 else bytes([i&0xFF])*8).ljust(2048,b"\x00"); o=open(sys.argv[1],"wb"); [o.write(b"\x00"+b"\xff"*10+b"\x00"+hdr(i)+b"\x00\x00\x09\x00\x00\x00\x09\x00"+user(i)+b"\x00"*280) for i in range(40)]; o.close()' $@
+
+$(IMAGES)/splitsession.cue: $(IMAGES)/splitaudio-t1.bin $(IMAGES)/splitsession-t2.bin
+	@mkdir -p $(IMAGES)
+	@printf 'REM SESSION 01\nFILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'REM SESSION 02\nFILE "splitsession-t2.bin" BINARY\n  TRACK 02 MODE2/2352\n    INDEX 01 00:00:00\n' >> $@
+
+# The same rip with session 2 placed past the end of any disc, so the hole it
+# would open is wider than the sparse layout will accept.
+$(IMAGES)/splitsessionfar.cue: $(IMAGES)/splitaudio-t1.bin $(IMAGES)/splitsession-t2.bin
+	@mkdir -p $(IMAGES)
+	@printf 'REM SESSION 01\nFILE "splitaudio-t1.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n' > $@
+	@printf 'REM SESSION 02\nFILE "splitsession-t2.bin" BINARY\n  TRACK 02 MODE2/2352\n    INDEX 01 99:00:00\n' >> $@
 
 # Real disc-image fixtures under testdata/ (see testdata/README-testdata.md).
 # .gz images are decompressed; .cue/.chd are copied as-is next to their data.

@@ -21,6 +21,7 @@
 #include <cueparser/cueparser.h>
 #include <cueparser/cueutil.h>
 
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -371,4 +372,198 @@ TEST(single_file_cue_resolution_is_unchanged)
         CHECK_EQ(loc.file_index, 0);
         CHECK_EQ(loc.offset, CueLBAToByteOffset(kCanonicalCue, lba));
     }
+}
+
+// A split rip's session 2 is its own BIN whose INDEX times restart at zero, so
+// nothing in the sheet says where it begins and the gap must be synthesized.
+static const char *const kSplitSessionCue =
+    "REM SESSION 01\n"
+    "FILE \"s1.bin\" BINARY\n"
+    "  TRACK 01 AUDIO\n"
+    "    INDEX 01 00:00:00\n"
+    "REM SESSION 02\n"
+    "FILE \"s2.bin\" BINARY\n"
+    "  TRACK 02 MODE2/2352\n"
+    "    INDEX 01 00:00:00\n";
+
+static const uint64_t kSplitSessionSizes[2] = {150ull * 2352, 40ull * 2352};
+
+// Session 1's 150 sectors, then 6750 lead-out + 4500 lead-in, then the pregap.
+static const uint32_t kSplitTrackStart = 150 + 11250;
+static const uint32_t kSplitDataStart = kSplitTrackStart + 150;
+
+TEST(split_session_data_track_clears_the_leadout_leadin_and_pregap)
+{
+    CUEParser parser(kSplitSessionCue);
+    parser.set_file_sizes(kSplitSessionSizes, 2);
+
+    const CUETrackInfo *t1 = parser.next_track();
+    CHECK_EQ(t1->session, 1);
+    CHECK_EQ(t1->data_start, 0u);
+
+    // None of it is stored, so the pregap is the unstored kind.
+    const CUETrackInfo *t2 = parser.next_track();
+    CHECK_EQ(t2->session, 2);
+    CHECK_EQ(t2->track_start, kSplitTrackStart);
+    CHECK_EQ(t2->data_start, kSplitDataStart);
+    CHECK_EQ(t2->unstored_pregap_length, 150u);
+    CHECK_EQ(t2->file_index, 2);
+    CHECK_EQ(t2->file_offset, 0ull);
+}
+
+// The gap is disc addresses only: no bytes were invented, so the data track's
+// first frame is still the first byte of the second BIN.
+TEST(split_session_gap_costs_no_file_bytes)
+{
+    CueFileLocation loc;
+
+    CHECK(CueResolveLBA(kSplitSessionCue, kSplitDataStart, kSplitSessionSizes, 2, &loc));
+    CHECK_EQ(loc.file_index, 1);
+    CHECK(strcmp(loc.filename, "s2.bin") == 0);
+    CHECK_EQ(loc.offset, 0ull);
+
+    // Sector 16 of that file, where the volume descriptor lives.
+    CHECK(CueResolveLBA(kSplitSessionCue, kSplitDataStart + 16, kSplitSessionSizes, 2, &loc));
+    CHECK_EQ(loc.file_index, 1);
+    CHECK_EQ(loc.offset, 16ull * 2352);
+
+    // Session 1 is untouched by the gap that follows it.
+    CHECK(CueResolveLBA(kSplitSessionCue, 149, kSplitSessionSizes, 2, &loc));
+    CHECK_EQ(loc.file_index, 0);
+    CHECK_EQ(loc.offset, 149ull * 2352);
+}
+
+// Session 2's track, from a two-file cue whose pregap lines are given.
+static bool SecondSessionTrack(const char *pregap, CUETrackInfo *out)
+{
+    char cue[512];
+    snprintf(cue, sizeof(cue),
+             "REM SESSION 01\n"
+             "FILE \"s1.bin\" BINARY\n"
+             "  TRACK 01 AUDIO\n"
+             "    INDEX 01 00:00:00\n"
+             "REM SESSION 02\n"
+             "FILE \"s2.bin\" BINARY\n"
+             "  TRACK 02 MODE2/2352\n"
+             "%s",
+             pregap);
+
+    CUEParser parser(cue);
+    parser.set_file_sizes(kSplitSessionSizes, 2);
+    const CUETrackInfo *t = parser.next_track();
+    if (t == nullptr || (t = parser.next_track()) == nullptr) {
+        return false;
+    }
+    *out = *t;
+    return true;
+}
+
+// A pregap the sheet states is the sheet's to place; only the 11250-frame
+// lead-out/lead-in area is missing, and no second 150 frames are added.
+TEST(split_session_keeps_a_pregap_the_cue_states)
+{
+    CUETrackInfo t;
+
+    // Stored: the file's first 150 sectors are the pregap.
+    CHECK(SecondSessionTrack("    INDEX 00 00:00:00\n    INDEX 01 00:02:00\n", &t));
+    CHECK_EQ(t.track_start, kSplitTrackStart);
+    CHECK_EQ(t.data_start, kSplitDataStart);
+    CHECK_EQ(t.unstored_pregap_length, 0u);
+    CHECK_EQ(t.file_offset, 150ull * 2352);
+
+    // Unstored: same addresses, but the file holds no pregap sectors.
+    CHECK(SecondSessionTrack("    PREGAP 00:02:00\n    INDEX 01 00:00:00\n", &t));
+    CHECK_EQ(t.track_start, kSplitTrackStart);
+    CHECK_EQ(t.data_start, kSplitDataStart);
+    CHECK_EQ(t.unstored_pregap_length, 150u);
+    CHECK_EQ(t.file_offset, 0ull);
+
+    // INDEX 00 equal to INDEX 01 declares a pregap of no length, so the file
+    // stores none and the synthesized one is still owed.
+    CHECK(SecondSessionTrack("    INDEX 00 00:00:00\n    INDEX 01 00:00:00\n", &t));
+    CHECK_EQ(t.track_start, kSplitTrackStart);
+    CHECK_EQ(t.data_start, kSplitDataStart);
+    CHECK_EQ(t.unstored_pregap_length, 150u);
+    CHECK_EQ(t.file_offset, 0ull);
+}
+
+// The stored pregap is the head of its own file; the unstored one costs nothing.
+TEST(split_session_pregap_resolves_to_the_head_of_its_file)
+{
+    const char *stored =
+        "REM SESSION 01\n"
+        "FILE \"s1.bin\" BINARY\n"
+        "  TRACK 01 AUDIO\n"
+        "    INDEX 01 00:00:00\n"
+        "REM SESSION 02\n"
+        "FILE \"s2.bin\" BINARY\n"
+        "  TRACK 02 MODE2/2352\n"
+        "    INDEX 00 00:00:00\n"
+        "    INDEX 01 00:02:00\n";
+
+    CueFileLocation loc;
+    CHECK(CueResolveLBA(stored, kSplitTrackStart, kSplitSessionSizes, 2, &loc));
+    CHECK_EQ(loc.file_index, 1);
+    CHECK_EQ(loc.offset, 0ull);
+
+    // An unstored pregap has no bytes, so it clamps to the track's data start.
+    CHECK(CueResolveLBA(kSplitSessionCue, kSplitTrackStart, kSplitSessionSizes, 2, &loc));
+    CHECK_EQ(loc.file_index, 1);
+    CHECK_EQ(loc.offset, 0ull);
+}
+
+// A later track in the same session picks the gap up through cumulative_offset.
+TEST(split_session_gap_carries_into_the_tracks_after_it)
+{
+    const char *cue =
+        "REM SESSION 01\n"
+        "FILE \"s1.bin\" BINARY\n"
+        "  TRACK 01 AUDIO\n"
+        "    INDEX 01 00:00:00\n"
+        "REM SESSION 02\n"
+        "FILE \"s2.bin\" BINARY\n"
+        "  TRACK 02 MODE2/2352\n"
+        "    INDEX 01 00:00:00\n"
+        "  TRACK 03 AUDIO\n"
+        "    INDEX 01 00:00:20\n";
+
+    CUEParser parser(cue);
+    parser.set_file_sizes(kSplitSessionSizes, 2);
+    CHECK(parser.next_track() != nullptr);
+    CHECK(parser.next_track() != nullptr);
+
+    const CUETrackInfo *t3 = parser.next_track();
+    CHECK_EQ(t3->data_start, kSplitDataStart + 20u);
+    CHECK_EQ(t3->file_offset, 20ull * 2352);
+}
+
+// A FILE boundary inside one session is not a session boundary, and a session
+// boundary inside one FILE already has absolute INDEX times. Neither moves.
+TEST(split_cue_without_a_session_boundary_gains_no_gap)
+{
+    const char *sameSession =
+        "FILE \"s1.bin\" BINARY\n"
+        "  TRACK 01 AUDIO\n"
+        "    INDEX 01 00:00:00\n"
+        "FILE \"s2.bin\" BINARY\n"
+        "  TRACK 02 AUDIO\n"
+        "    INDEX 01 00:00:00\n";
+
+    CUEParser parser(sameSession);
+    parser.set_file_sizes(kSplitSessionSizes, 2);
+    CHECK(parser.next_track() != nullptr);
+    CHECK_EQ(parser.next_track()->data_start, 150u);
+
+    const char *oneFile =
+        "REM SESSION 01\n"
+        "FILE \"whole.bin\" BINARY\n"
+        "  TRACK 01 AUDIO\n"
+        "    INDEX 01 00:00:00\n"
+        "REM SESSION 02\n"
+        "  TRACK 02 MODE2/2352\n"
+        "    INDEX 01 02:48:00\n";
+
+    CUEParser single(oneFile);
+    CHECK(single.next_track() != nullptr);
+    CHECK_EQ(single.next_track()->data_start, 12600u);
 }

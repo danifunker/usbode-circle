@@ -411,12 +411,16 @@ void SCSIRead::ReadCD(CUSBCDGadget* gadget)
     // bound lands too high on mixed-mode BIN/CUE images (2048-byte data
     // track before 2352-byte audio), falsely rejecting every read of the
     // last track as out of range.
-    u64 readEnd = gadget->m_pDevice->GetByteOffsetForLBA(gadget->m_nblock_address) +
-                  (u64)gadget->m_nnumber_blocks * trackInfo.sector_length;
-    if (readEnd > gadget->m_pDevice->GetSize())
+    // Compared by subtraction: the byte count a host can ask for overflows the
+    // sum, and a translation failure answers (u64)-1 rather than an offset.
+    const u64 readStart = gadget->m_pDevice->GetByteOffsetForLBA(gadget->m_nblock_address);
+    const u64 deviceSize = gadget->m_pDevice->GetSize();
+    const u64 readLength = (u64)gadget->m_nnumber_blocks * trackInfo.sector_length;
+    if (readStart == (u64)-1 || readStart > deviceSize || readLength > deviceSize - readStart)
     {
         MLOGNOTE("SCSIRead::ReadCD",
-                 "READ CD: Read exceeds image size");
+                 "READ CD: LBA %u does not resolve %llu bytes inside the image",
+                 gadget->m_nblock_address, readLength);
         gadget->setSenseData(0x05, 0x21, 0x00); // LOGICAL BLOCK ADDRESS OUT OF RANGE
         gadget->sendCheckCondition();
         return;

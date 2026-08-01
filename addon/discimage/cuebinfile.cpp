@@ -55,6 +55,7 @@ CCueBinFileDevice::CCueBinFileDevice(FIL *pFile, char *cue_str, MEDIA_TYPE media
         m_Files[0].nSize = f_size(m_pFile);
         m_FileSizes[0] = m_Files[0].nSize;
         m_nFileCount = 1;
+        m_nVirtualSize = m_Files[0].nSize;
         FatFsOptimizer::EnableFastSeek(m_pFile, &m_Files[0].pCLMT, 256, "BIN/ISO: ");
         m_nLogicalPos = f_tell(m_pFile);
     }
@@ -97,13 +98,21 @@ bool CCueBinFileDevice::AddDataFile(FIL *pFile) {
         return false;
     }
 
-    DataFile &prev = m_Files[m_nFileCount - 1];
     DataFile &next = m_Files[m_nFileCount];
     next.pFile = pFile;
-    next.nBase = prev.nBase + prev.nSize;
     next.nSize = f_size(pFile);
     m_FileSizes[m_nFileCount] = next.nSize;
     m_nFileCount++;
+
+    // On rejection the file was never adopted: the caller still owns and closes
+    // it, so drop it here or the destructor closes it a second time.
+    if (!RebuildLayout()) {
+        next.pFile = nullptr;
+        next.nSize = 0;
+        m_FileSizes[--m_nFileCount] = 0;
+        RebuildLayout();
+        return false;
+    }
 
     // Without a link map every seek walks the FAT chain and stalls playback.
     if (!FatFsOptimizer::EnableFastSeek(pFile, &next.pCLMT, 256, "BIN/ISO split: ")) {
@@ -112,13 +121,141 @@ bool CCueBinFileDevice::AddDataFile(FIL *pFile) {
     return true;
 }
 
+namespace {
+
+// Where one file's stored frames begin and end on the disc.
+struct FileFrameExtent {
+    u32 nStartLBA = 0;
+    u32 nEndLBA = 0;
+    u32 nSectorLength = 0;
+    bool bValid = false;
+};
+
+}  // namespace
+
+// A boundary this cannot represent must not become a contiguous one: abutting
+// the files is exactly the aliasing that unbacked frames have to avoid.
+bool CCueBinFileDevice::RebuildLayout() {
+    if (m_nFileCount <= 1) {
+        m_nSparseCount = 0;
+        m_Files[0].nBase = 0;
+        m_nVirtualSize = (m_nFileCount == 1) ? m_Files[0].nSize : 0;
+        return true;
+    }
+
+    if (m_cue_str == nullptr) {
+        LOGERR("Split image has %d files and no cue sheet", m_nFileCount);
+        return false;
+    }
+
+    FileFrameExtent extents[MaxDataFiles];
+    CUEParser parser(m_cue_str);
+    const CUETrackInfo *track = nullptr;
+    int prevFileIndex = 0;
+    while ((track = parser.next_track(prevFileIndex >= 1 && prevFileIndex <= m_nFileCount
+                                          ? m_FileSizes[prevFileIndex - 1]
+                                          : 0)) != nullptr) {
+        prevFileIndex = track->file_index;
+        int f = track->file_index - 1;
+        if (f < 0 || f >= m_nFileCount) {
+            continue;  // a file the cue names but the loader has not opened yet
+        }
+        if (track->sector_length == 0) {
+            LOGERR("File %d track %d has no sector length", f, track->track_number);
+            return false;
+        }
+
+        u32 headFrames = (u32)(track->file_offset / track->sector_length);
+        FileFrameExtent &ext = extents[f];
+        if (!ext.bValid) {
+            if (track->data_start < headFrames) {
+                LOGERR("File %d starts at frame %lu, under its offset of %lu frames",
+                       f, (unsigned long)track->data_start, (unsigned long)headFrames);
+                return false;
+            }
+            ext.nStartLBA = track->data_start - headFrames;
+            ext.bValid = true;
+        }
+
+        // The last track of a file owns its tail, so this keeps overwriting.
+        ext.nSectorLength = track->sector_length;
+        const u64 size = m_FileSizes[f];
+        ext.nEndLBA = (size > track->file_offset)
+                          ? track->data_start +
+                                (u32)((size - track->file_offset) / track->sector_length)
+                          : track->data_start;
+    }
+
+    // Staged, so a rejected boundary leaves the previous layout in place.
+    u64 bases[MaxDataFiles];
+    SparseRange holes[MaxDataFiles];
+    int holeCount = 0;
+    u64 base = 0;
+
+    for (int i = 0; i < m_nFileCount; i++) {
+        if (!extents[i].bValid) {
+            LOGERR("File %d is open but no cue track places it", i);
+            return false;
+        }
+        if (base > (u64)-1 - m_Files[i].nSize) {
+            LOGERR("File %d overflows the address space at base %llu", i, base);
+            return false;
+        }
+        bases[i] = base;
+        base += m_Files[i].nSize;
+
+        if (i + 1 >= m_nFileCount || extents[i + 1].nStartLBA <= extents[i].nEndLBA) {
+            continue;  // last file, contiguous, or a cue that overlaps its files
+        }
+
+        u32 frames = extents[i + 1].nStartLBA - extents[i].nEndLBA;
+        if (frames > MaxGapFrames || extents[i].nSectorLength == 0) {
+            LOGERR("Unbacked gap of %lu frames before file %d cannot be represented",
+                   (unsigned long)frames, i + 1);
+            return false;
+        }
+
+        SparseRange &hole = holes[holeCount++];
+        hole.nStartLBA = extents[i].nEndLBA;
+        hole.nEndLBA = extents[i + 1].nStartLBA;
+        hole.nSectorLength = extents[i].nSectorLength;
+        hole.nLength = (u64)frames * hole.nSectorLength;
+        hole.nBase = base;
+        if (base > (u64)-1 - hole.nLength) {
+            LOGERR("Gap before file %d overflows the address space", i + 1);
+            return false;
+        }
+        base += hole.nLength;
+    }
+
+    for (int i = 0; i < m_nFileCount; i++) {
+        m_Files[i].nBase = bases[i];
+    }
+    for (int i = 0; i < holeCount; i++) {
+        m_Sparse[i] = holes[i];
+    }
+    m_nSparseCount = holeCount;
+    m_nVirtualSize = base;
+    return true;
+}
+
 int CCueBinFileDevice::FileIndexForOffset(u64 nOffset) const {
     for (int i = 0; i < m_nFileCount; i++) {
-        if (nOffset < m_Files[i].nBase + m_Files[i].nSize) {
+        if (nOffset >= m_Files[i].nBase && nOffset < m_Files[i].nBase + m_Files[i].nSize) {
             return i;
         }
     }
     return -1;
+}
+
+u64 CCueBinFileDevice::SparseBytesAt(u64 nOffset) const {
+    for (int i = 0; i < m_nSparseCount; i++) {
+        const SparseRange &hole = m_Sparse[i];
+        if (nOffset >= hole.nBase && nOffset < hole.nBase + hole.nLength) {
+            return hole.nBase + hole.nLength - nOffset;
+        }
+    }
+    return 0;
 }
 
 int CCueBinFileDevice::Read(void *pBuffer, size_t nSize) {
@@ -160,6 +297,17 @@ int CCueBinFileDevice::ReadWithinFile(void *pBuffer, size_t nSize) {
 
     int nFile = FileIndexForOffset(m_nLogicalPos);
     if (nFile < 0) {
+        // In a hole no .bin is opened, seeked or cached: the frames are
+        // digital silence, which is what a single-.bin rip stores there.
+        u64 nHole = SparseBytesAt(m_nLogicalPos);
+        if (nHole > 0) {
+            if (nSize > nHole) {
+                nSize = (size_t)nHole;
+            }
+            memset(pBuffer, 0, nSize);
+            m_nLogicalPos += nSize;
+            return (int)nSize;
+        }
         if (m_nLogicalPos == GetSize()) {
             return 0;
         }
@@ -282,6 +430,15 @@ u64 CCueBinFileDevice::GetByteOffsetForLBA(u32 lba) const {
         return CueLBAToByteOffset(m_cue_str, lba);
     }
 
+    // A frame no .bin stores answers inside its hole, so the read that follows
+    // sees zeros rather than the next file's first bytes.
+    for (int i = 0; i < m_nSparseCount; i++) {
+        const SparseRange &hole = m_Sparse[i];
+        if (lba >= hole.nStartLBA && lba < hole.nEndLBA) {
+            return hole.nBase + (u64)(lba - hole.nStartLBA) * hole.nSectorLength;
+        }
+    }
+
     // The sheet needs the earlier files' sizes, and answers relative to one file.
     u64 sizes[MaxDataFiles];
     for (int i = 0; i < m_nFileCount; i++) {
@@ -304,8 +461,7 @@ u64 CCueBinFileDevice::GetSize(void) const {
         return 0;
     }
 
-    const DataFile &last = m_Files[m_nFileCount - 1];
-    return last.nBase + last.nSize;
+    return m_nVirtualSize;
 }
 
 const char *CCueBinFileDevice::GetCueSheet() const {
