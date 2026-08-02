@@ -254,25 +254,26 @@ body {
 
 .file {
     cursor: default;
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    padding: 2px 4px;
 	a {
+		flex: 1 1 auto;
 		text-decoration: none;
 	}
+    a.delete-image {
+        flex-grow: 0;
+    }
 
 	/* Selected/Current State (Static Red Box) */
 	&.current, &.active, &[aria-selected="true"] {
-	    padding: 2px 4px;
 	    background-color: #FF0000; /* Red Highlight */
 	    color: #FFFFFF;
 	    outline: 1px dotted #FFFF00; /* Subtle contrast */
 		outline-offset: -1px;
 		& a {
 		    color: #FFFFFF;
-		}
-	}
-	&:not(.current):not(.active) {
-		a {
-			display: block;
-		    padding: 2px 4px;
 		}
 	}
 	/* Hover State (Blue Navigation) - Defined AFTER to take precedence during hover */
