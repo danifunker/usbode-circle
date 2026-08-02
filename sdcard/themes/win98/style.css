@@ -29,40 +29,40 @@ body {
     align-items: center;
     min-height: 100vh;
 
-	/* Custom variables */
-	--menu-height: 24px;
-	--main-font: 'Nimbus Sans L', 'Segoe UI', sans-serif;
-	/* Windows border/highlight colors, from bright top-left to dark bottom-right. */
+    /* Custom variables */
+    --menu-height: 24px;
+    --main-font: 'Nimbus Sans L', 'Segoe UI', sans-serif;
+    /* Windows border/highlight colors, from bright top-left to dark bottom-right. */
     --color-bright: #FFF;
-	--color-highlight: #DFDFDF;
-	--color-background: #C0C0C0;
-	--color-text: #000;
+    --color-highlight: #DFDFDF;
+    --color-background: #C0C0C0;
+    --color-text: #000;
     --color-shadow: #808080;
     --color-dark: #000;
-	/* Buttons. */
-	--button-padding: 4px 10px;
-	--button-box-shadow:
+    /* Buttons. */
+    --button-padding: 4px 10px;
+    --button-box-shadow:
         inset -1px -1px 0 var(--color-dark),
         inset 1px 1px 0 var(--color-bright),
         inset -2px -2px 0 var(--color-shadow),
         inset 2px 2px 0 var(--color-highlight);
-	--button-box-shadow-pressed:
+    --button-box-shadow-pressed:
         inset -1px -1px 0 var(--color-bright),
         inset 1px 1px 0 var(--color-dark),
         inset -2px -2px 0 var(--color-highlight),
         inset 2px 2px 0 var(--color-shadow);
-	/* Form fields that are not buttons. */
-	--form-field-padding: 4px 10px;
-	--form-field-background: #FFF;
-	--form-field-text: #000;
-	--form-field-box-shadow:
+    /* Form fields that are not buttons. */
+    --form-field-padding: 4px 10px;
+    --form-field-background: #FFF;
+    --form-field-text: #000;
+    --form-field-box-shadow:
         inset -1px -1px 0 var(--color-bright),
         inset 1px 1px 0 var(--color-shadow),
         inset -2px -2px 0 var(--color-highlight),
         inset 2px 2px 0 var(--color-dark);
-	/* Generic container. */
-	--container-padding: 10px;
-	--fieldset-box-shadow:
+    /* Generic container. */
+    --container-padding: 10px;
+    --fieldset-box-shadow:
         inset -1px -1px 0 var(--color-bright),
         inset 1px 1px 0 var(--color-shadow),
         inset -2px -2px 0 var(--color-shadow),
@@ -97,7 +97,7 @@ body {
     position: relative;
     display: flex;
     align-items: center;
-	gap: 2px;
+    gap: 2px;
 }
 
 /* Icon (Top Left) */
@@ -106,17 +106,17 @@ body {
     height: 16px;
     background: transparent;
     box-shadow: none;
-	border: 0;
+    border: 0;
     padding: 0;
-	margin: 0;
-	display: block;
+    margin: 0;
+    display: block;
 }
 
 /* Title Text */
 .header h1 {
     color: #FFFFFF;
     margin: 0;
-	padding: 0;
+    padding: 0;
     font-weight: bold;
     font-size: 12px;
     line-height: 16px;
@@ -192,12 +192,12 @@ body {
 }
 
 .content, .message, .info-box {
-	& > :first-child {
-		margin-top: 0;
-	}
-	& > :last-child {
-		margin-bottom: 0;
-	}
+    & > :first-child {
+        margin-top: 0;
+    }
+    & > :last-child {
+        margin-bottom: 0;
+    }
 }
 
 /* FAKE MENU BAR & LOGO ICON
@@ -210,14 +210,14 @@ body {
     left: 0;
     right: 0;
     height: var(--menu-height);
-	padding: var(--form-field-padding);
-	box-sizing: border-box;
+    padding: var(--form-field-padding);
+    box-sizing: border-box;
 
     /* Styling */
     background-color: var(--color-background);
     color: var(--color-text);
-	font-family: var(--main-font);
-	white-space: pre;
+    font-family: var(--main-font);
+    white-space: pre;
     border-bottom: 1px solid #808080;
     box-shadow: 0 1px 0 #FFF;
     z-index: 5;
@@ -240,16 +240,15 @@ body {
 /* --- The File List (White Area) --- */
 .files, #log {
     background-color: var(--form-field-background);
-	color: var(--form-field-text);
+    color: var(--form-field-text);
     box-shadow: var(--form-field-box-shadow);
     padding: var(--form-field-padding);
-	
     margin-top: 5px;
     margin-bottom: 10px; /* Spacing for pagination below */
     clear: both;
 }
 .files {
-	padding: 2px;
+    padding: 2px;
 }
 
 .file {
@@ -258,33 +257,33 @@ body {
     flex-direction: row;
     gap: 4px;
     padding: 2px 4px;
-	a {
-		flex: 1 1 auto;
-		text-decoration: none;
-	}
+    a {
+        flex: 1 1 auto;
+        text-decoration: none;
+    }
     a.delete-image {
         flex-grow: 0;
     }
 
-	/* Selected/Current State (Static Red Box) */
-	&.current, &.active, &[aria-selected="true"] {
-	    background-color: #FF0000; /* Red Highlight */
-	    color: #FFFFFF;
-	    outline: 1px dotted #FFFF00; /* Subtle contrast */
-		outline-offset: -1px;
-		& a {
-		    color: #FFFFFF;
-		}
-	}
-	/* Hover State (Blue Navigation) - Defined AFTER to take precedence during hover */
-	&:hover {
-	    background-color: #000080;
-	    color: #FFF;
-	    outline: none; /* Clean look on hover */
-		& a {
-			color: #FFF;
-		}
-	}
+    /* Selected/Current State (Static Red Box) */
+    &.current, &.active, &[aria-selected="true"] {
+        background-color: #FF0000; /* Red Highlight */
+        color: #FFFFFF;
+        outline: 1px dotted #FFFF00; /* Subtle contrast */
+        outline-offset: -1px;
+        & a {
+            color: #FFFFFF;
+        }
+    }
+    /* Hover State (Blue Navigation) - Defined AFTER to take precedence during hover */
+    &:hover {
+        background-color: #000080;
+        color: #FFF;
+        outline: none; /* Clean look on hover */
+        & a {
+            color: #FFF;
+        }
+    }
 }
 
 /* --- Pagination (Navigation Buttons) --- */
@@ -302,23 +301,23 @@ body {
     font-size: 12px;
     background-color: var(--color-background);
     color: var(--color-text);
-	box-shadow: var(--button-box-shadow);
-	border: 0;
+    box-shadow: var(--button-box-shadow);
+    border: 0;
     border-radius: 0;
     padding: var(--button-padding);
     display: inline-block; /* Fix layout flow */
     text-decoration: none;
     text-transform: none;
-	&:focus {
-		border: 1px solid #000;
-		margin: -1px;
-		outline: 1px dotted #000;
+    &:focus {
+        border: 1px solid #000;
+        margin: -1px;
+        outline: 1px dotted #000;
         outline-offset: -5px;
-	}
-	&:active {
-	    box-shadow: var(--button-box-shadow-pressed);
-	    transform: translate(1px, 1px);
-	}
+    }
+    &:active {
+        box-shadow: var(--button-box-shadow-pressed);
+        transform: translate(1px, 1px);
+    }
 }
 
 /* --- Inputs --- */
@@ -326,7 +325,7 @@ input, select, textarea {
     border: 0;
     border-radius: 0;
     background-color: var(--form-field-background);
-	color: var(--form-field-text);
+    color: var(--form-field-text);
     box-shadow: var(--form-field-box-shadow);
     padding: var(--form-field-padding);
 }
@@ -346,16 +345,16 @@ a { color: #0000FF; text-decoration: underline; }
 a:hover { color: #000080; }
 
 .info-box::after {
-	content: "";
-	clear: both;
-	display: table;
+    content: "";
+    clear: both;
+    display: table;
 }
 .info-box .disc-art {
-	margin-right: 12px;
-	float: left;
+    margin-right: 12px;
+    float: left;
 }
 .info-box .disc-art img {
-	display: block;
-	width: 120px;
-	height: 120px;
+    display: block;
+    width: 120px;
+    height: 120px;
 }
