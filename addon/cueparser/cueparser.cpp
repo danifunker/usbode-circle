@@ -73,10 +73,17 @@ const CUETrackInfo *CUEParser::next_track() {
     return next_track(prev_file_size);
 }
 
+// Orange Book: 90 seconds of lead-out (6750 frames) then 60 seconds of
+// lead-in (4500) separate one session's content from the next session's.
+static const uint32_t kSessionGapFrames = 11250;
+static const uint32_t kTrackPregapFrames = 150;
+
 const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
     // Previous track info is needed to track file offset
     m_track_info.cumulative_offset += m_track_info.unstored_pregap_length;
     uint32_t prev_sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);  // Defaults to 2352 before first track
+    int prev_session = m_track_info.session;  // 0 before the first track
+    uint32_t session_gap = 0;
 
     bool got_file = false;
     bool got_track = false;
@@ -127,6 +134,10 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
             m_track_info.track_mode = parse_track_mode(skip_space(endptr));
             m_track_info.sector_length = get_sector_length(m_track_info.file_mode, m_track_info.track_mode);
             m_track_info.session = m_current_session;
+            // A session boundary that is also a FILE boundary: the new file's
+            // INDEX times restart at 0, so the gap has to be synthesized.
+            if (got_file && prev_session > 0 && m_current_session > prev_session)
+                session_gap = kSessionGapFrames;
             m_track_info.prev_session_leadout = m_pending_leadout;
             m_pending_leadout = 0;
             m_track_info.unstored_pregap_length = 0;
@@ -182,6 +193,22 @@ const CUETrackInfo *CUEParser::next_track(uint64_t prev_file_size) {
     if (got_data && !got_pause) {
         m_track_info.track_start = m_track_info.data_start;
         m_track_info.data_start += m_track_info.unstored_pregap_length;
+    }
+
+    if (session_gap != 0 && got_track && got_data) {
+        // Disc addresses only: file_start and file_offset stay untouched, so
+        // the new session's INDEX 01 still resolves to offset 0 of its file.
+        m_track_info.cumulative_offset += session_gap;
+        m_track_info.track_start += session_gap;
+        m_track_info.data_start += session_gap;
+
+        // A pregap the sheet states is already in the addresses above. One it
+        // does not state is unstored, and the track still has to have one.
+        bool stored_pregap = got_pause && index01_time > index00_time;
+        if (!stored_pregap && m_track_info.unstored_pregap_length == 0) {
+            m_track_info.unstored_pregap_length = kTrackPregapFrames;
+            m_track_info.data_start += kTrackPregapFrames;
+        }
     }
 
     if (got_track && got_data) {

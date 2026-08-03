@@ -997,6 +997,527 @@ TEST(real_single_file_cue_with_stale_file_name_still_loads)
     delete dev;
 }
 
+// Split Enhanced CD: session 1 audio BIN, session 2 data BIN;
+// session 2's INDEX times restart at zero.
+
+// 150 sectors of session 1, then lead-out + lead-in, then the track pregap.
+static const u32 kSplitSessionDataLBA = 150 + 11250 + 150;
+
+// The gap has no bytes in either .bin, so the second file's virtual base sits
+// a whole gap's worth of addresses past the first file's 150 stored sectors.
+static const u64 kSplitSessionFile2Base = (u64)kSplitSessionDataLBA * 2352;
+
+// One session's 0xA2 lead-out pointer, decoded from a full TOC reply.
+static bool LeadoutForSession(const std::vector<u8> &toc, u8 session, u32 *out)
+{
+    for (size_t i = 4; i + 11 <= toc.size(); i += 11) {
+        if (toc[i] == session && toc[i + 3] == 0xA2) {
+            *out = ((u32)toc[i + 8] * 60 + toc[i + 9]) * 75 + toc[i + 10] - 150;
+            return true;
+        }
+    }
+    return false;
+}
+
+TEST(real_split_session_data_track_sits_past_the_multisession_gap)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsession.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CHECK_EQ(disc->GetDataFileCount(), 2);
+
+    // GetSize() is addressable bytes, so it spans the hole; the files themselves
+    // are still only what they store.
+    CHECK_EQ(disc->GetSize(), (u64)(kSplitSessionDataLBA + 40) * 2352);
+    CHECK_EQ(disc->GetDataFileSizes()[0], (u64)150 * 2352);
+    CHECK_EQ(disc->GetDataFileSizes()[1], (u64)40 * 2352);
+
+    // And the data track's first frame is the first byte of the second file.
+    CHECK_EQ(disc->GetByteOffsetForLBA(kSplitSessionDataLBA), kSplitSessionFile2Base);
+    CHECK_EQ(disc->GetByteOffsetForLBA(kSplitSessionDataLBA + 16),
+             kSplitSessionFile2Base + (u64)16 * 2352);
+
+    // Every frame the gap covers answers inside the hole, in order, and none of
+    // them reaches the second file's base.
+    CHECK_EQ(disc->GetByteOffsetForLBA(150), (u64)150 * 2352);
+    CHECK_EQ(disc->GetByteOffsetForLBA(kSplitSessionDataLBA - 1),
+             kSplitSessionFile2Base - 2352);
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // READ TOC format 0x01: two sessions, and where the filesystem starts.
+    const u8 siCdb[10] = {0x43, 0x00, 0x01, 0, 0, 0, 0, 0, 12, 0};
+    auto si = bench.SendCommand(siCdb, sizeof(siCdb), 12);
+    CHECK_EQ(si.csw.bmCSWStatus, 0);
+    const u8 expected[12] = {
+        0x00, 0x0A,             // length 10
+        0x01, 0x02,             // first session 1, last session 2
+        0x00, 0x14, 0x02, 0x00, // data track 2, control 0x14
+        0x00, 0x00, 0x2D, 0x1E, // LBA 11550, not 150
+    };
+    CHECK_BYTES(si.data.data(), si.data.size(), expected, sizeof(expected));
+}
+
+TEST(real_split_session_read10_finds_the_volume_descriptor)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsession.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Sector 16 of the data track, where a host looks for CD001. READ(10)
+    // strips the 16-byte header and the 8-byte Form 1 subheader.
+    const u32 lba = kSplitSessionDataLBA + 16;
+    const u8 rdCdb[10] = {0x28, 0, (u8)(lba >> 24), (u8)(lba >> 16), (u8)(lba >> 8),
+                          (u8)lba, 0, 0, 1, 0};
+    auto rd = bench.SendCommand(rdCdb, sizeof(rdCdb), 2048);
+    CHECK_EQ(rd.csw.bmCSWStatus, 0);
+    CHECK_EQ(rd.data.size(), (size_t)2048);
+    if (rd.data.size() >= 8) {
+        CHECK_EQ(rd.data[0], 0x01); // primary volume descriptor
+        CHECK(memcmp(rd.data.data() + 1, "CD001", 5) == 0);
+    }
+}
+
+TEST(real_split_session_leadout_ends_session_one_at_its_audio)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsession.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 tocCdb[10] = {0x43, 0x00, 0x02, 0, 0, 0, 0, 0, (u8)200, 0};
+    auto toc = bench.SendCommand(tocCdb, sizeof(tocCdb), 200);
+    CHECK_EQ(toc.csw.bmCSWStatus, 0);
+
+    // Session 1's lead-out must land where its audio ends: 11250 frames back
+    // from the data track's start, which is itself 150 frames before INDEX 01.
+    u32 lba = 0;
+    CHECK(LeadoutForSession(toc.data, 1, &lba));
+    CHECK_EQ(lba, 150u);
+
+    // The disc lead-out is the end of session 2's 40 stored sectors.
+    CHECK(LeadoutForSession(toc.data, 2, &lba));
+    CHECK_EQ(lba, kSplitSessionDataLBA + 40);
+}
+
+// Whole-sector READ CD: sectorType 1 demands CD-DA, 0 accepts the track's own
+// kind, and fields asks for every field so 2352 bytes come back either way.
+static std::vector<u8> ReadCdRaw(CGadgetTestBench &bench, u32 lba, u32 sectors,
+                                 u8 sectorType, u8 fields)
+{
+    const u8 cdb[12] = {0xBE, (u8)(sectorType << 2), (u8)(lba >> 24), (u8)(lba >> 16),
+                        (u8)(lba >> 8), (u8)lba, (u8)(sectors >> 16), (u8)(sectors >> 8),
+                        (u8)sectors, fields, 0x00, 0x00};
+    auto r = bench.SendCommand(cdb, sizeof(cdb), sectors * 2352);
+    CHECK_EQ(r.csw.bmCSWStatus, 0);
+    return r.data;
+}
+
+static std::vector<u8> ReadCdAudio(CGadgetTestBench &bench, u32 lba, u32 sectors)
+{
+    return ReadCdRaw(bench, lba, sectors, 1, 0xF0);
+}
+
+// A data track's frames: EDC/ECC included, or the reply is 2072 bytes a sector.
+static std::vector<u8> ReadCdAnyType(CGadgetTestBench &bench, u32 lba, u32 sectors)
+{
+    return ReadCdRaw(bench, lba, sectors, 0, 0xF8);
+}
+
+// The inter-session gap has no bytes in any .bin. Serving the offset anyway
+// ran off session 1's file into session 2's, as ~1 s of modem noise.
+TEST(real_split_session_gap_reads_as_silence_not_the_next_bin)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsession.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Wholly inside the gap, starting at the first unbacked LBA.
+    std::vector<u8> gap = ReadCdAudio(bench, 150, 8);
+    CHECK_EQ(gap.size(), (size_t)8 * 2352);
+    if (gap.size() < (size_t)8 * 2352) {
+        return;
+    }
+    for (size_t i = 0; i < gap.size(); i++) {
+        CHECK_EQ(gap[i], 0);
+    }
+
+    // Specifically not session 2's first sector, which is what used to come
+    // back: a Mode 2 sync pattern read as if it were audio.
+    u8 session2[2352];
+    CHECK_EQ(disc->Seek(kSplitSessionFile2Base), kSplitSessionFile2Base);
+    CHECK_EQ(disc->Read(session2, sizeof(session2)), (int)sizeof(session2));
+    CHECK_EQ(session2[0], 0x00);
+    CHECK_EQ(session2[1], 0xFF); // sync -- the noise the host played
+    CHECK(memcmp(gap.data(), session2, 2352) != 0);
+
+    // The gap's far end is silence too. Track 2 owns those frames, so asking
+    // for CD-DA there is a sector-type mismatch: read them as whatever they are.
+    std::vector<u8> tail = ReadCdAnyType(bench, kSplitSessionDataLBA - 4, 4);
+    CHECK_EQ(tail.size(), (size_t)4 * 2352);
+    for (size_t i = 0; i < tail.size(); i++) {
+        CHECK_EQ(tail[i], 0);
+    }
+}
+
+// The hole is addresses, not a shortcut: a read that starts in it and runs on
+// must land on session 2's real bytes, at the right offset.
+TEST(real_split_session_read_spanning_audio_gap_and_data_resumes_correctly)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsession.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    // Two real audio frames, the whole 11400-frame hole, then four data frames.
+    const u32 lba = 148;
+    const u32 sectors = 2 + (kSplitSessionDataLBA - 150) + 4;
+
+    u8 audio[2 * 2352];
+    CHECK_EQ(disc->Seek((u64)148 * 2352), (u64)148 * 2352);
+    CHECK_EQ(disc->Read(audio, sizeof(audio)), (int)sizeof(audio));
+
+    u8 data[4 * 2352];
+    CHECK_EQ(disc->Seek(kSplitSessionFile2Base), kSplitSessionFile2Base);
+    CHECK_EQ(disc->Read(data, sizeof(data)), (int)sizeof(data));
+
+    std::vector<u8> buf((size_t)sectors * 2352);
+    CHECK_EQ(disc->Seek(disc->GetByteOffsetForLBA(lba)), (u64)lba * 2352);
+    CHECK_EQ(disc->Read(buf.data(), buf.size()), (int)buf.size());
+
+    CHECK_BYTES(buf.data(), sizeof(audio), audio, sizeof(audio));
+    CHECK_BYTES(buf.data() + buf.size() - sizeof(data), sizeof(data), data, sizeof(data));
+
+    // Nothing of session 2 leaked into the hole between them.
+    bool holeIsSilent = true;
+    for (size_t i = sizeof(audio); i < buf.size() - sizeof(data); i++) {
+        if (buf[i] != 0) {
+            holeIsSilent = false;
+        }
+    }
+    CHECK(holeIsSilent);
+}
+
+// Session 2's first stored frame is its file's first byte, whichever way it
+// is addressed, and the frame below it is still hole.
+TEST(real_split_session_data_track_index01_returns_its_first_stored_sector)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsession.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    std::vector<u8> r = ReadCdAnyType(bench, kSplitSessionDataLBA, 2);
+    CHECK_EQ(r.size(), (size_t)2 * 2352);
+    if (r.size() < (size_t)2 * 2352) {
+        return;
+    }
+
+    u8 expected[2 * 2352];
+    CHECK_EQ(disc->Seek(kSplitSessionFile2Base), kSplitSessionFile2Base);
+    CHECK_EQ(disc->Read(expected, sizeof(expected)), (int)sizeof(expected));
+    CHECK_BYTES(r.data(), r.size(), expected, sizeof(expected));
+    CHECK_EQ(r[1], 0xFF); // a real Mode 2 sync, so these are stored bytes
+
+    // The last hole frame does not alias it.
+    std::vector<u8> before = ReadCdAnyType(bench, kSplitSessionDataLBA - 1, 1);
+    CHECK_EQ(before.size(), (size_t)2352);
+    if (before.size() >= 2352) {
+        CHECK(memcmp(before.data(), expected, 2352) != 0);
+    }
+}
+
+// A read that ends exactly on the image's last stored byte must not run on,
+// and one that starts there must report the end rather than loop.
+TEST(real_split_session_reads_at_the_image_boundary_stop_cleanly)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsession.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    const u64 end = disc->GetSize();
+    CHECK_EQ(end, kSplitSessionFile2Base + (u64)40 * 2352);
+
+    u8 last[2352];
+    CHECK_EQ(disc->Seek(end - 2352), end - 2352);
+    CHECK_EQ(disc->Read(last, sizeof(last)), (int)sizeof(last));
+
+    // At the end there is nothing left, and past it there is no seek at all.
+    CHECK_EQ(disc->Seek(end), end);
+    CHECK_EQ(disc->Read(last, sizeof(last)), 0);
+    CHECK_EQ(disc->Seek(end + 1), (u64)-1);
+
+    // An over-read of the tail returns only what is stored.
+    CHECK_EQ(disc->Seek(end - 2352), end - 2352);
+    u8 over[3 * 2352];
+    CHECK_EQ(disc->Read(over, sizeof(over)), 2352);
+
+    // The first hole byte and the last byte before it are on opposite sides of
+    // the same boundary, and neither steals the other's bytes.
+    CHECK_EQ(disc->Seek((u64)150 * 2352 - 2352), (u64)149 * 2352);
+    u8 straddle[2 * 2352];
+    CHECK_EQ(disc->Read(straddle, sizeof(straddle)), (int)sizeof(straddle));
+    bool tailIsAudio = false;
+    for (size_t i = 0; i < 2352; i++) {
+        if (straddle[i] != 0) {
+            tailIsAudio = true;
+        }
+    }
+    CHECK(tailIsAudio);
+    for (size_t i = 2352; i < sizeof(straddle); i++) {
+        CHECK_EQ(straddle[i], 0);
+    }
+}
+
+// Abutting the files instead would be the original aliasing bug: LBA 151 is
+// unbacked, and contiguous bases would answer with file 2's sector 1.
+TEST(real_split_session_absurd_gap_refuses_to_mount_the_image)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsessionfar.cue");
+    CHECK(disc == nullptr);
+    delete disc;
+}
+
+// AddDataFile rejecting a file leaves the device on its previous layout, and
+// the rejected FIL still belongs to the caller.
+TEST(split_rejected_data_file_is_not_adopted_and_the_layout_is_unchanged)
+{
+    const std::string dir = TestDataDir();
+    const std::string cue =
+        "REM SESSION 01\nFILE \"splitaudio-t1.bin\" BINARY\n"
+        "  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n"
+        "REM SESSION 02\nFILE \"splitsession-t2.bin\" BINARY\n"
+        "  TRACK 02 MODE2/2352\n    INDEX 01 99:00:00\n";
+
+    CCueBinFileDevice *dev = OpenReader(dir + "/splitaudio-t1.bin", cue);
+    CHECK(dev != nullptr);
+    if (!dev) {
+        return;
+    }
+
+    FIL *second = new FIL();
+    CHECK(f_open(second, (dir + "/splitsession-t2.bin").c_str(), FA_READ) == FR_OK);
+    CHECK(!dev->AddDataFile(second));
+
+    CHECK_EQ(dev->GetDataFileCount(), 1);
+    CHECK_EQ(dev->GetSize(), (u64)150 * 2352);
+    CHECK_EQ(dev->GetByteOffsetForLBA(0), (u64)0);
+
+    u8 buf[2352];
+    CHECK_EQ(dev->Seek(0), (u64)0);
+    CHECK_EQ(dev->Read(buf, sizeof(buf)), (int)sizeof(buf));
+
+    // The caller closes what was not adopted; deleting the device must not
+    // close it again, so this ordering is the double-close check.
+    CHECK(f_close(second) == FR_OK);
+    delete second;
+    delete dev;
+}
+
+// A translation that genuinely fails answers (u64)-1, which is a bad LBA and
+// not a media condition; it must also leave no read pending behind it.
+TEST(real_split_failed_lba_translation_is_lba_out_of_range_not_a_pending_read)
+{
+    const std::string dir = TestDataDir();
+    const std::string cue =
+        "FILE \"splitaudio-t1.bin\" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n"
+        "FILE \"splitaudio-t2.bin\" BINARY\n  TRACK 02 AUDIO\n    INDEX 01 00:00:00\n"
+        "FILE \"splitaudio-t3.bin\" BINARY\n  TRACK 03 AUDIO\n    INDEX 01 00:00:00\n";
+
+    CCueBinFileDevice *dev = OpenReader(dir + "/splitaudio-t1.bin", cue);
+    CHECK(dev != nullptr);
+    if (!dev) {
+        return;
+    }
+    FIL *second = new FIL();
+    CHECK(f_open(second, (dir + "/splitaudio-t2.bin").c_str(), FA_READ) == FR_OK);
+    CHECK(dev->AddDataFile(second));
+    CHECK_EQ(dev->GetByteOffsetForLBA(0), (u64)-1);
+
+    CGadgetTestBench bench(dev);
+    bench.Activate();
+    bench.RequestSense();
+
+    const u8 cdb[12] = {0xBE, 0x04, 0, 0, 0, 0, 0, 0, 1, 0xF0, 0x00, 0x00};
+    auto r = bench.SendCommand(cdb, sizeof(cdb), 2352);
+    CHECK_EQ(r.csw.bmCSWStatus, 1);
+    CHECK_EQ(r.csw.dCSWDataResidue, 2352u);
+
+    auto sense = bench.RequestSense();
+    CHECK_EQ(sense.data[2], 0x05); // ILLEGAL REQUEST, not NOT READY
+    CHECK_EQ(sense.data[12], 0x21);
+    CHECK_EQ(sense.data[13], 0x00);
+
+    const u8 tur[6] = {0x00, 0, 0, 0, 0, 0};
+    CHECK_EQ(bench.SendCommand(tur, sizeof(tur), 0).csw.bmCSWStatus, 0);
+
+    // The next data command returns exactly its own reply, so nothing resumed.
+    const u8 inq[6] = {0x12, 0, 0, 0, 36, 0};
+    auto after = bench.SendCommand(inq, sizeof(inq), 36);
+    CHECK_EQ(after.csw.bmCSWStatus, 0);
+    CHECK_EQ(after.data.size(), (size_t)36);
+    CHECK_EQ(after.csw.dCSWDataResidue, 0u);
+}
+
+// GetSize() bounds the addressable space, holes included, and the comparison
+// must not wrap on a byte count a host is free to ask for.
+TEST(real_split_session_readcd_range_is_bounded_at_the_addressable_end)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsession.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Ending exactly on the last stored byte is in range.
+    const u32 lastLBA = kSplitSessionDataLBA + 39;
+    std::vector<u8> r = ReadCdAnyType(bench, lastLBA, 1);
+    CHECK_EQ(r.size(), (size_t)2352);
+
+    auto pastEnd = [&](u32 lba, u32 sectors) {
+        const u8 cdb[12] = {0xBE, 0x00, (u8)(lba >> 24), (u8)(lba >> 16), (u8)(lba >> 8),
+                            (u8)lba, (u8)(sectors >> 16), (u8)(sectors >> 8), (u8)sectors,
+                            0xF8, 0x00, 0x00};
+        auto res = bench.SendCommand(cdb, sizeof(cdb), 2352);
+        CHECK_EQ(res.csw.bmCSWStatus, 1);
+        auto s = bench.RequestSense();
+        CHECK_EQ(s.data[2], 0x05);
+        CHECK_EQ(s.data[12], 0x21);
+    };
+
+    pastEnd(lastLBA, 2);          // one sector too many
+    pastEnd(lastLBA, 0xFFFFFF);   // a byte count that overflows a 32-bit sum
+}
+
+TEST(real_split_session_read_crossing_into_the_gap_keeps_its_audio_prefix)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitsession.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Session 1 holds 150 sectors: 4 real, then 4 past the end of its .bin.
+    std::vector<u8> r = ReadCdAudio(bench, 146, 8);
+    CHECK_EQ(r.size(), (size_t)8 * 2352);
+    if (r.size() < (size_t)8 * 2352) {
+        return;
+    }
+
+    u8 expected[4 * 2352];
+    CHECK_EQ(disc->Seek((u64)146 * 2352), (u64)146 * 2352);
+    CHECK_EQ(disc->Read(expected, sizeof(expected)), (int)sizeof(expected));
+    CHECK_BYTES(r.data(), 4 * 2352, expected, sizeof(expected));
+
+    for (size_t i = 4 * 2352; i < r.size(); i++) {
+        CHECK_EQ(r[i], 0);
+    }
+}
+
+// Silence must not swallow a real track boundary: an ordinary split rip's
+// files abut in LBA space, so a read across one still returns the next file.
+TEST(real_split_audio_boundary_still_crosses_into_the_next_bin)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitaudio.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Track 1 ends at LBA 149, track 2's file begins at 150.
+    std::vector<u8> r = ReadCdAudio(bench, 146, 8);
+    CHECK_EQ(r.size(), (size_t)8 * 2352);
+
+    u8 expected[8 * 2352];
+    CHECK_EQ(disc->Seek((u64)146 * 2352), (u64)146 * 2352);
+    CHECK_EQ(disc->Read(expected, sizeof(expected)), (int)sizeof(expected));
+    CHECK_BYTES(r.data(), r.size(), expected, sizeof(expected));
+
+    bool anyNonZero = false;
+    for (size_t i = 4 * 2352; i < r.size(); i++) {
+        if (r[i] != 0) {
+            anyNonZero = true;
+        }
+    }
+    CHECK(anyNonZero); // real audio, not silence
+}
+
+// A stored INDEX 00 pregap has real bytes at the head of its own file.
+TEST(real_split_stored_pregap_still_reads_its_stored_bytes)
+{
+    IImageDevice *disc = LoadThroughProductionLoader(TestDataDir() + "/splitmixed.cue");
+    CHECK(disc != nullptr);
+    if (!disc) {
+        return;
+    }
+
+    CGadgetTestBench bench(disc);
+    bench.Activate();
+    bench.RequestSense();
+
+    // Track 2's pregap starts at LBA 150 and is the first 150 sectors of its
+    // file, so its bytes are the file's, not zeros.
+    std::vector<u8> r = ReadCdAudio(bench, 150, 4);
+    CHECK_EQ(r.size(), (size_t)4 * 2352);
+
+    u8 expected[4 * 2352];
+    const u64 off = disc->GetByteOffsetForLBA(150);
+    CHECK(off != (u64)-1);
+    CHECK_EQ(disc->Seek(off), off);
+    CHECK_EQ(disc->Read(expected, sizeof(expected)), (int)sizeof(expected));
+    CHECK_BYTES(r.data(), r.size(), expected, sizeof(expected));
+
+    bool anyNonZero = false;
+    for (size_t i = 0; i < r.size(); i++) {
+        if (r[i] != 0) {
+            anyNonZero = true;
+        }
+    }
+    CHECK(anyNonZero); // stored bytes, not silence
+}
+
 // ---------------------------------------------------------------------------
 // Real CHD image (tracked sdcard/usbode-audio-test.chd) through libchdr
 // ---------------------------------------------------------------------------

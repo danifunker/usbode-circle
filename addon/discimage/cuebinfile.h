@@ -35,6 +35,8 @@ class CCueBinFileDevice : public ICueDevice {
     // IImageDevice interface
     // ========================================================================
     u64 Seek(u64 ullOffset) override;
+    // Addressable bytes of the Seek() space, which on a split rip includes
+    // the unbacked inter-session holes. GetDataFileSizes() stays physical.
     u64 GetSize(void) const override;
     u64 Tell() const override;
     u64 GetByteOffsetForLBA(u32 lba) const override;
@@ -61,7 +63,8 @@ class CCueBinFileDevice : public ICueDevice {
     const u64* GetDataFileSizes() const override { return m_FileSizes; }
     
    private:
-    // Split files form one logical image; each FIL owns its CLMT.
+    // Split files form one logical image; each FIL owns its CLMT. nBase is the
+    // file's start in virtual seek space, which a hole before it can push up.
     struct DataFile {
         FIL* pFile = nullptr;
         DWORD* pCLMT = nullptr;
@@ -74,7 +77,28 @@ class CCueBinFileDevice : public ICueDevice {
     u64 m_FileSizes[MaxDataFiles] = {};
     int m_nFileCount = 0;
 
+    // Disc frames between two files that no .bin stores: the lead-out and
+    // lead-in of a session boundary the rip split across a FILE. Read as zeros.
+    struct SparseRange {
+        u32 nStartLBA = 0;
+        u32 nEndLBA = 0;
+        u64 nBase = 0;  // virtual offset of nStartLBA
+        u64 nLength = 0;
+        u32 nSectorLength = 0;
+    };
+    // At most one hole per FILE boundary.
+    SparseRange m_Sparse[MaxDataFiles];
+    int m_nSparseCount = 0;
+    u64 m_nVirtualSize = 0;
+
+    // A disc holds under 100 minutes of frames; a wider hole is a bad cue.
+    static constexpr u32 MaxGapFrames = 100 * 60 * 75;
+
+    // False when the cue describes a boundary this layout cannot represent;
+    // the previous layout is left untouched.
+    bool RebuildLayout();
     int FileIndexForOffset(u64 nOffset) const;
+    u64 SparseBytesAt(u64 nOffset) const;
 
     int ReadWithinFile(void* pBuffer, size_t nCount);
 
