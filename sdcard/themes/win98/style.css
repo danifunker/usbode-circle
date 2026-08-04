@@ -265,16 +265,18 @@ body {
         flex-grow: 0;
     }
 
-    &::before {
+    & > a:first-child::before {
         content: url(icon-cdrom.png);
         width: 16px;
         height: 16px;
-        display: block;
+        display: inline-block;
+        vertical-align: top;
+        padding-right: 4px;  /* Same as the gap from .file */
     }
-    &.folder::before {
+    &.folder > a:first-child::before {
         content: url(icon-folder.png);
     }
-    &.parent-dir::before {
+    &.parent-dir > a:first-child::before {
         content: url(icon-folder-open.png);
     }
 
