@@ -265,6 +265,19 @@ body {
         flex-grow: 0;
     }
 
+    &::before {
+        content: url(icon-cdrom.png);
+        width: 16px;
+        height: 16px;
+        display: block;
+    }
+    &.folder::before {
+        content: url(icon-folder.png);
+    }
+    &.parent-dir::before {
+        content: url(icon-folder-open.png);
+    }
+
     /* Selected/Current State (Static Red Box) */
     &.current, &.active, &[aria-selected="true"] {
         background-color: #FF0000; /* Red Highlight */
