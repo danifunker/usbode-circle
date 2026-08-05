@@ -265,6 +265,21 @@ body {
         flex-grow: 0;
     }
 
+    & > a:first-child::before {
+        content: url(icon-cdrom.png);
+        width: 16px;
+        height: 16px;
+        display: inline-block;
+        vertical-align: top;
+        padding-right: 4px;  /* Same as the gap from .file */
+    }
+    &.folder > a:first-child::before {
+        content: url(icon-folder.png);
+    }
+    &.parent-dir > a:first-child::before {
+        content: url(icon-folder-open.png);
+    }
+
     /* Selected/Current State (Static Red Box) */
     &.current, &.active, &[aria-selected="true"] {
         background-color: #FF0000; /* Red Highlight */
