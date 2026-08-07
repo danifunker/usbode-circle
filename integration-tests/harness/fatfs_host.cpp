@@ -13,6 +13,8 @@
 
 #include <stdio.h>
 
+#include <string>
+
 namespace {
 
 constexpr size_t kNoWriteLimit = (size_t)-1;
@@ -21,6 +23,28 @@ size_t s_WriteLimit = kNoWriteLimit;
 size_t s_BytesAccepted = 0;
 bool s_SyncFails = false;
 unsigned s_LinkmapCount = 0;
+unsigned s_FailRenameAt = 0;
+unsigned s_FailRenameCount = 0;
+unsigned s_RenameCount = 0;
+std::string s_DriveRoot;
+
+// "0:/wpa_supplicant.conf" -> "<root>/wpa_supplicant.conf". Paths without a
+// drive prefix, and every path at all while no root is set, pass through.
+const char* MapPath(const char* path, std::string& storage)
+{
+    if (s_DriveRoot.empty() || path == nullptr) {
+        return path;
+    }
+    if (!(path[0] >= '0' && path[0] <= '9') || path[1] != ':') {
+        return path;
+    }
+    storage = s_DriveRoot;
+    if (path[2] != '/') {
+        storage += '/';
+    }
+    storage += path + 2;
+    return storage.c_str();
+}
 
 }  // namespace
 
@@ -35,11 +59,26 @@ void FatFsHostFailSync(bool bFail)
     s_SyncFails = bFail;
 }
 
+void FatFsHostFailRename(unsigned nFirst, unsigned nCount)
+{
+    s_FailRenameAt = nFirst;
+    s_FailRenameCount = nCount;
+    s_RenameCount = 0;
+}
+
+void FatFsHostSetDriveRoot(const char* pPath)
+{
+    s_DriveRoot = (pPath != nullptr) ? pPath : "";
+}
+
 void FatFsHostClearFaults(void)
 {
     s_WriteLimit = kNoWriteLimit;
     s_BytesAccepted = 0;
     s_SyncFails = false;
+    s_FailRenameAt = 0;
+    s_FailRenameCount = 0;
+    s_RenameCount = 0;
 }
 
 void FatFsHostResetLinkmapCount(void)
@@ -59,6 +98,9 @@ FRESULT f_open(FIL* fp, const TCHAR* path, BYTE mode)
     if (!fp || !path) {
         return FR_INVALID_PARAMETER;
     }
+
+    std::string mapped;
+    path = MapPath(path, mapped);
 
     // FA_OPEN_ALWAYS is "r+b" falling back to "w+b" only when the file is
     // missing, which keeps a bad directory an error.
@@ -198,6 +240,47 @@ FRESULT f_lseek(FIL* fp, FSIZE_t ofs)
     }
     fp->fptr = ofs;
     return FR_OK;
+}
+
+FRESULT f_unlink(const TCHAR* path)
+{
+    if (!path) {
+        return FR_INVALID_NAME;
+    }
+    std::string mapped;
+    return remove(MapPath(path, mapped)) == 0 ? FR_OK : FR_NO_FILE;
+}
+
+FRESULT f_rename(const TCHAR* path_old, const TCHAR* path_new)
+{
+    if (!path_old || !path_new) {
+        return FR_INVALID_NAME;
+    }
+    ++s_RenameCount;
+    if (s_FailRenameAt != 0 && s_RenameCount >= s_FailRenameAt &&
+        s_RenameCount < s_FailRenameAt + s_FailRenameCount) {
+        return FR_DENIED;
+    }
+
+    std::string mappedOld;
+    std::string mappedNew;
+    const char* from = MapPath(path_old, mappedOld);
+    const char* to = MapPath(path_new, mappedNew);
+
+    FILE* source = fopen(from, "rb");
+    if (!source) {
+        return FR_NO_FILE;
+    }
+    fclose(source);
+
+    // FatFs refuses to clobber an existing destination; rename(2) replaces it.
+    FILE* existing = fopen(to, "rb");
+    if (existing) {
+        fclose(existing);
+        return FR_EXIST;
+    }
+
+    return rename(from, to) == 0 ? FR_OK : FR_DENIED;
 }
 
 // Directory walk: intentionally unbacked. Only mdsfile.cpp calls these, and

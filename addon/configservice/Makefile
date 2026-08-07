@@ -9,7 +9,8 @@ CIRCLEHOME = $(STDLIBHOME)/libs/circle
 
 OBJS    = configservice.o \
 	cmdline.o \
-	config.o
+	config.o \
+	wificonfig.o
 
 libconfigservice.a: $(OBJS)
 	@echo "  AR    $@"

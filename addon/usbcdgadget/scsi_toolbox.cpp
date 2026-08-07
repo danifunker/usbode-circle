@@ -6,6 +6,7 @@
 #include <usbcdgadget/scsi_toolbox.h>
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
+#include <configservice/wificonfig.h>
 #include <scsitbservice/scsitbservice.h>
 #include <circle/new.h>
 
@@ -126,4 +127,213 @@ void SCSIToolbox::SetNextCD(CUSBCDGadget* gadget)
 
     gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
     gadget->SendCSW();
+}
+
+// TOOLBOX_SEND_FILE_PREP carries a 33-byte parameter list: up to 32 filename
+// characters and the NUL the client is required to include.
+static const u32 SendFilePrepLength = 33;
+
+// TOOLBOX_SEND_FILE_END is documented as taking no data, but the DOS client
+// declares four bytes of it. Those two lengths are the only ones accepted.
+static const u32 SendFileEndLength = 4;
+
+// Sized from what the host declares over BOT, not from the CDB's valid count:
+// the client moves a whole block whatever that count says.
+void SCSIToolbox::BeginSendFileDataOut(CUSBCDGadget *gadget, u32 nLength)
+{
+    gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_OK;
+    gadget->m_nState = CUSBCDGadget::TCDState::DataOut;
+    gadget->m_pEP[CUSBCDGadget::EPOut]->BeginTransfer(CUSBCDGadgetEndpoint::TransferDataOut,
+                                                      gadget->m_OutBuffer, nLength);
+}
+
+// Sets sense on failure but never sends the CSW: the two D5 forms send it
+// from different places.
+bool SCSIToolbox::FinishSendFile(CUSBCDGadget *gadget)
+{
+    if (!CWiFiConfigUpload::Get().RequestCommit())
+    {
+        MLOGERR("SCSIToolbox::SendFileEnd", "No staged data to commit");
+        CWiFiConfigUpload::Get().Abort();
+        gadget->setSenseData(0x05, 0x2c, 0x00); // COMMAND SEQUENCE ERROR
+        return false;
+    }
+
+    MLOGNOTE("SCSIToolbox::SendFileEnd", "Wi-Fi configuration queued for commit");
+    return true;
+}
+
+void SCSIToolbox::SendFilePrep(CUSBCDGadget *gadget)
+{
+    gadget->m_nnumber_blocks = 0; // never resume a pending read behind this
+
+    if (CWiFiConfigUpload::Get().IsBusy())
+    {
+        MLOGERR("SCSIToolbox::SendFilePrep", "A commit is already in flight");
+        gadget->setSenseData(0x02, 0x04, 0x01); // LU IN PROCESS OF BECOMING READY
+        gadget->sendCheckCondition();
+        return;
+    }
+
+    // A second PREP abandons whatever the first one staged, whether or not this
+    // one turns out to name an acceptable destination.
+    CWiFiConfigUpload::Get().Abort();
+
+    u32 nLength = gadget->m_CBW.dCBWDataTransferLength;
+    if ((gadget->m_CBW.bmCBWFlags & 0x80) || nLength == 0 || nLength > SendFilePrepLength)
+    {
+        MLOGERR("SCSIToolbox::SendFilePrep", "Bad parameter list length %u", nLength);
+        gadget->setSenseData(0x05, 0x1a, 0x00); // PARAMETER LIST LENGTH ERROR
+        gadget->sendCheckCondition();
+        return;
+    }
+
+    BeginSendFileDataOut(gadget, nLength);
+}
+
+void SCSIToolbox::SendFile10(CUSBCDGadget *gadget)
+{
+    gadget->m_nnumber_blocks = 0;
+
+    if (!CWiFiConfigUpload::Get().IsReceiving())
+    {
+        MLOGERR("SCSIToolbox::SendFile10", "No upload in progress");
+        gadget->setSenseData(0x05, 0x2c, 0x00); // COMMAND SEQUENCE ERROR
+        gadget->sendCheckCondition();
+        return;
+    }
+
+    u32 nValidLength = ((u32)gadget->m_CBW.CBWCB[1] << 8) | gadget->m_CBW.CBWCB[2];
+    u32 nBlockIndex = ((u32)gadget->m_CBW.CBWCB[3] << 16) |
+                      ((u32)gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
+
+    if (nValidLength == 0 || nValidLength > CWiFiConfigUpload::BlockSize ||
+        nBlockIndex > (CWiFiConfigUpload::MaxConfigSize - 1) / CWiFiConfigUpload::BlockSize)
+    {
+        MLOGERR("SCSIToolbox::SendFile10", "Block %u length %u out of range",
+                nBlockIndex, nValidLength);
+        CWiFiConfigUpload::Get().Abort();
+        gadget->setSenseData(0x05, 0x24, 0x00); // INVALID FIELD IN CDB
+        gadget->sendCheckCondition();
+        return;
+    }
+
+    u32 nLength = gadget->m_CBW.dCBWDataTransferLength;
+    if ((gadget->m_CBW.bmCBWFlags & 0x80) || nLength < nValidLength ||
+        nLength > CUSBCDGadget::MaxOutMessageSize)
+    {
+        MLOGERR("SCSIToolbox::SendFile10", "Declared transfer length %u unusable", nLength);
+        CWiFiConfigUpload::Get().Abort();
+        gadget->setSenseData(0x05, 0x1a, 0x00);
+        gadget->sendCheckCondition();
+        return;
+    }
+
+    BeginSendFileDataOut(gadget, nLength);
+}
+
+void SCSIToolbox::SendFileEnd(CUSBCDGadget *gadget)
+{
+    gadget->m_nnumber_blocks = 0;
+
+    if (!CWiFiConfigUpload::Get().IsReceiving())
+    {
+        MLOGERR("SCSIToolbox::SendFileEnd", "No upload in progress");
+        gadget->setSenseData(0x05, 0x2c, 0x00);
+        gadget->sendCheckCondition();
+        return;
+    }
+
+    // BOT 6.2: the direction bit means nothing when no data is declared, which
+    // is exactly the documented no-payload form of this command.
+    u32 nLength = gadget->m_CBW.dCBWDataTransferLength;
+    if ((nLength != 0 && nLength != SendFileEndLength) ||
+        (nLength > 0 && (gadget->m_CBW.bmCBWFlags & 0x80)))
+    {
+        MLOGERR("SCSIToolbox::SendFileEnd", "Declared transfer length %u unusable", nLength);
+        CWiFiConfigUpload::Get().Abort();
+        gadget->setSenseData(0x05, 0x1a, 0x00);
+        gadget->sendCheckCondition();
+        return;
+    }
+
+    // The four bytes the DOS client sends carry nothing, but they still have to
+    // be drained before the commit so the data phase completes.
+    if (nLength > 0)
+    {
+        BeginSendFileDataOut(gadget, nLength);
+        return;
+    }
+
+    if (FinishSendFile(gadget))
+    {
+        gadget->sendGoodStatus();
+    }
+    else
+    {
+        gadget->sendCheckCondition();
+    }
+}
+
+void SCSIToolbox::ProcessSendFileOut(CUSBCDGadget *gadget, size_t nLength)
+{
+    CWiFiConfigUpload &upload = CWiFiConfigUpload::Get();
+
+    switch (gadget->m_CBW.CBWCB[0])
+    {
+    case 0xD3:
+    {
+        if (!upload.Begin(gadget->m_OutBuffer, nLength))
+        {
+            // The rejected name is not logged: it is host-supplied bytes.
+            MLOGERR("SCSIToolbox::SendFilePrep", "Destination refused (%u bytes)",
+                    (unsigned)nLength);
+            gadget->setSenseData(0x05, 0x26, 0x00); // INVALID FIELD IN PARAMETER LIST
+            gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+        }
+        break;
+    }
+
+    case 0xD4:
+    {
+        u32 nValidLength = ((u32)gadget->m_CBW.CBWCB[1] << 8) | gadget->m_CBW.CBWCB[2];
+        u32 nBlockIndex = ((u32)gadget->m_CBW.CBWCB[3] << 16) |
+                          ((u32)gadget->m_CBW.CBWCB[4] << 8) | gadget->m_CBW.CBWCB[5];
+
+        // Only the declared bytes are real; the rest of the 512-byte transfer
+        // is whatever the client happened to have in its buffer.
+        if (nValidLength > nLength)
+        {
+            MLOGERR("SCSIToolbox::SendFile10", "Short data phase: %u of %u bytes",
+                    (unsigned)nLength, nValidLength);
+            upload.Abort();
+            gadget->setSenseData(0x05, 0x1a, 0x00);
+            gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+            break;
+        }
+
+        if (!upload.Stage(nBlockIndex, gadget->m_OutBuffer, nValidLength))
+        {
+            MLOGERR("SCSIToolbox::SendFile10", "Block %u rejected", nBlockIndex);
+            upload.Abort();
+            gadget->setSenseData(0x05, 0x24, 0x00);
+            gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+        }
+        break;
+    }
+
+    case 0xD5:
+    {
+        if (!FinishSendFile(gadget))
+        {
+            gadget->m_CSW.bmCSWStatus = CD_CSW_STATUS_FAIL;
+        }
+        break;
+    }
+    }
+}
+
+void SCSIToolbox::ResetSendFileState(void)
+{
+    CWiFiConfigUpload::Get().Abort();
 }

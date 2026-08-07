@@ -113,6 +113,11 @@ FRESULT f_write (FIL* fp, const void* buff, UINT btw, UINT* bw);
 FRESULT f_sync  (FIL* fp);
 FRESULT f_lseek (FIL* fp, FSIZE_t ofs);
 
+// Directory-entry manipulation, for the atomic-replace dance the Wi-Fi config
+// upload performs. f_rename refuses an existing destination, as FatFs does.
+FRESULT f_unlink (const TCHAR* path);
+FRESULT f_rename (const TCHAR* path_old, const TCHAR* path_new);
+
 // Directory walk: link-only stubs for mdsfile.cpp (MDS is not under test).
 FRESULT f_opendir  (DIR* dp, const TCHAR* path);
 FRESULT f_readdir  (DIR* dp, FILINFO* fno);

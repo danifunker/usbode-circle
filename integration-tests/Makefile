@@ -72,7 +72,8 @@ DISCIMAGE_SRCS := \
 # behaviour worth pinning: a bad path used to cost 20 ms of scheduler time per
 # log event, which presented as the whole Pi having gone slow.
 SERVICE_SRCS := \
-	$(ADDON)/filelogdaemon/filelogdaemon.cpp
+	$(ADDON)/filelogdaemon/filelogdaemon.cpp \
+	$(ADDON)/configservice/wificonfig.cpp
 
 CHDR_OBJS :=
 ifneq ($(WITH_CHD),1)

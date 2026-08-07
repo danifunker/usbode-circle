@@ -330,6 +330,9 @@ void CUSBCDGadget::InitSCSIHandlers()
     m_SCSIHandlers[0xD0] = SCSIToolbox::ListFiles;
     m_SCSIHandlers[0xD7] = SCSIToolbox::ListFiles; // Same implementation
     m_SCSIHandlers[0xD8] = SCSIToolbox::SetNextCD;
+    m_SCSIHandlers[0xD3] = SCSIToolbox::SendFilePrep;
+    m_SCSIHandlers[0xD4] = SCSIToolbox::SendFile10;
+    m_SCSIHandlers[0xD5] = SCSIToolbox::SendFileEnd;
 
     // Misc
     m_SCSIHandlers[0x00] = SCSIMisc::TestUnitReady;
@@ -899,6 +902,17 @@ void CUSBCDGadget::OnTransferComplete(boolean bIn, size_t nLength)
 
 void CUSBCDGadget::ProcessOut(size_t nLength)
 {
+    // Toolbox uploads own their data-out payload. Falling through would both
+    // misparse it as a mode page and hex-dump a Wi-Fi password below.
+    switch (m_CBW.CBWCB[0])
+    {
+    case 0xD3:
+    case 0xD4:
+    case 0xD5:
+        SCSIToolbox::ProcessSendFileOut(this, nLength);
+        return;
+    }
+
     // This code is assuming that the payload is a Mode Select payload.
     // At the moment, this is the only thing likely to appear here.
     // TODO: somehow validate what this data is
@@ -988,6 +1002,9 @@ void CUSBCDGadget::OnActivate()
                     IsEffectiveFullSpeed() ? "Full-Speed (USB 1.1)" : "High-Speed (USB 2.0)",
                     m_CDReady, (int)m_mediaState);
     CTimer::Get()->MsDelay(10);
+    // A reset or re-enumeration ends any half-received toolbox upload; the
+    // host has to start over rather than resume into stale staging.
+    SCSIToolbox::ResetSendFileState();
     // Set media ready NOW - USB endpoints are active.
     // Skip while ejected: the drive must stay empty across a re-enumeration
     // until the user (or host) explicitly re-inserts.

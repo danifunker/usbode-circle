@@ -16,6 +16,14 @@ void FatFsHostSetWriteLimit(size_t nBytes);
 // Make every f_sync() report FR_DISK_ERR.
 void FatFsHostFailSync(bool bFail);
 
+// Fail nCount f_rename() calls starting at the nFirst-th from now (1-based;
+// nFirst 0 disables). Which ones fail decides how far a rollback has to unwind.
+void FatFsHostFailRename(unsigned nFirst, unsigned nCount = 1);
+
+// Point firmware paths that name a FatFs drive ("0:/x") at a host directory.
+// nullptr or "" restores the pass-through default.
+void FatFsHostSetDriveRoot(const char *pPath);
+
 // Back to a healthy card; the state is process-wide, so injectors must reset it.
 void FatFsHostClearFaults(void);
 
