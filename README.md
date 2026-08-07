@@ -129,6 +129,20 @@ If you have any difficulties, help is available on [Discord](https://discord.gg/
 2. Update `config.sys` file to use a `usbcd1.sys` file. The developers recommend the panasonic one (`Panasonic USB CD-ROM Driver v1.0`).
 3. Update `autoexec` to use `mscdex.exe` or `SHSUCDX.exe` with the switch `/d:usbcd001` since that is the default CDROM device name provided by usbcd1.sys.
 
+### Configuring WiFi from the connected computer
+
+If the Pi is already plugged in, WiFi can be set up without taking the MicroSD card out. Edit a `wpa_supplicant.conf` on the connected computer using the same format described in Initial Setup, then send it with the SCSI Toolbox client:
+
+```
+scsitb put <device> wpa_supplicant.conf
+```
+
+`WIFI.CFG` is also accepted, for systems limited to 8.3 filenames. Either name replaces USBODE's `wpa_supplicant.conf`; the contents are used exactly as if you had edited the file on the card. The upload is limited to 8 KiB, which is far more than a WiFi configuration needs.
+
+Once the transfer completes, USBODE installs the file and reboots by itself to pick up the new settings. An upload that fails or is interrupted never reboots, and USBODE preserves your previous configuration: normally it stays exactly where it was, and in the rare case where it cannot be put back under its own name it is kept alongside as `wpa_supplicant.bak`.
+
+Only those two destination names are accepted. This is not a general file upload, and no other file on the card can be written this way.
+
 ## Using the USBODE Web Interface
 
 The browser interface is used to load images, shutdown/reboot the device, configure settings, and view logs.To access the interface, you’ll need the IP address of the Pi. Once it connects to your WiFi, this address can be viewed from your router’s configuration page. It should appear as “usbode” in the list of connected devices. If you use a display HAT, the display will also show the IP address. Use that IP address preceded by “http://” (not “https://”). For example, if your Pi’s IP address is 192.168.0.4, you would enter `http://192.168.0.4` into your browser’s address bar. The address http://usbode or http://usbode.local should also work as well.

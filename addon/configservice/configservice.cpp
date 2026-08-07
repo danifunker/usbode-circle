@@ -1,10 +1,12 @@
 #include "configservice.h"
 #include "config.h"
 #include "cmdline.h"
+#include "wificonfig.h"
 
 #include <assert.h>
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
+#include <shutdown/shutdown.h>
 #include "simpleini.hpp"
 
 LOGMODULE("configservice");
@@ -333,6 +335,17 @@ void ConfigService::Run(void) {
                     LOGNOTE("Saving configuration");
                     Save();
                     LOGNOTE("Saved configuration");
+            }
+
+            // Same reason: the SCSI Toolbox stages an uploaded
+            // wpa_supplicant.conf from an interrupt, we install it here.
+            CWiFiConfigUpload &wifi = CWiFiConfigUpload::Get();
+            if (wifi.CommitPending()) {
+                    wifi.ProcessCommit();
+                    if (wifi.ConsumeRebootRequest()) {
+                            LOGNOTE("Wi-Fi configuration installed, rebooting");
+                            new CShutdown(ShutdownReboot, 3000);
+                    }
             }
 
             CScheduler::Get()->MsSleep(100);
