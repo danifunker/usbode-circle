@@ -1,4 +1,4 @@
-[submodule "circle-newlib"]
+[submodule "circle-stdlib"]
 	path = circle-stdlib
 	url = https://github.com/smuehlst/circle-newlib.git
 	ignore = dirty
