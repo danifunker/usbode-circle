@@ -1,6 +1,6 @@
-[submodule "circle-stdlib"]
+[submodule "circle-newlib"]
 	path = circle-stdlib
-	url = https://github.com/smuehlst/circle-stdlib.git
+	url = https://github.com/smuehlst/circle-newlib.git
 	ignore = dirty
 [submodule "addon/libchdr-src"]
 	path = addon/libchdr-src
