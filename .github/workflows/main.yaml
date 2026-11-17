@@ -34,11 +34,15 @@ jobs:
     steps:
     - name: Clean workspace
       run: |
-        git clean -ffdx
-        git reset --hard HEAD
-        git submodule foreach --recursive git clean -ffdx
-        git submodule foreach --recursive git reset --hard HEAD
-        git submodule deinit --all --force
+        if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          git clean -ffdx
+          git reset --hard HEAD
+          git submodule foreach --recursive git clean -ffdx
+          git submodule foreach --recursive git reset --hard HEAD
+          git submodule deinit --all --force
+        else
+          echo "No existing checkout; skipping pre-checkout cleanup."
+        fi
     
     - uses: actions/checkout@v6
       with:
