@@ -55,4 +55,4 @@ To build images, Linux is required and special sudo permissions are required. Th
 - build-usbode.sh should work correctly now.
 
 ##Linux Agent Requirements
-- texinfo, zip, chdman (from mame-tools), make, gcc, vim, wget, texi2html, exfatprogs, dosfstools, qemu-system-arm, mtools, python3
+- texinfo, zip, chdman (from mame-tools), make, gcc, vim, wget, texi2html, exfatprogs, dosfstools, qemu-system-arm, mtools, python3, libarchive-zip-perl
