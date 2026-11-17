@@ -53,3 +53,6 @@ To build images, Linux is required and special sudo permissions are required. Th
 - Install the following packages through brew: `bash`, `gnu-getopt`, `texinfo`, `wget`, `rom-tools`
 - Add gnu-getopt to your path then restart the shell.
 - build-usbode.sh should work correctly now.
+
+##Linux Agent Requirements
+- texinfo, zip, chdman (from mame-tools), make, gcc, vim, wget, texi2html 
