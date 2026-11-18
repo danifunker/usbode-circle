@@ -58,7 +58,7 @@ case "$PRESET" in
     32bit)
         QEMU_BIN=qemu-system-arm; MACHINE=raspi0; KERNEL=kernel.img
         ARCH=32; SOURCE=filelog; LOAD_FLAG=-bios
-        APPEND=""   # -bios cannot take -append; observed via the file log
+        APPEND= # -bios cannot take -append; observed via the file log
         ;;
     *) echo "run-boot-test: --preset must be 64bit or 32bit" >&2; exit 2;;
 esac
@@ -113,6 +113,7 @@ extract_filelog() {
 DONE_RE='USBODE .* ready|SCSITBService::Run started'
 FAIL_RE='assertion failed|: stack\[|Kernel panic|Failed to mount images partition|Cannot mount drive|Setup or Upgrade failed'
 SESSION_RE='New Session Started'
+SERIAL_SESSION_RE='Circle [0-9]+(\.[0-9]+)* started on|--- New Session Started ---'
 SETUP_DONE_RE='Partition 2 formatted as ExFAT successfully'
 
 # boot_phase <done-condition> <settle-secs>
@@ -142,8 +143,8 @@ boot_phase() {
                 # single invocation: the in-guest watchdog reboot works on
                 # raspi3b, so setup boot and normal boot share one serial log
                 if grep -qE "$FAIL_RE" "$SERIAL_LOG" 2>/dev/null; then verdict="guest-failure"; break; fi
-                if [ "$(grep -cE 'Circle [0-9]+ started on' "$SERIAL_LOG" 2>/dev/null || true)" -ge 2 ] \
-                   && awk '/Circle [0-9]+ started on/{n++} n>=2' "$SERIAL_LOG" | grep -qE "$DONE_RE"; then
+                if [ "$(grep -cE "$SERIAL_SESSION_RE" "$SERIAL_LOG" 2>/dev/null || true)" -ge 2 ] \
+                   && awk -v session_re="$SERIAL_SESSION_RE" '$0 ~ session_re {n++} n>=2' "$SERIAL_LOG" | grep -qE "$DONE_RE"; then
                     verdict="done"; break
                 fi
                 ;;
