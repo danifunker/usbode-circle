@@ -58,7 +58,7 @@ case "$PRESET" in
     32bit)
         QEMU_BIN=qemu-system-arm; MACHINE=raspi0; KERNEL=kernel.img
         ARCH=32; SOURCE=filelog; LOAD_FLAG=-bios
-        APPEND="logdev=ttyS1 loglevel=4 sounddev=sndi2s fast=true usbspeed=high"   # -bios cannot take -append; observed via the file log
+        APPEND= # -bios cannot take -append; observed via the file log
         ;;
     *) echo "run-boot-test: --preset must be 64bit or 32bit" >&2; exit 2;;
 esac
