@@ -41,7 +41,9 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 SERIAL_LINE = re.compile(r"^(?:\d\d:\d\d:\d\d\.\d\d )?(.+?): (.*)$")
 FILELOG_LINE = re.compile(r"^\[(\d+)\] \[(.+?)\] (\w+): (.*)$")
-SERIAL_SESSION_START = re.compile(r"Circle \d+ started on")
+SERIAL_SESSION_START = re.compile(
+    r"Circle \d+(?:\.\d+)* started on|--- New Session Started ---"
+)
 FILELOG_SESSION_START = re.compile(r"--- New Session Started ---")
 
 SUSPICIOUS = re.compile(
@@ -175,7 +177,11 @@ def parse(text, source):
             continue
         m = line_re.match(line)
         if source == "serial":
-            if m:
+            structured = FILELOG_LINE.match(line)
+            if structured:
+                entries.append((lineno, structured.group(2), structured.group(4),
+                                structured.group(3), line))
+            elif m:
                 entries.append((lineno, m.group(1), m.group(2), None, line))
             else:
                 entries.append((lineno, None, line, None, line))
