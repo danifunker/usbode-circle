@@ -57,13 +57,15 @@ To build images locally, Linux is required and special sudo permissions are requ
 - build-usbode.sh should work correctly now.
 
 ## CI (GitHub-hosted runners)
-The whole pipeline in `.github/workflows/main.yaml` runs on GitHub-hosted `ubuntu-26.04` runners; no self-hosted agent is needed. The `build` job:
+The whole pipeline in `.github/workflows/main.yaml` runs on GitHub-hosted `ubuntu-26.04` runners; no self-hosted agent is needed. The `build` job is split into two parallel legs, `build (32bit)` and `build (64bit)`. Each leg:
 - installs the host packages listed below with `apt-get`
-- downloads both Arm GNU Toolchains (`arm-none-eabi` for 32-bit, `aarch64-none-elf` for 64-bit, matching the runner's host architecture; version set by `ARM_TOOLCHAIN_VERSION` in the workflow) and caches it
+- downloads and caches only its own Arm GNU Toolchain (`arm-none-eabi` for 32-bit, `aarch64-none-elf` for 64-bit; version set by `ARM_TOOLCHAIN_VERSION` in the workflow)
 - writes `~/build-usbode.conf` with `supported_rasppi=(1 2 3 4)` and `supported_rasppi_64=(3 4)`
-- runs `make release`, including `scripts/create-img.sh` (loop devices and sudo are available on hosted runners)
+- runs `make release-32` or `make release-64`: that architecture's half of `make release` (kernels, zip and disk image, including `scripts/create-img.sh`; loop devices and sudo are available on hosted runners)
 
-The `qemu-boot-test` jobs run on `ubuntu-26.04-arm` and install `qemu-system-arm`, `mtools` and `python3` themselves.
+The `assemble` job then merges the two halves and runs `make os-sublist`, which needs both images. The `qemu-boot-test` jobs install `qemu-system-arm`, `mtools` and `python3` themselves.
+
+The same split works locally: `make package-32` / `make package-64` build one architecture with only its own toolchain, and `make release-32` / `make release-64` add the disk image. `make release` still builds everything.
 
 ## Linux Build Requirements
 - texinfo, zip, chdman (from mame-tools), make, gcc, wget, texi2html, exfatprogs, dosfstools, fdisk, xz-utils, qemu-system-arm, mtools, python3, libarchive-zip-perl (provides `crc32`)
