@@ -90,7 +90,9 @@ USBCDGADGET_CPPFLAGS = -DUSB_GADGET_VENDOR_ID=0x04da -DUSB_GADGET_DEVICE_ID_CD=0
 
 .PHONY: $(USBODE_ADDONS) $(CIRCLE_ADDONS) dist-single multi-arch package release\
 	 show-build-info rebuild show-config all-32 all-64 multi-arch-64 package-both\
-	 images-dist image-single os-sublist qemu-boot-test
+	 images-dist image-single os-sublist qemu-boot-test\
+	 armstub-32 armstub-64 package-32 package-64 image-32 image-64\
+	 release-32 release-64
 
 # Generate build info once per build process
 generate-buildinfo:
@@ -160,7 +162,7 @@ circle-stdlib: configure
 # Handle Circle dependencies (firmware and boot files)
 #
 # The firmware/boot Makefiles fetch blobs from GitHub with plain `wget` and no
-# retry. Our self-hosted runner builds often and gets rate-limited (HTTP 429)
+# retry. CI builds often and can get rate-limited (HTTP 429)
 # by GitHub's raw-file host, so a single throttled download (wget exit 8) would
 # otherwise fail the whole multi-arch build. Retry with linear backoff to ride
 # out the rate-limit window; `make` re-runs its own `clean` each attempt, so a
@@ -229,6 +231,19 @@ armstub:
 	echo PREFIX64=$(PREFIX64) >> $(CIRCLEHOME)/Config.mk
 	cd $(CIRCLEHOME)/boot/armstub && $(MAKE)
 	@echo "armstub build complete."
+
+# Single-architecture armstubs, so a 32-bit-only or 64-bit-only build needs
+# just its own toolchain (`armstub` above always builds both). The prefix is
+# passed on the command line, overriding whatever ../../Config.mk says.
+armstub-32:
+	@echo "Building armstub7-rpi4.bin (32-bit)..."
+	cd $(CIRCLEHOME)/boot/armstub && rm -f armstub7-rpi4.* && \
+		$(MAKE) PREFIX=$(PREFIX) armstub7-rpi4.bin
+
+armstub-64:
+	@echo "Building armstub8-rpi4.bin (64-bit)..."
+	cd $(CIRCLEHOME)/boot/armstub && rm -f armstub8-rpi4.* && \
+		$(MAKE) PREFIX64=$(PREFIX64) armstub8-rpi4.bin
 
 # Build final kernel
 kernel: usbode-addons
@@ -435,6 +450,14 @@ package-both: armstub
 
 package: package-both
 
+# One architecture only, e.g. for CI jobs that build 32-bit and 64-bit on
+# separate runners. `make package` is still package-32 + package-64.
+package-32: armstub-32
+	@$(MAKE) multi-arch ARCH_MODE=32 CURRENT_DIST_DIR=dist
+
+package-64: armstub-64
+	@$(MAKE) multi-arch-64 ARCH_MODE=64 CURRENT_DIST_DIR=dist64
+
 release: 
 	@if [ -z "$(BUILD_NUMBER)" ]; then \
 		echo "Error: BUILD_NUMBER not set. Use: make release BUILD_NUMBER=123"; \
@@ -450,9 +473,27 @@ image-single:
 	@scripts/create-img.sh -s $(CURRENT_DIST_DIR) -o $(CURRENT_DIST_DIR)/../imgout -n $(CURRENT_IMG_NAME)
 	@echo "Image distribution package $(CURRENT_IMG_NAME) created in $(CURRENT_DIST_DIR)/../imgout"
 
-images-dist:
+image-32:
 	@$(MAKE) image-single ARCH_MODE=32 CURRENT_DIST_DIR=dist CURRENT_IMG_NAME=$(IMG_BASE_NAME).img
+
+image-64:
 	@$(MAKE) image-single ARCH_MODE=64 CURRENT_DIST_DIR=dist64 CURRENT_IMG_NAME=$(IMG_BASE_NAME)-64bit.img
+
+# Sequential on purpose: both images use loop devices and sudo mounts.
+images-dist:
+	@$(MAKE) image-32
+	@$(MAKE) image-64
+
+# Half of `make release` for one architecture: kernels, zip and image.
+# Generating os-sublist needs both images, so it is left to whoever joins
+# the two halves (`make os-sublist`, run by CI's assemble job).
+release-32 release-64:
+	@if [ -z "$(BUILD_NUMBER)" ]; then \
+		echo "Error: BUILD_NUMBER not set. Use: make $@ BUILD_NUMBER=123"; \
+		exit 1; \
+	fi
+	@$(MAKE) package-$(@:release-%=%) BUILD_NUMBER="$(BUILD_NUMBER)"
+	@$(MAKE) image-$(@:release-%=%)
 
 # Fill in the rpi-imager OS list from the images images-dist just built, so
 # the sizes and checksums always describe the exact bytes being released.

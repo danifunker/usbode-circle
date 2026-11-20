@@ -9,7 +9,7 @@ In CI (`.github/workflows/main.yaml`) this is its own pipeline stage
 between build and release: `build` uploads the freshly packaged
 `dist`/`dist64` trees plus `buildinfo.json` as `qemu-boot-input-*`
 artifacts, the two matrix jobs `qemu-boot-test (32bit)` and
-`qemu-boot-test (64bit)` consume them on the self-hosted agent
+`qemu-boot-test (64bit)` consume them on GitHub-hosted `ubuntu-26.04` runners
 (`fail-fast: false`, so one architecture failing still reports the
 other), and the `release` job publishes only when both pass — a kernel
 that no longer boots cannot be **released**. (Per-run build artifacts do
@@ -127,7 +127,8 @@ firmware).
 
 ## Build agent requirements
 
-The CI steps run on the self-hosted build runner. One-time install:
+CI runs on GitHub-hosted `ubuntu-26.04` runners (QEMU 10.2) and installs these in the
+job itself. For a local Linux machine:
 
 ```
 # Debian/Ubuntu

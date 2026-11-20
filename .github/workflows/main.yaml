@@ -14,47 +14,119 @@ on:
   workflow_dispatch:
     branches: [ "main" ]
 
+env:
+  # Run every JavaScript action on Node 24, including any that still declare
+  # an older runtime in their action.yml.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Arm GNU Toolchain version for the 32-bit (arm-none-eabi) and 64-bit
+  # (aarch64-none-elf) builds; each build leg installs only its own.
+  # Bumping this invalidates the toolchain caches.
+  ARM_TOOLCHAIN_VERSION: 14.3.rel1
+
 jobs:
   # Gate the build on the host regression tests: they run in a couple of
-  # minutes on a GitHub-hosted runner, so there is no point spending ~10
-  # minutes of self-hosted build time on a commit they already reject.
+  # minutes, so there is no point spending a full multi-arch build on a
+  # commit they already reject.
   # Shared with the standalone host-tests workflow rather than duplicated,
   # so the two can never drift apart.
   host-tests:
     uses: ./.github/workflows/host-tests.yml
 
+  # The 32-bit and 64-bit halves build in parallel on separate runners, each
+  # with only its own toolchain. Everything that needs both halves (the
+  # rpi-imager OS list and the release bundle) happens in `assemble`.
   build:
-
     needs: host-tests
-    runs-on: [self-hosted]
+    runs-on: ubuntu-26.04
+    strategy:
+      # One half failing makes the run useless for release anyway, but let
+      # the other half finish so both sets of errors show up in one run.
+      fail-fast: false
+      matrix:
+        include:
+          - preset: 32bit
+            arch: "32"
+            dist: dist
+            toolchain: arm-none-eabi
+            suffix: ""
+          - preset: 64bit
+            arch: "64"
+            dist: dist64
+            toolchain: aarch64-none-elf
+            suffix: "-64bit"
+    name: build (${{ matrix.preset }})
     outputs:
+      # Identical in both legs: the 32-bit zip name without .zip.
       filename: ${{ steps.get-filename.outputs.filename }}
       commit_hash: ${{ steps.get-commit.outputs.commit_hash }}
 
     steps:
-    - name: Clean workspace
-      run: |
-        if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-          git clean -ffdx
-          git reset --hard HEAD
-          git submodule foreach --recursive git clean -ffdx
-          git submodule foreach --recursive git reset --hard HEAD
-          git submodule deinit --all --force
-        else
-          echo "No existing checkout; skipping pre-checkout cleanup."
-        fi
-    
     - uses: actions/checkout@v6
       with:
         submodules:  recursive
         clean: true
 
-    # circle-deps / boot re-download these from GitHub on every build once
-    # "Clean workspace" + submodule deinit wipe them out. On a self-hosted
-    # runner building frequently, unauthenticated raw-file fetches to
-    # RPi-Distro/firmware-nonfree can hit GitHub's rate limit (HTTP 429) and
-    # fail the whole build. Cache them across runs; the key is derived from
-    # the pinned firmware commit hash in each Makefile, so bumping either
+    # Host packages that were previously preinstalled on the self-hosted
+    # agent (see BUILD.md "Linux Build Requirements"):
+    #   texinfo/texi2html - circle-stdlib's newlib build
+    #   mame-tools        - chdman, converts the bundled audio-test CHD
+    #   libarchive-zip-perl - crc32 for the sysupgrade package
+    #   exfatprogs/dosfstools/fdisk - scripts/create-img.sh (disk images)
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential texinfo texi2html zip unzip wget xz-utils \
+          mame-tools libarchive-zip-perl \
+          exfatprogs dosfstools fdisk mtools python3
+
+    - name: Cache Arm GNU Toolchain (${{ matrix.toolchain }})
+      id: toolchain-cache
+      uses: actions/cache@v5
+      with:
+        path: ~/arm-toolchain/${{ matrix.toolchain }}
+        key: arm-gnu-toolchain-${{ runner.os }}-${{ runner.arch }}-${{ matrix.toolchain }}-${{ env.ARM_TOOLCHAIN_VERSION }}
+
+    - name: Download Arm GNU Toolchain (${{ matrix.toolchain }})
+      if: steps.toolchain-cache.outputs.cache-hit != 'true'
+      env:
+        TARGET: ${{ matrix.toolchain }}
+      run: |
+        set -euo pipefail
+        case "$(uname -m)" in
+          x86_64)        host=x86_64 ;;
+          aarch64|arm64) host=aarch64 ;;
+          *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+        esac
+        name="arm-gnu-toolchain-${ARM_TOOLCHAIN_VERSION}-${host}-${TARGET}"
+        mkdir -p ~/arm-toolchain
+        curl -fsSL --retry 3 --retry-delay 10 -o "/tmp/${name}.tar.xz" \
+          "https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_TOOLCHAIN_VERSION}/binrel/${name}.tar.xz"
+        tar -xJf "/tmp/${name}.tar.xz" -C ~/arm-toolchain
+        mv ~/arm-toolchain/"${name}" ~/arm-toolchain/"${TARGET}"
+        rm -f "/tmp/${name}.tar.xz"
+
+    # The Makefile reads its toolchain prefixes and target list from
+    # ~/build-usbode.conf. These targets match what the self-hosted agent
+    # shipped: 32-bit kernel/kernel7/kernel8-32/kernel7l, 64-bit
+    # kernel8/kernel8-rpi4. Each leg only has its own toolchain installed;
+    # the other prefix is never used by that leg's targets.
+    - name: Write build-usbode.conf
+      run: |
+        cat > "$HOME/build-usbode.conf" <<EOF
+        supported_rasppi=(1 2 3 4)
+        supported_rasppi_64=(3 4)
+        PathPrefix=$HOME/arm-toolchain/arm-none-eabi/bin/arm-none-eabi-
+        PathPrefix64=$HOME/arm-toolchain/aarch64-none-elf/bin/aarch64-none-elf-
+        EOF
+        cat "$HOME/build-usbode.conf"
+        "$HOME/arm-toolchain/${{ matrix.toolchain }}/bin/${{ matrix.toolchain }}-gcc" --version | head -n1
+
+    # circle-deps / boot download these from GitHub on every fresh checkout.
+    # Unauthenticated raw-file fetches to RPi-Distro/firmware-nonfree can hit
+    # GitHub's rate limit (HTTP 429) and fail the whole build. Cache them
+    # across runs; the key is derived from the pinned firmware commit hash in
+    # each Makefile, so bumping either
     # FIRMWARE variable upstream automatically invalidates the cache instead
     # of silently keeping stale blobs.
     - name: Cache WLAN firmware
@@ -96,7 +168,7 @@ jobs:
     # When the caches above miss, fetch the same files through api.github.com
     # with the workflow token instead of letting make wget them anonymously:
     # authenticated requests use a per-token quota (1000 req/h) that is not
-    # affected by the anonymous per-IP throttle that rate-limited this runner
+    # affected by the anonymous per-IP throttle that rate-limited the runner
     # (HTTP 429 -> wget "Error 8" -> silent 0-byte files, see above). The file
     # lists and pinned refs are parsed from the two Makefiles at run time, so
     # a FIRMWARE pin bump upstream is picked up automatically. Non-fatal: if
@@ -149,51 +221,46 @@ jobs:
 
         exit $rc
 
-    - name: Build
-      run: make release BUILD_NUMBER=${{ github.run_number }}
+    # `make release-NN` is one architecture's half of `make release`:
+    # kernels, zip and disk image. The image step runs scripts/create-img.sh,
+    # which needs loop devices plus sudo for losetup/mount/mkfs; GitHub-hosted
+    # Ubuntu runners grant passwordless sudo, so no sudoers setup is needed.
+    - name: Build (${{ matrix.preset }})
+      run: make release-${{ matrix.arch }} BUILD_NUMBER=${{ github.run_number }}
 
     # Refuse to ship a build containing empty files. A verified-good build
     # has none (checked against a local clean build), and empty boot firmware
     # looks like a successful build while bricking every Pi Zero (2) W card
     # it is flashed or sysupgraded onto (build-947, build-950).
     - name: Verify no empty files in distribution
+      env:
+        DIST: ${{ matrix.dist }}
       run: |
-        bad=$(find dist dist64 -type f -size 0)
+        bad=$(find "$DIST" -type f -size 0)
         if [ -n "$bad" ]; then
           echo "ERROR: empty files in distribution:"
           echo "$bad"
           exit 1
         fi
-        for f in dist/bootcode.bin dist/fixup.dat dist/start.elf \
-                 dist64/bootcode.bin dist64/fixup.dat dist64/start.elf; do
-          if [ ! -s "$f" ]; then
-            echo "ERROR: missing or empty critical boot file: $f"
+        for f in bootcode.bin fixup.dat start.elf; do
+          if [ ! -s "$DIST/$f" ]; then
+            echo "ERROR: missing or empty critical boot file: $DIST/$f"
             exit 1
           fi
         done
         echo "All distribution files verified non-empty"
 
-    # Hand the freshly built dist trees (plus this build's buildinfo.json,
+    # Hand the freshly built dist tree (plus this leg's buildinfo.json,
     # which the boot-log validator derives its version expectations from) to
-    # the qemu-boot-test jobs. Uploaded BEFORE "Clean Images Folder" strips
-    # config.txt/cmdline.txt/images out of dist, because the boot test needs
-    # the full tree a user's SD card would carry.
-    - name: Publish 32-bit QEMU boot-test input
+    # the matching qemu-boot-test job. Uploaded BEFORE "Clean Images Folder"
+    # strips config.txt/cmdline.txt/images out of dist, because the boot test
+    # needs the full tree a user's SD card would carry.
+    - name: Publish QEMU boot-test input
       uses: actions/upload-artifact@v7
       with:
-        name: qemu-boot-input-32bit
+        name: qemu-boot-input-${{ matrix.preset }}
         path: |
-          dist
-          buildinfo.json
-        if-no-files-found: error
-        retention-days: 7
-
-    - name: Publish 64-bit QEMU boot-test input
-      uses: actions/upload-artifact@v7
-      with:
-        name: qemu-boot-input-64bit
-        path: |
-          dist64
+          ${{ matrix.dist }}
           buildinfo.json
         if-no-files-found: error
         retention-days: 7
@@ -201,8 +268,9 @@ jobs:
     - name: Get filename
       id: get-filename
       run: |
-        FILENAME_FULL=$(ls usbode*.zip | grep -v -- '-64bit.zip' | xargs basename)
+        FILENAME_FULL=$(ls usbode-*.zip | xargs basename)
         FILENAME=${FILENAME_FULL%.zip}
+        FILENAME=${FILENAME%-64bit}
         echo "Found file: $FILENAME"
         echo "filename=$FILENAME" >> $GITHUB_OUTPUT
 
@@ -213,8 +281,42 @@ jobs:
 
     - uses: actions/upload-artifact@v7
       with:
-        name: ${{ steps.get-filename.outputs.filename }}-images IMG
-        path: imgout/${{ steps.get-filename.outputs.filename }}.img.xz
+        name: ${{ steps.get-filename.outputs.filename }}-images${{ matrix.suffix }} IMG
+        path: imgout/${{ steps.get-filename.outputs.filename }}${{ matrix.suffix }}.img.xz
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false
+
+    - name: Clean Images Folder
+      run: make clean-imagesfolder
+
+    - uses: actions/upload-artifact@v7
+      with:
+        # Using the extracted filename as the artifact name
+        name: ${{ steps.get-filename.outputs.filename }}${{ matrix.suffix }}
+        path: ${{ matrix.dist }}/*
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 6
+        overwrite: true
+        include-hidden-files: false
+
+    - name: Create upgrade package
+      env:
+        DIST: ${{ matrix.dist }}
+        UPGRADE: sysupgrade${{ matrix.arch }}
+      run: |
+        mkdir -p upgrade
+        cp buildinfo.json "$DIST/"
+        (cd "$DIST" && tar -cf "../upgrade/$UPGRADE.tar" *)
+        (cd upgrade && crc32 "$UPGRADE.tar" > "$UPGRADE.crc")
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: sysupgrade${{ matrix.arch }}
+        path: upgrade/sysupgrade${{ matrix.arch }}.tar
         if-no-files-found: error
         retention-days: 90
         compression-level: 6
@@ -223,18 +325,70 @@ jobs:
 
     - uses: actions/upload-artifact@v7
       with:
-        name: ${{ steps.get-filename.outputs.filename }}-images-64bit IMG
-        path: imgout/${{ steps.get-filename.outputs.filename }}-64bit.img.xz
+        name: sysupgrade${{ matrix.arch }}crc
+        path: upgrade/sysupgrade${{ matrix.arch }}.crc
         if-no-files-found: error
         retention-days: 90
         compression-level: 6
         overwrite: true
-        include-hidden-files: false
 
-    # The rpi-imager OS list, filled in by `make release` from the images
-    # built above. Published as a release asset so that
+    # This leg's share of the release, merged by the assemble job.
+    - name: Publish release file half
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-files-${{ matrix.preset }}
+        path: |
+          usbode-*.zip
+          imgout/*.img.xz
+          upgrade/sysupgrade${{ matrix.arch }}.tar
+          upgrade/sysupgrade${{ matrix.arch }}.crc
+          buildinfo.json
+        if-no-files-found: error
+        retention-days: 7
+
+  # Joins the two build halves: generates the rpi-imager OS list (it needs
+  # both images) and bundles everything the release job publishes. Cheap -
+  # no toolchains, no submodules.
+  assemble:
+    needs: build
+    runs-on: ubuntu-26.04
+
+    steps:
+    # Scripts and the os-sublist template only. The branch/commit in the
+    # image names come from this checkout, the same commit the builds used.
+    - uses: actions/checkout@v6
+
+    - name: Download 64-bit half
+      uses: actions/download-artifact@v7
+      with:
+        name: release-files-64bit
+        path: .
+
+    - name: Download 32-bit half
+      uses: actions/download-artifact@v7
+      with:
+        name: release-files-32bit
+        path: half32
+
+    # The release keeps the 64-bit leg's buildinfo.json, exactly as the
+    # single-job build did (its 64-bit pass ran generate-buildinfo last).
+    # Each sysupgrade tar carries its own leg's copy.
+    - name: Merge halves
+      run: |
+        set -euo pipefail
+        cp half32/usbode-*.zip .
+        cp half32/imgout/*.img.xz imgout/
+        cp half32/upgrade/* upgrade/
+        rm -rf half32
+        ls -l usbode-*.zip imgout upgrade buildinfo.json
+
+    # The rpi-imager OS list, filled in from the two images built above.
+    # Published as a release asset so that
     # https://github.com/danifunker/usbode-circle/releases/latest/download/os-sublist.json
     # can be handed to rpi-imager --repo directly.
+    - name: Generate os-sublist.json
+      run: make os-sublist BUILD_NUMBER=${{ github.run_number }}
+
     - uses: actions/upload-artifact@v7
       with:
         name: os-sublist
@@ -244,91 +398,8 @@ jobs:
         compression-level: 6
         overwrite: true
 
-    - name: Clean Images Folder
-      run: make clean-imagesfolder
-
-    - uses: actions/upload-artifact@v7
-      with:
-        # Using the extracted filename as the artifact name
-        name: ${{ steps.get-filename.outputs.filename }}
-        path: dist/*
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 6
-        overwrite: true
-        include-hidden-files: false
-
-    - uses: actions/upload-artifact@v7
-      with:
-        # Using the extracted filename as the artifact name
-        name: ${{ steps.get-filename.outputs.filename }}-64bit
-        path: dist64/*
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 6
-        overwrite: true
-        include-hidden-files: false
-
-    - name: Create upgrade packages
-      run: |
-        # Create upgrade directory
-        mkdir -p upgrade
-        cp buildinfo.json dist/
-        # Create 32-bit upgrade tar and CRC
-        cd dist
-        tar -cf ../upgrade/sysupgrade32.tar *
-        cd ../upgrade
-        crc32 sysupgrade32.tar > sysupgrade32.crc
-        cd ..
-
-        # Create 64-bit upgrade tar and CRC
-        cp buildinfo.json dist64/
-        cd dist64
-        tar -cf ../upgrade/sysupgrade64.tar *
-        cd ../upgrade
-        crc32 sysupgrade64.tar > sysupgrade64.crc
-        cd ..
-
-    - uses: actions/upload-artifact@v7
-      with:
-        name: sysupgrade32
-        path: upgrade/sysupgrade32.tar
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 6
-        overwrite: true
-
-    - uses: actions/upload-artifact@v7
-      with:
-        name: sysupgrade32crc
-        path: upgrade/sysupgrade32.crc
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 6
-        overwrite: true
-
-    - uses: actions/upload-artifact@v7
-      with:
-        name: sysupgrade64
-        path: upgrade/sysupgrade64.tar
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 6
-        overwrite: true
-        include-hidden-files: false
-
-    - uses: actions/upload-artifact@v7
-      with:
-        name: sysupgrade64crc
-        path: upgrade/sysupgrade64.crc
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 6
-        overwrite: true
-
     # Everything the release job publishes, bundled once. The release job
-    # runs on a GitHub-hosted runner and consumes only this artifact, so it
-    # needs no tools and no access to this runner's workspace.
+    # consumes only this artifact.
     - name: Publish release file bundle
       uses: actions/upload-artifact@v7
       with:
@@ -351,12 +422,12 @@ jobs:
   # validated against this exact build's version (tests/qemu-boot/ - the
   # same script developers can run locally, see `make qemu-boot-test`).
   # fail-fast is off so a 32-bit failure still reports the 64-bit result;
-  # on a single self-hosted agent the legs run in matrix order (32, then 64).
+  # the two legs run in parallel on separate GitHub-hosted runners.
   # Runner requirements: qemu-system-arm, mtools, python3 - see
-  # tests/qemu-boot/README.md. The script fails with install hints if absent.
+  # tests/qemu-boot/README.md.
   qemu-boot-test:
     needs: build
-    runs-on: [self-hosted]
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -370,6 +441,13 @@ jobs:
     steps:
       # Scripts only - no submodules, no build tree
       - uses: actions/checkout@v6
+
+      # qemu-system-arm also provides qemu-system-aarch64 on Ubuntu.
+      - name: Install QEMU boot-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-arm mtools python3
+          qemu-system-arm --version | head -n1
 
       - name: Download boot-test input
         uses: actions/download-artifact@v7
@@ -391,19 +469,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      # The runner script already deletes its ~1 GiB card image on exit;
-      # this removes the downloaded input and logs too, so repeated runs
-      # never accumulate scratch on the self-hosted agent.
-      - name: Clean up scratch
-        if: always()
-        run: rm -rf qemu-boot-out qemu-input
-
   release:
     # Publishes only after both boot tests pass. Skipped (shown grey, not
     # red) on branches other than main. needs build for the filename output.
     if: github.ref == 'refs/heads/main'
-    needs: [build, qemu-boot-test]
-    runs-on: ubuntu-latest
+    needs: [build, assemble, qemu-boot-test]
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Download release file bundle
