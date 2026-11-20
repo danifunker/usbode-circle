@@ -38,7 +38,9 @@ To build for a single (Pi3/Zero 2 W) architecture in 64-bit with debug flags on 
 The build number will be displayed as `2.2.5-123` but stored internally as just `123`.
 
 ## Build Images
-To build images, Linux is required and special sudo permissions are required. They have been limited as much as possible. Please follow these instructions on setting up sudo for the build images script:
+CI builds images on GitHub-hosted `ubuntu-24.04` runners, which already have passwordless sudo, so none of the setup below is needed there.
+
+To build images locally, Linux is required and special sudo permissions are required. They have been limited as much as possible. Please follow these instructions on setting up sudo for the build images script:
 
 1. `sudo visudo -f /etc/sudoers.d/mount-nopasswd`
 2. Paste in the following line into the file: `%sudo ALL=(ALL) NOPASSWD: /bin/mount, /bin/umount, /sbin/losetup, /sbin/mkfs.fat, /sbin/fdisk, /sbin/mkfs.exfat`
@@ -54,5 +56,14 @@ To build images, Linux is required and special sudo permissions are required. Th
 - Add gnu-getopt to your path then restart the shell.
 - build-usbode.sh should work correctly now.
 
-##Linux Agent Requirements
-- texinfo, zip, chdman (from mame-tools), make, gcc, vim, wget, texi2html, exfatprogs, dosfstools, qemu-system-arm, mtools, python3, libarchive-zip-perl
+## CI (GitHub-hosted runners)
+The whole pipeline in `.github/workflows/main.yaml` runs on GitHub-hosted `ubuntu-24.04` runners; no self-hosted agent is needed. The `build` job:
+- installs the host packages listed below with `apt-get`
+- downloads the Arm GNU Toolchain (`arm-none-eabi` and `aarch64-none-elf`, version set by `ARM_TOOLCHAIN_VERSION` in the workflow) and caches it
+- writes `~/build-usbode.conf` with `supported_rasppi=(1 2 3 4)` and `supported_rasppi_64=(3 4)`
+- runs `make release`, including `scripts/create-img.sh` (loop devices and sudo are available on hosted runners)
+
+The `qemu-boot-test` jobs install `qemu-system-arm`, `mtools` and `python3` themselves.
+
+## Linux Build Requirements
+- texinfo, zip, chdman (from mame-tools), make, gcc, wget, texi2html, exfatprogs, dosfstools, fdisk, xz-utils, qemu-system-arm, mtools, python3, libarchive-zip-perl (provides `crc32`)

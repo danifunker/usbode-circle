@@ -24,9 +24,13 @@ on:
       - ".github/workflows/host-tests.yml"
   workflow_dispatch:
 
+env:
+  # Run every JavaScript action on Node 24.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   host-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
 

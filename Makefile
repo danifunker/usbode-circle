@@ -160,7 +160,7 @@ circle-stdlib: configure
 # Handle Circle dependencies (firmware and boot files)
 #
 # The firmware/boot Makefiles fetch blobs from GitHub with plain `wget` and no
-# retry. Our self-hosted runner builds often and gets rate-limited (HTTP 429)
+# retry. CI builds often and can get rate-limited (HTTP 429)
 # by GitHub's raw-file host, so a single throttled download (wget exit 8) would
 # otherwise fail the whole multi-arch build. Retry with linear backoff to ride
 # out the rate-limit window; `make` re-runs its own `clean` each attempt, so a
