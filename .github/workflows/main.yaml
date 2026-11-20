@@ -19,7 +19,8 @@ env:
   # an older runtime in their action.yml.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Arm GNU Toolchain used for both the 32-bit (arm-none-eabi) and 64-bit
-  # (aarch64-none-elf) kernels. Bumping this invalidates the toolchain cache.
+  # (aarch64-none-elf) kernels; both are always installed. Bumping this
+  # invalidates the toolchain cache.
   ARM_TOOLCHAIN_VERSION: 14.3.rel1
 
 jobs:
@@ -34,7 +35,7 @@ jobs:
   build:
 
     needs: host-tests
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       filename: ${{ steps.get-filename.outputs.filename }}
       commit_hash: ${{ steps.get-commit.outputs.commit_hash }}
@@ -72,10 +73,18 @@ jobs:
       if: steps.toolchain-cache.outputs.cache-hit != 'true'
       run: |
         set -euo pipefail
+        # Host build of the toolchain: x86_64 or aarch64, so this step works
+        # on both x64 and arm64 runners.
+        case "$(uname -m)" in
+          x86_64)        host=x86_64 ;;
+          aarch64|arm64) host=aarch64 ;;
+          *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+        esac
         base="https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_TOOLCHAIN_VERSION}/binrel"
         mkdir -p ~/arm-toolchain
+        # 32-bit kernels (arm-none-eabi) and 64-bit kernels (aarch64-none-elf)
         for target in arm-none-eabi aarch64-none-elf; do
-          name="arm-gnu-toolchain-${ARM_TOOLCHAIN_VERSION}-x86_64-${target}"
+          name="arm-gnu-toolchain-${ARM_TOOLCHAIN_VERSION}-${host}-${target}"
           curl -fsSL --retry 3 --retry-delay 10 -o "/tmp/${name}.tar.xz" "${base}/${name}.tar.xz"
           tar -xJf "/tmp/${name}.tar.xz" -C ~/arm-toolchain
           mv ~/arm-toolchain/"${name}" ~/arm-toolchain/"${target}"
@@ -402,11 +411,14 @@ jobs:
   # same script developers can run locally, see `make qemu-boot-test`).
   # fail-fast is off so a 32-bit failure still reports the 64-bit result;
   # the two legs run in parallel on separate GitHub-hosted runners.
+  # Arm64 runners, matching the Ubuntu 26.04 arm64 agent these tests were
+  # previously validated on. The guest kernels are host-independent, so the
+  # build job's x64 output boots here unchanged.
   # Runner requirements: qemu-system-arm, mtools, python3 - see
   # tests/qemu-boot/README.md.
   qemu-boot-test:
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04-arm
     strategy:
       fail-fast: false
       matrix:
@@ -453,7 +465,7 @@ jobs:
     # red) on branches other than main. needs build for the filename output.
     if: github.ref == 'refs/heads/main'
     needs: [build, qemu-boot-test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Download release file bundle
